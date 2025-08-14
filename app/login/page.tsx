@@ -1,24 +1,78 @@
 'use client'
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 
 export default function LoginPage() {
-  const startLogin = () => { window.location.href = '/api/auth/authorize' }
+  const router = useRouter()
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const onSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError(null)
+    setLoading(true)
+    try {
+      const r = await fetch('/api/auth/local', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      })
+      if (!r.ok) {
+        const t = await r.json().catch(() => ({}))
+        throw new Error(t?.error || `Login failed (${r.status})`)
+      }
+      router.push('/dashboard')
+    } catch (err: any) {
+      setError(err?.message || 'Login failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
-    <div className="min-h-[70vh] grid place-items-center">
-      <div className="w-full max-w-md card p-8">
-        <div className="text-center mb-6">
-          <div className="mx-auto w-12 h-12 rounded-full border flex items-center justify-center text-brand-orange font-bold">Z</div>
-          <h1 className="text-2xl font-semibold mt-3">Zitko Automations</h1>
-          <p className="text-gray-500">AI Powered Automation Platform</p>
+    <div className="min-h-[60vh] flex items-center justify-center">
+      <form onSubmit={onSubmit} className="card p-6 w-full max-w-md grid gap-4">
+        <h1 className="text-xl font-semibold text-center">Login</h1>
+
+        <div>
+          <label className="text-sm text-gray-600">Email</label>
+          <input
+            type="email"
+            className="input mt-1 w-full"
+            placeholder="you@company.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
         </div>
 
-        <h2 className="text-lg font-semibold mb-1">Sign In</h2>
-        <p className="text-sm text-gray-600 mb-4">Enter your credentials to access the platform</p>
-        <div className="grid gap-3">
-          <input className="input" placeholder="Email" defaultValue="stephenr@zitko.co.uk" />
-          <input className="input" placeholder="Password" type="password" defaultValue="•••••••" />
-          <button onClick={startLogin} className="btn btn-grey">Sign In</button>
+        <div>
+          <label className="text-sm text-gray-600">Password</label>
+          <input
+            type="password"
+            className="input mt-1 w-full"
+            placeholder="••••••••"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
         </div>
-      </div>
+
+        {error && <div className="rounded-xl border p-3 text-sm text-red-600">{error}</div>}
+
+        <button className="btn btn-brand w-full" type="submit" disabled={loading}>
+          {loading ? 'Signing in…' : 'Sign In'}
+        </button>
+
+        <div className="text-center text-sm text-gray-600">
+          Or&nbsp;
+          <a className="text-brand-orange underline" href="/api/auth/authorize">
+            Login with Vincere
+          </a>
+        </div>
+      </form>
     </div>
   )
 }
