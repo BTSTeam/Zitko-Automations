@@ -6,7 +6,7 @@ export const config = {
   REDIRECT_URI: process.env.REDIRECT_URI!,
   SESSION_PASSWORD: process.env.SESSION_PASSWORD!,
   OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',
-  OPENAI_MODEL: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+  OPENAI_MODEL: process.env.OPENAI_MODEL || 'gpt-5',
 };
 
 export function requiredEnv() {
