@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { NextResponse } from 'next/server'
 import { generateVerifier, challengeFromVerifier } from '@/lib/pkce'
 import { getSession } from '@/lib/session'
@@ -20,7 +21,7 @@ export async function GET() {
   url.searchParams.set('scope', 'openid')
   url.searchParams.set('code_challenge', codeChallenge)
   url.searchParams.set('code_challenge_method', 'S256')
-  url.searchParams.set('state', crypto.randomUUID())
+  url.searchParams.set('state', randomUUID());
 
   return NextResponse.redirect(url.toString())
 }
