@@ -11,10 +11,10 @@ export type Tokens = {
 export type SessionData = {
   tokens?: Tokens | null
   codeVerifier?: string | null
+  user?: { email: string } | null
 }
 
 const sessionOptions: SessionOptions = {
-  // MUST be 32+ chars; set this in Vercel env as SESSION_PASSWORD
   password: process.env.SESSION_PASSWORD as string,
   cookieName: 'zitko.session',
   cookieOptions: {
@@ -26,7 +26,6 @@ const sessionOptions: SessionOptions = {
 }
 
 export async function getSession() {
-  // App Router compatible: uses Next.js cookies()
   return getIronSession<SessionData>(cookies(), sessionOptions)
 }
 
