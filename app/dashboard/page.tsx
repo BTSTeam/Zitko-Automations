@@ -1,5 +1,9 @@
 'use client'
-import { useState } from 'react'
+'use client'
+import { useState, type Dispatch, type SetStateAction, type ReactNode } from 'react'
+
+type TabKey = 'match' | 'source' | 'cv'
+
 
 type JobSummary = {
   id?: string
@@ -35,9 +39,20 @@ function KPIs() {
   )
 }
 
-function Tabs({ tab, setTab }: { tab: string, setTab: (t:string)=>void }) {
-  const Item = ({ id, children }: any) => (
-    <button onClick={()=>setTab(id)} className={`tab ${tab===id ? 'tab-active' : ''}`}>{children}</button>
+function Tabs({
+  tab,
+  setTab
+}: {
+  tab: TabKey
+  setTab: Dispatch<SetStateAction<TabKey>>
+}) {
+  const Item = ({ id, children }: { id: TabKey; children: ReactNode }) => (
+    <button
+      onClick={() => setTab(id)}
+      className={`tab ${tab === id ? 'tab-active' : ''}`}
+    >
+      {children}
+    </button>
   )
   return (
     <div className="flex gap-2 mb-6 justify-center">
