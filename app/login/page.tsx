@@ -67,8 +67,15 @@ export default function LoginPage() {
   return (
     <div className="min-h-[60vh] flex items-center justify-center">
       <form onSubmit={onSubmit} className="card p-6 w-full max-w-md grid gap-4">
-        <h1 className="text-xl font-semibold text-center">Zitko Automations</h1>
-        <p className="text-center text-gray-600 -mt-2">AI Powered Automation Platform</p>
+        <div className="flex justify-center mb-2">
+  <img
+    src="/Zitko_Logo-removebg-preview.png"
+    alt="Zitko"
+    className="h-10 w-auto"
+  />
+</div>
+<h1 className="text-xl font-semibold text-center">Zitko Automations</h1>
+<p className="text-center text-gray-600 -mt-2">AI Powered Automation Platform</p>
 
         {!loggedIn ? (
           <>
