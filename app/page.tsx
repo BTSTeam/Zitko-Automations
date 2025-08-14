@@ -1,14 +1,13 @@
-import Link from 'next/link'
+export const dynamic = 'force-dynamic'
 
-export default function Home() {
-  return (
-    <div className="grid gap-6">
-      <h1 className="text-2xl font-semibold">Welcome</h1>
-      <p>This starter connects to Vincere via OAuth2 (PKCE) and demonstrates an example API call.</p>
-      <div className="flex gap-3">
-        <Link href="/login" className="rounded-2xl px-4 py-2 bg-brand-orange text-white">Login with Vincere</Link>
-        <Link href="/test" className="rounded-2xl px-4 py-2 border">Test Vincere Call</Link>
-      </div>
-    </div>
-  )
+import { redirect } from 'next/navigation'
+import { getSession } from '@/lib/session'
+
+export default async function Home() {
+  const session = await getSession()
+  // If already authenticated (local or Vincere tokens), send to dashboard
+  if (session.user?.email || session.tokens?.idToken) {
+    redirect('/dashboard')
+  }
+  redirect('/login')
 }
