@@ -1,32 +1,42 @@
 // lib/session.ts
-import { getIronSession, IronSessionOptions } from 'iron-session';
-import { cookies } from 'next/headers';
+import { getIronSession, type SessionOptions } from 'iron-session'
+import { cookies } from 'next/headers'
 
 export type Tokens = {
-  id_token: string;
-  access_token?: string;
-  refresh_token?: string;
-  expires_in?: number;
-  token_type?: string;
-  scope?: string;
-};
+  accessToken?: string
+  refreshToken?: string
+  idToken?: string
+}
 
-type SessionData = {
-  codeVerifier?: string;
-  tokens?: Tokens;         // <-- add this
-};
+export type SessionData = {
+  tokens?: Tokens | null
+  codeVerifier?: string | null
+}
 
-const sessionOptions: IronSessionOptions = {
-  cookieName: 'zitko.session',
+const sessionOptions: SessionOptions = {
+  // MUST be 32+ chars; set this in Vercel env as SESSION_PASSWORD
   password: process.env.SESSION_PASSWORD as string,
+  cookieName: 'zitko.session',
   cookieOptions: {
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
     httpOnly: true,
+    sameSite: 'lax',
     path: '/',
   },
-};
+}
 
 export async function getSession() {
-  return getIronSession<SessionData>(cookies(), sessionOptions);
+  // App Router compatible: uses Next.js cookies()
+  return getIronSession<SessionData>(cookies(), sessionOptions)
+}
+
+export async function saveTokens(tokens: Tokens) {
+  const session = await getSession()
+  session.tokens = tokens
+  await session.save()
+}
+
+export async function clearSession() {
+  const session = await getSession()
+  await session.destroy()
 }
