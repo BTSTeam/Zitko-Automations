@@ -1,21 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/session'
-import { config } from '@/lib/config'
+import { config, requiredEnv } from '@/lib/config'
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
-  const session = await getSession()
-  const idToken = session.tokens?.id_token
-  if (!idToken) return NextResponse.json({ error: 'Not authenticated with Vincere' }, { status: 401 })
+  requiredEnv()
 
-  const url = config.VINCERE_TENANT_API_BASE.replace(/\/$/, '') + '/api/v2/candidate/' + encodeURIComponent(params.id)
-  const upstream = await fetch(url, {
-    method: 'GET',
+  const session = await getSession()
+  const idToken = session.tokens?.idToken
+  if (!idToken) {
+    return NextResponse.json({ error: 'Not authenticated with Vincere' }, { status: 401 })
+  }
+
+  const base = config.VINCERE_TENANT_API_BASE.replace(/\/$/, '')
+  const url = `${base}/api/v2/candidate/${encodeURIComponent(params.id)}`
+
+  const resp = await fetch(url, {
     headers: {
       'id-token': idToken,
       'x-api-key': config.VINCERE_API_KEY,
-      'accept': 'application/json'
-    }
+    },
   })
-  const text = await upstream.text()
-  return new NextResponse(text, { status: upstream.status, headers: { 'content-type': upstream.headers.get('content-type') || 'application/json' } })
+
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '')
+    return NextResponse.json({ error: 'Vincere request failed', detail: text }, { status: 400 })
+  }
+
+  const data = await resp.json()
+  return NextResponse.json(data)
 }
