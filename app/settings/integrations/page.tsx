@@ -3,18 +3,19 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 export default function IntegrationsPage() {
+  const router = useRouter()                      // ✅ here
+
   // Existing settings
   const [jotform, setJotform] = useState('')
   const [openaiModel, setOpenaiModel] = useState('gpt-4o-mini')
 
-  // New Vincere test bits
+  // Vincere test bits
   const [jobId, setJobId] = useState('')
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
   const [payload, setPayload] = useState<any>(null)
 
   const loginWithVincere = () => {
-    // Starts OAuth2 PKCE flow (we already wired this up)
     window.location.href = '/api/auth/authorize'
   }
 
@@ -49,7 +50,18 @@ export default function IntegrationsPage() {
   return (
     <div className="grid gap-6">
       <div className="card p-6 grid gap-6">
-        <h1 className="text-xl font-semibold">Integration Settings</h1>
+        {/* Header with Close X */}
+        <div className="flex items-center justify-between">
+          <h1 className="text-xl font-semibold">Integration Settings</h1>
+          <button
+            aria-label="Close"
+            onClick={() => router.back()}            // ✅ this closes and returns
+            className="w-8 h-8 grid place-items-center rounded-full border text-gray-600 hover:text-gray-900"
+            title="Close"
+          >
+            ×
+          </button>
+        </div>
 
         {/* Vincere auth + test */}
         <div className="grid sm:grid-cols-2 gap-6">
@@ -89,7 +101,7 @@ export default function IntegrationsPage() {
             )}
           </div>
 
-          {/* Keep your existing sections */}
+          {/* Existing sections */}
           <div className="grid gap-4">
             <div>
               <h2 className="font-semibold mb-2">JotForm</h2>
