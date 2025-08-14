@@ -56,7 +56,7 @@ function Table({ rows, sortBy, setSortBy, filter, setFilter } : { rows: ScoredRo
     if (typeof va === 'number' && typeof vb === 'number') cmp = va - vb
     else cmp = String(va).localeCompare(String(vb))
     return dir === 'asc' ? cmp : -cmp
-  }).filter(r => JSON.stringify(r).toLowerCase().includes(filter.toLowerCase()))
+  }).filter((r: ScoredRow) => JSON.stringify(r).toLowerCase().includes(filter.toLowerCase()))
   const header = (key: keyof ScoredRow, label: string) => (
     <th className="cursor-pointer" onClick={()=> setSortBy([key, sortBy[0]===key && sortBy[1]==='asc'?'desc':'asc'])}>
       {label} {sortBy[0]===key ? (sortBy[1]==='asc'?'▲':'▼') : ''}
@@ -144,12 +144,14 @@ function MatchTab() {
       })
       const res = await r.json()
       const docs = res?.response?.docs || res?.data || []
-      const candidates: CandidateRow[] = docs.map((d:any) => ({
-        id: String(d.id ?? d.candidate_id ?? ''),
-        name: [d.first_name, d.last_name].filter(Boolean).join(' '),
-        location: d.current_location,
-        skills: d.skills
-      })).filter(c => c.id)
+      const candidates: CandidateRow[] = docs
+        .map((d: any): CandidateRow => ({
+          id: String(d.id ?? d.candidate_id ?? ''),
+          name: [d.first_name, d.last_name].filter(Boolean).join(' '),
+          location: d.current_location,
+          skills: d.skills
+        }))
+        .filter((c: CandidateRow) => !!c.id)
 
       // 2) Send to AI for scoring
       const ai = await fetch('/api/ai/analyze', {
