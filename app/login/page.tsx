@@ -9,7 +9,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // NEW: track login state
+  // Track login state
   const [loggedIn, setLoggedIn] = useState(false)
   const [meEmail, setMeEmail] = useState<string | null>(null)
 
@@ -49,7 +49,6 @@ export default function LoginPage() {
     }
   }
 
-  // NEW: sign out → clear session, then go back to /login
   const onSignOut = async () => {
     setLoading(true)
     try {
@@ -67,15 +66,18 @@ export default function LoginPage() {
   return (
     <div className="min-h-[60vh] flex items-center justify-center">
       <form onSubmit={onSubmit} className="card p-6 w-full max-w-md grid gap-4">
+        {/* Logo */}
         <div className="flex justify-center mb-2">
-  <img
-    src="/Zitko_Logo-removebg-preview.png"
-    alt="Zitko"
-    className="h-10 w-auto"
-  />
-</div>
-<h1 className="text-xl font-semibold text-center">Zitko Automations</h1>
-<p className="text-center text-gray-600 -mt-2">AI Powered Automation Platform</p>
+          <img
+            src="/Zitko_Logo-removebg-preview.png"
+            alt="Zitko"
+            className="h-10 w-auto"
+          />
+        </div>
+
+        {/* Title + strapline */}
+        <h1 className="text-xl font-semibold text-center">Zitko Automations</h1>
+        <p className="text-center text-gray-600 -mt-2">AI Powered Automation Platform</p>
 
         {!loggedIn ? (
           <>
