@@ -19,7 +19,7 @@ Return JSON array with: candidate_id, score, reason (one sentence).`
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+      model: process.env.OPENAI_MODEL || 'gpt-5',
       response_format: { type: 'json_object' },
       messages: [
         { role: 'system', content: system },
