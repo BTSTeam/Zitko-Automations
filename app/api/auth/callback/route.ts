@@ -1,3 +1,7 @@
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+export const runtime = 'nodejs'
+
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/session'
 import { config, requiredEnv } from '@/lib/config'
@@ -22,10 +26,12 @@ export async function GET(req: NextRequest) {
 
   const session = await getSession()
   const codeVerifier = session.codeVerifier
-  if (!codeVerifier) return NextResponse.json({ error: 'Missing PKCE verifier' }, { status: 400 })
+  if (!codeVerifier) {
+    return NextResponse.json({ error: 'Missing PKCE verifier' }, { status: 400 })
+  }
 
   // Exchange code for tokens
-  const tokenUrl = `${config.VINCERE_ID_BASE}/oauth2/token`
+  const tokenUrl = `${config.VINCERE_ID_BASE.replace(/\/$/, '')}/oauth2/token`
   const body = new URLSearchParams({
     grant_type: 'authorization_code',
     code,
@@ -47,15 +53,13 @@ export async function GET(req: NextRequest) {
 
   const tokens: TokenResponseSnake = await resp.json()
 
-  // ✅ Map snake_case from IdP → camelCase used in our session Tokens type
+  // Map snake_case → camelCase used in our session
   session.tokens = {
     idToken: tokens.id_token ?? '',
     accessToken: tokens.access_token ?? '',
     refreshToken: tokens.refresh_token ?? '',
   }
-  // Optional: you can keep codeVerifier to null now
   session.codeVerifier = null
-
   await session.save()
 
   // Send user into the app
