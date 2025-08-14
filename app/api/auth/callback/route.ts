@@ -51,11 +51,16 @@ export async function GET(req: NextRequest) {
   const tokens = (await res.json()) as TokenResponse;
 
   // Save what you actually use into the session
-  session.idToken = tokens.id_token;
-  session.accessToken = tokens.access_token;
-  session.refreshToken = tokens.refresh_token;
-  session.codeVerifier = undefined;
-  await session.save();
+  session.tokens = {
+  id_token: tokens.id_token,
+  access_token: tokens.access_token,
+  refresh_token: tokens.refresh_token,
+  expires_in: tokens.expires_in,
+  token_type: tokens.token_type,
+  scope: tokens.scope,
+};
+session.codeVerifier = undefined;
+await session.save();
 
   // Use absolute URL for redirect
   return NextResponse.redirect(new URL('/test', req.url));
