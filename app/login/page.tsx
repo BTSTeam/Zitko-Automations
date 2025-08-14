@@ -66,13 +66,5 @@ export default function LoginPage() {
           {loading ? 'Signing in…' : 'Sign In'}
         </button>
 
-        <div className="text-center text-sm text-gray-600">
-          Or&nbsp;
-          <a className="text-brand-orange underline" href="/api/auth/authorize">
-            Login with Vincere
-          </a>
-        </div>
-      </form>
-    </div>
   )
 }
