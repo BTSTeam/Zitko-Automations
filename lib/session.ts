@@ -1,35 +1,25 @@
-import { IronSessionOptions } from 'iron-session'
-import { cookies } from 'next/headers'
-import { getIronSession } from 'iron-session'
+import { getIronSession, IronSessionOptions } from 'iron-session';
+import { cookies } from 'next/headers';
 
-export type VincereSession = {
-  codeVerifier?: string
-  tokens?: {
-    access_token: string
-    id_token: string
-    refresh_token?: string
-    expires_in?: number
-    token_type?: string
-  }
-}
+type SessionData = {
+  codeVerifier?: string;
+  idToken?: string;
+  accessToken?: string;
+  refreshToken?: string;
+};
 
-const sessionCookieName = 'vin_sess'
+const sessionOptions: IronSessionOptions = {
+  cookieName: 'zitko.session',
+  password: process.env.SESSION_PASSWORD as string,
+  cookieOptions: {
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    httpOnly: true,
+    path: '/',
+  },
+};
 
 export async function getSession() {
-  const cookieStore = cookies()
-  const password = process.env.SESSION_PASSWORD
-  if (!password) throw new Error('SESSION_PASSWORD is required')
-  const session = await getIronSession<VincereSession>(
-    { cookies: cookieStore },
-    {
-      password,
-      cookieName: sessionCookieName,
-      cookieOptions: {
-        secure: true,
-        sameSite: 'lax',
-        httpOnly: true
-      }
-    } as IronSessionOptions
-  )
-  return session
+  return getIronSession<SessionData>(cookies(), sessionOptions);
 }
+
