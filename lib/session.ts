@@ -1,11 +1,19 @@
+// lib/session.ts
 import { getIronSession, IronSessionOptions } from 'iron-session';
 import { cookies } from 'next/headers';
 
+export type Tokens = {
+  id_token: string;
+  access_token?: string;
+  refresh_token?: string;
+  expires_in?: number;
+  token_type?: string;
+  scope?: string;
+};
+
 type SessionData = {
   codeVerifier?: string;
-  idToken?: string;
-  accessToken?: string;
-  refreshToken?: string;
+  tokens?: Tokens;         // <-- add this
 };
 
 const sessionOptions: IronSessionOptions = {
@@ -22,4 +30,3 @@ const sessionOptions: IronSessionOptions = {
 export async function getSession() {
   return getIronSession<SessionData>(cookies(), sessionOptions);
 }
-
