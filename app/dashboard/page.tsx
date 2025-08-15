@@ -246,7 +246,7 @@ function SourceTab() {
 
   return (
     <div className="card p-6">
-      <p className="mb-4">Embedded form integration for seamless candidate data collection.</p>
+      <p className="mb-4">Complete the form below to recieve relevant candidates in your email inbox.</p>
 
       {!hasUrl ? (
         <div className="border-2 border-dashed rounded-2xl p-10 text-center text-gray-500">
@@ -262,7 +262,7 @@ function SourceTab() {
           <iframe
             src={jotformUrl}
             title="JotForm"
-            className="w-full h-[800px]"
+            className="w-full h-[500px]"
             allow="clipboard-write; fullscreen"
           />
         </div>
