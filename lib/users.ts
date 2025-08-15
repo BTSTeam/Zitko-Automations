@@ -107,7 +107,7 @@ export function ensureSeedAdmin() {
   const user: User = {
     id: crypto.randomUUID(),
     email,
-    name: 'Admin',
+    name: 'Stephen Rosamond',
     role: 'Admin',
     active: true,
     passwordHash,
