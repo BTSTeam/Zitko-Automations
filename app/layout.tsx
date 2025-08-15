@@ -13,7 +13,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body>
         <HideOnLogin>
-          <TopNav user={{ name: 'Stephen Rosamond', email: 'stephenr@zitko.co.uk' }} />
+          <TopNav />
         </HideOnLogin>
         <main className="container py-6">{children}</main>
       </body>
