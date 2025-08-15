@@ -240,17 +240,33 @@ function MatchTab() {
 }
 
 function SourceTab() {
+  // Read the public env var set in Vercel
+  const jotformUrl = process.env.NEXT_PUBLIC_JOTFORM_URL || ''
+  const hasUrl = jotformUrl.length > 0
+
   return (
     <div className="card p-6">
       <p className="mb-4">Embedded form integration for seamless candidate data collection.</p>
-      <div className="border-2 border-dashed rounded-2xl p-10 text-center text-gray-500">
-        <div className="mb-2 text-5xl">🧾</div>
-        <div className="font-semibold mb-2">JotForm Integration</div>
-        <p className="mb-6">Your JotForm will be embedded here once you provide the form URL in Settings → Integration Settings.</p>
-        <div className="mt-6">
-          <iframe src="" className="w-full h-[400px] rounded-xl border" title="JotForm"></iframe>
+
+      {!hasUrl ? (
+        <div className="border-2 border-dashed rounded-2xl p-10 text-center text-gray-500">
+          <div className="mb-2 text-5xl">🧾</div>
+          <div className="font-semibold mb-2">JotForm Integration</div>
+          <p className="mb-2">
+            Add your form URL in the Vercel env var <code>NEXT_PUBLIC_JOTFORM_URL</code> and redeploy.
+          </p>
+          <p className="text-xs">Example: https://form.jotform.com/123456789012345</p>
         </div>
-      </div>
+      ) : (
+        <div className="rounded-2xl overflow-hidden border">
+          <iframe
+            src={jotformUrl}
+            title="JotForm"
+            className="w-full h-[800px]"
+            allow="clipboard-write; fullscreen"
+          />
+        </div>
+      )}
     </div>
   )
 }
