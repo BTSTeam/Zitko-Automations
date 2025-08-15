@@ -13,16 +13,18 @@ export async function GET() {
 
   let role: 'Admin' | 'User' | null = null
   let active: boolean | null = null
+  let name: string | null = null
 
   if (email) {
     const u = getUserByEmail(email)
     if (u) {
       role = u.role
       active = u.active
+      name = u.name ?? null
     }
   }
 
   const loggedIn = Boolean((email && active !== false) || session.tokens?.idToken)
-  return NextResponse.json({ loggedIn, email, role, active })
+  return NextResponse.json({ loggedIn, email, name, role, active })
 }
 
