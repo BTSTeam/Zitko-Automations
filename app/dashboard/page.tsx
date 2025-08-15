@@ -240,13 +240,37 @@ function MatchTab() {
 }
 
 function SourceTab() {
-  // Read the public env var set in Vercel
+  // Read your JotForm URL from the env var you set in Vercel
   const jotformUrl = process.env.NEXT_PUBLIC_JOTFORM_URL || ''
   const hasUrl = jotformUrl.length > 0
 
+  // Try to extract the numeric JotForm form ID from the URL
+  const formId = hasUrl ? (jotformUrl.match(/\/(\d{10,})(?:$|[/?#])/i)?.[1] ?? null) : null
+
+  // Height state that will be updated by postMessage from JotForm
+  const [height, setHeight] = React.useState<number>(900)
+
+  React.useEffect(() => {
+    function handleMessage(e: MessageEvent) {
+      if (!formId) return
+      if (typeof e.data !== 'string') return
+      const parts = e.data.split(':')
+      // JotForm sends messages like: "setHeight:1234" (and other commands)
+      if (parts[0] === 'setHeight') {
+        const newH = Number(parts[1])
+        if (!Number.isNaN(newH) && newH > 0) {
+          // add a little padding so the form bottom isn't tight
+          setHeight(newH + 20)
+        }
+      }
+    }
+    window.addEventListener('message', handleMessage)
+    return () => window.removeEventListener('message', handleMessage)
+  }, [formId])
+
   return (
     <div className="card p-6">
-      <p className="mb-4">Complete the form below to recieve relevant candidates in your email inbox.</p>
+      <p className="mb-4">Embedded form integration for seamless candidate data collection.</p>
 
       {!hasUrl ? (
         <div className="border-2 border-dashed rounded-2xl p-10 text-center text-gray-500">
@@ -255,14 +279,19 @@ function SourceTab() {
           <p className="mb-2">
             Add your form URL in the Vercel env var <code>NEXT_PUBLIC_JOTFORM_URL</code> and redeploy.
           </p>
-          <p className="text-xs">Example: https://form.jotform.com/123456789012345</p>
+          <p className="text-xs break-all">Example: https://form.jotform.com/123456789012345</p>
         </div>
       ) : (
         <div className="rounded-2xl overflow-hidden border">
           <iframe
-            src={jotformUrl}
+            id={formId ? `JotFormIFrame-${formId}` : 'JotFormIFrame'}
             title="JotForm"
-            className="w-full h-[600px]"
+            src={jotformUrl}
+            className="w-full"
+            style={{ height }}
+            // Key bits: prevent inner scrollbars; height is controlled by postMessage above
+            scrolling="no"
+            frameBorder={0}
             allow="clipboard-write; fullscreen"
           />
         </div>
