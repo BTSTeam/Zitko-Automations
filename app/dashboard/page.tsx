@@ -1,9 +1,7 @@
 'use client'
-'use client'
-import { useState, type Dispatch, type SetStateAction, type ReactNode } from 'react'
+import { useState, useEffect, type Dispatch, type SetStateAction, type ReactNode } from 'react'
 
 type TabKey = 'match' | 'source' | 'cv'
-
 
 type JobSummary = {
   id?: string
@@ -248,9 +246,9 @@ function SourceTab() {
   const formId = hasUrl ? (jotformUrl.match(/\/(\d{10,})(?:$|[/?#])/i)?.[1] ?? null) : null
 
   // Height state that will be updated by postMessage from JotForm
-  const [height, setHeight] = React.useState<number>(900)
+  const [height, setHeight] = useState<number>(900)
 
-  React.useEffect(() => {
+  useEffect(() => {
     function handleMessage(e: MessageEvent) {
       if (!formId) return
       if (typeof e.data !== 'string') return
@@ -344,7 +342,7 @@ function CvTab() {
 }
 
 export default function Dashboard() {
-  const [tab, setTab] = useState<'match'|'source'|'cv'>('match')
+  const [tab, setTab] = useState<TabKey>('match')
   return (
     <div>
       <KPIs />
