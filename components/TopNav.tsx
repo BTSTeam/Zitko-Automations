@@ -1,9 +1,40 @@
 'use client'
 import Link from 'next/link'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 
-export default function TopNav({ user }: { user?: { name?: string; email?: string } }) {
+type MeResp = { loggedIn: boolean; email?: string | null }
+
+export default function TopNav() {
+  const router = useRouter()
   const [open, setOpen] = useState(false)
+  const [loggedIn, setLoggedIn] = useState(false)
+  const [email, setEmail] = useState<string>('')
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const r = await fetch('/api/auth/me', { cache: 'no-store' })
+        const j: MeResp = await r.json()
+        setLoggedIn(Boolean(j?.loggedIn))
+        setEmail(j?.email ?? '')
+      } catch {
+        setLoggedIn(false)
+        setEmail('')
+      }
+    }
+    load()
+  }, [])
+
+  const signOut = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' })
+    } finally {
+      setLoggedIn(false)
+      setEmail('')
+      router.push('/login')
+    }
+  }
 
   return (
     <header className="bg-white border-b">
@@ -11,7 +42,7 @@ export default function TopNav({ user }: { user?: { name?: string; email?: strin
         {/* Brand: logo + title */}
         <Link href="/dashboard" className="flex items-center gap-3">
           <img
-            src="/Zitko_Logo-removebg-preview.png"  // ensure this file is in /public
+            src="/Zitko_Logo-removebg-preview.png"  // must exist in /public
             alt="Zitko"
             className="h-8 w-auto"
           />
@@ -24,8 +55,14 @@ export default function TopNav({ user }: { user?: { name?: string; email?: strin
         {/* Right side */}
         <div className="flex items-center gap-3">
           <div className="text-sm text-right hidden sm:block">
-            <div>Welcome{user?.name ? `, ${user.name}` : ''}</div>
-            <div className="text-gray-500">{user?.email || ''}</div>
+            {loggedIn ? (
+              <>
+                <div>Welcome</div>
+                <div className="text-gray-500">{email}</div>
+              </>
+            ) : (
+              <div className="text-gray-500">Not signed in</div>
+            )}
           </div>
 
           <div className="relative">
@@ -49,8 +86,11 @@ export default function TopNav({ user }: { user?: { name?: string; email?: strin
             )}
           </div>
 
-          {/* Route to our email/password login page */}
-          <Link href="/login" className="tab">Sign In</Link>
+          {loggedIn ? (
+            <button className="tab" onClick={signOut}>Sign Out</button>
+          ) : (
+            <Link href="/login" className="tab">Sign In</Link>
+          )}
         </div>
       </div>
     </header>
