@@ -248,18 +248,19 @@ function SourceTab() {
   // Height state that will be updated by postMessage from JotForm
   const [height, setHeight] = useState<number>(900)
 
+  // NEW: key to force-remount the iframe (refresh)
+  const [iframeKey, setIframeKey] = useState(0)
+  const refreshForm = () => setIframeKey(k => k + 1)
+
   useEffect(() => {
     function handleMessage(e: MessageEvent) {
       if (!formId) return
       if (typeof e.data !== 'string') return
       const parts = e.data.split(':')
-      // JotForm sends messages like: "setHeight:1234" (and other commands)
+      // JotForm sends messages like: "setHeight:1234"
       if (parts[0] === 'setHeight') {
         const newH = Number(parts[1])
-        if (!Number.isNaN(newH) && newH > 0) {
-          // add a little padding so the form bottom isn't tight
-          setHeight(newH + 20)
-        }
+        if (!Number.isNaN(newH) && newH > 0) setHeight(newH + 20)
       }
     }
     window.addEventListener('message', handleMessage)
@@ -268,7 +269,14 @@ function SourceTab() {
 
   return (
     <div className="card p-6">
-      <p className="mb-4">Embedded form integration for seamless candidate data collection.</p>
+      <div className="mb-4 flex items-center justify-between">
+        <p className="m-0">Complete the form below to source relevant candidates directly to your email inbox.</p>
+        {hasUrl && (
+          <button className="btn btn-grey" onClick={refreshForm} title="Reload form">
+            Refresh
+          </button>
+        )}
+      </div>
 
       {!hasUrl ? (
         <div className="border-2 border-dashed rounded-2xl p-10 text-center text-gray-500">
@@ -282,12 +290,12 @@ function SourceTab() {
       ) : (
         <div className="rounded-2xl overflow-hidden border">
           <iframe
+            key={iframeKey}                                   // ← remounts on Refresh
             id={formId ? `JotFormIFrame-${formId}` : 'JotFormIFrame'}
             title="JotForm"
             src={jotformUrl}
             className="w-full"
             style={{ height }}
-            // Key bits: prevent inner scrollbars; height is controlled by postMessage above
             scrolling="no"
             frameBorder={0}
             allow="clipboard-write; fullscreen"
@@ -297,6 +305,7 @@ function SourceTab() {
     </div>
   )
 }
+
 
 function CvTab() {
   const [candidateId, setCandidateId] = useState('')
