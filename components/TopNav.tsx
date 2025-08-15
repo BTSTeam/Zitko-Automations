@@ -3,12 +3,16 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
-type MeResp = { loggedIn: boolean; email?: string | null; name?: string | null }
+type MeResp = {
+  loggedIn: boolean
+  email?: string | null
+  name?: string | null
+  vincereConnected?: boolean
+}
 
 export default function TopNav() {
   const router = useRouter()
-  const [open, setOpen] = useState(false)
-  const [me, setMe] = useState<MeResp>({ loggedIn: false, email: '', name: '' })
+  const [me, setMe] = useState<MeResp>({ loggedIn: false, email: '', name: '', vincereConnected: false })
 
   useEffect(() => {
     const load = async () => {
@@ -16,12 +20,13 @@ export default function TopNav() {
         const r = await fetch('/api/auth/me', { cache: 'no-store' })
         const j: MeResp = await r.json()
         setMe({
-          loggedIn: Boolean(j?.loggedIn),
+          loggedIn: !!j?.loggedIn,
           email: j?.email ?? '',
           name: j?.name ?? '',
+          vincereConnected: !!j?.vincereConnected,
         })
       } catch {
-        setMe({ loggedIn: false, email: '', name: '' })
+        setMe({ loggedIn: false, email: '', name: '', vincereConnected: false })
       }
     }
     load()
@@ -31,21 +36,24 @@ export default function TopNav() {
     try {
       await fetch('/api/auth/logout', { method: 'POST' })
     } finally {
-      setMe({ loggedIn: false, email: '', name: '' })
+      setMe({ loggedIn: false, email: '', name: '', vincereConnected: false })
       router.push('/login')
     }
   }
+
+  const connectVincere = () => {
+    // Start OAuth; after callback your /api/auth/callback should store tokens in session
+    window.location.href = '/api/auth/authorize'
+  }
+
+  const displayName = (me.name?.trim() || '').toString()
 
   return (
     <header className="bg-white border-b">
       <div className="container flex items-center justify-between py-3">
         {/* Brand: logo + title */}
         <Link href="/dashboard" className="flex items-center gap-3">
-          <img
-            src="/Zitko_Logo-removebg-preview.png" // must exist in /public
-            alt="Zitko"
-            className="h-8 w-auto"
-          />
+          <img src="/Zitko_Logo-removebg-preview.png" alt="Zitko" className="h-8 w-auto" />
           <div className="leading-tight">
             <div className="font-semibold">Zitko Automations</div>
             <div className="text-xs text-gray-500">AI Powered Automation Platform</div>
@@ -54,10 +62,11 @@ export default function TopNav() {
 
         {/* Right side */}
         <div className="flex items-center gap-3">
+          {/* Greeting */}
           <div className="text-sm text-right hidden sm:block">
             {me.loggedIn ? (
               <>
-                <div>Welcome{me.name ? `, ${me.name}` : ''}</div>
+                <div>Welcome{displayName ? `, ${displayName}` : ''}</div>
                 <div className="text-gray-500">{me.email || ''}</div>
               </>
             ) : (
@@ -65,27 +74,29 @@ export default function TopNav() {
             )}
           </div>
 
-          <div className="relative">
-            <button
-              onClick={() => setOpen(v => !v)}
-              className="tab"
-              aria-haspopup="menu"
-              aria-expanded={open}
-            >
-              ⚙️
-            </button>
-            {open && (
-              <div className="absolute right-0 mt-2 w-52 bg-white border rounded-xl shadow-soft z-10">
-                <Link className="block px-3 py-2 hover:bg-gray-50" href="/settings/users">
-                  User Management
-                </Link>
-                <Link className="block px-3 py-2 hover:bg-gray-50" href="/settings/integrations">
-                  Integration Settings
-                </Link>
-              </div>
-            )}
-          </div>
+          {/* User Management (person bust) */}
+          <Link href="/settings/users" className="tab" title="User Management">
+            <span aria-hidden>👤</span>
+          </Link>
 
+          {/* Vincere connection status */}
+          <button
+            type="button"
+            onClick={!me.vincereConnected ? connectVincere : undefined}
+            title={me.vincereConnected ? 'Connected to Vincere' : 'Connect to Vincere'}
+            className={`tab flex items-center gap-2 ${me.vincereConnected ? 'text-brand-orange' : 'text-red-600'}`}
+          >
+            {/* Optional logo (add /public/vincere-logo.png if you like). If not present, the text still shows. */}
+            <img
+              src="/vincere-logo.png"
+              alt=""
+              className="h-4 w-auto hidden sm:inline"
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+            />
+            <span>{me.vincereConnected ? 'Connected' : 'Not Connected'}</span>
+          </button>
+
+          {/* Sign In / Out */}
           {me.loggedIn ? (
             <button className="tab" onClick={signOut}>Sign Out</button>
           ) : (
