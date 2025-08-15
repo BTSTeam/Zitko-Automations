@@ -4,6 +4,7 @@ export const runtime = 'nodejs'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/session'
+import { ensureSeedAdmin, getUserByEmail, verifyPassword } from '@/lib/users'
 
 export async function POST(req: NextRequest) {
   const { email, password } = await req.json().catch(() => ({}))
@@ -11,9 +12,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Email and password are required' }, { status: 400 })
   }
 
-  // Demo auth: accept anything non-empty. Replace with real auth later.
+  // Make sure there is at least one admin (admin@example.com / changeMe123!)
+  ensureSeedAdmin()
+
+  const user = getUserByEmail(String(email))
+  if (!user || !user.active || !verifyPassword(user, String(password))) {
+    return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
+  }
+
   const session = await getSession()
-  session.user = { email: String(email) }
+  session.user = { email: user.email }
   await session.save()
 
   return NextResponse.json({ ok: true })
