@@ -3,24 +3,25 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
-type MeResp = { loggedIn: boolean; email?: string | null }
+type MeResp = { loggedIn: boolean; email?: string | null; name?: string | null }
 
 export default function TopNav() {
   const router = useRouter()
   const [open, setOpen] = useState(false)
-  const [loggedIn, setLoggedIn] = useState(false)
-  const [email, setEmail] = useState<string>('')
+  const [me, setMe] = useState<MeResp>({ loggedIn: false, email: '', name: '' })
 
   useEffect(() => {
     const load = async () => {
       try {
         const r = await fetch('/api/auth/me', { cache: 'no-store' })
         const j: MeResp = await r.json()
-        setLoggedIn(Boolean(j?.loggedIn))
-        setEmail(j?.email ?? '')
+        setMe({
+          loggedIn: Boolean(j?.loggedIn),
+          email: j?.email ?? '',
+          name: j?.name ?? '',
+        })
       } catch {
-        setLoggedIn(false)
-        setEmail('')
+        setMe({ loggedIn: false, email: '', name: '' })
       }
     }
     load()
@@ -30,8 +31,7 @@ export default function TopNav() {
     try {
       await fetch('/api/auth/logout', { method: 'POST' })
     } finally {
-      setLoggedIn(false)
-      setEmail('')
+      setMe({ loggedIn: false, email: '', name: '' })
       router.push('/login')
     }
   }
@@ -42,7 +42,7 @@ export default function TopNav() {
         {/* Brand: logo + title */}
         <Link href="/dashboard" className="flex items-center gap-3">
           <img
-            src="/Zitko_Logo-removebg-preview.png"  // must exist in /public
+            src="/Zitko_Logo-removebg-preview.png" // must exist in /public
             alt="Zitko"
             className="h-8 w-auto"
           />
@@ -55,10 +55,10 @@ export default function TopNav() {
         {/* Right side */}
         <div className="flex items-center gap-3">
           <div className="text-sm text-right hidden sm:block">
-            {loggedIn ? (
+            {me.loggedIn ? (
               <>
-                <div>Welcome</div>
-                <div className="text-gray-500">{email}</div>
+                <div>Welcome{me.name ? `, ${me.name}` : ''}</div>
+                <div className="text-gray-500">{me.email || ''}</div>
               </>
             ) : (
               <div className="text-gray-500">Not signed in</div>
@@ -86,7 +86,7 @@ export default function TopNav() {
             )}
           </div>
 
-          {loggedIn ? (
+          {me.loggedIn ? (
             <button className="tab" onClick={signOut}>Sign Out</button>
           ) : (
             <Link href="/login" className="tab">Sign In</Link>
