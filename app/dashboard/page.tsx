@@ -262,7 +262,7 @@ function SourceTab() {
           <iframe
             src={jotformUrl}
             title="JotForm"
-            className="w-full h-[500px]"
+            className="w-full h-[600px]"
             allow="clipboard-write; fullscreen"
           />
         </div>
