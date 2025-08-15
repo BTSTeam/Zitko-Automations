@@ -272,7 +272,7 @@ function SourceTab() {
       <div className="mb-4 flex items-center justify-between">
         <p className="m-0">Complete the form below to source relevant candidates directly to your email inbox.</p>
         {hasUrl && (
-          <button className="btn btn-grey" onClick={refreshForm} title="Reload form">
+          <button className="btn btn-brand" onClick={refreshForm} title="Reload form">
             Refresh
           </button>
         )}
