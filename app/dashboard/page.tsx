@@ -206,10 +206,10 @@ function MatchTab() {
         </div>
         <div className="grid gap-3">
           <button className="btn btn-grey" onClick={retrieveJob} disabled={loadingJob}>
-            {loadingJob ? 'Retrieving…' : '📄 Retrieve Job Information'}
+            {loadingJob ? 'Retrieving…' : 'Retrieve Job Information'}
           </button>
           <button className="btn btn-brand" onClick={searchCandidates} disabled={!job || loadingSearch}>
-            {loadingSearch ? 'Searching…' : '🔎 Search Candidates'}
+            {loadingSearch ? 'Searching…' : 'Search Candidates'}
           </button>
         </div>
       </div>
@@ -337,7 +337,7 @@ function CvTab() {
         </div>
       </div>
       <button className="btn btn-brand w-full" onClick={generate} disabled={loading}>
-        {loading ? 'Fetching…' : '👁️ Generate CV Preview'}
+        {loading ? 'Fetching…' : 'Generate CV Preview'}
       </button>
 
       {result && (
