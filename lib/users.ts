@@ -100,8 +100,8 @@ export function deleteUser(id: string) {
 // Seed a default admin if store is empty (so you’re never locked out)
 export function ensureSeedAdmin() {
   if (store.size > 0) return
-  const email = 'admin@example.com'
-  const password = 'changeMe123!'
+  const email = 'stephenr@zitko.co.uk'
+  const password = 'Arlojuan1.'
   const salt = crypto.randomBytes(16).toString('hex')
   const passwordHash = sha256(salt + password)
   const user: User = {
