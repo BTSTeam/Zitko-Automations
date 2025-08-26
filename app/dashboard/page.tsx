@@ -82,13 +82,13 @@ function normalisePosition(p: any) {
 
   // Skills: "Job Skills/Keywords" (try dashed/underscored), plus common fallbacks
   const skills = Array.from(new Set([
-    ...toStringArray(p['job_skills_keywords']),
-    ...toStringArray(p['job-skills-keywords']),
-    ...toStringArray(p.skills),
-    ...toStringArray(p.keywords),
-    ...toStringArray(p.keywords_array),
-    ...toStringArray(p.tags),
-  ])))
+  ...toStringArray(p['job_skills_keywords']),
+  ...toStringArray(p['job-skills-keywords']),
+  ...toStringArray(p.skills),
+  ...toStringArray(p.keywords),
+  ...toStringArray(p.keywords_array),
+  ...toStringArray(p.tags),
+]));
 
   const publicText = htmlToText(p.public_description || p.publicDescription || p.description || '')
 
