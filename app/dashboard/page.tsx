@@ -27,6 +27,55 @@ type ScoredRow = {
   reason: string
 }
 
+// --- helpers for Job Summary ---
+function htmlToText(html?: string): string {
+  if (!html) return ''
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html')
+    return (doc.body?.textContent || '')
+      .replace(/\u00A0/g, ' ')
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+  } catch {
+    return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+  }
+}
+
+function normalisePosition(p: any) {
+  if (!p) {
+    return { title: '', locationText: '', industryText: '', industryList: [] as string[], skills: [] as string[], publicText: '' }
+  }
+
+  const title = p.job_title || p.title || p.name || ''
+
+  const locationText =
+    p.location_text ||
+    p.current_location ||
+    [p.location?.city, p.location?.state, p.location?.country].filter(Boolean).join(', ') ||
+    p.location ||
+    p.city ||
+    ''
+
+  const industryList = Array.isArray(p.industry)
+    ? p.industry.map((i: any) => i?.name ?? i).filter(Boolean)
+    : []
+  const industryText = industryList.join(', ') || p.industry?.name || p.industry || ''
+
+  let skills: string[] = []
+  if (Array.isArray(p.skills)) {
+    skills = p.skills.map((s: any) => s?.name ?? s).filter(Boolean)
+  } else if (Array.isArray(p.keywords)) {
+    skills = p.keywords.map((k: any) => (typeof k === 'string' ? k : (k?.name ?? ''))).filter(Boolean)
+  } else if (typeof p.keywords === 'string') {
+    skills = p.keywords.split(',').map((t: string) => t.trim()).filter(Boolean)
+  }
+
+  const publicText = htmlToText(p.public_description || p.publicDescription || p.description || '')
+
+  return { title, locationText, industryText, industryList, skills, publicText }
+}
+
 function KPIs() {
   return (
     <div className="grid sm:grid-cols-3 gap-4 mb-6">
@@ -122,13 +171,14 @@ function MatchTab() {
     try {
       const r = await fetch(`/api/vincere/position/${encodeURIComponent(jobId)}`)
       const data = await r.json()
+      const J = normalisePosition(data)
       setJob({
         id: jobId,
-        job_title: data?.job_title || data?.title || '',
-        location: data?.location || data?.city || '',
-        industry: data?.industry,
-        skills: data?.skills || [],
-        public_description: data?.public_description || data?.description || '',
+        job_title: J.title,
+        location: J.locationText,
+        industry: J.industryList.length ? J.industryList : J.industryText,
+        skills: J.skills,
+        public_description: J.publicText,
         coords: null
       })
     } catch (e) {
@@ -143,7 +193,6 @@ function MatchTab() {
     if (!job) return alert('Retrieve Job Information first.')
     setLoadingSearch(true)
     try {
-      // 1) Vincere candidate search (proxy builds URL with priority rules)
       const r = await fetch('/api/vincere/candidate/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -166,7 +215,6 @@ function MatchTab() {
         }))
         .filter((c: CandidateRow) => !!c.id)
 
-      // 2) Send to AI for scoring
       const ai = await fetch('/api/ai/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -182,7 +230,6 @@ function MatchTab() {
         })
       })
       const aiJson = await ai.json()
-      // Expecting { results: ScoredRow[] } or similar
       const maybe = aiJson?.results || aiJson?.candidates || aiJson
       const norm: ScoredRow[] = Array.isArray(maybe) ? maybe : (maybe?.data || [])
       setScored(norm)
@@ -221,11 +268,11 @@ function MatchTab() {
             <div><div className="text-gray-500">Title</div><div className="font-medium">{job.job_title || '—'}</div></div>
             <div><div className="text-gray-500">Location</div><div className="font-medium">{job.location || '—'}</div></div>
             <div><div className="text-gray-500">Industry</div><div className="font-medium">{Array.isArray(job.industry)? job.industry.join(', ') : (job.industry || '—')}</div></div>
-            <div><div className="text-gray-500">Skills</div><div className="font-medium">{job.skills?.join(', ') || '—'}</div></div>
+            <div><div className="text-gray-500">Skills</div><div className="font-medium">{job.skills?.length ? job.skills.join(', ') : '—'}</div></div>
           </div>
           <div className="mt-4">
             <div className="text-gray-500 mb-1">Public Description</div>
-            <div className="prose max-w-none text-sm whitespace-pre-wrap">{job.public_description || '—'}</div>
+            <p className="text-sm whitespace-pre-wrap leading-relaxed">{job.public_description || '—'}</p>
           </div>
         </div>
       )}
@@ -238,17 +285,10 @@ function MatchTab() {
 }
 
 function SourceTab() {
-  // Read your JotForm URL from the env var you set in Vercel
   const jotformUrl = process.env.NEXT_PUBLIC_JOTFORM_URL || ''
   const hasUrl = jotformUrl.length > 0
-
-  // Try to extract the numeric JotForm form ID from the URL
   const formId = hasUrl ? (jotformUrl.match(/\/(\d{10,})(?:$|[/?#])/i)?.[1] ?? null) : null
-
-  // Height state that will be updated by postMessage from JotForm
   const [height, setHeight] = useState<number>(900)
-
-  // NEW: key to force-remount the iframe (refresh)
   const [iframeKey, setIframeKey] = useState(0)
   const refreshForm = () => setIframeKey(k => k + 1)
 
@@ -257,7 +297,6 @@ function SourceTab() {
       if (!formId) return
       if (typeof e.data !== 'string') return
       const parts = e.data.split(':')
-      // JotForm sends messages like: "setHeight:1234"
       if (parts[0] === 'setHeight') {
         const newH = Number(parts[1])
         if (!Number.isNaN(newH) && newH > 0) setHeight(newH + 20)
@@ -290,7 +329,7 @@ function SourceTab() {
       ) : (
         <div className="rounded-2xl overflow-hidden border">
           <iframe
-            key={iframeKey}                                   // ← remounts on Refresh
+            key={iframeKey}
             id={formId ? `JotFormIFrame-${formId}` : 'JotFormIFrame'}
             title="JotForm"
             src={jotformUrl}
@@ -305,7 +344,6 @@ function SourceTab() {
     </div>
   )
 }
-
 
 function CvTab() {
   const [candidateId, setCandidateId] = useState('')
