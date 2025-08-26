@@ -118,7 +118,7 @@ function Table({
             </tr>
           </thead>
           <tbody>
-            {sorted.slice(0,10).map(r=> (
+            {sorted.map(r=> (
               <tr key={r.candidateId} className="border-t">
                 <td className="py-2">{r.candidateId}</td>
                 <td>{r.candidateName}</td>
@@ -157,17 +157,22 @@ function MatchTab() {
   const [sortBy, setSortBy] = useState<[keyof ScoredRow, 'asc'|'desc']>(['score','desc'])
   const [filter, setFilter] = useState('')
 
+  // pagination
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(20)
+  const [total, setTotal] = useState(0)
+
   const retrieveJob = async () => {
     if (!jobId) return
     setLoadingJob(true)
     setScored([])
+    setPage(1)
+    setTotal(0)
 
     try {
-      // 1) Load position from Vincere
       const r = await fetch(`/api/vincere/position/${encodeURIComponent(jobId)}`, { cache: 'no-store' })
       const data = await r.json()
 
-      // 2) Pull descriptions, strip HTML
       const publicRaw = htmlToText(
         data?.public_description || data?.publicDescription || data?.description || ''
       )
@@ -175,7 +180,6 @@ function MatchTab() {
         data?.internal_description || data?.internalDescription || data?.job_description || data?.description_internal || ''
       )
 
-      // 3) Ask OpenAI to extract Title, Location, Skills, Qualifications
       const extractResp = await fetch('/api/job/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -186,7 +190,6 @@ function MatchTab() {
       })
       const extracted = await extractResp.json()
 
-      // 4) Save a consolidated job object + populate editable fields
       const skillsArr: string[] = Array.isArray(extracted?.skills) ? extracted.skills : []
       const qualsArr: string[] = Array.isArray(extracted?.qualifications) ? extracted.qualifications : []
 
@@ -214,11 +217,10 @@ function MatchTab() {
     }
   }
 
-  const searchCandidates = async () => {
-    if (!job) return alert('Retrieve Job Information first.')
+  const runSearch = async (targetPage = page) => {
+    if (!job) return
     setLoadingSearch(true)
     try {
-      // Use orchestrator: 5 Vincere searches + AI scoring
       const r = await fetch('/api/match/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -230,11 +232,14 @@ function MatchTab() {
             qualifications: qualsText.split(',').map(s => s.trim()).filter(Boolean),
             description: job.public_description
           },
-          limit: 20
+          page: targetPage,
+          limit: pageSize
         })
       })
       const res = await r.json()
       setScored(res?.results ?? [])
+      setTotal(Number(res?.total ?? 0))
+      setPage(Number(res?.page ?? targetPage))
     } catch (e) {
       console.error(e)
       alert('Search or scoring failed.')
@@ -242,6 +247,17 @@ function MatchTab() {
       setLoadingSearch(false)
     }
   }
+
+  const searchCandidates = async () => {
+    if (!job) return alert('Retrieve Job Information first.')
+    setPage(1)
+    await runSearch(1)
+  }
+
+  const canPrev = page > 1
+  const canNext = page * pageSize < total
+  const showingFrom = total ? (page - 1) * pageSize + 1 : 0
+  const showingTo = total ? Math.min(page * pageSize, total) : 0
 
   return (
     <div className="grid gap-6">
@@ -253,10 +269,16 @@ function MatchTab() {
             <input className="input mt-1" placeholder="Enter Job ID" value={jobId} onChange={e=>setJobId(e.target.value)} />
           </div>
         </div>
-        <div className="grid gap-3">
+        <div className="grid sm:grid-cols-3 gap-3 items-end">
           <button className="btn btn-grey" onClick={retrieveJob} disabled={loadingJob}>
             {loadingJob ? 'Retrieving…' : 'Retrieve Job Information'}
           </button>
+          <div>
+            <label className="text-sm text-gray-600">Page size</label>
+            <select className="input mt-1" value={pageSize} onChange={e=>setPageSize(Number(e.target.value))}>
+              {[10,20,30,50].map(n=> <option key={n} value={n}>{n}</option>)}
+            </select>
+          </div>
           <button className="btn btn-brand" onClick={searchCandidates} disabled={!job || loadingSearch}>
             {loadingSearch ? 'Searching…' : 'Search Candidates'}
           </button>
@@ -303,9 +325,22 @@ function MatchTab() {
           )}
         </div>
 
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-3">
           {scored.length > 0 ? (
-            <Table rows={scored} sortBy={sortBy} setSortBy={setSortBy} filter={filter} setFilter={setFilter} />
+            <>
+              <Table rows={scored} sortBy={sortBy} setSortBy={setSortBy} filter={filter} setFilter={setFilter} />
+              <div className="flex items-center justify-between text-sm">
+                <div className="text-gray-600">
+                  {total
+                    ? <>Showing <span className="font-medium">{showingFrom}</span>–<span className="font-medium">{showingTo}</span> of <span className="font-medium">{total}</span></>
+                    : 'No results'}
+                </div>
+                <div className="flex gap-2">
+                  <button className="btn btn-grey" disabled={!canPrev || loadingSearch} onClick={()=> canPrev && runSearch(page - 1)}>Prev</button>
+                  <button className="btn btn-grey" disabled={!canNext || loadingSearch} onClick={()=> canNext && runSearch(page + 1)}>Next</button>
+                </div>
+              </div>
+            </>
           ) : (
             <div className="card p-6 text-sm text-gray-500">
               Results will appear here after you click <span className="font-medium">Search Candidates</span>.
