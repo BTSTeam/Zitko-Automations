@@ -9,7 +9,7 @@ import { ensureSeedAdmin, getUserByEmail } from '@/lib/users'
 export async function GET() {
   ensureSeedAdmin()
   const session = await getSession()
-  const email = session.user?.email || null
+  const email = session.user?.email ?? null
 
   let role: 'Admin' | 'User' | null = null
   let active: boolean | null = null
@@ -24,7 +24,8 @@ export async function GET() {
     }
   }
 
-  const loggedIn = Boolean((email && active !== false) || session.tokens?.idToken)
-  return NextResponse.json({ loggedIn, email, name, role, active })
-}
+  const vincereConnected = !!session.tokens?.idToken
+  const loggedIn = Boolean((email && active !== false) || vincereConnected)
 
+  return NextResponse.json({ loggedIn, email, name, role, active, vincereConnected })
+}
