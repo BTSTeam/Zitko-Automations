@@ -17,7 +17,8 @@ type RunReq = {
     qualifications?: string[]
     description?: string
   }
-  limit?: number   // how many to return after scoring (default 20)
+  page?: number      // 1-based page index (default 1)
+  limit?: number     // page size (default 20, max 50)
 }
 
 function esc(s?: string) {
@@ -66,7 +67,8 @@ function findLinkedIn(d: any): string | null {
 export async function POST(req: NextRequest) {
   requiredEnv()
   const body = (await req.json().catch(() => ({}))) as RunReq
-  const limit = Math.min(Math.max(Number(body.limit ?? 20), 1), 50)
+  const page = Math.max(1, Number(body.page ?? 1))
+  const pageSize = Math.min(Math.max(Number(body.limit ?? 20), 1), 50)
 
   const session = await getSession()
   let idToken = session.tokens?.idToken
@@ -76,7 +78,7 @@ export async function POST(req: NextRequest) {
   const positionUrl = (id: string) => `${base}/api/v2/position/${encodeURIComponent(id)}`
   const searchBase = `${base}/api/v2/candidate/search`
 
-  // 1) Get job details if only jobId provided
+  // 1) Resolve job if only jobId provided (with retry on 401/403)
   let job = body.job
   if (!job && body.jobId) {
     const call = async () => fetch(positionUrl(body.jobId!), {
@@ -114,35 +116,49 @@ export async function POST(req: NextRequest) {
   const qualifications = Array.isArray(job.qualifications) ? job.qualifications.map(String) : []
   const description = String(job.description || '')
 
-  // 2) Build 5 queries (strict → broad)
+  // 2) Build 5 query strategies (strict → broad)
   const STRATS: string[] = [
     cleanJoin([ qPhrase('job-title', title), qPhrase('location-text', location), qAny('keywords', skills) ]),
     cleanJoin([ qPhrase('job-title', title), qPhrase('location-text', location) ]),
     cleanJoin([ qPhrase('job-title', title), qAny('keywords', skills) ]),
     cleanJoin([ qAny('keywords', skills) ]),
     cleanJoin([ qPhrase('job-title', title) ]),
-  ].map(s => s || '*:*') // last resort: match all (won’t matter, AI ranks)
+  ].map(s => s || '*:*')
 
-  // fields to fetch (use matrix vars)
+  // fields list (matrix var)
   const fl = [
     'id','candidate_id','first_name','last_name',
     'current_location','keywords','skills','linkedin_url'
   ].join(',')
 
-  // 3) Run searches and collect results
+  // helper: fetch with retry on 401/403
+  const headersBase = () => ({ 'id-token': idToken!, 'x-api-key': config.VINCERE_API_KEY })
+  const fetchWithRetry = async (url: string) => {
+    let resp = await fetch(url, { headers: headersBase(), cache: 'no-store' })
+    if (resp.status === 401 || resp.status === 403) {
+      const ok = await refreshIdToken(session.user?.email || session.sessionId || '')
+      if (ok) {
+        const s2 = await getSession()
+        idToken = s2.tokens?.idToken
+        resp = await fetch(url, { headers: headersBase(), cache: 'no-store' })
+      }
+    }
+    return resp
+  }
+
+  // 3) Run strategies (each pulls up to 50 docs)
   const all: any[] = []
-  const headers = { 'id-token': idToken!, 'x-api-key': config.VINCERE_API_KEY }
   for (const q of STRATS) {
     const matrix = `;fl=${encodeURIComponent(fl)}`
     const url = `${searchBase}/${matrix}?q=${encodeURIComponent(q)}&limit=50`
-    const resp = await fetch(url, { headers, cache: 'no-store' })
+    const resp = await fetchWithRetry(url)
     if (!resp.ok) continue
     const json = await resp.json().catch(() => ({}))
     const docs = json?.response?.docs || json?.data || []
     all.push(...docs)
   }
 
-  // 4) Dedupe, map, and keep light payload for scoring
+  // 4) Dedupe & map to a light structure
   const dedup = onlyUnique(all, (d: any) => String(d.id ?? d.candidate_id ?? ''))
   const candidates = dedup.map((d: any) => ({
     id: String(d.id ?? d.candidate_id ?? ''),
@@ -152,7 +168,7 @@ export async function POST(req: NextRequest) {
     linkedin: findLinkedIn(d),
   })).filter(c => c.id)
 
-  // 5) Ask AI to score
+  // 5) Score with AI
   const aiResp = await fetch(new URL('/api/ai/analyze', req.url), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -173,7 +189,7 @@ export async function POST(req: NextRequest) {
     scoreById.set(id, { score: Number(r.score ?? 0), reason: String(r.reason ?? '') })
   }
 
-  const merged = candidates.map(c => ({
+  const sorted = candidates.map(c => ({
     candidateId: c.id,
     candidateName: c.name,
     linkedin: c.linkedin,
@@ -181,7 +197,12 @@ export async function POST(req: NextRequest) {
     reason: scoreById.get(c.id)?.reason ?? '',
   }))
   .sort((a, b) => b.score - a.score)
-  .slice(0, limit)
 
-  return NextResponse.json({ results: merged })
+  // 6) Pagination (on scored list)
+  const total = sorted.length
+  const start = (page - 1) * pageSize
+  const end = Math.min(start + pageSize, total)
+  const results = start < total ? sorted.slice(start, end) : []
+
+  return NextResponse.json({ results, total, page, pageSize })
 }
