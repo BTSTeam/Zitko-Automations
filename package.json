@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@upstash/redis": "^1.31.6",
     "iron-session": "^8.0.1",
     "jose": "^5.9.3",
     "next": "14.2.5",
