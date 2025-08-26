@@ -133,7 +133,14 @@ export async function POST(req: NextRequest) {
 
   // 2) Supported candidate fields (fixed)
   const TITLE_FIELDS = ['current_job_title', 'job_title'] // removed invalid current_title
-  const LOC_FIELDS = ['current_location_name', 'city', 'address', 'state', 'country_code', 'postal_code']
+  const LOC_FIELDS = [
+    'current_location_name',
+    'current_city',
+    'current_address',
+    'current_state',
+    'current_country_code',
+    'current_postal_code',
+  ]
   const SKILL_FIELDS = ['skill', 'keyword'] // singular
 
   // 3) Strategies (strict → broad)
