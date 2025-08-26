@@ -84,7 +84,7 @@ export default function TopNav() {
             type="button"
             onClick={!me.vincereConnected ? connectVincere : undefined}
             title={me.vincereConnected ? 'Connected to Vincere' : 'Connect to Vincere'}
-            className={`tab flex items-center gap-2 ${me.vincereConnected ? 'text-brand-orange' : 'text-red-600'}`}
+            className={`tab flex items-center gap-2 ${me.vincereConnected ? 'text-green-600' : 'text-red-600'}`}
           >
             {/* Optional logo (add /public/vincere-logo.png if you like). If not present, the text still shows. */}
             <img
