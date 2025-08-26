@@ -27,6 +27,15 @@ function esc(s?: string) {
   return (s ?? '').replace(/"/g, '\\"').trim()
 }
 
+// split text into tokens (for token-AND queries)
+function splitTokens(v?: string) {
+  if (!v) return []
+  return v
+    .split(/[,\s/|-]+/g)
+    .map(t => t.trim())
+    .filter(t => t && t.toLowerCase() !== 'uk' && t.length >= 2)
+}
+
 // single field -> `field:"value"#`
 function term(field: string, value?: string) {
   const v = esc(value)
@@ -40,24 +49,14 @@ function termFields(fields: string[], value?: string) {
   return `(${fields.map(f => `${f}:"${v}"#`).join(' OR ')})`
 }
 
-// split a text into useful tokens
-function splitTokens(v?: string) {
-  if (!v) return []
-  return v
-    .split(/[,\s/|-]+/g)
-    .map(t => t.trim())
-    .filter(t => t && t.toLowerCase() !== 'uk' && t.length >= 3)
-}
-
-// require ALL tokens; each token can match ANY of the given fields
-// -> `(f1:tok1# OR f2:tok1#) AND (f1:tok2# OR f2:tok2#) ...`
+// tokens AND across fields -> `(f1:tok1# OR f2:tok1#) AND (f1:tok2# OR f2:tok2#) ...`
 function tokensANDFields(fields: string[], value?: string) {
   const toks = splitTokens(value)
   if (!toks.length) return ''
   return toks.map(tok => `(${fields.map(f => `${f}:${tok}#`).join(' OR ')})`).join(' AND ')
 }
 
-// phrase OR tokens (broad fallback)
+// phrase OR token-AND (broader)
 function phraseOrTokens(fields: string[], value?: string) {
   const p = termFields(fields, value)
   const t = tokensANDFields(fields, value)
@@ -65,14 +64,7 @@ function phraseOrTokens(fields: string[], value?: string) {
   return p || t
 }
 
-// one field, many values -> `(f:"a"# OR f:"b"# ...)`
-function anyValues(field: string, items: string[]) {
-  const list = (items || []).map(esc).filter(Boolean)
-  if (!list.length) return ''
-  return `(${list.map(v => `${field}:"${v}"#`).join(' OR ')})`
-}
-
-// many fields, many values
+// OR of many values on many fields -> `(f1:"a"# OR f1:"b"# OR f2:"a"# ...)`
 function anyValuesFields(fields: string[], items: string[]) {
   const list = (items || []).map(esc).filter(Boolean)
   if (!list.length) return ''
@@ -99,6 +91,32 @@ function findLinkedIn(d: any): string | null {
     if (hit) return typeof hit === 'string' ? hit : hit.url
   }
   return null
+}
+
+// generate alternative title phrases (simple heuristics + common F&S variants)
+function altTitlesFrom(title?: string): string[] {
+  const v = (title || '').trim()
+  if (!v) return []
+  const out = new Set<string>()
+  out.add(v)
+
+  // strip common seniority qualifiers
+  const stripped = v.replace(/\b(Senior|Lead|Principal|Junior|Mid|Midweight)\b/ig, '').replace(/\s+/g, ' ').trim()
+  if (stripped && stripped !== v) out.add(stripped)
+
+  // security-specific variants if applicable
+  if (/security/i.test(v) && /engineer/i.test(v)) {
+    ;[
+      'Security Systems Engineer',
+      'Security Installation Engineer',
+      'Security Service Engineer',
+      'CCTV Engineer',
+      'Access Control Engineer',
+      'Intruder Alarm Engineer',
+      'Fire & Security Engineer'
+    ].forEach(s => out.add(s))
+  }
+  return [...out]
 }
 
 // ---------- route ----------
@@ -138,7 +156,6 @@ export async function POST(req: NextRequest) {
     const pos = await r.json()
     job = {
       title: pos.job_title || pos.title || pos.name || '',
-      // prefer text; radius search can be added later if you have coords
       location: pos['location-text'] || pos.location_text || pos.location || pos.city || '',
       skills: Array.isArray(pos.skills)
         ? pos.skills.map((s: any) => s?.name ?? s).filter(Boolean)
@@ -156,28 +173,44 @@ export async function POST(req: NextRequest) {
   const qualifications = Array.isArray(job.qualifications) ? job.qualifications.map(String) : []
   const description = String(job.description || '')
 
-  // 2) Supported candidate fields
+  // Supported candidate fields
   const TITLE_FIELDS = ['current_job_title', 'job_title']
-  const LOC_FIELDS = [
-    'current_location_name',
-    'current_city',
-    'current_address',
-    'current_state',
-    'current_country_code',
-    'current_postal_code',
-  ]
-  const SKILL_FIELDS = ['skill', 'keyword'] // singular
+  const LOC_EXACT = ['current_location_name'] // exact phrase
+  const LOC_BROAD = ['current_location_name', 'current_city', 'current_address', 'current_state', 'current_country_code', 'current_postal_code']
+  const SKILL_FIELDS = ['skill', 'keyword']
 
-  // 3) Strategies (strict → broad) using phrase OR token-AND
+  // Clauses per spec
+  const titleExact = termFields(TITLE_FIELDS, title)
+  const titleAlt = (() => {
+    const alts = altTitlesFrom(title)
+    const phrases = alts.map(a => termFields(TITLE_FIELDS, a)).filter(Boolean)
+    const token = tokensANDFields(TITLE_FIELDS, title)
+    const joined = [...phrases, token].filter(Boolean).join(' OR ')
+    return joined ? `(${joined})` : ''
+  })()
+
+  const locExact = termFields(LOC_EXACT, location)
+  const locBroad = phraseOrTokens(LOC_BROAD, location)
+
+  const skillsAll = anyValuesFields(SKILL_FIELDS, skills)
+  const skillsTop3 = anyValuesFields(SKILL_FIELDS, skills.slice(0, 3))
+  const skillsTop1 = anyValuesFields(SKILL_FIELDS, skills.slice(0, 1))
+
+  // Strategies:
+  // S1: exact title + all skills + exact location
+  // S2: alt titles + top3 skills + exact location
+  // S3: alt titles + top1 skill + exact location
+  // S4: alt titles + exact location (no skills)
+  // S5: alt titles + BROAD location
   const STRATS: { label: string, q: string }[] = [
-    { label: 'S1', q: AND(phraseOrTokens(TITLE_FIELDS, title), phraseOrTokens(LOC_FIELDS, location), anyValuesFields(SKILL_FIELDS, skills)) },
-    { label: 'S2', q: AND(phraseOrTokens(TITLE_FIELDS, title), phraseOrTokens(LOC_FIELDS, location)) },
-    { label: 'S3', q: AND(phraseOrTokens(TITLE_FIELDS, title), anyValuesFields(SKILL_FIELDS, skills)) },
-    { label: 'S4', q: anyValuesFields(SKILL_FIELDS, skills) },
-    { label: 'S5', q: phraseOrTokens(TITLE_FIELDS, title) },
+    { label: 'S1', q: AND(titleExact, skillsAll, locExact) },
+    { label: 'S2', q: AND(titleAlt, skillsTop3, locExact) },
+    { label: 'S3', q: AND(titleAlt, skillsTop1, locExact) },
+    { label: 'S4', q: AND(titleAlt, locExact) },
+    { label: 'S5', q: AND(titleAlt, locBroad) },
   ].map(s => ({ ...s, q: s.q || '*:*' }))
 
-  // 4) Return field list (matrix vars)
+  // Return field list (matrix vars)
   const fl = [
     'id',
     'candidate_id',
@@ -190,7 +223,6 @@ export async function POST(req: NextRequest) {
     'linkedin_url',
   ].join(',')
 
-  // fetch with retry on 401/403
   const headersBase = () => ({ 'id-token': idToken!, 'x-api-key': config.VINCERE_API_KEY })
   const fetchWithRetry = async (url: string) => {
     let resp = await fetch(url, { headers: headersBase(), cache: 'no-store' })
@@ -203,13 +235,14 @@ export async function POST(req: NextRequest) {
     return resp
   }
 
-  // 5) Run strategies and collect
+  // Run strategies
+  const baseSearch = `${base}/api/v2/candidate/search`
   const all: any[] = []
   const dbg: any[] = []
   for (const s of STRATS) {
     const matrix = `;fl=${encodeURIComponent(fl)};sort=${encodeURIComponent('created_date desc')}`
     const limit = Math.min(Math.max(pageSize, 1), 50)
-    const url = `${searchBase}/${matrix}?q=${encodeURIComponent(s.q)}&limit=${limit}`
+    const url = `${baseSearch}/${matrix}?q=${encodeURIComponent(s.q)}&limit=${limit}`
 
     const resp = await fetchWithRetry(url)
     let docs: any[] = []
@@ -226,7 +259,7 @@ export async function POST(req: NextRequest) {
     if (debug) dbg.push({ label: s.label, q: s.q, status: resp.status, count: docs.length, sampleId: docs[0]?.id ?? docs[0]?.candidate_id ?? null, error: errorText })
   }
 
-  // 6) Dedupe & map
+  // Dedupe & map
   const dedup = onlyUnique(all, (d: any) => String(d.id ?? d.candidate_id ?? ''))
   const candidates = dedup.map((d: any) => ({
     id: String(d.id ?? d.candidate_id ?? ''),
@@ -236,7 +269,7 @@ export async function POST(req: NextRequest) {
     linkedin: findLinkedIn(d),
   })).filter(c => c.id)
 
-  // 7) Score with AI
+  // Score with AI
   const aiResp = await fetch(new URL('/api/ai/analyze', req.url), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -265,7 +298,7 @@ export async function POST(req: NextRequest) {
     reason: scoreById.get(c.id)?.reason ?? '',
   })).sort((a, b) => b.score - a.score)
 
-  // 8) Pagination
+  // Pagination
   const total = scored.length
   const pageSizeClamped = Math.max(1, Math.min(pageSize, 50))
   const start = (page - 1) * pageSizeClamped
