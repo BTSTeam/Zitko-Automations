@@ -162,6 +162,9 @@ function MatchTab() {
   const [pageSize, setPageSize] = useState(20)
   const [total, setTotal] = useState(0)
 
+  // NEW: hide/show descriptions
+  const [showDesc, setShowDesc] = useState(false)
+
   const retrieveJob = async () => {
     if (!jobId) return
     setLoadingJob(true)
@@ -310,15 +313,27 @@ function MatchTab() {
           </div>
 
           {job && (
-            <div className="grid gap-4">
-              <div>
-                <div className="text-gray-500 mb-1">Public Description</div>
-                <p className="text-sm whitespace-pre-wrap leading-relaxed">{job.public_description || '—'}</p>
-              </div>
-              {job.internal_description && (
-                <div>
-                  <div className="text-gray-500 mb-1">Internal Description</div>
-                  <p className="text-sm whitespace-pre-wrap leading-relaxed">{job.internal_description}</p>
+            <div className="mt-2">
+              <button
+                type="button"
+                className="text-xs text-gray-500 underline"
+                onClick={() => setShowDesc(v => !v)}
+              >
+                {showDesc ? 'Hide descriptions' : 'Show descriptions'}
+              </button>
+
+              {showDesc && (
+                <div className="grid gap-4 mt-3">
+                  <div>
+                    <div className="text-gray-500 mb-1">Public Description</div>
+                    <p className="text-sm whitespace-pre-wrap leading-relaxed">{job.public_description || '—'}</p>
+                  </div>
+                  {job.internal_description && (
+                    <div>
+                      <div className="text-gray-500 mb-1">Internal Description</div>
+                      <p className="text-sm whitespace-pre-wrap leading-relaxed">{job.internal_description}</p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
