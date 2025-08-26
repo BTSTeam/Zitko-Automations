@@ -8,9 +8,9 @@ type JobSummary = {
   job_title?: string
   location?: string
   skills?: string[]
-  qualifications?: string[]          // NEW
+  qualifications?: string[]
   public_description?: string
-  internal_description?: string      // NEW
+  internal_description?: string
   coords?: { lat: number, lng: number } | null
 }
 
@@ -26,7 +26,7 @@ type ScoredRow = {
   candidateName: string
   score: number
   reason: string
-  // optional: linkedin?: string   // will be used in a later step
+  linkedin?: string
 }
 
 // --- helpers ---
@@ -78,13 +78,21 @@ function Tabs({
   )
 }
 
-function Table({ rows, sortBy, setSortBy, filter, setFilter } : { rows: ScoredRow[], sortBy: [keyof ScoredRow, 'asc'|'desc'], setSortBy: (s:[keyof ScoredRow,'asc'|'desc'])=>void, filter: string, setFilter: (v:string)=>void }) {
+function Table({
+  rows, sortBy, setSortBy, filter, setFilter
+}: {
+  rows: ScoredRow[],
+  sortBy: [keyof ScoredRow, 'asc'|'desc'],
+  setSortBy: (s:[keyof ScoredRow,'asc'|'desc'])=>void,
+  filter: string,
+  setFilter: (v:string)=>void
+}) {
   const sorted = [...rows].sort((a,b)=>{
     const [key, dir] = sortBy
     const va = a[key], vb = b[key]
     let cmp = 0
     if (typeof va === 'number' && typeof vb === 'number') cmp = va - vb
-    else cmp = String(va).localeCompare(String(vb))
+    else cmp = String(va ?? '').localeCompare(String(vb ?? ''))
     return dir === 'asc' ? cmp : -cmp
   }).filter((r: ScoredRow) => JSON.stringify(r).toLowerCase().includes(filter.toLowerCase()))
   const header = (key: keyof ScoredRow, label: string) => (
@@ -99,21 +107,31 @@ function Table({ rows, sortBy, setSortBy, filter, setFilter } : { rows: ScoredRo
       </div>
       <div className="overflow-auto">
         <table className="w-full text-sm">
-          <thead><tr className="text-left text-gray-600">
-            {header('candidateId','Candidate ID')}
-            {header('candidateName','Candidate Name')}
-            {header('score','Suitability Score')}
-            {header('reason','Reason')}
-            <th>Link</th>
-          </tr></thead>
+          <thead>
+            <tr className="text-left text-gray-600">
+              {header('candidateId','Candidate ID')}
+              {header('candidateName','Candidate Name')}
+              <th>LinkedIn</th>
+              {header('score','Suitability Score')}
+              {header('reason','Reason')}
+              <th>Vincere</th>
+            </tr>
+          </thead>
           <tbody>
             {sorted.slice(0,10).map(r=> (
               <tr key={r.candidateId} className="border-t">
                 <td className="py-2">{r.candidateId}</td>
                 <td>{r.candidateName}</td>
+                <td>
+                  {r.linkedin
+                    ? <a className="text-brand-orange underline" href={r.linkedin} target="_blank" rel="noreferrer">Open</a>
+                    : '—'}
+                </td>
                 <td>{r.score}</td>
                 <td>{r.reason}</td>
-                <td><a className="text-brand-orange underline" href={`https://zitko.vincere.io/app/candidate/${r.candidateId}`} target="_blank">View</a></td>
+                <td>
+                  <a className="text-brand-orange underline" href={`https://zitko.vincere.io/app/candidate/${r.candidateId}`} target="_blank" rel="noreferrer">View</a>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -145,7 +163,7 @@ function MatchTab() {
     setScored([])
 
     try {
-      // 1) Load position from Vincere (unchanged)
+      // 1) Load position from Vincere
       const r = await fetch(`/api/vincere/position/${encodeURIComponent(jobId)}`, { cache: 'no-store' })
       const data = await r.json()
 
@@ -200,48 +218,23 @@ function MatchTab() {
     if (!job) return alert('Retrieve Job Information first.')
     setLoadingSearch(true)
     try {
-      // For now keep the existing simple search. In Step 3 we’ll switch to /api/match/run.
-      const r = await fetch('/api/vincere/candidate/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jobTitle: title,
-          locationText: location,
-          industryIds: [],
-          skills: skillsText.split(',').map(s => s.trim()).filter(Boolean),
-          qualifications: qualsText.split(',').map(s => s.trim()).filter(Boolean)
-        })
-      })
-      const res = await r.json()
-      const docs = res?.response?.docs || res?.data || []
-      const candidates: CandidateRow[] = docs
-        .map((d: any): CandidateRow => ({
-          id: String(d.id ?? d.candidate_id ?? ''),
-          name: [d.first_name, d.last_name].filter(Boolean).join(' '),
-          location: d.current_location,
-          skills: d.skills
-        }))
-        .filter((c: CandidateRow) => !!c.id)
-
-      // Score with existing AI route (unchanged for now)
-      const ai = await fetch('/api/ai/analyze', {
+      // Use orchestrator: 5 Vincere searches + AI scoring
+      const r = await fetch('/api/match/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           job: {
             title,
             location,
-            industry: null,
             skills: skillsText.split(',').map(s => s.trim()).filter(Boolean),
+            qualifications: qualsText.split(',').map(s => s.trim()).filter(Boolean),
             description: job.public_description
           },
-          candidates
+          limit: 20
         })
       })
-      const aiJson = await ai.json()
-      const maybe = aiJson?.results || aiJson?.candidates || aiJson
-      const norm: ScoredRow[] = Array.isArray(maybe) ? maybe : (maybe?.data || [])
-      setScored(norm)
+      const res = await r.json()
+      setScored(res?.results ?? [])
     } catch (e) {
       console.error(e)
       alert('Search or scoring failed.')
@@ -389,3 +382,54 @@ function CvTab() {
   const [candidateId, setCandidateId] = useState('')
   const [result, setResult] = useState<any>(null)
   const [loading, setLoading] = useState(false)
+
+  const generate = async () => {
+    if (!candidateId) return
+    setLoading(true)
+    try {
+      const r = await fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}`)
+      const data = await r.json()
+      setResult(data)
+    } catch (e) {
+      console.error(e)
+      alert('Failed to retrieve candidate. Are you logged in and do you have a valid Candidate ID?')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="card p-6">
+      <p className="mb-4">Enter a Candidate ID to fetch details from Vincere. We will format this into your CV layout later.</p>
+      <div className="grid sm:grid-cols-2 gap-4 mb-4">
+        <div>
+          <label className="text-sm text-gray-600">Candidate ID</label>
+          <input className="input mt-1" placeholder="Enter Candidate ID" value={candidateId} onChange={e=>setCandidateId(e.target.value)} />
+        </div>
+      </div>
+      <button className="btn btn-brand w-full" onClick={generate} disabled={loading}>
+        {loading ? 'Fetching…' : 'Generate CV Preview'}
+      </button>
+
+      {result && (
+        <div className="mt-6">
+          <h3 className="font-semibold mb-2">Raw Candidate Data</h3>
+          <pre className="rounded-2xl border p-4 text-sm overflow-auto">{JSON.stringify(result, null, 2)}</pre>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default function Dashboard() {
+  const [tab, setTab] = useState<TabKey>('match')
+  return (
+    <div>
+      <KPIs />
+      <Tabs tab={tab} setTab={setTab} />
+      {tab==='match' && <MatchTab />}
+      {tab==='source' && <SourceTab />}
+      {tab==='cv' && <CvTab />}
+    </div>
+  )
+}
