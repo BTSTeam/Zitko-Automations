@@ -40,6 +40,31 @@ function termFields(fields: string[], value?: string) {
   return `(${fields.map(f => `${f}:"${v}"#`).join(' OR ')})`
 }
 
+// split a text into useful tokens
+function splitTokens(v?: string) {
+  if (!v) return []
+  return v
+    .split(/[,\s/|-]+/g)
+    .map(t => t.trim())
+    .filter(t => t && t.toLowerCase() !== 'uk' && t.length >= 3)
+}
+
+// require ALL tokens; each token can match ANY of the given fields
+// -> `(f1:tok1# OR f2:tok1#) AND (f1:tok2# OR f2:tok2#) ...`
+function tokensANDFields(fields: string[], value?: string) {
+  const toks = splitTokens(value)
+  if (!toks.length) return ''
+  return toks.map(tok => `(${fields.map(f => `${f}:${tok}#`).join(' OR ')})`).join(' AND ')
+}
+
+// phrase OR tokens (broad fallback)
+function phraseOrTokens(fields: string[], value?: string) {
+  const p = termFields(fields, value)
+  const t = tokensANDFields(fields, value)
+  if (p && t) return `(${p} OR ${t})`
+  return p || t
+}
+
 // one field, many values -> `(f:"a"# OR f:"b"# ...)`
 function anyValues(field: string, items: string[]) {
   const list = (items || []).map(esc).filter(Boolean)
@@ -131,8 +156,8 @@ export async function POST(req: NextRequest) {
   const qualifications = Array.isArray(job.qualifications) ? job.qualifications.map(String) : []
   const description = String(job.description || '')
 
-  // 2) Supported candidate fields (fixed)
-  const TITLE_FIELDS = ['current_job_title', 'job_title'] // removed invalid current_title
+  // 2) Supported candidate fields
+  const TITLE_FIELDS = ['current_job_title', 'job_title']
   const LOC_FIELDS = [
     'current_location_name',
     'current_city',
@@ -143,13 +168,13 @@ export async function POST(req: NextRequest) {
   ]
   const SKILL_FIELDS = ['skill', 'keyword'] // singular
 
-  // 3) Strategies (strict → broad)
+  // 3) Strategies (strict → broad) using phrase OR token-AND
   const STRATS: { label: string, q: string }[] = [
-    { label: 'S1', q: AND(termFields(TITLE_FIELDS, title), termFields(LOC_FIELDS, location), anyValuesFields(SKILL_FIELDS, skills)) },
-    { label: 'S2', q: AND(termFields(TITLE_FIELDS, title), termFields(LOC_FIELDS, location)) },
-    { label: 'S3', q: AND(termFields(TITLE_FIELDS, title), anyValuesFields(SKILL_FIELDS, skills)) },
+    { label: 'S1', q: AND(phraseOrTokens(TITLE_FIELDS, title), phraseOrTokens(LOC_FIELDS, location), anyValuesFields(SKILL_FIELDS, skills)) },
+    { label: 'S2', q: AND(phraseOrTokens(TITLE_FIELDS, title), phraseOrTokens(LOC_FIELDS, location)) },
+    { label: 'S3', q: AND(phraseOrTokens(TITLE_FIELDS, title), anyValuesFields(SKILL_FIELDS, skills)) },
     { label: 'S4', q: anyValuesFields(SKILL_FIELDS, skills) },
-    { label: 'S5', q: termFields(TITLE_FIELDS, title) },
+    { label: 'S5', q: phraseOrTokens(TITLE_FIELDS, title) },
   ].map(s => ({ ...s, q: s.q || '*:*' }))
 
   // 4) Return field list (matrix vars)
