@@ -19,39 +19,51 @@ type RunReq = {
   }
   page?: number
   limit?: number
-  debug?: boolean            // ← NEW
+  debug?: boolean
 }
 
-function esc(s?: string) { return (s ?? '').replace(/"/g, '\\"').trim() }
+// ---------- helpers ----------
+function esc(s?: string) {
+  return (s ?? '').replace(/"/g, '\\"').trim()
+}
 
-function qPhrase(field: string, value?: string) {
+// single field -> "field:"value"#"
+function term(field: string, value?: string) {
   const v = esc(value)
-  return v ? `${field}:"${v}"` : ''
+  return v ? `${field}:"${v}"#` : ''
 }
-function qPhraseFields(fields: string[], value?: string) {
+
+// multiple fields -> "(f1:"v"# OR f2:"v"#)"
+function termFields(fields: string[], value?: string) {
   const v = esc(value)
   if (!v) return ''
-  const bits = fields.map(f => `${f}:"${v}"`)
-  return `(${bits.join(' OR ')})`
+  return `(${fields.map(f => `${f}:"${v}"#`).join(' OR ')})`
 }
-function qAny(field: string, items: string[]) {
+
+// single field, many values -> "(f:"a"# OR f:"b"# ...)"
+function anyValues(field: string, items: string[]) {
   const list = (items || []).map(esc).filter(Boolean)
   if (!list.length) return ''
-  return `(${list.map(v => `${field}:"${v}"`).join(' OR ')})`
+  return `(${list.map(v => `${field}:"${v}"#`).join(' OR ')})`
 }
-function qAnyFields(fields: string[], items: string[]) {
+
+// many fields, many values -> "(f1:"a"# OR f1:"b"# OR f2:"a"# ...)"
+function anyValuesFields(fields: string[], items: string[]) {
   const list = (items || []).map(esc).filter(Boolean)
   if (!list.length) return ''
   const bits: string[] = []
-  for (const f of fields) for (const v of list) bits.push(`${f}:"${v}"`)
+  for (const f of fields) for (const v of list) bits.push(`${f}:"${v}"#`)
   return `(${bits.join(' OR ')})`
 }
+
 function AND(...parts: string[]) { return parts.filter(Boolean).join(' AND ') }
+
 function onlyUnique<T>(arr: T[], key: (x: T) => string) {
   const seen = new Set<string>(), out: T[] = []
   for (const it of arr) { const k = key(it); if (!k || seen.has(k)) continue; seen.add(k); out.push(it) }
   return out
 }
+
 function findLinkedIn(d: any): string | null {
   const cands = [d.linkedin, d.linkedIn, d.linkedin_url, d.linkedinUrl, d.social?.linkedin, d.social_links?.linkedin, d.urls?.linkedin, d.contacts?.linkedin].filter(Boolean)
   for (const v of cands) if (typeof v === 'string' && v.includes('linkedin.com')) return v
@@ -63,6 +75,7 @@ function findLinkedIn(d: any): string | null {
   return null
 }
 
+// ---------- route ----------
 export async function POST(req: NextRequest) {
   requiredEnv()
   const body = (await req.json().catch(() => ({}))) as RunReq
@@ -78,10 +91,14 @@ export async function POST(req: NextRequest) {
   const positionUrl = (id: string) => `${base}/api/v2/position/${encodeURIComponent(id)}`
   const searchBase = `${base}/api/v2/candidate/search`
 
-  // 1) Resolve job if only jobId provided (with retry)
+  // 1) Resolve job (by id) if not provided
   let job = body.job
   if (!job && body.jobId) {
-    const call = async () => fetch(positionUrl(body.jobId!), { headers: { 'id-token': idToken!, 'x-api-key': config.VINCERE_API_KEY }, cache: 'no-store' })
+    const call = async () =>
+      fetch(positionUrl(body.jobId!), {
+        headers: { 'id-token': idToken!, 'x-api-key': config.VINCERE_API_KEY },
+        cache: 'no-store',
+      })
     let r = await call()
     if (r.status === 401 || r.status === 403) {
       if (await refreshIdToken(session.user?.email || session.sessionId || '')) {
@@ -95,10 +112,13 @@ export async function POST(req: NextRequest) {
     const pos = await r.json()
     job = {
       title: pos.job_title || pos.title || pos.name || '',
+      // prefer text name; coordinates are handled elsewhere if you add radius
       location: pos['location-text'] || pos.location_text || pos.location || pos.city || '',
-      skills: Array.isArray(pos.skills) ? pos.skills.map((s: any) => s?.name ?? s).filter(Boolean)
-            : typeof pos.keywords === 'string' ? pos.keywords.split(',').map((t: string) => t.trim()).filter(Boolean)
-            : [],
+      skills: Array.isArray(pos.skills)
+        ? pos.skills.map((s: any) => s?.name ?? s).filter(Boolean)
+        : typeof pos.keywords === 'string'
+          ? pos.keywords.split(',').map((t: string) => t.trim()).filter(Boolean)
+          : [],
       description: String(pos.public_description || pos.publicDescription || pos.description || ''),
     }
   }
@@ -110,24 +130,34 @@ export async function POST(req: NextRequest) {
   const qualifications = Array.isArray(job.qualifications) ? job.qualifications.map(String) : []
   const description = String(job.description || '')
 
-  // Fields we try across tenants
-  const TITLE_FIELDS = ['job-title','title','job_title','current_title']
-  const LOC_FIELDS = ['location-text','current_location','location','city','city_name','region','country']
-  const SKILL_FIELDS = ['keywords','skills','tags']
+  // 2) Correct Vincere candidate fields
+  const TITLE_FIELDS = ['current_job_title', 'job_title', 'current_title']
+  const LOC_FIELDS = ['current_location_name', 'current_city', 'current_address', 'current_state', 'current_country_code', 'current_postal_code']
+  const SKILL_FIELDS = ['skill', 'keyword'] // singular fields
 
-  // 2) Build 5 query strategies (strict → broad) with multi-field fallbacks
+  // 3) Strategies (strict → broad)
   const STRATS: { label: string, q: string }[] = [
-    { label: 'S1', q: AND(qPhraseFields(TITLE_FIELDS, title), qPhraseFields(LOC_FIELDS, location), qAnyFields(SKILL_FIELDS, skills)) },
-    { label: 'S2', q: AND(qPhraseFields(TITLE_FIELDS, title), qPhraseFields(LOC_FIELDS, location)) },
-    { label: 'S3', q: AND(qPhraseFields(TITLE_FIELDS, title), qAnyFields(SKILL_FIELDS, skills)) },
-    { label: 'S4', q: AND(qAnyFields(SKILL_FIELDS, skills)) },
-    { label: 'S5', q: AND(qPhraseFields(TITLE_FIELDS, title)) },
+    { label: 'S1', q: AND(termFields(TITLE_FIELDS, title), termFields(LOC_FIELDS, location), anyValuesFields(SKILL_FIELDS, skills)) },
+    { label: 'S2', q: AND(termFields(TITLE_FIELDS, title), termFields(LOC_FIELDS, location)) },
+    { label: 'S3', q: AND(termFields(TITLE_FIELDS, title), anyValuesFields(SKILL_FIELDS, skills)) },
+    { label: 'S4', q: anyValuesFields(SKILL_FIELDS, skills) },
+    { label: 'S5', q: termFields(TITLE_FIELDS, title) },
   ].map(s => ({ ...s, q: s.q || '*:*' }))
 
-  // Fields list (matrix var)
-  const fl = ['id','candidate_id','first_name','last_name','current_location','keywords','skills','linkedin_url'].join(',')
+  // 4) Return field list (matrix vars)
+  const fl = [
+    'id',
+    'candidate_id',
+    'first_name',
+    'last_name',
+    'current_location_name',
+    'current_job_title',
+    'skill',
+    'keyword',
+    'linkedin_url',
+  ].join(',')
 
-  // helper: fetch with retry; returns {ok, status, docs, error}
+  // fetch with retry on 401/403
   const headersBase = () => ({ 'id-token': idToken!, 'x-api-key': config.VINCERE_API_KEY })
   const fetchWithRetry = async (url: string) => {
     let resp = await fetch(url, { headers: headersBase(), cache: 'no-store' })
@@ -140,12 +170,14 @@ export async function POST(req: NextRequest) {
     return resp
   }
 
-  // 3) Run strategies; collect debug info
+  // 5) Run strategies and collect
   const all: any[] = []
   const dbg: any[] = []
   for (const s of STRATS) {
-    const matrix = `;fl=${encodeURIComponent(fl)}`
-    const url = `${searchBase}/${matrix}?q=${encodeURIComponent(s.q)}&limit=50`
+    const matrix = `;fl=${encodeURIComponent(fl)};sort=${encodeURIComponent('created_date desc')}`
+    const limit = Math.min(Math.max(pageSize, 1), 50)
+    const url = `${searchBase}/${matrix}?q=${encodeURIComponent(s.q)}&limit=${limit}`
+
     const resp = await fetchWithRetry(url)
     let docs: any[] = []
     let errorText = ''
@@ -156,22 +188,22 @@ export async function POST(req: NextRequest) {
     } else {
       errorText = await resp.text().catch(() => '')
     }
-    // Server logs (Vercel)
-    console.log(`[match.run] ${s.label} q=`, s.q, ' status=', resp.status, ' count=', docs.length, errorText ? ` error=${errorText.slice(0,200)}` : '')
-    if (debug) dbg.push({ label: s.label, q: s.q, status: resp.status, count: docs.length, sampleId: docs[0]?.id ?? docs[0]?.candidate_id ?? null })
+
+    console.log('[match.run]', s.label, 'q=', s.q, ' status=', resp.status, ' count=', docs.length, errorText ? ` error=${errorText.slice(0, 200)}` : '')
+    if (debug) dbg.push({ label: s.label, q: s.q, status: resp.status, count: docs.length, sampleId: docs[0]?.id ?? docs[0]?.candidate_id ?? null, error: errorText })
   }
 
-  // 4) Dedupe & map
+  // 6) Dedupe & map
   const dedup = onlyUnique(all, (d: any) => String(d.id ?? d.candidate_id ?? ''))
   const candidates = dedup.map((d: any) => ({
     id: String(d.id ?? d.candidate_id ?? ''),
     name: [d.first_name, d.last_name].filter(Boolean).join(' ') || (d.full_name ?? ''),
-    location: d.current_location || d.location || '',
-    skills: d.skills || d.keywords || [],
+    location: d.current_location_name || d.current_location || d.location || '',
+    skills: d.skill || d.keyword || d.skills || d.keywords || [],
     linkedin: findLinkedIn(d),
   })).filter(c => c.id)
 
-  // 5) Score with AI
+  // 7) Score with AI
   const aiResp = await fetch(new URL('/api/ai/analyze', req.url), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -182,8 +214,8 @@ export async function POST(req: NextRequest) {
   })
   const aiJson = await aiResp.json().catch(() => ({}))
   const aiList: any[] = Array.isArray(aiJson?.results) ? aiJson.results
-                     : Array.isArray(aiJson) ? aiJson
-                     : (aiJson?.data || [])
+                    : Array.isArray(aiJson) ? aiJson
+                    : (aiJson?.data || [])
 
   const scoreById = new Map<string, { score: number; reason: string }>()
   for (const r of aiList) {
@@ -200,7 +232,7 @@ export async function POST(req: NextRequest) {
     reason: scoreById.get(c.id)?.reason ?? '',
   })).sort((a, b) => b.score - a.score)
 
-  // 6) Pagination
+  // 8) Pagination
   const total = scored.length
   const pageSizeClamped = Math.max(1, Math.min(pageSize, 50))
   const start = (page - 1) * pageSizeClamped
