@@ -12,6 +12,7 @@ export type SessionData = {
   tokens?: Tokens | null
   codeVerifier?: string | null
   user?: { email: string } | null
+  sessionId?: string | null
 }
 
 const sessionOptions: SessionOptions = {
