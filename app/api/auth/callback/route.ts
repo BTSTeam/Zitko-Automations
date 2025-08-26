@@ -5,6 +5,8 @@ export const runtime = 'nodejs'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/session'
 import { config, requiredEnv } from '@/lib/config'
+import crypto from 'crypto'
+import { saveRefreshToken } from '@/lib/tokenStore'
 
 type TokenResponseSnake = {
   access_token?: string
@@ -53,12 +55,19 @@ export async function GET(req: NextRequest) {
 
   const tokens: TokenResponseSnake = await resp.json()
 
-  // Map snake_case → camelCase used in our session
-  session.tokens = {
-    idToken: tokens.id_token ?? '',
-    accessToken: tokens.access_token ?? '',
-    refreshToken: tokens.refresh_token ?? '',
+  // Identify this browser/user for server-side refresh-token storage
+  let userKey = session.user?.email || session.sessionId
+  if (!userKey) {
+    session.sessionId = crypto.randomUUID()
+    userKey = session.sessionId
   }
+
+  // Keep cookie tiny: store only id_token
+  session.tokens = { idToken: tokens.id_token ?? '' }
+
+  // Save refresh_token in Upstash (server-side)
+  await saveRefreshToken(userKey!, tokens.refresh_token)
+
   session.codeVerifier = null
   await session.save()
 
