@@ -49,32 +49,52 @@ function normalisePosition(p: any) {
 
   const title = p.job_title || p.title || p.name || ''
 
+  // Location: prefer API key "location-text" (note the dash)
   const locationText =
+    p['location-text'] ||
     p.location_text ||
+    p.locationName ||
     p.current_location ||
     [p.location?.city, p.location?.state, p.location?.country].filter(Boolean).join(', ') ||
     p.location ||
     p.city ||
     ''
 
-  const industryList = Array.isArray(p.industry)
-    ? p.industry.map((i: any) => i?.name ?? i).filter(Boolean)
-    : []
-  const industryText = industryList.join(', ') || p.industry?.name || p.industry || ''
-
-  let skills: string[] = []
-  if (Array.isArray(p.skills)) {
-    skills = p.skills.map((s: any) => s?.name ?? s).filter(Boolean)
-  } else if (Array.isArray(p.keywords)) {
-    skills = p.keywords.map((k: any) => (typeof k === 'string' ? k : (k?.name ?? ''))).filter(Boolean)
-  } else if (typeof p.keywords === 'string') {
-    skills = p.keywords.split(',').map((t: string) => t.trim()).filter(Boolean)
+  // Helpers
+  const asNames = (arr: any[]) =>
+    arr.map(v => (typeof v === 'string' ? v : (v?.name ?? v?.label ?? v?.value ?? '')))
+      .filter(Boolean)
+  const toStringArray = (x: any): string[] => {
+    if (!x) return []
+    if (Array.isArray(x)) return asNames(x)
+    if (typeof x === 'string') return x.split(',').map(t => t.trim()).filter(Boolean)
+    return []
   }
+
+  // Industry: "Industry"
+  const industryList = Array.isArray(p.industry) ? asNames(p.industry) : []
+  const industryText =
+    (industryList.length ? industryList.join(', ') : '') ||
+    p.industry?.name ||
+    p.industry?.label ||
+    (typeof p.industry === 'string' ? p.industry : '') ||
+    ''
+
+  // Skills: "Job Skills/Keywords" (try dashed/underscored), plus common fallbacks
+  const skills = Array.from(new Set([
+    ...toStringArray(p['job_skills_keywords']),
+    ...toStringArray(p['job-skills-keywords']),
+    ...toStringArray(p.skills),
+    ...toStringArray(p.keywords),
+    ...toStringArray(p.keywords_array),
+    ...toStringArray(p.tags),
+  ])))
 
   const publicText = htmlToText(p.public_description || p.publicDescription || p.description || '')
 
   return { title, locationText, industryText, industryList, skills, publicText }
 }
+
 
 function KPIs() {
   return (
