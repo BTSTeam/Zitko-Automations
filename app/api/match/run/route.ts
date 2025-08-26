@@ -191,4 +191,53 @@ export async function POST(req: NextRequest) {
     }
 
     console.log('[match.run]', s.label, 'q=', s.q, ' status=', resp.status, ' count=', docs.length, errorText ? ` error=${errorText.slice(0, 200)}` : '')
-    if (debug) dbg.push({ label: s.la
+    if (debug) dbg.push({ label: s.label, q: s.q, status: resp.status, count: docs.length, sampleId: docs[0]?.id ?? docs[0]?.candidate_id ?? null, error: errorText })
+  }
+
+  // 6) Dedupe & map
+  const dedup = onlyUnique(all, (d: any) => String(d.id ?? d.candidate_id ?? ''))
+  const candidates = dedup.map((d: any) => ({
+    id: String(d.id ?? d.candidate_id ?? ''),
+    name: [d.first_name, d.last_name].filter(Boolean).join(' ') || (d.full_name ?? ''),
+    location: d.current_location_name || d.current_location || d.location || '',
+    skills: d.skill || d.keyword || d.skills || d.keywords || [],
+    linkedin: findLinkedIn(d),
+  })).filter(c => c.id)
+
+  // 7) Score with AI
+  const aiResp = await fetch(new URL('/api/ai/analyze', req.url), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      job: { title, location, skills, qualifications, description },
+      candidates: candidates.map(c => ({ id: c.id, name: c.name, location: c.location, skills: c.skills })),
+    }),
+  })
+  const aiJson = await aiResp.json().catch(() => ({}))
+  const aiList: any[] = Array.isArray(aiJson?.results) ? aiJson.results
+                    : Array.isArray(aiJson) ? aiJson
+                    : (aiJson?.data || [])
+
+  const scoreById = new Map<string, { score: number; reason: string }>()
+  for (const r of aiList) {
+    const id = String(r.candidate_id ?? r.id ?? r.candidateId ?? '')
+    if (!id) continue
+    scoreById.set(id, { score: Number(r.score ?? 0), reason: String(r.reason ?? '') })
+  }
+
+  const scored = candidates.map(c => ({
+    candidateId: c.id,
+    candidateName: c.name,
+    linkedin: c.linkedin,
+    score: scoreById.get(c.id)?.score ?? 0,
+    reason: scoreById.get(c.id)?.reason ?? '',
+  })).sort((a, b) => b.score - a.score)
+
+  // 8) Pagination
+  const total = scored.length
+  const pageSizeClamped = Math.max(1, Math.min(pageSize, 50))
+  const start = (page - 1) * pageSizeClamped
+  const results = start < total ? scored.slice(start, start + pageSizeClamped) : []
+
+  return NextResponse.json({ results, total, page, pageSize: pageSizeClamped, ...(debug ? { debug: dbg } : {}) })
+}
