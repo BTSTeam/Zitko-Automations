@@ -17,48 +17,47 @@ type RunReq = {
     qualifications?: string[]
     description?: string
   }
-  page?: number      // 1-based page index (default 1)
-  limit?: number     // page size (default 20, max 50)
+  page?: number
+  limit?: number
+  debug?: boolean            // ← NEW
 }
 
-function esc(s?: string) {
-  if (!s) return ''
-  return String(s).replace(/"/g, '\\"').trim()
-}
+function esc(s?: string) { return (s ?? '').replace(/"/g, '\\"').trim() }
+
 function qPhrase(field: string, value?: string) {
   const v = esc(value)
   return v ? `${field}:"${v}"` : ''
 }
+function qPhraseFields(fields: string[], value?: string) {
+  const v = esc(value)
+  if (!v) return ''
+  const bits = fields.map(f => `${f}:"${v}"`)
+  return `(${bits.join(' OR ')})`
+}
 function qAny(field: string, items: string[]) {
-  const list = items.map(esc).filter(Boolean)
+  const list = (items || []).map(esc).filter(Boolean)
   if (!list.length) return ''
   return `(${list.map(v => `${field}:"${v}"`).join(' OR ')})`
 }
-function cleanJoin(parts: string[]) {
-  return parts.filter(Boolean).join(' AND ')
+function qAnyFields(fields: string[], items: string[]) {
+  const list = (items || []).map(esc).filter(Boolean)
+  if (!list.length) return ''
+  const bits: string[] = []
+  for (const f of fields) for (const v of list) bits.push(`${f}:"${v}"`)
+  return `(${bits.join(' OR ')})`
 }
+function AND(...parts: string[]) { return parts.filter(Boolean).join(' AND ') }
 function onlyUnique<T>(arr: T[], key: (x: T) => string) {
-  const seen = new Set<string>(); const out: T[] = []
-  for (const it of arr) {
-    const k = key(it)
-    if (!k || seen.has(k)) continue
-    seen.add(k); out.push(it)
-  }
+  const seen = new Set<string>(), out: T[] = []
+  for (const it of arr) { const k = key(it); if (!k || seen.has(k)) continue; seen.add(k); out.push(it) }
   return out
 }
 function findLinkedIn(d: any): string | null {
-  const cands = [
-    d.linkedin, d.linkedIn, d.linkedin_url, d.linkedinUrl,
-    d.social?.linkedin, d.social_links?.linkedin,
-    d.urls?.linkedin, d.contacts?.linkedin,
-  ].filter(Boolean)
-  for (const v of cands) {
-    if (typeof v === 'string' && v.includes('linkedin.com')) return v
-  }
+  const cands = [d.linkedin, d.linkedIn, d.linkedin_url, d.linkedinUrl, d.social?.linkedin, d.social_links?.linkedin, d.urls?.linkedin, d.contacts?.linkedin].filter(Boolean)
+  for (const v of cands) if (typeof v === 'string' && v.includes('linkedin.com')) return v
   const arrays = [d.websites, d.links, d.social, d.social_links].filter(Array.isArray)
   for (const arr of arrays as any[]) {
-    const hit = arr.find((x: any) => typeof x === 'string' && x.includes('linkedin.com'))
-            || arr.find((x: any) => typeof x?.url === 'string' && x.url.includes('linkedin.com'))
+    const hit = arr.find((x: any) => typeof x === 'string' && x.includes('linkedin.com')) || arr.find((x: any) => typeof x?.url === 'string' && x.url.includes('linkedin.com'))
     if (hit) return typeof hit === 'string' ? hit : hit.url
   }
   return null
@@ -69,6 +68,7 @@ export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => ({}))) as RunReq
   const page = Math.max(1, Number(body.page ?? 1))
   const pageSize = Math.min(Math.max(Number(body.limit ?? 20), 1), 50)
+  const debug = !!body.debug
 
   const session = await getSession()
   let idToken = session.tokens?.idToken
@@ -78,20 +78,14 @@ export async function POST(req: NextRequest) {
   const positionUrl = (id: string) => `${base}/api/v2/position/${encodeURIComponent(id)}`
   const searchBase = `${base}/api/v2/candidate/search`
 
-  // 1) Resolve job if only jobId provided (with retry on 401/403)
+  // 1) Resolve job if only jobId provided (with retry)
   let job = body.job
   if (!job && body.jobId) {
-    const call = async () => fetch(positionUrl(body.jobId!), {
-      headers: { 'id-token': idToken!, 'x-api-key': config.VINCERE_API_KEY },
-      cache: 'no-store'
-    })
+    const call = async () => fetch(positionUrl(body.jobId!), { headers: { 'id-token': idToken!, 'x-api-key': config.VINCERE_API_KEY }, cache: 'no-store' })
     let r = await call()
     if (r.status === 401 || r.status === 403) {
-      const ok = await refreshIdToken(session.user?.email || session.sessionId || '')
-      if (ok) {
-        const s2 = await getSession()
-        idToken = s2.tokens?.idToken
-        r = await call()
+      if (await refreshIdToken(session.user?.email || session.sessionId || '')) {
+        const s2 = await getSession(); idToken = s2.tokens?.idToken; r = await call()
       }
     }
     if (!r.ok) {
@@ -116,49 +110,58 @@ export async function POST(req: NextRequest) {
   const qualifications = Array.isArray(job.qualifications) ? job.qualifications.map(String) : []
   const description = String(job.description || '')
 
-  // 2) Build 5 query strategies (strict → broad)
-  const STRATS: string[] = [
-    cleanJoin([ qPhrase('job-title', title), qPhrase('location-text', location), qAny('keywords', skills) ]),
-    cleanJoin([ qPhrase('job-title', title), qPhrase('location-text', location) ]),
-    cleanJoin([ qPhrase('job-title', title), qAny('keywords', skills) ]),
-    cleanJoin([ qAny('keywords', skills) ]),
-    cleanJoin([ qPhrase('job-title', title) ]),
-  ].map(s => s || '*:*')
+  // Fields we try across tenants
+  const TITLE_FIELDS = ['job-title','title','job_title','current_title']
+  const LOC_FIELDS = ['location-text','current_location','location','city','city_name','region','country']
+  const SKILL_FIELDS = ['keywords','skills','tags']
 
-  // fields list (matrix var)
-  const fl = [
-    'id','candidate_id','first_name','last_name',
-    'current_location','keywords','skills','linkedin_url'
-  ].join(',')
+  // 2) Build 5 query strategies (strict → broad) with multi-field fallbacks
+  const STRATS: { label: string, q: string }[] = [
+    { label: 'S1', q: AND(qPhraseFields(TITLE_FIELDS, title), qPhraseFields(LOC_FIELDS, location), qAnyFields(SKILL_FIELDS, skills)) },
+    { label: 'S2', q: AND(qPhraseFields(TITLE_FIELDS, title), qPhraseFields(LOC_FIELDS, location)) },
+    { label: 'S3', q: AND(qPhraseFields(TITLE_FIELDS, title), qAnyFields(SKILL_FIELDS, skills)) },
+    { label: 'S4', q: AND(qAnyFields(SKILL_FIELDS, skills)) },
+    { label: 'S5', q: AND(qPhraseFields(TITLE_FIELDS, title)) },
+  ].map(s => ({ ...s, q: s.q || '*:*' }))
 
-  // helper: fetch with retry on 401/403
+  // Fields list (matrix var)
+  const fl = ['id','candidate_id','first_name','last_name','current_location','keywords','skills','linkedin_url'].join(',')
+
+  // helper: fetch with retry; returns {ok, status, docs, error}
   const headersBase = () => ({ 'id-token': idToken!, 'x-api-key': config.VINCERE_API_KEY })
   const fetchWithRetry = async (url: string) => {
     let resp = await fetch(url, { headers: headersBase(), cache: 'no-store' })
     if (resp.status === 401 || resp.status === 403) {
-      const ok = await refreshIdToken(session.user?.email || session.sessionId || '')
-      if (ok) {
-        const s2 = await getSession()
-        idToken = s2.tokens?.idToken
+      if (await refreshIdToken(session.user?.email || session.sessionId || '')) {
+        const s2 = await getSession(); idToken = s2.tokens?.idToken
         resp = await fetch(url, { headers: headersBase(), cache: 'no-store' })
       }
     }
     return resp
   }
 
-  // 3) Run strategies (each pulls up to 50 docs)
+  // 3) Run strategies; collect debug info
   const all: any[] = []
-  for (const q of STRATS) {
+  const dbg: any[] = []
+  for (const s of STRATS) {
     const matrix = `;fl=${encodeURIComponent(fl)}`
-    const url = `${searchBase}/${matrix}?q=${encodeURIComponent(q)}&limit=50`
+    const url = `${searchBase}/${matrix}?q=${encodeURIComponent(s.q)}&limit=50`
     const resp = await fetchWithRetry(url)
-    if (!resp.ok) continue
-    const json = await resp.json().catch(() => ({}))
-    const docs = json?.response?.docs || json?.data || []
-    all.push(...docs)
+    let docs: any[] = []
+    let errorText = ''
+    if (resp.ok) {
+      const json = await resp.json().catch(() => ({}))
+      docs = json?.response?.docs || json?.data || []
+      all.push(...docs)
+    } else {
+      errorText = await resp.text().catch(() => '')
+    }
+    // Server logs (Vercel)
+    console.log(`[match.run] ${s.label} q=`, s.q, ' status=', resp.status, ' count=', docs.length, errorText ? ` error=${errorText.slice(0,200)}` : '')
+    if (debug) dbg.push({ label: s.label, q: s.q, status: resp.status, count: docs.length, sampleId: docs[0]?.id ?? docs[0]?.candidate_id ?? null })
   }
 
-  // 4) Dedupe & map to a light structure
+  // 4) Dedupe & map
   const dedup = onlyUnique(all, (d: any) => String(d.id ?? d.candidate_id ?? ''))
   const candidates = dedup.map((d: any) => ({
     id: String(d.id ?? d.candidate_id ?? ''),
@@ -189,20 +192,19 @@ export async function POST(req: NextRequest) {
     scoreById.set(id, { score: Number(r.score ?? 0), reason: String(r.reason ?? '') })
   }
 
-  const sorted = candidates.map(c => ({
+  const scored = candidates.map(c => ({
     candidateId: c.id,
     candidateName: c.name,
     linkedin: c.linkedin,
     score: scoreById.get(c.id)?.score ?? 0,
     reason: scoreById.get(c.id)?.reason ?? '',
-  }))
-  .sort((a, b) => b.score - a.score)
+  })).sort((a, b) => b.score - a.score)
 
-  // 6) Pagination (on scored list)
-  const total = sorted.length
-  const start = (page - 1) * pageSize
-  const end = Math.min(start + pageSize, total)
-  const results = start < total ? sorted.slice(start, end) : []
+  // 6) Pagination
+  const total = scored.length
+  const pageSizeClamped = Math.max(1, Math.min(pageSize, 50))
+  const start = (page - 1) * pageSizeClamped
+  const results = start < total ? scored.slice(start, start + pageSizeClamped) : []
 
-  return NextResponse.json({ results, total, page, pageSize })
+  return NextResponse.json({ results, total, page, pageSize: pageSizeClamped, ...(debug ? { debug: dbg } : {}) })
 }
