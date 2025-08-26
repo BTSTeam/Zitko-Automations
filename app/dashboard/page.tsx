@@ -7,9 +7,10 @@ type JobSummary = {
   id?: string
   job_title?: string
   location?: string
-  industry?: any
   skills?: string[]
+  qualifications?: string[]          // NEW
   public_description?: string
+  internal_description?: string      // NEW
   coords?: { lat: number, lng: number } | null
 }
 
@@ -25,9 +26,10 @@ type ScoredRow = {
   candidateName: string
   score: number
   reason: string
+  // optional: linkedin?: string   // will be used in a later step
 }
 
-// --- helpers for Job Summary ---
+// --- helpers ---
 function htmlToText(html?: string): string {
   if (!html) return ''
   try {
@@ -41,60 +43,6 @@ function htmlToText(html?: string): string {
     return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
   }
 }
-
-function normalisePosition(p: any) {
-  if (!p) {
-    return { title: '', locationText: '', industryText: '', industryList: [] as string[], skills: [] as string[], publicText: '' }
-  }
-
-  const title = p.job_title || p.title || p.name || ''
-
-  // Location: prefer API key "location-text" (note the dash)
-  const locationText =
-    p['location-text'] ||
-    p.location_text ||
-    p.locationName ||
-    p.current_location ||
-    [p.location?.city, p.location?.state, p.location?.country].filter(Boolean).join(', ') ||
-    p.location ||
-    p.city ||
-    ''
-
-  // Helpers
-  const asNames = (arr: any[]) =>
-    arr.map(v => (typeof v === 'string' ? v : (v?.name ?? v?.label ?? v?.value ?? '')))
-      .filter(Boolean)
-  const toStringArray = (x: any): string[] => {
-    if (!x) return []
-    if (Array.isArray(x)) return asNames(x)
-    if (typeof x === 'string') return x.split(',').map(t => t.trim()).filter(Boolean)
-    return []
-  }
-
-  // Industry: "Industry"
-  const industryList = Array.isArray(p.industry) ? asNames(p.industry) : []
-  const industryText =
-    (industryList.length ? industryList.join(', ') : '') ||
-    p.industry?.name ||
-    p.industry?.label ||
-    (typeof p.industry === 'string' ? p.industry : '') ||
-    ''
-
-  // Skills: "Job Skills/Keywords" (try dashed/underscored), plus common fallbacks
-  const skills = Array.from(new Set([
-  ...toStringArray(p['job_skills_keywords']),
-  ...toStringArray(p['job-skills-keywords']),
-  ...toStringArray(p.skills),
-  ...toStringArray(p.keywords),
-  ...toStringArray(p.keywords_array),
-  ...toStringArray(p.tags),
-]));
-
-  const publicText = htmlToText(p.public_description || p.publicDescription || p.description || '')
-
-  return { title, locationText, industryText, industryList, skills, publicText }
-}
-
 
 function KPIs() {
   return (
@@ -179,6 +127,13 @@ function MatchTab() {
   const [jobId, setJobId] = useState('')
   const [job, setJob] = useState<JobSummary | null>(null)
   const [loadingJob, setLoadingJob] = useState(false)
+
+  // extracted + editable fields (from OpenAI)
+  const [title, setTitle] = useState('')
+  const [location, setLocation] = useState('')
+  const [skillsText, setSkillsText] = useState('')
+  const [qualsText, setQualsText] = useState('')
+
   const [scored, setScored] = useState<ScoredRow[]>([])
   const [loadingSearch, setLoadingSearch] = useState(false)
   const [sortBy, setSortBy] = useState<[keyof ScoredRow, 'asc'|'desc']>(['score','desc'])
@@ -188,22 +143,54 @@ function MatchTab() {
     if (!jobId) return
     setLoadingJob(true)
     setScored([])
+
     try {
-      const r = await fetch(`/api/vincere/position/${encodeURIComponent(jobId)}`)
+      // 1) Load position from Vincere (unchanged)
+      const r = await fetch(`/api/vincere/position/${encodeURIComponent(jobId)}`, { cache: 'no-store' })
       const data = await r.json()
-      const J = normalisePosition(data)
+
+      // 2) Pull descriptions, strip HTML
+      const publicRaw = htmlToText(
+        data?.public_description || data?.publicDescription || data?.description || ''
+      )
+      const internalRaw = htmlToText(
+        data?.internal_description || data?.internalDescription || data?.job_description || data?.description_internal || ''
+      )
+
+      // 3) Ask OpenAI to extract Title, Location, Skills, Qualifications
+      const extractResp = await fetch('/api/job/extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          publicDescription: publicRaw,
+          internalDescription: internalRaw
+        })
+      })
+      const extracted = await extractResp.json()
+
+      // 4) Save a consolidated job object + populate editable fields
+      const skillsArr: string[] = Array.isArray(extracted?.skills) ? extracted.skills : []
+      const qualsArr: string[] = Array.isArray(extracted?.qualifications) ? extracted.qualifications : []
+
       setJob({
         id: jobId,
-        job_title: J.title,
-        location: J.locationText,
-        industry: J.industryList.length ? J.industryList : J.industryText,
-        skills: J.skills,
-        public_description: J.publicText,
+        job_title: String(extracted?.title || '').trim(),
+        location: String(extracted?.location || '').trim(),
+        skills: skillsArr,
+        qualifications: qualsArr,
+        public_description: publicRaw,
+        internal_description: internalRaw,
         coords: null
       })
+
+      setTitle(String(extracted?.title || '').trim())
+      setLocation(String(extracted?.location || '').trim())
+      setSkillsText(skillsArr.join(', '))
+      setQualsText(qualsArr.join(', '))
+
     } catch (e) {
       console.error(e)
-      alert('Failed to retrieve job. Are you logged in and do you have a valid Job ID?')
+      alert('Failed to retrieve or extract job details.')
     } finally {
       setLoadingJob(false)
     }
@@ -213,15 +200,16 @@ function MatchTab() {
     if (!job) return alert('Retrieve Job Information first.')
     setLoadingSearch(true)
     try {
+      // For now keep the existing simple search. In Step 3 we’ll switch to /api/match/run.
       const r = await fetch('/api/vincere/candidate/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          jobTitle: job.job_title,
-          locationText: job.location,
+          jobTitle: title,
+          locationText: location,
           industryIds: [],
-          skills: job.skills || [],
-          qualifications: []
+          skills: skillsText.split(',').map(s => s.trim()).filter(Boolean),
+          qualifications: qualsText.split(',').map(s => s.trim()).filter(Boolean)
         })
       })
       const res = await r.json()
@@ -235,18 +223,19 @@ function MatchTab() {
         }))
         .filter((c: CandidateRow) => !!c.id)
 
+      // Score with existing AI route (unchanged for now)
       const ai = await fetch('/api/ai/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           job: {
-            title: job.job_title,
-            location: job.location,
-            industry: job.industry,
-            skills: job.skills,
+            title,
+            location,
+            industry: null,
+            skills: skillsText.split(',').map(s => s.trim()).filter(Boolean),
             description: job.public_description
           },
-          candidates: candidates
+          candidates
         })
       })
       const aiJson = await ai.json()
@@ -281,25 +270,56 @@ function MatchTab() {
         </div>
       </div>
 
-      {job && (
+      {/* Split view: left = reviewed job info, right = candidates */}
+      <div className="grid md:grid-cols-2 gap-6">
         <div className="card p-6">
-          <h3 className="font-semibold mb-3">Job Summary</h3>
-          <div className="grid sm:grid-cols-2 gap-4 text-sm">
-            <div><div className="text-gray-500">Title</div><div className="font-medium">{job.job_title || '—'}</div></div>
-            <div><div className="text-gray-500">Location</div><div className="font-medium">{job.location || '—'}</div></div>
-            <div><div className="text-gray-500">Industry</div><div className="font-medium">{Array.isArray(job.industry)? job.industry.join(', ') : (job.industry || '—')}</div></div>
-            <div><div className="text-gray-500">Skills</div><div className="font-medium">{job.skills?.length ? job.skills.join(', ') : '—'}</div></div>
-          </div>
-          <div className="mt-4">
-            <div className="text-gray-500 mb-1">Public Description</div>
-            <p className="text-sm whitespace-pre-wrap leading-relaxed">{job.public_description || '—'}</p>
-          </div>
-        </div>
-      )}
+          <h3 className="font-semibold mb-3">Job Summary (review & edit)</h3>
 
-      {scored.length > 0 && (
-        <Table rows={scored} sortBy={sortBy} setSortBy={setSortBy} filter={filter} setFilter={setFilter} />
-      )}
+          <div className="grid sm:grid-cols-2 gap-4 text-sm mb-4">
+            <div>
+              <div className="text-gray-500">Title</div>
+              <input className="input mt-1" value={title} onChange={e=>setTitle(e.target.value)} placeholder="e.g., Fire & Security Engineer" />
+            </div>
+            <div>
+              <div className="text-gray-500">Location</div>
+              <input className="input mt-1" value={location} onChange={e=>setLocation(e.target.value)} placeholder="e.g., London, UK" />
+            </div>
+            <div className="sm:col-span-2">
+              <div className="text-gray-500">Skills (comma-separated)</div>
+              <input className="input mt-1" value={skillsText} onChange={e=>setSkillsText(e.target.value)} placeholder="CCTV, Access Control, IP Networking" />
+            </div>
+            <div className="sm:col-span-2">
+              <div className="text-gray-500">Qualifications (comma-separated)</div>
+              <input className="input mt-1" value={qualsText} onChange={e=>setQualsText(e.target.value)} placeholder="CSCS, ECS, IPAF, Degree" />
+            </div>
+          </div>
+
+          {job && (
+            <div className="grid gap-4">
+              <div>
+                <div className="text-gray-500 mb-1">Public Description</div>
+                <p className="text-sm whitespace-pre-wrap leading-relaxed">{job.public_description || '—'}</p>
+              </div>
+              {job.internal_description && (
+                <div>
+                  <div className="text-gray-500 mb-1">Internal Description</div>
+                  <p className="text-sm whitespace-pre-wrap leading-relaxed">{job.internal_description}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-6">
+          {scored.length > 0 ? (
+            <Table rows={scored} sortBy={sortBy} setSortBy={setSortBy} filter={filter} setFilter={setFilter} />
+          ) : (
+            <div className="card p-6 text-sm text-gray-500">
+              Results will appear here after you click <span className="font-medium">Search Candidates</span>.
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
@@ -369,54 +389,3 @@ function CvTab() {
   const [candidateId, setCandidateId] = useState('')
   const [result, setResult] = useState<any>(null)
   const [loading, setLoading] = useState(false)
-
-  const generate = async () => {
-    if (!candidateId) return
-    setLoading(true)
-    try {
-      const r = await fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}`)
-      const data = await r.json()
-      setResult(data)
-    } catch (e) {
-      console.error(e)
-      alert('Failed to retrieve candidate. Are you logged in and do you have a valid Candidate ID?')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <div className="card p-6">
-      <p className="mb-4">Enter a Candidate ID to fetch details from Vincere. We will format this into your CV layout later.</p>
-      <div className="grid sm:grid-cols-2 gap-4 mb-4">
-        <div>
-          <label className="text-sm text-gray-600">Candidate ID</label>
-          <input className="input mt-1" placeholder="Enter Candidate ID" value={candidateId} onChange={e=>setCandidateId(e.target.value)} />
-        </div>
-      </div>
-      <button className="btn btn-brand w-full" onClick={generate} disabled={loading}>
-        {loading ? 'Fetching…' : 'Generate CV Preview'}
-      </button>
-
-      {result && (
-        <div className="mt-6">
-          <h3 className="font-semibold mb-2">Raw Candidate Data</h3>
-          <pre className="rounded-2xl border p-4 text-sm overflow-auto">{JSON.stringify(result, null, 2)}</pre>
-        </div>
-      )}
-    </div>
-  )
-}
-
-export default function Dashboard() {
-  const [tab, setTab] = useState<TabKey>('match')
-  return (
-    <div>
-      <KPIs />
-      <Tabs tab={tab} setTab={setTab} />
-      {tab==='match' && <MatchTab />}
-      {tab==='source' && <SourceTab />}
-      {tab==='cv' && <CvTab />}
-    </div>
-  )
-}
