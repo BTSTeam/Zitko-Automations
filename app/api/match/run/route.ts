@@ -22,15 +22,38 @@ type RunReq = {
   debug?: boolean
 }
 
-// ---------- helpers ----------
-function esc(s?: string) { return (s ?? '').replace(/"/g, '\\"').trim() }
+// -------- helpers --------
+const TITLE_FIELDS = ['current_job_title', 'job_titles'] as const
 
-// `(f1:"v"# OR f2:"v"#)` — exact phrase on both title fields
-function titlePhrase(value?: string) {
-  const v = esc(value)
+function esc(s?: string) {
+  return (s ?? '').replace(/"/g, '\\"').trim()
+}
+
+// split title into useful tokens
+function splitTitleTokens(v?: string) {
+  if (!v) return []
+  const STOP = new Set(['&', 'and', 'the', 'of', '/', '-', '|'])
+  return v
+    .split(/[,\s/|\-&]+/g)
+    .map(t => t.trim())
+    .filter(t => t && !STOP.has(t.toLowerCase()) && t.length >= 2)
+}
+
+// Build token-AND across title fields:
+// (f:tok1# OR f2:tok1#) AND (f:tok2# OR f2:tok2#) ...
+function titleTokensANDQuery(title?: string) {
+  const toks = splitTitleTokens(title)
+  if (!toks.length) return ''
+  return toks
+    .map(tok => `(${TITLE_FIELDS.map(f => `${f}:${esc(tok)}#`).join(' OR ')})`)
+    .join(' AND ')
+}
+
+// exact phrase fallback (optional, we OR it with tokens)
+function titlePhraseQuery(title?: string) {
+  const v = esc(title)
   if (!v) return ''
-  const F = ['current_job_title', 'job_title']
-  return `(${F.map(f => `${f}:"${v}"#`).join(' OR ')})`
+  return `(${TITLE_FIELDS.map(f => `${f}:"${v}"#`).join(' OR ')})`
 }
 
 function onlyUnique<T>(arr: T[], key: (x: T) => string) {
@@ -51,7 +74,7 @@ function findLinkedIn(d: any): string | null {
   return null
 }
 
-// ---------- route ----------
+// -------- route --------
 export async function POST(req: NextRequest) {
   requiredEnv()
   const body = (await req.json().catch(() => ({}))) as RunReq
@@ -67,14 +90,11 @@ export async function POST(req: NextRequest) {
   const positionUrl = (id: string) => `${base}/api/v2/position/${encodeURIComponent(id)}`
   const searchBase = `${base}/api/v2/candidate/search`
 
-  // 1) Resolve job (by id) if not provided
+  // 1) Resolve job by id (if needed)
   let job = body.job
   if (!job && body.jobId) {
     const call = async () =>
-      fetch(positionUrl(body.jobId!), {
-        headers: { 'id-token': idToken!, 'x-api-key': config.VINCERE_API_KEY },
-        cache: 'no-store',
-      })
+      fetch(positionUrl(body.jobId!), { headers: { 'id-token': idToken!, 'x-api-key': config.VINCERE_API_KEY }, cache: 'no-store' })
     let r = await call()
     if (r.status === 401 || r.status === 403) {
       if (await refreshIdToken(session.user?.email || session.sessionId || '')) {
@@ -89,25 +109,22 @@ export async function POST(req: NextRequest) {
     job = {
       title: pos.job_title || pos.title || pos.name || '',
       location: pos['location-text'] || pos.location_text || pos.location || pos.city || '',
-      skills: Array.isArray(pos.skills)
-        ? pos.skills.map((s: any) => s?.name ?? s).filter(Boolean)
-        : typeof pos.keywords === 'string'
-          ? pos.keywords.split(',').map((t: string) => t.trim()).filter(Boolean)
-          : [],
+      skills: Array.isArray(pos.skills) ? pos.skills.map((s: any) => s?.name ?? s).filter(Boolean)
+        : typeof pos.keywords === 'string' ? pos.keywords.split(',').map((t: string) => t.trim()).filter(Boolean) : [],
       description: String(pos.public_description || pos.publicDescription || pos.description || ''),
     }
   }
   if (!job) return NextResponse.json({ error: 'Missing job' }, { status: 400 })
 
   const title = String(job.title || '').trim()
-  const qualifications = Array.isArray(job.qualifications) ? job.qualifications.map(String) : []
-  const description = String(job.description || '')
+  if (!title) return NextResponse.json({ error: 'Missing job title' }, { status: 400 })
 
-  // 2) Build a single title-only query (exact phrase)
-  const qTitle = titlePhrase(title)
-  if (!qTitle) return NextResponse.json({ error: 'Missing job title' }, { status: 400 })
+  // 2) Build title-only query: phrase OR token-AND (covers “Fire & Security Engineer”, etc.)
+  const qTokensAND = titleTokensANDQuery(title)
+  const qPhrase = titlePhraseQuery(title)
+  const qTitle = qTokensAND && qPhrase ? `(${qPhrase} OR ${qTokensAND})` : (qTokensAND || qPhrase)
 
-  // 3) matrix vars (return fields) — minimal
+  // 3) matrix vars (returned fields only)
   const fl = [
     'id',
     'candidate_id',
@@ -118,7 +135,7 @@ export async function POST(req: NextRequest) {
     'linkedin_url',
   ].join(',')
 
-  // helper fetch with retry
+  // helper: GET with retry
   const headersBase = () => ({ 'id-token': idToken!, 'x-api-key': config.VINCERE_API_KEY })
   const fetchWithRetry = async (url: string) => {
     let resp = await fetch(url, { headers: headersBase(), cache: 'no-store' })
@@ -131,10 +148,11 @@ export async function POST(req: NextRequest) {
     return resp
   }
 
-  // 4) Run the single search
+  // 4) Call Vincere once
   const matrix = `;fl=${encodeURIComponent(fl)};sort=${encodeURIComponent('created_date desc')}`
   const limit = Math.min(Math.max(pageSize, 1), 50)
   const url = `${searchBase}/${matrix}?q=${encodeURIComponent(qTitle)}&limit=${limit}`
+  console.log('[VINCERE] GET', url)
 
   const resp = await fetchWithRetry(url)
   let docs: any[] = []
@@ -145,25 +163,24 @@ export async function POST(req: NextRequest) {
   } else {
     errorText = await resp.text().catch(() => '')
   }
+  console.log('[match.run:TOKEN_AND_TITLE]', 'q=', qTitle, ' status=', resp.status, ' count=', docs.length, errorText ? ` error=${errorText.slice(0,200)}` : '')
 
-  console.log('[match.run:TITLE_ONLY]', 'q=', qTitle, ' status=', resp.status, ' count=', docs.length, errorText ? ` error=${errorText.slice(0, 200)}` : '')
-
-  // 5) Map (same output shape your dashboard expects)
+  // 5) Map + (optional) keep AI scoring so UI renders
   const dedup = onlyUnique(docs, (d: any) => String(d.id ?? d.candidate_id ?? ''))
   const candidates = dedup.map((d: any) => ({
     id: String(d.id ?? d.candidate_id ?? ''),
     name: [d.first_name, d.last_name].filter(Boolean).join(' ') || (d.full_name ?? ''),
     location: d.current_location_name || d.current_location || d.location || '',
-    skills: [], // not fetched in this minimal search
+    skills: [],
     linkedin: findLinkedIn(d),
   })).filter(c => c.id)
 
-  // 6) (Optional) keep AI scoring so the UI still works
+  // (You can comment this out if you want to bypass AI scoring during testing)
   const aiResp = await fetch(new URL('/api/ai/analyze', req.url), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      job: { title, location: '', skills: [], qualifications, description },
+      job: { title, location: '', skills: [], qualifications: [], description: '' },
       candidates: candidates.map(c => ({ id: c.id, name: c.name, location: c.location, skills: [] })),
     }),
   })
@@ -187,7 +204,7 @@ export async function POST(req: NextRequest) {
     reason: scoreById.get(c.id)?.reason ?? '',
   })).sort((a, b) => b.score - a.score)
 
-  // 7) Pagination
+  // 6) Pagination + debug
   const total = scored.length
   const pageSizeClamped = Math.max(1, Math.min(pageSize, 50))
   const start = (page - 1) * pageSizeClamped
@@ -198,6 +215,6 @@ export async function POST(req: NextRequest) {
     total,
     page,
     pageSize: pageSizeClamped,
-    ...(debug ? { debug: [{ label: 'T1', q: qTitle, status: resp.status, count: docs.length, sampleId: docs[0]?.id ?? docs[0]?.candidate_id ?? null }] } : {}),
+    ...(debug ? { debug: [{ label: 'TITLE_TOKEN_AND', vincere_url: url, q: qTitle, httpStatus: resp.status, preAiCount: docs.length, sample: docs[0] || null }] } : {}),
   })
 }
