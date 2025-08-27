@@ -25,12 +25,12 @@ type RunReq = {
 // ---------- helpers ----------
 function esc(s?: string) { return (s ?? '').replace(/"/g, '\\"').trim() }
 
-// exact phrase on a field -> field:"value"#
+// exact phrase -> field:"value"#
 function term(field: string, value?: string) {
   const v = esc(value); return v ? `${field}:"${v}"#` : ''
 }
 
-// multiple fields exact phrase -> (f1:"v"# OR f2:"v"#)
+// phrase across fields -> (f1:"v"# OR f2:"v"#)
 function termFields(fields: string[], value?: string) {
   const v = esc(value); if (!v) return ''
   return `(${fields.map(f => `${f}:"${v}"#`).join(' OR ')})`
@@ -43,31 +43,34 @@ function splitTokens(v?: string) {
   return v.split(/[,\s/|\-]+/g).map(t => t.trim()).filter(t => t && !stop.has(t.toLowerCase()) && t.length >= 2)
 }
 
-// token AND across fields -> (f1:tok1# OR f2:tok1#) AND (f1:tok2# OR f2:tok2#) ...
+// token AND across fields -> (f1:tok1# OR f2:tok1#) AND ...
 function tokensANDFields(fields: string[], value?: string) {
   const toks = splitTokens(value); if (!toks.length) return ''
   return toks.map(tok => `(${fields.map(f => `${f}:${esc(tok)}#`).join(' OR ')})`).join(' AND ')
 }
 
-// token OR over one field -> (f:tok1# OR f:tok2# ...)
-function tokensOR(field: string, value?: string) {
+// token OR across fields -> (f1:tok1# OR f2:tok1# OR f1:tok2# OR ...)
+function tokensORFields(fields: string[], value?: string) {
   const toks = splitTokens(value); if (!toks.length) return ''
-  return `(${toks.map(tok => `${field}:${esc(tok)}#`).join(' OR ')})`
+  const bits: string[] = []
+  for (const tok of toks) for (const f of fields) bits.push(`${f}:${esc(tok)}#`)
+  return `(${bits.join(' OR ')})`
 }
 
 // phrase OR token-AND across fields
 function phraseOrTokens(fields: string[], value?: string) {
   const p = termFields(fields, value)
   const t = tokensANDFields(fields, value)
-  if (p && t) return `(${p} OR ${t})`
-  return p || t
+  return p && t ? `(${p} OR ${t})` : (p || t)
 }
 
-// any of values on one field -> (f:"a"# OR f:"b"# ...)
-function anyValues(field: string, items: string[]) {
+// any of values across fields -> (f1:"a"# OR f2:"a"# OR f1:"b"# ...)
+function anyValuesFields(fields: string[], items: string[]) {
   const list = (items || []).map(esc).filter(Boolean)
   if (!list.length) return ''
-  return `(${list.map(v => `${field}:"${v}"#`).join(' OR ')})`
+  const bits: string[] = []
+  for (const f of fields) for (const v of list) bits.push(`${f}:"${v}"#`)
+  return `(${bits.join(' OR ')})`
 }
 
 function onlyUnique<T>(arr: T[], key: (x: T) => string) {
@@ -81,6 +84,11 @@ function findLinkedIn(d: any): string | null {
   for (const v of fields) if (typeof v === 'string' && v.includes('linkedin.com')) return v
   return null
 }
+
+// Title helpers
+const TITLE_FIELDS = ['current_job_title', 'job_title']
+const titleExactCurrent = (t?: string) => term('current_job_title', t)
+const titleBroad = (t?: string) => phraseOrTokens(TITLE_FIELDS, t)
 
 // ---------- route ----------
 export async function POST(req: NextRequest) {
@@ -127,38 +135,35 @@ export async function POST(req: NextRequest) {
   const title = String(job.title || '').trim()
   const locationRaw = String(job.location || '').trim()
   const skills = Array.isArray(job.skills) ? job.skills.map(String) : []
+  const qualifications = Array.isArray(job.qualifications) ? job.qualifications.map(String) : []
+  const description = String(job.description || '')
 
   if (!title) return NextResponse.json({ error: 'Missing job title' }, { status: 400 })
 
-  // We’ll use current_city for matching; derive a compact city string from the summary.
-  // Example: "South West London, UK" -> "South West London" (then tokenised as needed)
-  const cityExact = locationRaw.split(',')[0].trim()
+  // Use the first part before comma as the city phrase (e.g., "South West London, UK" -> "South West London")
+  const cityPhrase = locationRaw.split(',')[0]?.trim() || locationRaw
 
-  // --- Build clauses per your spec ---
-  // Titles:
-  const titleExact = term('current_job_title', title) // exact current_job_title (S1 needs this)
-  const titleBroad = phraseOrTokens(['current_job_title', 'job_title'], title) // broader for S2/S3
+  // Location — broadened:
+  // tokens OR across common location fields, so "South West London" matches if *any* token appears.
+  const LOC_FIELDS_BROAD = ['current_location_name', 'current_city', 'current_state', 'current_address']
+  const locBroad = tokensORFields(LOC_FIELDS_BROAD, cityPhrase) || term('current_city', cityPhrase)
 
-  // City:
-  const cityPhraseExact = term('current_city', cityExact) // exact city (S1/S2)
-  const citySlightlyBroad = tokensOR('current_city', cityExact) // slightly broader (S3)
+  // Skills — use skill OR keyword
+  const skillsTop3 = skills.slice(0, 3)
+  const skillOrKeywordTop3 = anyValuesFields(['skill','keyword'], skillsTop3)
+  const skillOrKeywordAny  = anyValuesFields(['skill','keyword'], skills)
 
-  // Skills:
-  const top3 = skills.slice(0, 3)
-  const anyOfTop3 = anyValues('skill', top3) // any 1 of the 3 (S1)
-  const anySkill = anyValues('skill', skills) // any 1 of all highlighted (S2)
-
-  // Strategies
+  // Build the three searches
   const STRATS: { label: string, q: string }[] = [
-    // 1) exact current_job_title + exact current_city + any 1 of top 3 skills
-    { label: 'S1', q: [titleExact, cityPhraseExact, anyOfTop3].filter(Boolean).join(' AND ') },
-    // 2) broader title + exact current_city + any 1 highlighted skill
-    { label: 'S2', q: [titleBroad, cityPhraseExact, anySkill].filter(Boolean).join(' AND ') },
-    // 3) broader title + slightly broader current_city
-    { label: 'S3', q: [titleBroad, citySlightlyBroad].filter(Boolean).join(' AND ') },
+    // 1) exact current_job_title + BROAD location + any 1 of top 3 skills
+    { label: 'S1', q: [titleExactCurrent(title), locBroad, skillOrKeywordTop3].filter(Boolean).join(' AND ') },
+    // 2) broader title + BROAD location + any 1 highlighted skill
+    { label: 'S2', q: [titleBroad(title),          locBroad, skillOrKeywordAny ].filter(Boolean).join(' AND ') },
+    // 3) broader title + BROAD location (no skills)
+    { label: 'S3', q: [titleBroad(title),          locBroad                    ].filter(Boolean).join(' AND ') },
   ].map(s => ({ ...s, q: s.q || '*:*' }))
 
-  // matrix vars (your requested return fields; note valid field names)
+  // matrix_vars — includes linkedin as requested
   const fl = 'id,first_name,last_name,current_city,current_job_title,skill,linkedin'
 
   // fetch with retry
@@ -202,7 +207,11 @@ export async function POST(req: NextRequest) {
     name: [d.first_name, d.last_name].filter(Boolean).join(' ') || (d.full_name ?? ''),
     location: d.current_city || '',
     currentJobTitle: d.current_job_title || '',
-    skills: Array.isArray(d.skill) ? d.skill : (d.skill ? [d.skill] : []),
+    // skill can be string or array; include keyword too if present
+    skills: Array.isArray(d.skill) ? d.skill
+          : d.skill ? [d.skill]
+          : Array.isArray(d.keyword) ? d.keyword
+          : d.keyword ? [d.keyword] : [],
     linkedin: d.linkedin || findLinkedIn(d),
   })).filter(c => c.id)
 
@@ -211,7 +220,7 @@ export async function POST(req: NextRequest) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      job: { title, location: locationRaw, skills, qualifications: body.job?.qualifications || [], description: body.job?.description || '' },
+      job: { title, location: locationRaw, skills, qualifications, description },
       candidates: candidates.map(c => ({ id: c.id, name: c.name, location: c.location, skills: c.skills })),
     }),
   })
@@ -219,6 +228,7 @@ export async function POST(req: NextRequest) {
   const aiList: any[] = Array.isArray(aiJson?.results) ? aiJson.results
                     : Array.isArray(aiJson) ? aiJson
                     : (aiJson?.data || [])
+
   const scoreById = new Map<string, { score: number; reason: string }>()
   for (const r of aiList) {
     const id = String(r.candidate_id ?? r.id ?? r.candidateId ?? '')
