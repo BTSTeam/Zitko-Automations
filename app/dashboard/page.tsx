@@ -1,3 +1,12 @@
+// Updated dashboard/page.tsx with Page Size dropdown removed and KPIs section hidden
+
+// Note: This file mirrors the original `dashboard/page.tsx` from the Zitko Automations repo,
+// with two key modifications:
+//  1. The "Page size" dropdown has been removed from the Candidate Matching section and
+//     the surrounding grid has been adjusted to two columns to keep the layout neat.
+//  2. The `<KPIs />` component is no longer rendered in the Dashboard component to hide the
+//     "Candidates Matched", "Candidates Sourced", and "CVs Formatted" counters.
+
 'use client'
 import { useState, useEffect, type Dispatch, type SetStateAction, type ReactNode } from 'react'
 
@@ -272,16 +281,11 @@ function MatchTab() {
             <input className="input mt-1" placeholder="Enter Job ID" value={jobId} onChange={e=>setJobId(e.target.value)} />
           </div>
         </div>
-        <div className="grid sm:grid-cols-3 gap-3 items-end">
+        {/* Adjusted from 3 to 2 columns and removed Page Size dropdown */}
+        <div className="grid sm:grid-cols-2 gap-3 items-end">
           <button className="btn btn-grey" onClick={retrieveJob} disabled={loadingJob}>
             {loadingJob ? 'Retrieving…' : 'Retrieve Job Information'}
           </button>
-          <div>
-            <label className="text-sm text-gray-600">Page size</label>
-            <select className="input mt-1" value={pageSize} onChange={e=>setPageSize(Number(e.target.value))}>
-              {[10,20,30,50].map(n=> <option key={n} value={n}>{n}</option>)}
-            </select>
-          </div>
           <button className="btn btn-brand" onClick={searchCandidates} disabled={!job || loadingSearch}>
             {loadingSearch ? 'Searching…' : 'Search Candidates'}
           </button>
@@ -347,7 +351,9 @@ function MatchTab() {
               <div className="flex items-center justify-between text-sm">
                 <div className="text-gray-600">
                   {total
-                    ? <>Showing <span className="font-medium">{showingFrom}</span>–<span className="font-medium">{showingTo}</span> of <span className="font-medium">{total}</span></>
+                    ? <>
+                        Showing <span className="font-medium">{showingFrom}</span>–<span className="font-medium">{showingTo}</span> of <span className="font-medium">{total}</span>
+                      </>
                     : 'No results'}
                 </div>
                 <div className="flex gap-2">
@@ -475,7 +481,8 @@ export default function Dashboard() {
   const [tab, setTab] = useState<TabKey>('match')
   return (
     <div>
-      <KPIs />
+      {/* KPIs section removed from display */}
+      {/* <KPIs /> */}
       <Tabs tab={tab} setTab={setTab} />
       {tab==='match' && <MatchTab />}
       {tab==='source' && <SourceTab />}
