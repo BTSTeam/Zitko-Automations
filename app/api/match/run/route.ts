@@ -3,7 +3,6 @@ import { getSession } from '@/lib/session'
 import { config, requiredEnv } from '@/lib/config'
 
 function escapeForSolrPhrase(value: string) {
-  // minimal safety: escape " and backslash, and guard stray #
   return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/#/g, '\\#')
 }
 
@@ -21,8 +20,8 @@ export async function POST(req: NextRequest) {
     }
 
     const session = await getSession()
-    const idToken =
-      session?.tokens?.id_token || session?.id_token || session?.idToken
+    // FIX: use idToken only (matches your Tokens type)
+    const idToken = session?.tokens?.idToken ?? session?.idToken
     if (!idToken) {
       return NextResponse.json({ error: 'Not authorized' }, { status: 401 })
     }
@@ -31,15 +30,12 @@ export async function POST(req: NextRequest) {
       'id,first_name,last_name,current_location_name,current_job_title,linkedin'
     const sort = 'created_date desc'
 
-    // Build q with Vincere’s SOLR-style syntax and trailing # end marker
     const safeTitle = escapeForSolrPhrase(titleRaw)
     const q = `current_job_title:"${safeTitle}"#`
 
-    // Basic paging (many SOLR backends accept `rows` and `start`)
     const start = (page - 1) * limit
     const rows = limit
 
-    // Matrix vars go in the path segment
     const matrix = `fl=${encodeURIComponent(fl)};sort=${encodeURIComponent(sort)}`
     const url =
       `${config.VINCERE_TENANT_API_BASE}` +
@@ -65,18 +61,16 @@ export async function POST(req: NextRequest) {
     }
 
     const data = await r.json().catch(() => ({} as any))
-    // Normalise possible shapes
     const items: any[] = data?.results ?? data?.items ?? data?.docs ?? []
     const total =
       Number(data?.total ?? data?.count ?? (Array.isArray(items) ? items.length : 0)) ||
       0
 
-    // Map to your table’s shape
     const results = (items || [])
       .map((c: any) => ({
         candidateId: String(c?.id ?? c?.candidate_id ?? ''),
         candidateName: [c?.first_name, c?.last_name].filter(Boolean).join(' ').trim(),
-        score: 0, // we’re not scoring; UI sorts by score but all 0 keeps API order
+        score: 0,
         reason: 'Title match',
         linkedin: c?.linkedin ?? c?.linkedin_url ?? undefined,
       }))
