@@ -1,4 +1,7 @@
-// app/api/match/run/route.ts
+// Next.js API route for candidate matching and AI scoring.
+// Stripped-back: 2 title-only searches (ASC + DESC), dedupe, optional
+// location gating, then send to AI for scoring.
+
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 export const runtime = 'nodejs'
@@ -22,32 +25,63 @@ type RunReq = {
   debug?: boolean
 }
 
-// ---------- helpers ----------
-function esc(s?: string) { return (s ?? '').replace(/"/g, '\\"').trim() }
+/* ---------------------------- small helpers ---------------------------- */
 
-function splitTokens(v?: string) {
-  if (!v) return []
-  const stop = new Set(['&','and','of','the','/','-','|',','])
-  return v.split(/[,\s/|\-]+/g).map(t => t.trim()).filter(t => t && !stop.has(t.toLowerCase()) && t.length >= 2)
+function esc(s?: string) {
+  return (s ?? '').replace(/"/g, '\\"').trim()
 }
 
-// (f1:"v"# OR f2:"v"#)
-function termFields(fields: string[], value?: string) {
-  const v = esc(value); if (!v) return ''
+function splitTokens(v?: string) {
+  if (!v) return [] as string[]
+  const stop = new Set(['&', 'and', 'of', 'the', '/', '-', '|'])
+  return v
+    .split(/[\s,/|\-]+/g)
+    .map(t => t.trim())
+    .filter(t => t && !stop.has(t.toLowerCase()) && t.length >= 2)
+}
+
+// (f1:"Phrase"# OR f2:"Phrase"#)
+function phraseFields(fields: string[], value?: string) {
+  const v = esc(value)
+  if (!v) return ''
   return `(${fields.map(f => `${f}:"${v}"#`).join(' OR ')})`
 }
 
-// ( (f1:tok1# OR f2:tok1#) AND (f1:tok2# OR f2:tok2#) ...)
+// ( (f1:tok# OR f2:tok#) AND (f1:tok2# OR f2:tok2#) )
 function tokensANDFields(fields: string[], value?: string) {
-  const toks = splitTokens(value); if (!toks.length) return ''
+  const toks = splitTokens(value)
+  if (!toks.length) return ''
   return toks.map(tok => `(${fields.map(f => `${f}:${esc(tok)}#`).join(' OR ')})`).join(' AND ')
 }
 
-// phrase OR token-AND
-function phraseOrTokens(fields: string[], value?: string) {
-  const p = termFields(fields, value)
-  const t = tokensANDFields(fields, value)
-  return p && t ? `(${p} OR ${t})` : (p || t)
+// Title clause = OR of phrase(alternatives) and token-AND
+function buildTitleClause(title?: string) {
+  const fields = ['current_job_title', 'job_title'] // both are valid candidate fields
+  const base = (title || '').trim()
+  if (!base) return ''
+
+  const alts = new Set<string>([base])
+  // remove common seniority noise (keeps both originals and stripped)
+  const stripped = base.replace(/\b(Senior|Lead|Principal|Junior|Mid|Midweight|Head|Director)\b/gi, '').replace(/\s+/g, ' ').trim()
+  if (stripped && stripped !== base) alts.add(stripped)
+  // common synonyms when relevant
+  if (/security/i.test(base) && /engineer/i.test(base)) {
+    ;[
+      'Security Systems Engineer',
+      'Fire & Security Engineer',
+      'Security Service Engineer',
+      'Security Installation Engineer',
+      'CCTV Engineer',
+      'Access Control Engineer',
+    ].forEach(t => alts.add(t))
+  }
+
+  const phraseParts = Array.from(alts).map(t => phraseFields(fields, t)).filter(Boolean)
+  const tokenPart = tokensANDFields(fields, base)
+  const parts = [...phraseParts]
+  if (tokenPart) parts.push(tokenPart)
+  if (!parts.length) return ''
+  return parts.length === 1 ? parts[0] : `(${parts.join(' OR ')})`
 }
 
 function onlyUnique<T>(arr: T[], key: (x: T) => string) {
@@ -57,43 +91,55 @@ function onlyUnique<T>(arr: T[], key: (x: T) => string) {
 }
 
 function findLinkedIn(d: any): string | null {
-  const vals = [d.linkedin, d.linkedIn, d.linkedin_url, d.linkedinUrl, d.urls?.linkedin, d.social?.linkedin]
-  for (const v of vals) if (typeof v === 'string' && v.includes('linkedin.com')) return v
+  const cands = [
+    d.linkedin, d.linkedin_url, d.linkedIn, d.linkedinUrl,
+    d.social?.linkedin, d.social_links?.linkedin,
+    d.urls?.linkedin, d.contacts?.linkedin
+  ].filter(Boolean)
+  for (const v of cands) if (typeof v === 'string' && v.includes('linkedin.com')) return v
+  const arrays = [d.websites, d.links, d.social, d.social_links].filter(Array.isArray)
+  for (const arr of arrays as any[]) {
+    const hit = arr.find((x: any) => typeof x === 'string' && x.includes('linkedin.com'))
+            || arr.find((x: any) => typeof x?.url === 'string' && x.url.includes('linkedin.com'))
+    if (hit) return typeof hit === 'string' ? hit : hit.url
+  }
   return null
 }
 
-// simple city gate: keep candidate if any job city token appears in candidate city/location_name
-function cityMatches(candidate: any, jobLoc?: string): boolean {
-  const jl = (jobLoc || '').toLowerCase().trim()
-  if (!jl) return true
-  const cityTokens = splitTokens(jl)
-  if (!cityTokens.length) return true
-  const candCity = String(candidate.current_city || '').toLowerCase()
-  const candLocName = String(candidate.current_location_name || '').toLowerCase()
-  return cityTokens.some(tok => candCity.includes(tok) || candLocName.includes(tok))
+// basic, tolerant city gate (keeps if any token from job location appears)
+function makeLocationGate(jobLocation?: string) {
+  const toks = splitTokens(jobLocation).map(t => t.toLowerCase())
+  if (!toks.length) return (_: any) => true
+  return (d: any) => {
+    const loc = String(d.current_location_name || d.current_city || d.current_address || d.location || '').toLowerCase()
+    return toks.some(t => loc.includes(t))
+  }
 }
 
-// ---------- route ----------
+/* ------------------------------- handler ------------------------------- */
+
 export async function POST(req: NextRequest) {
   requiredEnv()
+
   const body = (await req.json().catch(() => ({}))) as RunReq
   const page = Math.max(1, Number(body.page ?? 1))
-  const pageSize = Math.min(Math.max(Number(body.limit ?? 20), 1), 50) // UI pagination only
+  const pageSize = Math.min(Math.max(Number(body.limit ?? 20), 1), 50)
   const debug = !!body.debug
 
+  // auth
   const session = await getSession()
   let idToken = session.tokens?.idToken
   if (!idToken) return NextResponse.json({ error: 'Not authenticated with Vincere' }, { status: 401 })
 
+  // endpoints
   const base = config.VINCERE_TENANT_API_BASE.replace(/\/$/, '')
   const positionUrl = (id: string) => `${base}/api/v2/position/${encodeURIComponent(id)}`
   const searchBase = `${base}/api/v2/candidate/search`
 
-  // Resolve job if only jobId provided
+  // resolve job (by id) if needed
   let job = body.job
   if (!job && body.jobId) {
-    const call = async () =>
-      fetch(positionUrl(body.jobId!), { headers: { 'id-token': idToken!, 'x-api-key': config.VINCERE_API_KEY }, cache: 'no-store' })
+    const call = async () => fetch(positionUrl(body.jobId!), { headers: { 'id-token': idToken!, 'x-api-key': config.VINCERE_API_KEY }, cache: 'no-store' })
     let r = await call()
     if (r.status === 401 || r.status === 403) {
       if (await refreshIdToken(session.user?.email || session.sessionId || '')) {
@@ -114,35 +160,33 @@ export async function POST(req: NextRequest) {
           ? pos.keywords.split(',').map((t: string) => t.trim()).filter(Boolean)
           : [],
       description: String(pos.public_description || pos.publicDescription || pos.description || ''),
-      qualifications: [],
     }
   }
-  if (!job) return NextResponse.json({ error: 'Missing job' }, { status: 400 })
+
+  if (!job?.title) return NextResponse.json({ error: 'Missing job title' }, { status: 400 })
 
   const title = String(job.title || '').trim()
   const location = String(job.location || '').trim()
-  const skills = Array.isArray(job.skills) ? job.skills.map(String) : []
-  const qualifications = Array.isArray(job.qualifications) ? job.qualifications.map(String) : []
-  const description = String(job.description || '')
-  if (!title) return NextResponse.json({ error: 'Missing job title' }, { status: 400 })
+  const locationGate = makeLocationGate(location)
 
-  // Title-only (broader) clause across current_job_title + job_title
-  const TITLE_FIELDS = ['current_job_title', 'job_title']
-  const qTitle = phraseOrTokens(TITLE_FIELDS, title) // broader by design
+  const titleClause = buildTitleClause(title)
+  const perQueryLimit = 100 // Vincere max per request
 
-  // Field list (matrix vars) – include location fields
+  // fields to return (matrix vars `fl=...`)
   const fl = [
     'id',
     'candidate_id',
     'first_name',
     'last_name',
     'current_job_title',
-    'current_city',
     'current_location_name',
-    'linkedin',
+    'current_city',
+    'skill',
+    'keyword',
+    'linkedin',       // user confirmed this field name
+    'linkedin_url',   // include as fallback if present in tenant
   ].join(',')
 
-  // GET with retry helper
   const headersBase = () => ({ 'id-token': idToken!, 'x-api-key': config.VINCERE_API_KEY })
   const fetchWithRetry = async (url: string) => {
     let resp = await fetch(url, { headers: headersBase(), cache: 'no-store' })
@@ -155,54 +199,65 @@ export async function POST(req: NextRequest) {
     return resp
   }
 
-  // Two searches: created_date asc and desc, limit 100 each
-  const searches = [
-    { label: 'S1_ASC', sort: 'created_date asc', limit: 100 },
-    { label: 'S2_DESC', sort: 'created_date desc', limit: 100 },
+  const strategies: { label: string; sort: 'created_date asc' | 'created_date desc'; q: string }[] = [
+    { label: 'S1_ASC',  sort: 'created_date asc',  q: titleClause || '*:*' },
+    { label: 'S2_DESC', sort: 'created_date desc', q: titleClause || '*:*' },
   ]
 
-  const all: any[] = []
+  const allDocs: any[] = []
   const dbg: any[] = []
-  for (const s of searches) {
+
+  for (const s of strategies) {
     const matrix = `;fl=${encodeURIComponent(fl)};sort=${encodeURIComponent(s.sort)}`
-    const url = `${searchBase}/${matrix}?q=${encodeURIComponent(qTitle)}&limit=${s.limit}`
+    const url = `${searchBase}/${matrix}?q=${encodeURIComponent(s.q)}&limit=${perQueryLimit}`
+
     const resp = await fetchWithRetry(url)
     let docs: any[] = []
-    let errorText = ''
+    let err = ''
     if (resp.ok) {
       const json = await resp.json().catch(() => ({}))
       docs = json?.response?.docs || json?.data || []
-      all.push(...docs)
+      // optional gating by location tokens
+      docs = docs.filter(locationGate)
+      allDocs.push(...docs)
     } else {
-      errorText = await resp.text().catch(() => '')
+      err = await resp.text().catch(() => '')
     }
-    console.log('[match.run]', s.label, 'q=', qTitle, ' sort=', s.sort, ' status=', resp.status, ' count=', docs.length, errorText ? ` error=${errorText.slice(0,200)}` : '')
-    if (debug) dbg.push({ label: s.label, sort: s.sort, q: qTitle, status: resp.status, count: docs.length, sample: docs[0] || null, error: errorText })
+
+    console.log('[match.run]', s.label, 'q=', s.q, ' sort=', s.sort, ' status=', resp.status, ' count=', docs.length, err ? ` error=${err.slice(0,200)}` : '')
+    if (debug) dbg.push({ label: s.label, q: s.q, sort: s.sort, status: resp.status, count: docs.length, sampleId: docs[0]?.id ?? docs[0]?.candidate_id ?? null, error: err })
   }
 
-  // location gate (drop far-away candidates if job has a city)
-  const gated = all.filter(d => cityMatches(d, location))
+  // dedupe (id or candidate_id)
+  const dedup = onlyUnique(allDocs, (d: any) => String(d.id ?? d.candidate_id ?? ''))
 
-  // de-dup by id/candidate_id
-  const dedup = onlyUnique(gated, (d: any) => String(d.id ?? d.candidate_id ?? ''))
+  // map to compact records
+  const candidates = dedup.map((d: any) => {
+    const id = String(d.id ?? d.candidate_id ?? '')
+    const name = [d.first_name, d.last_name].filter(Boolean).join(' ') || (d.full_name ?? '')
+    const loc = d.current_location_name || d.current_city || d.current_address || d.location || ''
+    const skillArr: string[] = []
+    if (Array.isArray(d.skill)) skillArr.push(...d.skill)
+    else if (typeof d.skill === 'string') skillArr.push(d.skill)
+    if (Array.isArray(d.keyword)) skillArr.push(...d.keyword)
+    else if (typeof d.keyword === 'string') skillArr.push(d.keyword)
+    const linkedin = d.linkedin || findLinkedIn(d) || null
+    return { id, name, location: String(loc), skills: skillArr.filter(Boolean), linkedin }
+  }).filter(c => c.id)
 
-  // map to simplified candidates for AI
-  const candidates = dedup.map(d => ({
-    id: String(d.id ?? d.candidate_id ?? ''),
-    name: [d.first_name, d.last_name].filter(Boolean).join(' ') || (d.full_name ?? ''),
-    location: d.current_city || d.current_location_name || '',
-    currentJobTitle: d.current_job_title || '',
-    skills: [], // title-only search; not fetched
-    linkedin: d.linkedin || findLinkedIn(d),
-  })).filter(c => c.id)
-
-  // send to AI for suitability scoring against the job
+  // send to AI analyzer (kept same payload shape as before)
   const aiResp = await fetch(new URL('/api/ai/analyze', req.url), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      job: { title, location, skills, qualifications, description },
-      candidates: candidates.map(c => ({ id: c.id, name: c.name, location: c.location, title: c.currentJobTitle, skills: c.skills })),
+      job: {
+        title,
+        location,
+        skills: Array.isArray(job.skills) ? job.skills : [],
+        qualifications: Array.isArray(job.qualifications) ? job.qualifications : [],
+        description: String(job.description || ''),
+      },
+      candidates: candidates.map(c => ({ id: c.id, name: c.name, location: c.location, skills: c.skills })),
     }),
   })
   const aiJson = await aiResp.json().catch(() => ({}))
@@ -221,23 +276,15 @@ export async function POST(req: NextRequest) {
     candidateId: c.id,
     candidateName: c.name,
     linkedin: c.linkedin,
-    location: c.location,
-    title: c.currentJobTitle,
     score: scoreById.get(c.id)?.score ?? 0,
     reason: scoreById.get(c.id)?.reason ?? '',
-  })).sort((a,b) => b.score - a.score)
+  })).sort((a, b) => b.score - a.score)
 
-  // paginate for the UI
+  // client-side paging of scored list
   const total = scored.length
-  const pageSizeClamped = Math.max(1, Math.min(pageSize, 50))
-  const start = (page - 1) * pageSizeClamped
-  const results = start < total ? scored.slice(start, start + pageSizeClamped) : []
+  const size = Math.max(1, Math.min(pageSize, 50))
+  const start = (page - 1) * size
+  const results = start < total ? scored.slice(start, start + size) : []
 
-  return NextResponse.json({
-    results,
-    total,
-    page,
-    pageSize: pageSizeClamped,
-    ...(debug ? { debug: dbg } : {}),
-  })
+  return NextResponse.json({ results, total, page, pageSize: size, ...(debug ? { debug: dbg } : {}) })
 }
