@@ -19,14 +19,7 @@ const esc = (s?: string) => (s ?? '').replace(/"/g, '\\"').trim()
 const splitTokens = (v?: string) => {
   if (!v) return [] as string[]
   const stop = new Set(['&','and','of','the','/','-','|',','])
-  return v
-    .split(/[,\s/|\-]+/g)
-    .map(t => t.trim())
-    .filter(t => t && !stop.has(t.toLowerCase()) && t.length >= 2)
-}
-const phrase = (field: string, value?: string) => {
-  const v = esc(value)
-  return v ? `${field}:"${v}"` : '' // we'll add optional # later
+  return v.split(/[,\s/|\-]+/g).map(t => t.trim()).filter(t => t && !stop.has(t.toLowerCase()) && t.length >= 2)
 }
 
 export async function POST(req: NextRequest) {
@@ -34,7 +27,8 @@ export async function POST(req: NextRequest) {
 
   const body = (await req.json().catch(() => ({}))) as RunReq
   const debug = !!body.debug
-  const limit = Math.min(Math.max(Number(body.limit ?? 200), 1), 500)
+  // Vincere docs: limit max is 100:contentReference[oaicite:2]{index=2}
+  const limit = Math.min(Math.max(Number(body.limit ?? 100), 1), 100)
 
   // auth
   const session = await getSession()
@@ -73,49 +67,29 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // ----- use Job Summary title -----
   const title = esc(job?.title || '')
   if (!title) return NextResponse.json({ error: 'Missing job title' }, { status: 400 })
 
-  const toks = splitTokens(title) // e.g. ["Fire","Security","Engineer"]
-
-  // Build pure q= variants (NO fq) — we’ll try with and without trailing '#'
-  const qVariantsRaw: string[] = []
-
-  // 1) Exact phrase on current_job_title
-  const p1 = phrase('current_job_title', title)                         // current_job_title:"Security Engineer"
-  if (p1) qVariantsRaw.push(p1)
-
-  // 2) Token-AND: all tokens must appear somewhere in the current title
-  if (toks.length) {
-    qVariantsRaw.push(toks.map(t => `current_job_title:${t}`).join(' AND '))
-  }
-
-  // 3) Token-OR: any token (for very broad match)
-  if (toks.length) {
-    qVariantsRaw.push(toks.map(t => `current_job_title:${t}`).join(' OR '))
-  }
-
-  // 4) Wildcard AND (broad but targeted)
-  if (toks.length) {
-    qVariantsRaw.push(toks.map(t => `current_job_title:*${t}*`).join(' AND '))
-  }
-
-  // 5) Fallback to text phrase (broadest)
-  const pText = phrase('text', title)                                   // text:"Security Engineer"
-  if (pText) qVariantsRaw.push(pText)
-
-  // Create a list that tries each raw variant exactly as-is, then with a trailing '#'
+  // Build query variants — each search term ends with '#':contentReference[oaicite:3]{index=3}
+  const tokens = splitTokens(title)
   const qVariants: string[] = []
-  for (const q of qVariantsRaw) {
-    qVariants.push(q)           // no trailing #
-    qVariants.push(`${q}#`)     // with trailing #
-  }
 
-  // fields to return (minimal for your panel)
+  // exact phrase in current_job_title
+  qVariants.push(`current_job_title:"${title}"#`)
+  // AND all tokens
+  if (tokens.length) {
+    qVariants.push(tokens.map(t => `current_job_title:${t}#`).join(' AND '))
+    // OR any token
+    qVariants.push(`(${tokens.map(t => `current_job_title:${t}#`).join(' OR ')})`)
+    // wildcard AND
+    qVariants.push(tokens.map(t => `current_job_title:*${t}*#`).join(' AND '))
+  }
+  // fallback to full-text field
+  qVariants.push(`text:"${title}"#`)
+
+  // restrict returned fields
   const fl = ['id','candidate_id','first_name','last_name','current_job_title'].join(',')
 
-  // three URL styles: matrix A, matrix B (your existing two), and a plain query style C
   const matrixA = `;fl=${encodeURIComponent(fl)};sort=${encodeURIComponent('created_date desc')}`
   const matrixB = encodeURIComponent(`fl=${fl};sort=created_date desc`)
 
@@ -134,8 +108,7 @@ export async function POST(req: NextRequest) {
       const path = `${searchBase}/${matrixB}`
       return `${path}?q=${encodeURIComponent(qStr)}&limit=${limit}`
     }
-    // Style C: pass everything as plain query params (no matrix)
-    // Some Vincere tenants prefer this.
+    // Style C: plain query params
     const params = new URLSearchParams()
     params.set('q', qStr)
     params.set('limit', String(limit))
@@ -162,7 +135,7 @@ export async function POST(req: NextRequest) {
     return { resp, docs, url }
   }
 
-  // Try each q variant across styles A, B, then C until results appear
+  // try each variant across A,B,C until we get docs
   let chosen: { resp: Response | null, docs: any[], url: string, label: string } =
     { resp: null, docs: [], url: '', label: '' }
 
@@ -173,7 +146,6 @@ export async function POST(req: NextRequest) {
         chosen = { ...r, label: `q=${q} style=${style}` }
         break outer
       }
-      // allow last attempt to carry diagnostics
       if (q === qVariants[qVariants.length - 1] && style === 'C') {
         chosen = { ...r, label: `q=${q} style=${style}` }
       }
@@ -185,7 +157,7 @@ export async function POST(req: NextRequest) {
   const usedUrl = chosen.url
   const usedLabel = chosen.label
 
-  // map & dedupe
+  // map results
   const seen = new Set<string>()
   const results = docs.map(d => {
     const id = String(d.id ?? d.candidate_id ?? '')
