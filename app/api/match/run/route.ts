@@ -170,9 +170,12 @@ export async function POST(req: NextRequest) {
   }).filter(Boolean)
 
   return NextResponse.json({
-    job: job || null,
-    results,
-    total: (results as any[]).length,
-    ...(debug ? { debug: { q, url, status: resp.status, rawCount: docs.length, error: errorText || undefined } } : {})
-  })
-}
+  job: job || null,
+  results,
+  total: (results as any[]).length,
+  ...(debug ? {
+    debug: { q, url, status: resp.status, rawCount: docs.length, error: errorText || undefined },
+    rawDocs: docs.slice(0, 5) // <-- first 5 raw docs to inspect fields
+  } : {})
+})
+
