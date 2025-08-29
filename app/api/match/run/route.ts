@@ -25,7 +25,7 @@ const esc = (s?: string) => (s ?? '').replace(/"/g, '\\"').trim()
 
 function splitTokens(v?: string) {
   if (!v) return [] as string[]
-  const stop = new Set(['&','and','of','the','/','-','|',','])
+  const stop = new Set(['&', 'and', 'of', 'the', '/', '-', '|', ','])
   return v
     .split(/[,\s/|\-]+/g)
     .map(t => t.trim())
@@ -96,77 +96,40 @@ export async function POST(req: NextRequest) {
   const title = esc(job?.title || '')
   if (!title) return NextResponse.json({ error: 'Missing job title' }, { status: 400 })
 
-  // Query
   // ---------- Queries (progressive widening) ----------
-const titlePhrase = phrase('current_job_title', title)           // current_job_title:"Security Engineer"#
-const textPhrase  = phrase('text', title)                        // text:"Security Engineer"#
-const titleAND    = tokensAND('current_job_title', title)        // (current_job_title:Security#) AND (current_job_title:Engineer#)
-const textAND     = tokensAND('text', title)                     // (text:Security#) AND (text:Engineer#)
+  const titlePhrase = phrase('current_job_title', title)    // current_job_title:"Security Engineer"#
+  const textPhrase  = phrase('text', title)                 // text:"Security Engineer"#
+  const titleAND    = tokensAND('current_job_title', title) // (current_job_title:Security#) AND (current_job_title:Engineer#)
+  const textAND     = tokensAND('text', title)              // (text:Security#) AND (text:Engineer#)
 
-// Try from strict → broad until we get docs
-const attempts = [
-  { label: 'titlePhrase', q: titlePhrase || '*:*' },
-  { label: 'textPhrase',  q: textPhrase  || '*:*' },
-  { label: 'titleAND',    q: titleAND    || '*:*' },
-  { label: 'textAND',     q: textAND     || '*:*' },
-  // very broad OR of tokens on title field
-  { label: 'titleTokensOR', q: splitTokens(title).map(t => `current_job_title:${esc(t)}#`).join(' OR ') || '*:*' },
-  // last resort: any token in full text
-  { label: 'textTokensOR',  q: splitTokens(title).map(t => `text:${esc(t)}#`).join(' OR ') || '*:*' },
-]
+  const attempts = [
+    { label: 'titlePhrase',  q: titlePhrase || '*:*' },
+    { label: 'textPhrase',   q: textPhrase  || '*:*' },
+    { label: 'titleAND',     q: titleAND    || '*:*' },
+    { label: 'textAND',      q: textAND     || '*:*' },
+    { label: 'titleTokensOR', q: splitTokens(title).map(t => `current_job_title:${esc(t)}#`).join(' OR ') || '*:*' },
+    { label: 'textTokensOR',  q: splitTokens(title).map(t => `text:${esc(t)}#`).join(' OR ') || '*:*' },
+  ]
 
-const fl = [
-  'id','candidate_id','first_name','last_name',
-  'current_job_title','current_city','current_location_name',
-  'linkedin','linkedin_url',
-  'skill','edu_qualification'
-].join(',')
+  // Returned fields
+  const fl = [
+    'id','candidate_id','first_name','last_name',
+    'current_job_title','current_city','current_location_name',
+    'linkedin','linkedin_url',
+    'skill','edu_qualification'
+  ].join(',')
 
-const base = config.VINCERE_TENANT_API_BASE.replace(/\/$/, '')
-const searchBase = `${base}/api/v2/candidate/search`
-const matrix = `;fl=${encodeURIComponent(fl)};sort=${encodeURIComponent('created_date desc')}`
+  const matrix = `;fl=${encodeURIComponent(fl)};sort=${encodeURIComponent('created_date desc')}`
 
-const headersBase = () => ({
-  accept: 'application/json',
-  'id-token': idToken!,
-  'x-api-key': config.VINCERE_API_KEY
-})
+  const headersBase = () => ({
+    accept: 'application/json',
+    'id-token': idToken!,
+    'x-api-key': config.VINCERE_API_KEY
+  })
 
-async function runAttempt(qStr: string, label: string) {
-  const url = `${searchBase}/${matrix}?q=${encodeURIComponent(qStr)}&limit=${limit}`
-  console.log('[vincere.search]', label, 'GET', url)
-  let resp = await fetch(url, { method: 'GET', headers: headersBase(), cache: 'no-store' })
-  if (resp.status === 401 || resp.status === 403) {
-    const who = session.user?.email || session.sessionId || ''
-    if (await refreshIdToken(who)) {
-      const s2 = await getSession(); idToken = s2.tokens?.idToken
-      resp = await fetch(url, { method: 'GET', headers: headersBase(), cache: 'no-store' })
-    }
-  }
-  const ok = resp.ok
-  const json = ok ? await resp.json().catch(() => ({} as any)) : null
-  const docs = ok ? (json?.response?.docs || json?.data || []) : []
-  console.log('[vincere.search]', label, 'status', resp.status, 'count', Array.isArray(docs) ? docs.length : 0)
-  return { resp, docs, url, label }
-}
-
-// Try in order
-let chosen = { resp: null as any, docs: [] as any[], url: '', label: '' }
-for (const a of attempts) {
-  const r = await runAttempt(a.q, a.label)
-  if ((r.resp?.ok && Array.isArray(r.docs) && r.docs.length > 0) || a === attempts[attempts.length - 1]) {
-    chosen = r
-    break
-  }
-}
-
-// use chosen.resp/docs/url below
-const resp = chosen.resp
-const docs = chosen.docs
-const usedUrl = chosen.url
-
-  const fetchWithRetry = async () => {
-    console.log('[vincere.search] GET', url)
+  async function runAttempt(qStr: string, label: string) {
+    const url = `${searchBase}/${matrix}?q=${encodeURIComponent(qStr)}&limit=${limit}`
+    console.log('[vincere.search]', label, 'GET', url)
     let resp = await fetch(url, { method: 'GET', headers: headersBase(), cache: 'no-store' })
     if (resp.status === 401 || resp.status === 403) {
       const who = session.user?.email || session.sessionId || ''
@@ -176,19 +139,27 @@ const usedUrl = chosen.url
         resp = await fetch(url, { method: 'GET', headers: headersBase(), cache: 'no-store' })
       }
     }
-    console.log('[vincere.search] status', resp.status)
-    return resp
+    const ok = resp.ok
+    const json = ok ? await resp.json().catch(() => ({} as any)) : null
+    const docs = ok ? (json?.response?.docs || json?.data || []) : []
+    console.log('[vincere.search]', label, 'status', resp.status, 'count', Array.isArray(docs) ? docs.length : 0)
+    return { resp, docs, url, label }
   }
 
-  const resp = await fetchWithRetry()
-  let docs: any[] = []
-  let errorText = ''
-  if (resp.ok) {
-    const json = await resp.json().catch(() => ({} as any))
-    docs = json?.response?.docs || json?.data || []
-  } else {
-    errorText = await resp.text().catch(() => '')
+  // Try attempts in order until we get >0 docs (or last attempt)
+  let chosen = { resp: null as any, docs: [] as any[], url: '', label: '' }
+  for (let i = 0; i < attempts.length; i++) {
+    const a = attempts[i]
+    const r = await runAttempt(a.q, a.label)
+    if ((r.resp?.ok && Array.isArray(r.docs) && r.docs.length > 0) || i === attempts.length - 1) {
+      chosen = r
+      break
+    }
   }
+
+  const resp = chosen.resp
+  const docs: any[] = chosen.docs
+  const usedUrl = chosen.url
 
   // Map & dedupe
   const seen = new Set<string>()
@@ -219,11 +190,12 @@ const usedUrl = chosen.url
     results,
     total: results.length,
     ...(debug ? {
-  debug: {
-    usedUrl,
-    status: resp?.status,
-    rawCount: docs.length
-  },
-  rawDocs: docs.slice(0, 5)
-} : {})
-
+      debug: {
+        usedUrl,
+        status: resp?.status,
+        rawCount: docs.length
+      },
+      rawDocs: docs.slice(0, 5)
+    } : {})
+  })
+}
