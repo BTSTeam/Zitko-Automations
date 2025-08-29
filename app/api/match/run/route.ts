@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
 
   const titlePlus = job.title.trim().split(/\s+/).join('+')
 
-  // Requested fields + asc sort
+  // All requested fields + ascending created_date sort
   const flFields = [
     'id',
     'first_name',
@@ -76,10 +76,14 @@ export async function POST(req: NextRequest) {
     'skill',
     'keywords',
     'current_location_name',
+    'edu_qualification',
+    'edu_degree',
+    'edu_course',
+    'edu_institution',
+    'edu_training',
   ].join(',')
   const matrixSegment = encodeURIComponent(`fl=${flFields};sort=created_date asc`)
 
-  // q=current_job_title:"<title>"#
   const qParam = `current_job_title%3A%22${titlePlus}%22%23`
 
   const base = config.VINCERE_TENANT_API_BASE.replace(/\/$/, '')
@@ -124,6 +128,11 @@ export async function POST(req: NextRequest) {
     skills: toArray(c.skill),
     keywords: toArray(c.keywords),
     location: c.current_location_name ?? '',
+    eduQualification: c.edu_qualification ?? '',
+    eduDegree: c.edu_degree ?? '',
+    eduCourse: c.edu_course ?? '',
+    eduInstitution: c.edu_institution ?? '',
+    eduTraining: c.edu_training ?? '',
   }))
 
   return NextResponse.json({
