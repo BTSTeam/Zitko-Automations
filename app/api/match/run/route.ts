@@ -10,37 +10,24 @@ import { refreshIdToken } from '@/lib/vincereRefresh'
 
 type RunReq = {
   jobId?: string
-  job?: {
-    title?: string
-    location?: string
-    skills?: string[]
-    qualifications?: string[]
-    description?: string
-  }
+  job?: { title?: string; location?: string; skills?: string[]; qualifications?: string[]; description?: string }
   limit?: number
   debug?: boolean
 }
 
 const esc = (s?: string) => (s ?? '').replace(/"/g, '\\"').trim()
-
-function splitTokens(v?: string) {
+const splitTokens = (v?: string) => {
   if (!v) return [] as string[]
-  const stop = new Set(['&', 'and', 'of', 'the', '/', '-', '|', ','])
-  return v
-    .split(/[,\s/|\-]+/g)
-    .map(t => t.trim())
-    .filter(t => t && !stop.has(t.toLowerCase()) && t.length >= 2)
+  const stop = new Set(['&','and','of','the','/','-','|',','])
+  return v.split(/[,\s/|\-]+/g).map(t => t.trim()).filter(t => t && !stop.has(t.toLowerCase()) && t.length >= 2)
 }
-
-function phrase(field: string, value?: string) {
+const phrase = (field: string, value?: string) => {
   const v = esc(value)
   return v ? `${field}:"${v}"#` : ''
 }
-
-function tokensAND(field: string, value?: string) {
-  const toks = splitTokens(value)
-  if (!toks.length) return ''
-  return toks.map(t => `${field}:${esc(t)}#`).map(s => `(${s})`).join(' AND ')
+const tokensAND = (field: string, value?: string) => {
+  const toks = splitTokens(value); if (!toks.length) return ''
+  return toks.map(t => `(${field}:${esc(t)}#)`).join(' AND ')
 }
 
 export async function POST(req: NextRequest) {
@@ -53,37 +40,31 @@ export async function POST(req: NextRequest) {
   // auth
   const session = await getSession()
   let idToken = session.tokens?.idToken
-  if (!idToken) {
-    return NextResponse.json({ error: 'Not authenticated with Vincere' }, { status: 401 })
-  }
+  if (!idToken) return NextResponse.json({ error: 'Not authenticated with Vincere' }, { status: 401 })
 
   // endpoints
   const base = config.VINCERE_TENANT_API_BASE.replace(/\/$/, '')
   const positionUrl = (id: string) => `${base}/api/v2/position/${encodeURIComponent(id)}`
   const searchBase = `${base}/api/v2/candidate/search`
 
-  // resolve job if only jobId is provided
+  // resolve job if only jobId provided
   let job = body.job
   if (!job && body.jobId) {
-    const call = async () =>
-      fetch(positionUrl(body.jobId!), {
-        headers: { 'id-token': idToken!, 'x-api-key': config.VINCERE_API_KEY },
-        cache: 'no-store'
-      })
-
+    const call = async () => fetch(positionUrl(body.jobId!), {
+      headers: { 'id-token': idToken!, 'x-api-key': config.VINCERE_API_KEY },
+      cache: 'no-store'
+    })
     let r = await call()
     if (r.status === 401 || r.status === 403) {
       if (await refreshIdToken(session.user?.email || session.sessionId || '')) {
-        const s2 = await getSession()
-        idToken = s2.tokens?.idToken
-        r = await call()
+        const s2 = await getSession(); idToken = s2.tokens?.idToken; r = await call()
       }
     }
     if (!r.ok) {
       const detail = await r.text().catch(() => '')
       return NextResponse.json({ error: 'Failed to load position', detail }, { status: r.status || 400 })
     }
-    const pos = await r.json().catch(() => ({} as any))
+    const pos = await r.json().catch(() => ({}))
     job = {
       title: pos.job_title || pos.title || pos.name || '',
       location: pos['location-text'] || pos.location_text || pos.location || pos.city || '',
@@ -96,22 +77,24 @@ export async function POST(req: NextRequest) {
   const title = esc(job?.title || '')
   if (!title) return NextResponse.json({ error: 'Missing job title' }, { status: 400 })
 
-  // ---------- Queries (progressive widening) ----------
-  const titlePhrase = phrase('current_job_title', title)    // current_job_title:"Security Engineer"#
-  const textPhrase  = phrase('text', title)                 // text:"Security Engineer"#
-  const titleAND    = tokensAND('current_job_title', title) // (current_job_title:Security#) AND (current_job_title:Engineer#)
-  const textAND     = tokensAND('text', title)              // (text:Security#) AND (text:Engineer#)
+  // ---------- progressive queries (strict -> broad)
+  const titlePhrase = phrase('current_job_title', title)    // exact phrase in current title
+  const textPhrase  = phrase('text', title)                 // exact phrase in full text
+  const titleAND    = tokensAND('current_job_title', title) // AND tokens in current title
+  const textAND     = tokensAND('text', title)              // AND tokens in full text
+  const titleOR     = splitTokens(title).map(t => `current_job_title:${esc(t)}#`).join(' OR ')
+  const textOR      = splitTokens(title).map(t => `text:${esc(t)}#`).join(' OR ')
 
   const attempts = [
-    { label: 'titlePhrase',  q: titlePhrase || '*:*' },
-    { label: 'textPhrase',   q: textPhrase  || '*:*' },
-    { label: 'titleAND',     q: titleAND    || '*:*' },
-    { label: 'textAND',      q: textAND     || '*:*' },
-    { label: 'titleTokensOR', q: splitTokens(title).map(t => `current_job_title:${esc(t)}#`).join(' OR ') || '*:*' },
-    { label: 'textTokensOR',  q: splitTokens(title).map(t => `text:${esc(t)}#`).join(' OR ') || '*:*' },
+    { label: 'titlePhrase', q: titlePhrase || '*:*' },
+    { label: 'textPhrase',  q: textPhrase  || '*:*' },
+    { label: 'titleAND',    q: titleAND    || '*:*' },
+    { label: 'textAND',     q: textAND     || '*:*' },
+    { label: 'titleOR',     q: titleOR     || '*:*' },
+    { label: 'textOR',      q: textOR      || '*:*' },
   ]
 
-  // Returned fields
+  // fields to return
   const fl = [
     'id','candidate_id','first_name','last_name',
     'current_job_title','current_city','current_location_name',
@@ -119,7 +102,11 @@ export async function POST(req: NextRequest) {
     'skill','edu_qualification'
   ].join(',')
 
-  const matrix = `;fl=${encodeURIComponent(fl)};sort=${encodeURIComponent('created_date desc')}`
+  // two URL styles:
+  // A) matrix params with semicolons  -> /search/;fl=...;sort=...
+  // B) fully encoded path segment     -> /search/fl%3D...%3Bsort%3D...
+  const matrixA = `;fl=${encodeURIComponent(fl)};sort=${encodeURIComponent('created_date desc')}`
+  const matrixB = encodeURIComponent(`fl=${fl};sort=created_date desc`)
 
   const headersBase = () => ({
     accept: 'application/json',
@@ -127,41 +114,49 @@ export async function POST(req: NextRequest) {
     'x-api-key': config.VINCERE_API_KEY
   })
 
-  async function runAttempt(qStr: string, label: string) {
-    const url = `${searchBase}/${matrix}?q=${encodeURIComponent(qStr)}&limit=${limit}`
-    console.log('[vincere.search]', label, 'GET', url)
+  async function runOnce(style: 'A'|'B', qStr: string) {
+    const path = style === 'A' ? `${searchBase}/${matrixA}` : `${searchBase}/${matrixB}`
+    const url = `${path}?q=${encodeURIComponent(qStr)}&limit=${limit}`
+    console.log('[vincere.search]', style, 'GET', url)
     let resp = await fetch(url, { method: 'GET', headers: headersBase(), cache: 'no-store' })
     if (resp.status === 401 || resp.status === 403) {
       const who = session.user?.email || session.sessionId || ''
       if (await refreshIdToken(who)) {
-        const s2 = await getSession()
-        idToken = s2.tokens?.idToken
+        const s2 = await getSession(); idToken = s2.tokens?.idToken
         resp = await fetch(url, { method: 'GET', headers: headersBase(), cache: 'no-store' })
       }
     }
     const ok = resp.ok
     const json = ok ? await resp.json().catch(() => ({} as any)) : null
     const docs = ok ? (json?.response?.docs || json?.data || []) : []
-    console.log('[vincere.search]', label, 'status', resp.status, 'count', Array.isArray(docs) ? docs.length : 0)
-    return { resp, docs, url, label }
+    console.log('[vincere.search]', style, 'status', resp.status, 'count', Array.isArray(docs) ? docs.length : 0)
+    return { resp, docs, url }
   }
 
-  // Try attempts in order until we get >0 docs (or last attempt)
-  let chosen = { resp: null as any, docs: [] as any[], url: '', label: '' }
-  for (let i = 0; i < attempts.length; i++) {
-    const a = attempts[i]
-    const r = await runAttempt(a.q, a.label)
-    if ((r.resp?.ok && Array.isArray(r.docs) && r.docs.length > 0) || i === attempts.length - 1) {
-      chosen = r
-      break
+  // try styles A then B for each query until we get docs
+  let chosen: { resp: Response | null, docs: any[], url: string, label: string } =
+    { resp: null, docs: [], url: '', label: '' }
+
+  outer: for (const a of attempts) {
+    for (const style of ['A','B'] as const) {
+      const r = await runOnce(style, a.q)
+      if (r.resp?.ok && Array.isArray(r.docs) && r.docs.length > 0) {
+        chosen = { ...r, label: `${a.label}:${style}` }
+        break outer
+      }
+      // if it's the last attempt & last style, accept empty to return debug info
+      if (a === attempts[attempts.length - 1] && style === 'B') {
+        chosen = { ...r, label: `${a.label}:${style}` }
+      }
     }
   }
 
   const resp = chosen.resp
   const docs: any[] = chosen.docs
   const usedUrl = chosen.url
+  const usedLabel = chosen.label
 
-  // Map & dedupe
+  // map & dedupe
   const seen = new Set<string>()
   const asArray = (v: any) =>
     Array.isArray(v) ? v :
@@ -192,6 +187,8 @@ export async function POST(req: NextRequest) {
     ...(debug ? {
       debug: {
         usedUrl,
+        usedQuery: attempts.map(a => a.q)[attempts.findIndex(t => `${t.label}` === usedLabel.split(':')[0])] ?? null,
+        attempt: usedLabel,
         status: resp?.status,
         rawCount: docs.length
       },
