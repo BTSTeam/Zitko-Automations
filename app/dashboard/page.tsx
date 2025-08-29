@@ -1,4 +1,5 @@
 // app/dashboard/page.tsx
+// Updated dashboard/page.tsx with Page Size dropdown removed and KPIs section hidden
 'use client'
 import { useState, useEffect, type Dispatch, type SetStateAction, type ReactNode } from 'react'
 
@@ -15,15 +16,21 @@ type JobSummary = {
   coords?: { lat: number, lng: number } | null
 }
 
-type ScoredRow = {
+type CandidateRow = {
   id: string
   name: string
-  title: string
-  employer: string
-  linkedin?: string
+  title?: string
   location?: string
+  linkedin?: string | null
+  skills?: string[]
+}
+
+type ScoredRow = {
+  candidateId: string
+  candidateName: string
   score: number
   reason: string
+  linkedin?: string
 }
 
 // --- helpers ---
@@ -41,6 +48,16 @@ function htmlToText(html?: string): string {
   }
 }
 
+function KPIs() {
+  return (
+    <div className="grid sm:grid-cols-3 gap-4 mb-6">
+      <div className="kpi"><h3>—</h3><p>Candidates Matched</p></div>
+      <div className="kpi"><h3>—</h3><p>Candidates Sourced</p></div>
+      <div className="kpi"><h3>—</h3><p>CVs Formatted</p></div>
+    </div>
+  )
+}
+
 function Tabs({
   tab,
   setTab
@@ -49,7 +66,10 @@ function Tabs({
   setTab: Dispatch<SetStateAction<TabKey>>
 }) {
   const Item = ({ id, children }: { id: TabKey; children: ReactNode }) => (
-    <button onClick={() => setTab(id)} className={`tab ${tab === id ? 'tab-active' : ''}`}>
+    <button
+      onClick={() => setTab(id)}
+      className={`tab ${tab === id ? 'tab-active' : ''}`}
+    >
       {children}
     </button>
   )
@@ -62,7 +82,7 @@ function Tabs({
   )
 }
 
-function ScoredTable({
+function Table({
   rows, sortBy, setSortBy, filter, setFilter
 }: {
   rows: ScoredRow[],
@@ -73,19 +93,17 @@ function ScoredTable({
 }) {
   const sorted = [...rows].sort((a,b)=>{
     const [key, dir] = sortBy
-    const va = a[key] as any, vb = b[key] as any
+    const va = a[key], vb = b[key]
     let cmp = 0
     if (typeof va === 'number' && typeof vb === 'number') cmp = va - vb
     else cmp = String(va ?? '').localeCompare(String(vb ?? ''))
     return dir === 'asc' ? cmp : -cmp
-  }).filter((r) => JSON.stringify(r).toLowerCase().includes(filter.toLowerCase()))
-
+  }).filter((r: ScoredRow) => JSON.stringify(r).toLowerCase().includes(filter.toLowerCase()))
   const header = (key: keyof ScoredRow, label: string) => (
     <th className="cursor-pointer" onClick={()=> setSortBy([key, sortBy[0]===key && sortBy[1]==='asc'?'desc':'asc'])}>
       {label} {sortBy[0]===key ? (sortBy[1]==='asc'?'▲':'▼') : ''}
     </th>
   )
-
   return (
     <div className="card p-4">
       <div className="mb-3">
@@ -95,22 +113,19 @@ function ScoredTable({
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-gray-600">
-              {header('id','Candidate ID')}
-              {header('name','Candidate Full name')}
-              {header('title','Current Job Title')}
-              {header('employer','Current Employer')}
+              {header('candidateId','Candidate ID')}
+              {header('candidateName','Candidate Name')}
               <th>LinkedIn</th>
-              {header('score','Suitability %')}
+              {header('score','Suitability Score')}
               {header('reason','Reason')}
+              <th>Vincere</th>
             </tr>
           </thead>
           <tbody>
             {sorted.map(r=> (
-              <tr key={r.id} className="border-t">
-                <td className="py-2">{r.id}</td>
-                <td>{r.name}</td>
-                <td>{r.title || '—'}</td>
-                <td>{r.employer || '—'}</td>
+              <tr key={r.candidateId} className="border-t">
+                <td className="py-2">{r.candidateId}</td>
+                <td>{r.candidateName}</td>
                 <td>
                   {r.linkedin
                     ? <a className="text-brand-orange underline" href={r.linkedin} target="_blank" rel="noreferrer">Open</a>
@@ -118,6 +133,9 @@ function ScoredTable({
                 </td>
                 <td>{r.score}</td>
                 <td>{r.reason}</td>
+                <td>
+                  <a className="text-brand-orange underline" href={`https://zitko.vincere.io/app/candidate/${r.candidateId}`} target="_blank" rel="noreferrer">View</a>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -132,22 +150,34 @@ function MatchTab() {
   const [job, setJob] = useState<JobSummary | null>(null)
   const [loadingJob, setLoadingJob] = useState(false)
 
+  // extracted + editable fields (from OpenAI)
   const [title, setTitle] = useState('')
   const [location, setLocation] = useState('')
   const [skillsText, setSkillsText] = useState('')
   const [qualsText, setQualsText] = useState('')
+
+  // NEW: hold raw candidates (so UI shows results even if AI ranking is empty)
+  const [rawCands, setRawCands] = useState<CandidateRow[]>([])
 
   const [scored, setScored] = useState<ScoredRow[]>([])
   const [loadingSearch, setLoadingSearch] = useState(false)
   const [sortBy, setSortBy] = useState<[keyof ScoredRow, 'asc'|'desc']>(['score','desc'])
   const [filter, setFilter] = useState('')
 
+  // pagination (page size fixed to 20; dropdown removed)
+  const [page] = useState(1)
+  const pageSize = 20
+  const [total, setTotal] = useState(0)
+
+  // NEW: hide/show descriptions
   const [showDesc, setShowDesc] = useState(false)
 
   const retrieveJob = async () => {
     if (!jobId) return
     setLoadingJob(true)
     setScored([])
+    setRawCands([])
+    setTotal(0)
 
     try {
       const r = await fetch(`/api/vincere/position/${encodeURIComponent(jobId)}`, { cache: 'no-store' })
@@ -197,13 +227,16 @@ function MatchTab() {
     }
   }
 
-  const searchCandidates = async () => {
-    if (!title.trim()) return alert('Enter or retrieve a Job Title first.')
+  // Run Vincere search, then AI ranking. Always show raw results immediately.
+  const runSearch = async () => {
+    if (!job) return
     setLoadingSearch(true)
     setScored([])
+    setRawCands([])
 
     try {
-      const resp = await fetch('/api/match/run', {
+      // 1) Vincere candidate search (by job title)
+      const run = await fetch('/api/match/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -212,32 +245,107 @@ function MatchTab() {
             location,
             skills: skillsText.split(',').map(s=>s.trim()).filter(Boolean),
             qualifications: qualsText.split(',').map(s=>s.trim()).filter(Boolean),
-            description: job?.public_description || ''
+            description: job.public_description || ''
           },
-          limit: 200
+          limit: 300,
+          debug: true
         })
       })
-      const payload = await resp.json()
-      if (!resp.ok) throw new Error(payload?.error || `Search failed (${resp.status})`)
+      const payload = await run.json()
+      console.log('MATCH/RUN payload:', payload)
+      if (!run.ok) throw new Error(payload?.error || `Search failed (${run.status})`)
 
-      const rows: ScoredRow[] = (payload?.results || []).map((r: any) => ({
-        id: String(r.id),
-        name: r.name || '',
-        title: r.title || '',
-        employer: r.employer || '',
-        linkedin: r.linkedin || '',
-        location: r.location || '',
-        score: Number(r.score) || 0,
-        reason: r.reason || '',
+      const candidates = (payload?.results || []) as Array<{
+        id: string
+        firstName?: string
+        lastName?: string
+        fullName?: string
+        location?: string
+        city?: string
+        title?: string
+        skills?: string[]
+        qualifications?: string[]
+        linkedin?: string | null
+      }>
+
+      // Map raw candidates for immediate display
+      const rawList: CandidateRow[] = candidates.map(c => ({
+        id: String(c.id),
+        name: c.fullName || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim(),
+        title: c.title || '',
+        location: c.location || c.city || '',
+        linkedin: c.linkedin ?? null,
+        skills: c.skills || []
       }))
-      setScored(rows)
+      setRawCands(rawList)
+      setTotal(rawList.length)
+
+      // 2) AI scoring (priority: location, skills, qualifications, job title)
+      const ai = await fetch('/api/ai/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          job: {
+            title,
+            location,
+            skills: skillsText.split(',').map(s => s.trim()).filter(Boolean),
+            qualifications: qualsText.split(',').map(s => s.trim()).filter(Boolean),
+            description: job.public_description || ''
+          },
+          candidates: candidates.map(c => ({
+            candidate_id: c.id,
+            full_name: c.fullName || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim(),
+            location: c.location || c.city || '',
+            current_job_title: c.title || '',
+            skills: c.skills || [],
+            qualifications: c.qualifications || []
+          })),
+          instruction: 'Return only the top 20 as {candidate_id, score_percent, reason}.'
+        })
+      })
+
+      const aiText = await ai.text()
+      let ranked: { ranked?: { candidate_id: string; score_percent: number; reason: string }[] } = {}
+      try { ranked = JSON.parse(aiText) } catch { ranked = {} }
+
+      const top = (ranked?.ranked || []).slice(0, 20)
+
+      // 3) Map AI results to ScoredRow with LinkedIn + names
+      const byId = new Map(candidates.map(c => [String(c.id), c]))
+      const scoredRows: ScoredRow[] = top.map(r => {
+        const c = byId.get(String(r.candidate_id))
+        const candidateName = c?.fullName || `${c?.firstName ?? ''} ${c?.lastName ?? ''}`.trim() || String(r.candidate_id)
+        return {
+          candidateId: String(r.candidate_id),
+          candidateName,
+          score: Math.round(Number(r.score_percent) || 0),
+          reason: r.reason || '',
+          linkedin: c?.linkedin || undefined
+        }
+      })
+
+      if (scoredRows.length > 0) {
+        setScored(scoredRows)
+        setTotal(scoredRows.length)
+      }
     } catch (e) {
       console.error(e)
-      alert('Search or scoring failed.')
+      // Keep rawCands visible as fallback
+      alert('Search or scoring hit an issue. Showing raw candidates (if any).')
     } finally {
       setLoadingSearch(false)
     }
   }
+
+  const searchCandidates = async () => {
+    if (!job) return alert('Retrieve Job Information first.')
+    await runSearch()
+  }
+
+  const canPrev = false
+  const canNext = false
+  const showingFrom = (scored.length || rawCands.length) ? 1 : 0
+  const showingTo = scored.length || rawCands.length || 0
 
   return (
     <div className="grid gap-6">
@@ -249,16 +357,18 @@ function MatchTab() {
             <input className="input mt-1" placeholder="Enter Job ID" value={jobId} onChange={e=>setJobId(e.target.value)} />
           </div>
         </div>
+        {/* Adjusted from 3 to 2 columns and removed Page Size dropdown */}
         <div className="grid sm:grid-cols-2 gap-3 items-end">
           <button className="btn btn-grey" onClick={retrieveJob} disabled={loadingJob}>
             {loadingJob ? 'Retrieving…' : 'Retrieve Job Information'}
           </button>
-          <button className="btn btn-brand" onClick={searchCandidates} disabled={loadingSearch}>
+          <button className="btn btn-brand" onClick={searchCandidates} disabled={!job || loadingSearch}>
             {loadingSearch ? 'Searching…' : 'Search Candidates'}
           </button>
         </div>
       </div>
 
+      {/* Split view: left = reviewed job info, right = candidates */}
       <div className="grid md:grid-cols-2 gap-6">
         <div className="card p-6">
           <h3 className="font-semibold mb-3">Job Summary (review & edit)</h3>
@@ -313,10 +423,12 @@ function MatchTab() {
         <div className="flex flex-col gap-3">
           {scored.length > 0 ? (
             <>
-              <ScoredTable rows={scored} sortBy={sortBy} setSortBy={setSortBy} filter={filter} setFilter={setFilter} />
+              <Table rows={scored} sortBy={sortBy} setSortBy={setSortBy} filter={filter} setFilter={setFilter} />
               <div className="flex items-center justify-between text-sm">
                 <div className="text-gray-600">
-                  Showing <span className="font-medium">{scored.length}</span> candidates
+                  {showingTo
+                    ? <>Showing <span className="font-medium">{showingFrom}</span>–<span className="font-medium">{showingTo}</span> of <span className="font-medium">{showingTo}</span></>
+                    : 'No results'}
                 </div>
                 <div className="flex gap-2">
                   <button className="btn btn-grey" disabled>Prev</button>
@@ -324,6 +436,33 @@ function MatchTab() {
                 </div>
               </div>
             </>
+          ) : rawCands.length > 0 ? (
+            <div className="card p-6">
+              <h3 className="font-semibold mb-3">Raw Candidates</h3>
+              <ul className="divide-y">
+                {rawCands.slice(0, pageSize).map(c => (
+                  <li key={c.id} className="py-3">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="font-medium">{c.name || c.id}</div>
+                        <div className="text-sm text-gray-600">
+                          {(c.title || '-')}{c.location ? ` • ${c.location}` : ''}
+                        </div>
+                        {c.linkedin && (
+                          <a href={c.linkedin} target="_blank" rel="noreferrer" className="text-sm underline">
+                            LinkedIn
+                          </a>
+                        )}
+                      </div>
+                      <div className="text-xs text-gray-400">ID: {c.id}</div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-3 text-sm text-gray-600">
+                Showing <span className="font-medium">{showingFrom}</span>–<span className="font-medium">{Math.min(pageSize, rawCands.length)}</span> of <span className="font-medium">{rawCands.length}</span>
+              </div>
+            </div>
           ) : (
             <div className="card p-6 text-sm text-gray-500">
               Results will appear here after you click <span className="font-medium">Search Candidates</span>.
@@ -443,6 +582,8 @@ export default function Dashboard() {
   const [tab, setTab] = useState<TabKey>('match')
   return (
     <div>
+      {/* KPIs section removed from display */}
+      {/* <KPIs /> */}
       <Tabs tab={tab} setTab={setTab} />
       {tab==='match' && <MatchTab />}
       {tab==='source' && <SourceTab />}
