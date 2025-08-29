@@ -85,27 +85,29 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Missing job title' }, { status: 400 })
   }
 
-  // Replace spaces with + in title (e.g., Security+Engineer)
+  // Title with + (e.g., Security+Engineer) and enforce exact match with #
   const titlePlus = job.title.trim().split(/\s+/).join('+')
+  const titleExact = `current_job_title:"${titlePlus}"#`
 
   // Normalise skills to string[]
   const skills: string[] = Array.isArray(job.skills)
     ? job.skills.map((x: any) => String(x)).filter(Boolean)
     : []
 
-  // Build q param: job title AND at least 2 of the skills
+  // Build q param: exact title THEN at least 2 of the skills
   const skillsPart =
     skills.length > 0
       ? ` AND ((` + skills.map((s: string) => `skills:"${s.replace(/"/g, '\\"')}"`).join(' OR ') + `)~2)`
       : ''
 
-  const qRaw = `(current_job_title:"${titlePlus}")${skillsPart}`
+  const qRaw = `(${titleExact})${skillsPart}`
 
   // Encode, but keep '+' literal in title (avoid %2B)
   const qEncoded = encodeURIComponent(qRaw).replace(/%2B/g, '+')
 
-  // Fields to retrieve (including education)
+  // Fields to retrieve (including id and education)
   const flFields = [
+    'id',
     'first_name',
     'last_name',
     'current_location_name',
@@ -182,6 +184,6 @@ export async function POST(req: NextRequest) {
     job,
     results,
     total: results.length,
-    searchUrl // for quick debugging
+    searchUrl
   })
 }
