@@ -66,7 +66,6 @@ function buildSearchUrl(base: string, idToken: string, title: string, skillSet: 
   const baseUrl = base.replace(/\/$/, '')
   const titlePlus = title.trim().split(/\s+/).join('+')
 
-  // Fields list extended to include employer-ish possibilities
   const flFields = [
     'id',
     'first_name',
@@ -79,7 +78,6 @@ function buildSearchUrl(base: string, idToken: string, title: string, skillSet: 
     'skill',
     'keyword',
     'keywords',
-    // employer variants (Vincere may ignore unknown fields; harmless)
     'company',
     'company_name',
     'current_company',
@@ -89,11 +87,8 @@ function buildSearchUrl(base: string, idToken: string, title: string, skillSet: 
   ].join(',')
 
   const matrixSegment = encodeURIComponent(`fl=${flFields};sort=created_date asc`)
-
-  // Title clause
   const titleQ = `current_job_title:%22${titlePlus}%22%23`
 
-  // Skills clause: OR across skills, searching both skill & keyword
   let skillQ = ''
   const skills = (skillSet || []).map(s => s.trim()).filter(Boolean)
   if (skills.length) {
@@ -107,8 +102,6 @@ function buildSearchUrl(base: string, idToken: string, title: string, skillSet: 
     skillQ = `${orJoined}%23`
   }
 
-  // Construct final URL
-  // We put title in ?q= and, if skills exist, add a second q param (Vincere accepts multiple).
   const url = new URL(`${baseUrl}/api/v2/candidate/search/${matrixSegment}`)
   url.searchParams.set('limit', String(limit))
   url.searchParams.append('q', titleQ)
@@ -199,16 +192,15 @@ export async function POST(req: NextRequest) {
   const s2 = skillsAll.slice(0, 2)
   const s1 = skillsAll.slice(0, 1)
 
-  // Build the 5 searches
+  // 5 searches
   const urls: string[] = [
-    buildSearchUrl(base, idToken, job.title!, [], limitPerSearch),     // 1: title only
-    buildSearchUrl(base, idToken, job.title!, s4, limitPerSearch),     // 2: + 4 skills
-    buildSearchUrl(base, idToken, job.title!, s3, limitPerSearch),     // 3: + 3 skills
-    buildSearchUrl(base, idToken, job.title!, s2, limitPerSearch),     // 4: + 2 skills
-    buildSearchUrl(base, idToken, job.title!, s1, limitPerSearch),     // 5: + 1 skill
+    buildSearchUrl(base, idToken, job.title!, [], limitPerSearch),
+    buildSearchUrl(base, idToken, job.title!, s4, limitPerSearch),
+    buildSearchUrl(base, idToken, job.title!, s3, limitPerSearch),
+    buildSearchUrl(base, idToken, job.title!, s2, limitPerSearch),
+    buildSearchUrl(base, idToken, job.title!, s1, limitPerSearch),
   ]
 
-  // Execute searches sequentially to keep token-refresh simple
   const dedup = new Map<string, RawCand>()
 
   for (const url of urls) {
@@ -221,12 +213,7 @@ export async function POST(req: NextRequest) {
         resp = await fetchOnce(url, idToken)
       }
     }
-    if (!resp.ok) {
-      // Continue to next search but capture detail for debugging
-      // (We don't fail entire run if one search errors)
-      // eslint-disable-next-line no-continue
-      continue
-    }
+    if (!resp.ok) continue
     const data = await resp.json().catch(() => ({}))
     const items: any[] = data.result?.items || data.items || []
     for (const raw of items) {
@@ -238,7 +225,7 @@ export async function POST(req: NextRequest) {
 
   const allCandidates = Array.from(dedup.values())
 
-  // Send to AI for scoring/dedup cross-check vs Job Summary (location most important)
+  // AI scoring (instructs model to EXCLUDE <60)
   const aiResp = await fetch(`${new URL(req.url).origin}/api/ai/analyze`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -261,7 +248,7 @@ export async function POST(req: NextRequest) {
         keywords: c.keywords || [],
       })),
       instruction:
-        'Deduplicate by candidate_id, score all, prioritize location first, then skills, then qualifications, then current title.',
+        'Deduplicate by candidate_id, score all, prioritize location first, then skills, then qualifications, then current title. Exclude scores below 60.',
     }),
   })
 
@@ -273,44 +260,31 @@ export async function POST(req: NextRequest) {
     ranked = {}
   }
 
-  // Map back to enriched rows
+  // Map back and enforce >=60% in code as well (belt & braces)
   const byId = new Map(allCandidates.map((c) => [c.id, c]))
-  const scoredRows = (ranked.ranked || []).map((r) => {
-    const c = byId.get(String(r.candidate_id))
-    const name =
-      c?.fullName ||
-      `${c?.firstName ?? ''} ${c?.lastName ?? ''}`.trim() ||
-      String(r.candidate_id)
-    return {
-      id: String(r.candidate_id),
-      name,
-      title: c?.title || '',
-      employer: c?.employer || '',
-      linkedin: c?.linkedin || '',
-      location: c?.location || '',
-      score: Math.round(Number(r.score_percent) || 0),
-      reason: r.reason || '',
-    }
-  })
-
-  // If AI fails, still return raw merged candidates (score 0)
-  const finalRows =
-    scoredRows.length > 0
-      ? scoredRows
-      : allCandidates.map((c) => ({
-          id: c.id,
-          name: c.fullName || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim(),
-          title: c.title || '',
-          employer: c.employer || '',
-          linkedin: c.linkedin || '',
-          location: c.location || '',
-          score: 0,
-          reason: 'AI scoring unavailable',
-        }))
+  const scoredRows = (ranked.ranked || [])
+    .map((r) => {
+      const c = byId.get(String(r.candidate_id))
+      const name =
+        c?.fullName ||
+        `${c?.firstName ?? ''} ${c?.lastName ?? ''}`.trim() ||
+        String(r.candidate_id)
+      return {
+        id: String(r.candidate_id),
+        name,
+        title: c?.title || '',
+        employer: c?.employer || '',
+        linkedin: c?.linkedin || '',
+        location: c?.location || '',
+        score: Math.round(Number(r.score_percent) || 0),
+        reason: r.reason || '',
+      }
+    })
+    .filter((row) => row.score >= 60)
 
   return NextResponse.json({
     job,
-    total: finalRows.length,
-    results: finalRows,
+    total: scoredRows.length,
+    results: scoredRows,
   })
 }
