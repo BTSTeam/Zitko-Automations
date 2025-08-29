@@ -6,11 +6,29 @@ export async function POST(req: NextRequest) {
 
   const { job, candidates, instruction } = await req.json()
 
-  const system = `You are an assistant helping a Fire & Security recruitment team. 
-Score each candidate 0-100 for suitability to the job. 
-Return JSON array with: candidate_id, score, reason (one sentence).`
+  const system = `
+You help a Fire & Security recruitment team rank candidates for a single role.
+Scoring priority (highest to lowest):
+1) Location proximity/fit ("${job?.location ?? ''}" if provided, or UK fit if not)
+2) Skills match to the job (exact or close synonyms)
+3) Qualifications match (certs, courses)
+4) Current Job Title relevance
 
-  const user = JSON.stringify({ job, candidates, instruction })
+Return strictly JSON with a single key "ranked": an array of at most 20 items.
+Each item: { "candidate_id": string, "score_percent": number (0-100), "reason": string }.
+Keep reasons short (max 20 words). No extra keys or commentary.`.trim()
+
+  const user = JSON.stringify({
+    job: {
+      title: job?.title ?? '',
+      location: job?.location ?? '',
+      skills: job?.skills ?? [],
+      qualifications: job?.qualifications ?? [],
+      description: job?.description ?? ''
+    },
+    candidates: candidates ?? [],
+    instruction: instruction ?? null
+  })
 
   const r = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
