@@ -50,7 +50,6 @@ const resolveJob = async (session: any, body: RunReq, idToken: string) => {
 export async function POST(req: NextRequest) {
   requiredEnv()
   const body: RunReq = await req.json().catch(() => ({} as any))
-  // Respect Vincere’s max limit of 100
   const limit = Math.min(Math.max(Number(body.limit ?? 100), 1), 100)
 
   const session = await getSession()
@@ -64,35 +63,35 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Missing job title' }, { status: 400 })
   }
 
-  // Prepare the search title: spaces → '+' for the q parameter
   const titlePlus = job.title.trim().split(/\s+/).join('+')
 
-  // Build encoded matrix segment: fl=id,first_name,last_name,current_location_name,current_job_title,linkedin;sort=created_date desc
+  // Requested fields + asc sort
   const flFields = [
     'id',
     'first_name',
     'last_name',
-    'current_location_name',
     'current_job_title',
+    'employment_type',
     'linkedin',
+    'skill',
+    'keywords',
+    'current_location_name',
   ].join(',')
-  const matrixSegment = encodeURIComponent(`fl=${flFields};sort=created_date desc`)
+  const matrixSegment = encodeURIComponent(`fl=${flFields};sort=created_date asc`)
 
-  // Build q param: current_job_title%3A%22Security+Engineer%22%23
+  // q=current_job_title:"<title>"#
   const qParam = `current_job_title%3A%22${titlePlus}%22%23`
 
   const base = config.VINCERE_TENANT_API_BASE.replace(/\/$/, '')
   const searchUrl = `${base}/api/v2/candidate/search/${matrixSegment}?q=${qParam}&limit=${limit}`
 
-  const headers = {
+  const headers: Record<string, string> = {
     accept: 'application/json',
     'id-token': idToken,
     'x-api-key': config.VINCERE_API_KEY,
   }
 
-  // Execute the search
   let resp = await fetch(searchUrl, { method: 'GET', headers, cache: 'no-store' })
-  // Refresh token on 401/403
   if (resp.status === 401 || resp.status === 403) {
     const who = session.user?.email || session.sessionId || ''
     if (await refreshIdToken(who)) {
@@ -109,16 +108,22 @@ export async function POST(req: NextRequest) {
   }
 
   const data = await resp.json().catch(() => ({}))
-  // According to Vincere docs, results are in `result.items`
   const items: any[] = data.result?.items || data.items || []
+
+  const toArray = (v: any) =>
+    Array.isArray(v) ? v.filter(Boolean) : v ? [v] : []
+
   const results = items.map((c) => ({
     id: c.id ?? c.candidate_id ?? '',
     firstName: c.first_name ?? '',
     lastName: c.last_name ?? '',
     fullName: `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim(),
-    location: c.current_location_name ?? '',
     title: c.current_job_title ?? '',
+    employmentType: c.employment_type ?? '',
     linkedin: c.linkedin ?? null,
+    skills: toArray(c.skill),
+    keywords: toArray(c.keywords),
+    location: c.current_location_name ?? '',
   }))
 
   return NextResponse.json({
