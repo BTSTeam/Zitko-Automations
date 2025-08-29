@@ -299,7 +299,7 @@ function MatchTab() {
 
           <div className="grid sm:grid-cols-2 gap-4 text-sm mb-4">
             <div>
-              <div className="text-gray-500">Title</div>
+              <div className="text-gray-500">Job Title</div>
               <input className="input mt-1" value={title} onChange={e=>setTitle(e.target.value)} placeholder="e.g., Fire & Security Engineer" />
             </div>
             <div>
