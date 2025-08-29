@@ -77,27 +77,30 @@ export async function POST(req: NextRequest) {
   const title = esc(job?.title || '')
   if (!title) return NextResponse.json({ error: 'Missing job title' }, { status: 400 })
 
-  // 1) exact phrase on current_job_title (e.g., "Security Engineer")
-  const currentTitlePhrase = phrase('current_job_title', title)
+  // Build candidate search attempts using fq= (filter query) + q=*:* pattern
+  const toks = splitTokens(title) // e.g., ["Fire","Security","Engineer"]
 
-  // 2) token-OR match on current_job_title (handles e.g., "Fire & Security Engineer")
-  const toks = splitTokens(title)                 // e.g. ["Fire","Security","Engineer"]
-  const currentTitleOR = toks.length
-    ? toks.map(t => `current_job_title:${esc(t)}#`).join(' OR ')
-    : ''
+  // 1) Exact phrase on current_job_title
+  const fqPhrase = phrase('current_job_title', title) // current_job_title:"Security Engineer"#
+  // 2) Token OR on current_job_title (e.g., current_job_title:Fire# OR current_job_title:Security# OR current_job_title:Engineer#)
+  const fqTitleOR = toks.length ? toks.map(t => `current_job_title:${esc(t)}#`).join(' OR ') : ''
+  // 3) Wildcards (each token must appear somewhere in the title)
+  const fqWildAND = toks.length ? toks.map(t => `current_job_title:*${esc(t)}*`).join(' AND ') : ''
+  // 4) Fallback to text field phrase (sometimes broader index)
+  const fqTextPhrase = phrase('text', title)
 
-  // Try phrase first, then OR tokens
+  // order: precise -> broad
   const attempts = [
-    { label: 'currentTitlePhrase', q: currentTitlePhrase || '*:*' },
-    { label: 'currentTitleOR',     q: currentTitleOR     || '*:*' },
-  ]
+    { label: 'fqCurrentPhrase', fq: fqPhrase },
+    { label: 'fqCurrentOR',     fq: fqTitleOR },
+    { label: 'fqCurrentWildAND',fq: fqWildAND },
+    { label: 'fqTextPhrase',    fq: fqTextPhrase },
+  ].filter(a => a.fq && a.fq.trim().length > 0)
 
-  // fields to return (minimal)
+  // minimal fields for panel
   const fl = ['id','candidate_id','first_name','last_name','current_job_title'].join(',')
 
-  // two URL styles:
-  // A) matrix params with semicolons  -> /search/;fl=...;sort=...
-  // B) fully encoded path segment     -> /search/fl%3D...%3Bsort%3D...
+  // matrix param styles
   const matrixA = `;fl=${encodeURIComponent(fl)};sort=${encodeURIComponent('created_date desc')}`
   const matrixB = encodeURIComponent(`fl=${fl};sort=created_date desc`)
 
@@ -107,9 +110,10 @@ export async function POST(req: NextRequest) {
     'x-api-key': config.VINCERE_API_KEY
   })
 
-  async function runOnce(style: 'A'|'B', qStr: string) {
+  async function runOnce(style: 'A'|'B', fqStr: string) {
     const path = style === 'A' ? `${searchBase}/${matrixA}` : `${searchBase}/${matrixB}`
-    const url = `${path}?q=${encodeURIComponent(qStr)}&limit=${limit}`
+    // IMPORTANT: q=*:* and the field restriction goes in fq=
+    const url = `${path}?q=${encodeURIComponent('*:*')}&fq=${encodeURIComponent(fqStr)}&limit=${limit}`
     console.log('[vincere.search]', style, 'GET', url)
     let resp = await fetch(url, { method: 'GET', headers: headersBase(), cache: 'no-store' })
     if (resp.status === 401 || resp.status === 403) {
@@ -126,18 +130,17 @@ export async function POST(req: NextRequest) {
     return { resp, docs, url }
   }
 
-  // try styles A then B for each query until we get docs
+  // try styles A then B for each attempt until we get docs (or finish)
   let chosen: { resp: Response | null, docs: any[], url: string, label: string } =
     { resp: null, docs: [], url: '', label: '' }
 
   outer: for (const a of attempts) {
     for (const style of ['A','B'] as const) {
-      const r = await runOnce(style, a.q)
+      const r = await runOnce(style, a.fq!)
       if (r.resp?.ok && Array.isArray(r.docs) && r.docs.length > 0) {
         chosen = { ...r, label: `${a.label}:${style}` }
         break outer
       }
-      // if it's the last attempt & last style, accept empty to return debug info
       if (a === attempts[attempts.length - 1] && style === 'B') {
         chosen = { ...r, label: `${a.label}:${style}` }
       }
@@ -171,7 +174,7 @@ export async function POST(req: NextRequest) {
     ...(debug ? {
       debug: {
         usedUrl,
-        usedQuery: attempts.map(a => a.q)[attempts.findIndex(t => `${t.label}` === usedLabel.split(':')[0])] ?? null,
+        usedFilter: attempts.map(a => a.fq)[attempts.findIndex(t => `${t.label}` === usedLabel.split(':')[0])] ?? null,
         attempt: usedLabel,
         status: resp?.status,
         rawCount: docs.length
