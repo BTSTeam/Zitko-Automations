@@ -176,4 +176,3 @@ export async function POST(req: NextRequest) {
     total: results.length
   })
 }
-
