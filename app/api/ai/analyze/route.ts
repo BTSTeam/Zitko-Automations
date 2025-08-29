@@ -2,21 +2,32 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export async function POST(req: NextRequest) {
   const OPENAI_API_KEY = process.env.OPENAI_API_KEY
-  if (!OPENAI_API_KEY) return NextResponse.json({ error: 'Missing OPENAI_API_KEY' }, { status: 500 })
+  if (!OPENAI_API_KEY) {
+    return NextResponse.json({ error: 'Missing OPENAI_API_KEY' }, { status: 500 })
+  }
 
   const { job, candidates, instruction } = await req.json()
 
   const system = `
-You help a Fire & Security recruitment team rank candidates for a single role.
+You help a Fire & Security recruitment team *deduplicate and rank* candidates for a single role.
+
 Scoring priority (highest to lowest):
-1) Location proximity/fit ("${job?.location ?? ''}" if provided, or UK fit if not)
+1) Location proximity/fit (use job.location; if blank, prefer UK fit for UK roles)
 2) Skills match to the job (exact or close synonyms)
 3) Qualifications match (certs, courses)
 4) Current Job Title relevance
 
-Return strictly JSON with a single key "ranked": an array of at most 20 items.
-Each item: { "candidate_id": string, "score_percent": number (0-100), "reason": string }.
-Keep reasons short (max 20 words). No extra keys or commentary.`.trim()
+Tasks:
+- Deduplicate candidates by candidate_id (keep the best single record).
+- Score **every** candidate 0-100 (integer), not just a top subset.
+- Provide a short reason (max 20 words).
+
+Output format:
+Return strictly JSON with a single key "ranked": an array of items:
+{ "candidate_id": string, "score_percent": number, "reason": string }
+
+No extra keys, no commentary.
+`.trim()
 
   const user = JSON.stringify({
     job: {
@@ -33,7 +44,7 @@ Keep reasons short (max 20 words). No extra keys or commentary.`.trim()
   const r = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${OPENAI_API_KEY}`,
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
@@ -47,5 +58,8 @@ Keep reasons short (max 20 words). No extra keys or commentary.`.trim()
   })
 
   const text = await r.text()
-  return new NextResponse(text, { status: r.status, headers: { 'content-type': r.headers.get('content-type') || 'application/json' } })
+  return new NextResponse(text, {
+    status: r.status,
+    headers: { 'content-type': r.headers.get('content-type') || 'application/json' }
+  })
 }
