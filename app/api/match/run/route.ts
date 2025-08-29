@@ -26,7 +26,7 @@ const splitTokens = (v?: string) => {
 }
 const phrase = (field: string, value?: string) => {
   const v = esc(value)
-  return v ? `${field}:"${v}"#` : ''
+  return v ? `${field}:"${v}"` : '' // we'll add optional # later
 }
 
 export async function POST(req: NextRequest) {
@@ -73,34 +73,49 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // ----- use Job Summary title; return candidates whose current title contains those words -----
+  // ----- use Job Summary title -----
   const title = esc(job?.title || '')
   if (!title) return NextResponse.json({ error: 'Missing job title' }, { status: 400 })
 
-  // Build candidate search attempts using fq= (filter query) + q=*:* pattern
-  const toks = splitTokens(title) // e.g., ["Fire","Security","Engineer"]
+  const toks = splitTokens(title) // e.g. ["Fire","Security","Engineer"]
+
+  // Build pure q= variants (NO fq) — we’ll try with and without trailing '#'
+  const qVariantsRaw: string[] = []
 
   // 1) Exact phrase on current_job_title
-  const fqPhrase = phrase('current_job_title', title) // current_job_title:"Security Engineer"#
-  // 2) Token OR on current_job_title (e.g., current_job_title:Fire# OR current_job_title:Security# OR current_job_title:Engineer#)
-  const fqTitleOR = toks.length ? toks.map(t => `current_job_title:${esc(t)}#`).join(' OR ') : ''
-  // 3) Wildcards (each token must appear somewhere in the title)
-  const fqWildAND = toks.length ? toks.map(t => `current_job_title:*${esc(t)}*`).join(' AND ') : ''
-  // 4) Fallback to text field phrase (sometimes broader index)
-  const fqTextPhrase = phrase('text', title)
+  const p1 = phrase('current_job_title', title)                         // current_job_title:"Security Engineer"
+  if (p1) qVariantsRaw.push(p1)
 
-  // order: precise -> broad
-  const attempts = [
-    { label: 'fqCurrentPhrase', fq: fqPhrase },
-    { label: 'fqCurrentOR',     fq: fqTitleOR },
-    { label: 'fqCurrentWildAND',fq: fqWildAND },
-    { label: 'fqTextPhrase',    fq: fqTextPhrase },
-  ].filter(a => a.fq && a.fq.trim().length > 0)
+  // 2) Token-AND: all tokens must appear somewhere in the current title
+  if (toks.length) {
+    qVariantsRaw.push(toks.map(t => `current_job_title:${t}`).join(' AND '))
+  }
 
-  // minimal fields for panel
+  // 3) Token-OR: any token (for very broad match)
+  if (toks.length) {
+    qVariantsRaw.push(toks.map(t => `current_job_title:${t}`).join(' OR '))
+  }
+
+  // 4) Wildcard AND (broad but targeted)
+  if (toks.length) {
+    qVariantsRaw.push(toks.map(t => `current_job_title:*${t}*`).join(' AND '))
+  }
+
+  // 5) Fallback to text phrase (broadest)
+  const pText = phrase('text', title)                                   // text:"Security Engineer"
+  if (pText) qVariantsRaw.push(pText)
+
+  // Create a list that tries each raw variant exactly as-is, then with a trailing '#'
+  const qVariants: string[] = []
+  for (const q of qVariantsRaw) {
+    qVariants.push(q)           // no trailing #
+    qVariants.push(`${q}#`)     // with trailing #
+  }
+
+  // fields to return (minimal for your panel)
   const fl = ['id','candidate_id','first_name','last_name','current_job_title'].join(',')
 
-  // matrix param styles
+  // three URL styles: matrix A, matrix B (your existing two), and a plain query style C
   const matrixA = `;fl=${encodeURIComponent(fl)};sort=${encodeURIComponent('created_date desc')}`
   const matrixB = encodeURIComponent(`fl=${fl};sort=created_date desc`)
 
@@ -110,10 +125,27 @@ export async function POST(req: NextRequest) {
     'x-api-key': config.VINCERE_API_KEY
   })
 
-  async function runOnce(style: 'A'|'B', fqStr: string) {
-    const path = style === 'A' ? `${searchBase}/${matrixA}` : `${searchBase}/${matrixB}`
-    // IMPORTANT: q=*:* and the field restriction goes in fq=
-    const url = `${path}?q=${encodeURIComponent('*:*')}&fq=${encodeURIComponent(fqStr)}&limit=${limit}`
+  function buildUrl(style: 'A'|'B'|'C', qStr: string) {
+    if (style === 'A') {
+      const path = `${searchBase}/${matrixA}`
+      return `${path}?q=${encodeURIComponent(qStr)}&limit=${limit}`
+    }
+    if (style === 'B') {
+      const path = `${searchBase}/${matrixB}`
+      return `${path}?q=${encodeURIComponent(qStr)}&limit=${limit}`
+    }
+    // Style C: pass everything as plain query params (no matrix)
+    // Some Vincere tenants prefer this.
+    const params = new URLSearchParams()
+    params.set('q', qStr)
+    params.set('limit', String(limit))
+    params.set('fl', fl)
+    params.set('sort', 'created_date desc')
+    return `${searchBase}?${params.toString()}`
+  }
+
+  async function runOnce(style: 'A'|'B'|'C', qStr: string) {
+    const url = buildUrl(style, qStr)
     console.log('[vincere.search]', style, 'GET', url)
     let resp = await fetch(url, { method: 'GET', headers: headersBase(), cache: 'no-store' })
     if (resp.status === 401 || resp.status === 403) {
@@ -130,19 +162,20 @@ export async function POST(req: NextRequest) {
     return { resp, docs, url }
   }
 
-  // try styles A then B for each attempt until we get docs (or finish)
+  // Try each q variant across styles A, B, then C until results appear
   let chosen: { resp: Response | null, docs: any[], url: string, label: string } =
     { resp: null, docs: [], url: '', label: '' }
 
-  outer: for (const a of attempts) {
-    for (const style of ['A','B'] as const) {
-      const r = await runOnce(style, a.fq!)
+  outer: for (const q of qVariants) {
+    for (const style of ['A','B','C'] as const) {
+      const r = await runOnce(style, q)
       if (r.resp?.ok && Array.isArray(r.docs) && r.docs.length > 0) {
-        chosen = { ...r, label: `${a.label}:${style}` }
+        chosen = { ...r, label: `q=${q} style=${style}` }
         break outer
       }
-      if (a === attempts[attempts.length - 1] && style === 'B') {
-        chosen = { ...r, label: `${a.label}:${style}` }
+      // allow last attempt to carry diagnostics
+      if (q === qVariants[qVariants.length - 1] && style === 'C') {
+        chosen = { ...r, label: `q=${q} style=${style}` }
       }
     }
   }
@@ -174,7 +207,6 @@ export async function POST(req: NextRequest) {
     ...(debug ? {
       debug: {
         usedUrl,
-        usedFilter: attempts.map(a => a.fq)[attempts.findIndex(t => `${t.label}` === usedLabel.split(':')[0])] ?? null,
         attempt: usedLabel,
         status: resp?.status,
         rawCount: docs.length
