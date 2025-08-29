@@ -1,12 +1,4 @@
 // Updated dashboard/page.tsx with Page Size dropdown removed and KPIs section hidden
-
-// Note: This file mirrors the original `dashboard/page.tsx` from the Zitko Automations repo,
-// with two key modifications:
-//  1. The "Page size" dropdown has been removed from the Candidate Matching section and
-//     the surrounding grid has been adjusted to two columns to keep the layout neat.
-//  2. The `<KPIs />` component is no longer rendered in the Dashboard component to hide the
-//     "Candidates Matched", "Candidates Sourced", and "CVs Formatted" counters.
-
 'use client'
 import { useState, useEffect, type Dispatch, type SetStateAction, type ReactNode } from 'react'
 
@@ -166,9 +158,9 @@ function MatchTab() {
   const [sortBy, setSortBy] = useState<[keyof ScoredRow, 'asc'|'desc']>(['score','desc'])
   const [filter, setFilter] = useState('')
 
-  // pagination
+  // pagination (page size fixed to 20; dropdown removed)
   const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(20)
+  const pageSize = 20
   const [total, setTotal] = useState(0)
 
   // NEW: hide/show descriptions
@@ -229,11 +221,13 @@ function MatchTab() {
     }
   }
 
-  const runSearch = async (targetPage = page) => {
+  // Run Vincere search, then send to AI, then map to ScoredRow (top 20)
+  const runSearch = async () => {
     if (!job) return
     setLoadingSearch(true)
     try {
-      const r = await fetch('/api/match/run', {
+      // 1) Vincere candidate search (by job title)
+      const run = await fetch('/api/match/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -244,14 +238,72 @@ function MatchTab() {
             qualifications: qualsText.split(',').map(s => s.trim()).filter(Boolean),
             description: job.public_description
           },
-          page: targetPage,
-          limit: pageSize
+          limit: 300
         })
       })
-      const res = await r.json()
-      setScored(res?.results ?? [])
-      setTotal(Number(res?.total ?? 0))
-      setPage(Number(res?.page ?? targetPage))
+      const payload = await run.json()
+      if (!run.ok) throw new Error(payload?.error || `Search failed (${run.status})`)
+
+      const candidates = (payload?.results || []) as Array<{
+        id: string
+        firstName?: string
+        lastName?: string
+        fullName?: string
+        location?: string
+        city?: string
+        title?: string
+        skills?: string[]
+        qualifications?: string[]
+        linkedin?: string | null
+      }>
+
+      // 2) AI scoring (priority: location, skills, qualifications, job title)
+      const ai = await fetch('/api/ai/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          job: {
+            title,
+            location,
+            skills: skillsText.split(',').map(s => s.trim()).filter(Boolean),
+            qualifications: qualsText.split(',').map(s => s.trim()).filter(Boolean),
+            description: job.public_description || ''
+          },
+          candidates: candidates.map(c => ({
+            candidate_id: c.id,
+            full_name: c.fullName || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim(),
+            location: c.location || c.city || '',
+            current_job_title: c.title || '',
+            skills: c.skills || [],
+            qualifications: c.qualifications || []
+          })),
+          instruction: 'Return only the top 20 as {candidate_id, score_percent, reason}.'
+        })
+      })
+
+      const aiText = await ai.text()
+      let ranked: { ranked?: { candidate_id: string; score_percent: number; reason: string }[] } = {}
+      try { ranked = JSON.parse(aiText) } catch { ranked = {} }
+
+      const top = (ranked?.ranked || []).slice(0, 20)
+
+      // 3) Map AI results to ScoredRow with LinkedIn + names
+      const byId = new Map(candidates.map(c => [c.id, c]))
+      const scoredRows: ScoredRow[] = top.map(r => {
+        const c = byId.get(r.candidate_id)
+        const candidateName = c?.fullName || `${c?.firstName ?? ''} ${c?.lastName ?? ''}`.trim() || r.candidate_id
+        return {
+          candidateId: r.candidate_id,
+          candidateName,
+          score: Math.round(Number(r.score_percent) || 0),
+          reason: r.reason || '',
+          linkedin: c?.linkedin || undefined
+        }
+      })
+
+      setScored(scoredRows)
+      setTotal(scoredRows.length)
+      setPage(1)
     } catch (e) {
       console.error(e)
       alert('Search or scoring failed.')
@@ -262,14 +314,13 @@ function MatchTab() {
 
   const searchCandidates = async () => {
     if (!job) return alert('Retrieve Job Information first.')
-    setPage(1)
-    await runSearch(1)
+    await runSearch()
   }
 
-  const canPrev = page > 1
-  const canNext = page * pageSize < total
-  const showingFrom = total ? (page - 1) * pageSize + 1 : 0
-  const showingTo = total ? Math.min(page * pageSize, total) : 0
+  const canPrev = false
+  const canNext = false
+  const showingFrom = total ? 1 : 0
+  const showingTo = total
 
   return (
     <div className="grid gap-6">
@@ -351,14 +402,12 @@ function MatchTab() {
               <div className="flex items-center justify-between text-sm">
                 <div className="text-gray-600">
                   {total
-                    ? <>
-                        Showing <span className="font-medium">{showingFrom}</span>–<span className="font-medium">{showingTo}</span> of <span className="font-medium">{total}</span>
-                      </>
+                    ? <>Showing <span className="font-medium">{showingFrom}</span>–<span className="font-medium">{showingTo}</span> of <span className="font-medium">{total}</span></>
                     : 'No results'}
                 </div>
                 <div className="flex gap-2">
-                  <button className="btn btn-grey" disabled={!canPrev || loadingSearch} onClick={()=> canPrev && runSearch(page - 1)}>Prev</button>
-                  <button className="btn btn-grey" disabled={!canNext || loadingSearch} onClick={()=> canNext && runSearch(page + 1)}>Next</button>
+                  <button className="btn btn-grey" disabled={!canPrev || loadingSearch}>Prev</button>
+                  <button className="btn btn-grey" disabled={!canNext || loadingSearch}>Next</button>
                 </div>
               </div>
             </>
