@@ -32,14 +32,14 @@ function splitTokens(v?: string) {
     .filter(t => t && !stop.has(t.toLowerCase()) && t.length >= 2)
 }
 
-// (field:"Phrase"#)
 function phrase(field: string, value?: string) {
-  const v = esc(value); return v ? `${field}:"${v}"#` : ''
+  const v = esc(value)
+  return v ? `${field}:"${v}"#` : ''
 }
 
-// ((field:tok1#) AND (field:tok2#) ...)
 function tokensAND(field: string, value?: string) {
-  const toks = splitTokens(value); if (!toks.length) return ''
+  const toks = splitTokens(value)
+  if (!toks.length) return ''
   return toks.map(t => `${field}:${esc(t)}#`).map(s => `(${s})`).join(' AND ')
 }
 
@@ -74,14 +74,16 @@ export async function POST(req: NextRequest) {
     let r = await call()
     if (r.status === 401 || r.status === 403) {
       if (await refreshIdToken(session.user?.email || session.sessionId || '')) {
-        const s2 = await getSession(); idToken = s2.tokens?.idToken; r = await call()
+        const s2 = await getSession()
+        idToken = s2.tokens?.idToken
+        r = await call()
       }
     }
     if (!r.ok) {
       const detail = await r.text().catch(() => '')
       return NextResponse.json({ error: 'Failed to load position', detail }, { status: r.status || 400 })
     }
-    const pos = await r.json().catch(() => ({}))
+    const pos = await r.json().catch(() => ({} as any))
     job = {
       title: pos.job_title || pos.title || pos.name || '',
       location: pos['location-text'] || pos.location_text || pos.location || pos.city || '',
@@ -94,7 +96,7 @@ export async function POST(req: NextRequest) {
   const title = esc(job?.title || '')
   if (!title) return NextResponse.json({ error: 'Missing job title' }, { status: 400 })
 
-  // --- Query: exact phrase OR token-AND on title OR token-AND on free text
+  // Query
   const qParts = [
     phrase('current_job_title', title),
     tokensAND('current_job_title', title),
@@ -102,7 +104,7 @@ export async function POST(req: NextRequest) {
   ].filter(Boolean)
   const q = qParts.length > 1 ? `(${qParts.join(' OR ')})` : (qParts[0] || '*:*')
 
-  // --- Returned fields (includes skills + qualifications variants)
+  // Returned fields
   const fl = [
     'id','candidate_id','first_name','last_name',
     'current_job_title','current_city','current_location_name',
@@ -110,14 +112,14 @@ export async function POST(req: NextRequest) {
     'skill','edu_qualification'
   ].join(',')
 
-  // --- Build matrix-var URL EXACTLY like the cURL example
+  // URL (matrix vars)
   const matrix = `;fl=${encodeURIComponent(fl)};sort=${encodeURIComponent('created_date desc')}`
   const url = `${searchBase}/${matrix}?q=${encodeURIComponent(q)}&limit=${limit}`
 
-  // --- GET with retry on 401/403 + logging so you can see each GET in Vercel logs
+  // GET with retry + logs
   const headersBase = () => ({
-    'accept': 'application/json',
-    'id-token': idToken!,               // set during Vincere OAuth callback
+    accept: 'application/json',
+    'id-token': idToken!,
     'x-api-key': config.VINCERE_API_KEY
   })
 
@@ -127,7 +129,8 @@ export async function POST(req: NextRequest) {
     if (resp.status === 401 || resp.status === 403) {
       const who = session.user?.email || session.sessionId || ''
       if (await refreshIdToken(who)) {
-        const s2 = await getSession(); idToken = s2.tokens?.idToken
+        const s2 = await getSession()
+        idToken = s2.tokens?.idToken
         resp = await fetch(url, { method: 'GET', headers: headersBase(), cache: 'no-store' })
       }
     }
@@ -139,7 +142,7 @@ export async function POST(req: NextRequest) {
   let docs: any[] = []
   let errorText = ''
   if (resp.ok) {
-    const json = await resp.json().catch(() => ({}))
+    const json = await resp.json().catch(() => ({} as any))
     docs = json?.response?.docs || json?.data || []
   } else {
     errorText = await resp.text().catch(() => '')
@@ -162,20 +165,22 @@ export async function POST(req: NextRequest) {
       fullName: `${d.first_name ?? ''} ${d.last_name ?? ''}`.trim(),
       title: d.current_job_title ?? '',
       city: d.current_city ?? '',
-      location: d.current_location_name ?? '',
+      location: d.current_location_name ?? d.current_location ?? '',
       linkedin: d.linkedin || d.linkedin_url || null,
       skills: asArray(d.skill),
       qualifications: asArray(d.edu_qualification),
     }
-  }).filter(Boolean)
+  }).filter(Boolean) as any[]
 
   return NextResponse.json({
-  job: job || null,
-  results,
-  total: (results as any[]).length,
-  ...(debug ? {
-    debug: { q, url, status: resp.status, rawCount: docs.length, error: errorText || undefined },
-    rawDocs: docs.slice(0, 5) // <-- first 5 raw docs to inspect fields
-  } : {})
-})
-
+    job: job || null,
+    results,
+    total: results.length,
+    ...(debug
+      ? {
+          debug: { q, url, status: resp.status, rawCount: docs.length, error: errorText || undefined },
+          rawDocs: docs.slice(0, 5)
+        }
+      : {})
+  })
+}
