@@ -62,10 +62,14 @@ const resolveJob = async (session: any, body: RunReq, idToken: string) => {
 }
 
 // Build candidate search URL with matrix vars and optional skill clauses
-function buildSearchUrl(base: string, idToken: string, title: string, skillSet: string[], limit: number) {
+function buildSearchUrl(
+  base: string,
+  title: string,
+  skillSet: string[],
+  limit: number
+) {
   const baseUrl = base.replace(/\/$/, '')
   const titlePlus = title.trim().split(/\s+/).join('+')
-
   const flFields = [
     'id',
     'first_name',
@@ -85,12 +89,12 @@ function buildSearchUrl(base: string, idToken: string, title: string, skillSet: 
     'current_employer',
     'employer_name',
   ].join(',')
-
-  const matrixSegment = encodeURIComponent(`fl=${flFields};sort=created_date asc`)
+  const matrixSegment = encodeURIComponent(
+    `fl=${flFields};sort=created_date asc`
+  )
   const titleQ = `current_job_title:%22${titlePlus}%22%23`
-
   let skillQ = ''
-  const skills = (skillSet || []).map(s => s.trim()).filter(Boolean)
+  const skills = (skillSet || []).map((s) => s.trim()).filter(Boolean)
   if (skills.length) {
     const parts: string[] = []
     for (const s of skills) {
@@ -101,8 +105,9 @@ function buildSearchUrl(base: string, idToken: string, title: string, skillSet: 
     const orJoined = parts.join('%20OR%20')
     skillQ = `${orJoined}%23`
   }
-
-  const url = new URL(`${baseUrl}/api/v2/candidate/search/${matrixSegment}`)
+  const url = new URL(
+    `${baseUrl}/api/v2/candidate/search/${matrixSegment}`
+  )
   url.searchParams.set('limit', String(limit))
   url.searchParams.append('q', titleQ)
   if (skillQ) url.searchParams.append('q', skillQ)
@@ -136,8 +141,16 @@ function pickEmployer(c: any): string | null {
 }
 
 function normalizeCand(c: any): RawCand {
-  const skills = Array.isArray(c.skill) ? c.skill.filter(Boolean) : c.skill ? [c.skill] : []
-  const keywordsSrc = Array.isArray(c.keywords) ? c.keywords : c.keyword ? [c.keyword] : []
+  const skills = Array.isArray(c.skill)
+    ? c.skill.filter(Boolean)
+    : c.skill
+    ? [c.skill]
+    : []
+  const keywordsSrc = Array.isArray(c.keywords)
+    ? c.keywords
+    : c.keyword
+    ? [c.keyword]
+    : []
   const keywords = keywordsSrc.filter(Boolean)
   const li = c.linkedin_url ?? c.linkedin ?? null
   return {
@@ -161,14 +174,21 @@ async function fetchOnce(url: string, idToken: string) {
     'id-token': idToken,
     'x-api-key': config.VINCERE_API_KEY,
   }
-  const r = await fetch(url, { method: 'GET', headers, cache: 'no-store' })
+  const r = await fetch(url, {
+    method: 'GET',
+    headers,
+    cache: 'no-store',
+  })
   return r
 }
 
 export async function POST(req: NextRequest) {
   requiredEnv()
   const body: RunReq = await req.json().catch(() => ({} as any))
-  const limitPerSearch = Math.min(Math.max(Number(body.limit ?? 100), 1), 300)
+  const limitPerSearch = Math.min(
+    Math.max(Number(body.limit ?? 100), 1),
+    300
+  )
 
   const session = await getSession()
   let idToken = session.tokens?.idToken
@@ -179,10 +199,13 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // Resolve job (from ID or direct payload)
+  // Resolve job from ID or direct payload
   const job = await resolveJob(session, body, idToken)
   if (!job || !job.title?.trim()) {
-    return NextResponse.json({ error: 'Missing job title' }, { status: 400 })
+    return NextResponse.json(
+      { error: 'Missing job title' },
+      { status: 400 }
+    )
   }
 
   const base = config.VINCERE_TENANT_API_BASE
@@ -192,13 +215,13 @@ export async function POST(req: NextRequest) {
   const s2 = skillsAll.slice(0, 2)
   const s1 = skillsAll.slice(0, 1)
 
-  // 5 searches
+  // Five searches: title-only, +4 skills, +3 skills, +2 skills, +1 skill
   const urls: string[] = [
-    buildSearchUrl(base, idToken, job.title!, [], limitPerSearch),
-    buildSearchUrl(base, idToken, job.title!, s4, limitPerSearch),
-    buildSearchUrl(base, idToken, job.title!, s3, limitPerSearch),
-    buildSearchUrl(base, idToken, job.title!, s2, limitPerSearch),
-    buildSearchUrl(base, idToken, job.title!, s1, limitPerSearch),
+    buildSearchUrl(base, job.title!, [], limitPerSearch),
+    buildSearchUrl(base, job.title!, s4, limitPerSearch),
+    buildSearchUrl(base, job.title!, s3, limitPerSearch),
+    buildSearchUrl(base, job.title!, s2, limitPerSearch),
+    buildSearchUrl(base, job.title!, s1, limitPerSearch),
   ]
 
   const dedup = new Map<string, RawCand>()
@@ -225,8 +248,9 @@ export async function POST(req: NextRequest) {
 
   const allCandidates = Array.from(dedup.values())
 
-  // AI scoring (instructs model to EXCLUDE <60)
-  const aiResp = await fetch(`${new URL(req.url).origin}/api/ai/analyze`, {
+  // Call AI to score and filter. Use req.nextUrl.origin for absolute URL.
+  const aiUrl = `${req.nextUrl.origin}/api/ai/analyze`
+  const aiResp = await fetch(aiUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -239,7 +263,9 @@ export async function POST(req: NextRequest) {
       },
       candidates: allCandidates.map((c) => ({
         candidate_id: c.id,
-        full_name: c.fullName || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim(),
+        full_name:
+          c.fullName ||
+          `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim(),
         location: c.location || '',
         current_job_title: c.title || '',
         current_employer: c.employer || '',
@@ -252,7 +278,9 @@ export async function POST(req: NextRequest) {
     }),
   })
 
-  let ranked: { ranked?: { candidate_id: string; score_percent: number; reason: string }[] } = {}
+  let ranked: {
+    ranked?: { candidate_id: string; score_percent: number; reason: string }[]
+  } = {}
   try {
     const text = await aiResp.text()
     ranked = JSON.parse(text)
@@ -260,7 +288,7 @@ export async function POST(req: NextRequest) {
     ranked = {}
   }
 
-  // Map back and enforce >=60% in code as well (belt & braces)
+  // Map back, enforce ≥ 60% suitability
   const byId = new Map(allCandidates.map((c) => [c.id, c]))
   const scoredRows = (ranked.ranked || [])
     .map((r) => {
