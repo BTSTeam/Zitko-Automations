@@ -19,7 +19,8 @@ Scoring priority (highest to lowest):
 
 Tasks:
 - Deduplicate candidates by candidate_id (keep the best single record).
-- Score **every** candidate 0-100 (integer), not just a top subset.
+- Score every candidate 0-100 (integer).
+- **EXCLUDE** any candidate with score_percent < 60 from the final output.
 - Provide a short reason (max 20 words).
 
 Output format:
