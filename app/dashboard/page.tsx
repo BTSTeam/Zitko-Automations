@@ -228,20 +228,18 @@ function MatchTab() {
     try {
       // 1) Vincere candidate search (by job title)
       const run = await fetch('/api/match/run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          job: {
-            title,
-            location,
-            skills: skillsText.split(',').map(s => s.trim()).filter(Boolean),
-            qualifications: qualsText.split(',').map(s => s.trim()).filter(Boolean),
-            description: job.public_description
-          },
-          limit: 300
-        })
-      })
-      const payload = await run.json()
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    job: { title, location, skills: skillsText.split(',').map(s=>s.trim()).filter(Boolean),
+           qualifications: qualsText.split(',').map(s=>s.trim()).filter(Boolean),
+           description: job.public_description || '' },
+    limit: 300,
+    debug: true
+  })
+})
+const payload = await run.json()
+console.log('MATCH/RUN payload:', payload)
       if (!run.ok) throw new Error(payload?.error || `Search failed (${run.status})`)
 
       const candidates = (payload?.results || []) as Array<{
