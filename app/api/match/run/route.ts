@@ -69,7 +69,7 @@ const resolveJob = async (session: any, body: RunReq, idToken: string) => {
 export async function POST(req: NextRequest) {
   requiredEnv()
   const body: RunReq = await req.json().catch(() => ({} as any))
-  const limit = Math.min(Math.max(Number(body.limit ?? 100), 1), 100)
+  const limit = Math.min(Math.max(Number(body.limit ?? 20), 1), 100)
 
   const session = await getSession()
   let idToken = session.tokens?.idToken
@@ -85,33 +85,35 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Missing job title' }, { status: 400 })
   }
 
+  // Replace spaces with + in title
   const titlePlus = job.title.trim().split(/\s+/).join('+')
 
-  // All requested fields + ascending created_date sort
+  // Build q param: job title AND at least 2 of the skills
+  const skillsPart =
+    job.skills && job.skills.length > 0
+      ? ` AND ((` + job.skills.map(s => `skills:"${s}"`).join(' OR ') + `)~2)`
+      : ''
+
+  const qParam = `(current_job_title:"${titlePlus}")${skillsPart}`
+
+  // Fields to retrieve (including education)
   const flFields = [
-    'id',
     'first_name',
     'last_name',
-    'current_job_title',
-    'employment_type',
-    'linkedin',
-    'skill',
-    'keywords',
     'current_location_name',
+    'current_job_title',
+    'linkedin',
     'edu_qualification',
     'edu_degree',
     'edu_course',
     'edu_institution',
     'edu_training'
   ].join(',')
-  const matrixSegment = encodeURIComponent(
-    `fl=${flFields};sort=created_date asc`
-  )
-
-  const qParam = `current_job_title%3A%22${titlePlus}%22%23`
 
   const base = config.VINCERE_TENANT_API_BASE.replace(/\/$/, '')
-  const searchUrl = `${base}/api/v2/candidate/search/${matrixSegment}?q=${qParam}&limit=${limit}`
+  const searchUrl = `${base}/api/v2/candidate/search/fl=${flFields}&sort=created_date%20desc&q=${encodeURIComponent(
+    qParam
+  )}&limit=${limit}#`
 
   const headers: Record<string, string> = {
     accept: 'application/json',
@@ -173,7 +175,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     job,
     results,
-    total: results.length
+    total: results.length,
+    searchUrl // included for debugging
   })
 }
-
