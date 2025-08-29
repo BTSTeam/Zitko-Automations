@@ -19,15 +19,14 @@ const esc = (s?: string) => (s ?? '').replace(/"/g, '\\"').trim()
 const splitTokens = (v?: string) => {
   if (!v) return [] as string[]
   const stop = new Set(['&','and','of','the','/','-','|',','])
-  return v.split(/[,\s/|\-]+/g).map(t => t.trim()).filter(t => t && !stop.has(t.toLowerCase()) && t.length >= 2)
+  return v
+    .split(/[,\s/|\-]+/g)
+    .map(t => t.trim())
+    .filter(t => t && !stop.has(t.toLowerCase()) && t.length >= 2)
 }
 const phrase = (field: string, value?: string) => {
   const v = esc(value)
   return v ? `${field}:"${v}"#` : ''
-}
-const tokensAND = (field: string, value?: string) => {
-  const toks = splitTokens(value); if (!toks.length) return ''
-  return toks.map(t => `(${field}:${esc(t)}#)`).join(' AND ')
 }
 
 export async function POST(req: NextRequest) {
@@ -74,33 +73,27 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // ----- use Job Summary title; return candidates whose current title contains those words -----
   const title = esc(job?.title || '')
   if (!title) return NextResponse.json({ error: 'Missing job title' }, { status: 400 })
 
-  // ---------- progressive queries (strict -> broad)
-  const titlePhrase = phrase('current_job_title', title)    // exact phrase in current title
-  const textPhrase  = phrase('text', title)                 // exact phrase in full text
-  const titleAND    = tokensAND('current_job_title', title) // AND tokens in current title
-  const textAND     = tokensAND('text', title)              // AND tokens in full text
-  const titleOR     = splitTokens(title).map(t => `current_job_title:${esc(t)}#`).join(' OR ')
-  const textOR      = splitTokens(title).map(t => `text:${esc(t)}#`).join(' OR ')
+  // 1) exact phrase on current_job_title (e.g., "Security Engineer")
+  const currentTitlePhrase = phrase('current_job_title', title)
 
+  // 2) token-OR match on current_job_title (handles e.g., "Fire & Security Engineer")
+  const toks = splitTokens(title)                 // e.g. ["Fire","Security","Engineer"]
+  const currentTitleOR = toks.length
+    ? toks.map(t => `current_job_title:${esc(t)}#`).join(' OR ')
+    : ''
+
+  // Try phrase first, then OR tokens
   const attempts = [
-    { label: 'titlePhrase', q: titlePhrase || '*:*' },
-    { label: 'textPhrase',  q: textPhrase  || '*:*' },
-    { label: 'titleAND',    q: titleAND    || '*:*' },
-    { label: 'textAND',     q: textAND     || '*:*' },
-    { label: 'titleOR',     q: titleOR     || '*:*' },
-    { label: 'textOR',      q: textOR      || '*:*' },
+    { label: 'currentTitlePhrase', q: currentTitlePhrase || '*:*' },
+    { label: 'currentTitleOR',     q: currentTitleOR     || '*:*' },
   ]
 
-  // fields to return
-  const fl = [
-    'id','candidate_id','first_name','last_name',
-    'current_job_title','current_city','current_location_name',
-    'linkedin','linkedin_url',
-    'skill','edu_qualification'
-  ].join(',')
+  // fields to return (minimal)
+  const fl = ['id','candidate_id','first_name','last_name','current_job_title'].join(',')
 
   // two URL styles:
   // A) matrix params with semicolons  -> /search/;fl=...;sort=...
@@ -158,10 +151,6 @@ export async function POST(req: NextRequest) {
 
   // map & dedupe
   const seen = new Set<string>()
-  const asArray = (v: any) =>
-    Array.isArray(v) ? v :
-    (v == null ? [] : String(v).split(/[,;]+/g).map((x: string) => x.trim()).filter(Boolean))
-
   const results = docs.map(d => {
     const id = String(d.id ?? d.candidate_id ?? '')
     if (!id || seen.has(id)) return null
@@ -171,12 +160,7 @@ export async function POST(req: NextRequest) {
       firstName: d.first_name ?? '',
       lastName: d.last_name ?? '',
       fullName: `${d.first_name ?? ''} ${d.last_name ?? ''}`.trim(),
-      title: d.current_job_title ?? '',
-      city: d.current_city ?? '',
-      location: d.current_location_name ?? d.current_location ?? '',
-      linkedin: d.linkedin || d.linkedin_url || null,
-      skills: asArray(d.skill),
-      qualifications: asArray(d.edu_qualification),
+      title: d.current_job_title ?? ''
     }
   }).filter(Boolean) as any[]
 
