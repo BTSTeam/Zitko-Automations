@@ -230,22 +230,29 @@ export async function POST(req: NextRequest) {
     eduTraining: c.edu_training ?? ''
   }))
 
-  // ---- NEW: Score with GPT, filter >= 50, sort desc ----
-let scored = results
-try {
-  const scores = await scoreWithGPT(job, results)
-  const byId = new Map<string, any>(scores.map((s: any) => [String(s.id), s as any]))
+   // ---- NEW: Score with GPT, filter >= 50, sort desc ----
+  let scored: any[] = results
+  try {
+    const scores = await scoreWithGPT(job, results)
+    const byId = new Map<string, any>(scores.map((s: any) => [String(s.id), s]))
 
-  scored = results
-    .map(r => {
-      const s = byId.get(String(r.id)) as any
-      const scoreNum = Math.max(0, Math.min(100, Number(s?.score ?? 0)))
-      const reason = typeof s?.reason === 'string' ? s.reason : 'Insufficient data to score'
-      return { ...r, score: scoreNum, reason }
-    })
-    .filter(r => (r as any).score >= 50)
-    .sort((a: any, b: any) => b.score - a.score)
-} catch {
-  // fallback: leave unscored list
-}
+    scored = results
+      .map((r: any) => {
+        const s = byId.get(String(r.id))
+        const scoreNum = Math.max(0, Math.min(100, Number(s?.score ?? 0)))
+        const reason = typeof s?.reason === 'string' ? s.reason : 'Insufficient data to score'
+        return { ...r, score: scoreNum, reason }
+      })
+      .filter((r: any) => r.score >= 50)
+      .sort((a: any, b: any) => b.score - a.score)
+  } catch (_e) {
+    // fallback: leave unscored list
+  }
+
+  return NextResponse.json({
+    job,
+    results: scored,
+    total: scored.length
+  })
+} // <-- end POST
 
