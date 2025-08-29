@@ -66,76 +66,6 @@ const resolveJob = async (session: any, body: RunReq, idToken: string) => {
   }
 }
 
-// ---------- NEW: GPT scoring helper ----------
-async function scoreWithGPT(job: any, candidates: any[]) {
-  const apiKey = process.env.OPENAI_API_KEY || config.OPENAI_API_KEY
-  if (!apiKey) return []
-
-  const model = process.env.OPENAI_MODEL || (config as any).OPENAI_MODEL || 'gpt-4o-mini'
-
-  // Keep payload lean for token safety
-  const compact = candidates.map(c => ({
-    id: c.id,
-    name: c.fullName,
-    title: c.title,
-    location: c.location,
-    skills: c.skills?.slice?.(0, 30) ?? c.skills,
-    qualifications: [
-      c.eduQualification, c.eduDegree, c.eduCourse, c.eduInstitution, c.eduTraining
-    ].filter(Boolean),
-    linkedin: c.linkedin
-  }))
-
-  const sys = `You are a recruitment scorer. Return STRICT JSON ONLY.
-Score 0-100 for each candidate based on this weighting:
-- Location 50% (same city/area=strong; nearby region=ok; far/mismatch=penalise)
-- Skills 35% (match role-specific skills/tech)
-- Qualifications 15% (relevant education/certs)
-Also include a short human-readable reason (<=220 chars).`
-
-  const user = {
-    job,
-    candidates: compact
-  }
-
-  const body = {
-    model,
-    messages: [
-      { role: 'system', content: sys },
-      { role: 'user', content: `Job Summary:\n${JSON.stringify(user.job, null, 2)}\n\nCandidates:\n${JSON.stringify(user.candidates, null, 2)}\n\nReturn JSON of shape: {"scores":[{"id":"<id>","score":0-100,"reason":"..."}]}` }
-    ],
-    temperature: 0.1
-  }
-
-  const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'authorization': `Bearer ${apiKey}`,
-      'content-type': 'application/json'
-    },
-    body: JSON.stringify(body)
-  })
-
-  if (!resp.ok) return []
-
-  const json = await resp.json().catch(() => ({} as any))
-  const content = json?.choices?.[0]?.message?.content ?? ''
-
-  let parsed: any = null
-  try {
-    parsed = JSON.parse(content)
-  } catch {
-    // attempt to salvage JSON from any stray text
-    const m = content.match(/\{[\s\S]*\}/)
-    if (m) {
-      try { parsed = JSON.parse(m[0]) } catch {}
-    }
-  }
-  const scores = Array.isArray(parsed?.scores) ? parsed.scores : []
-  return scores
-}
-// ---------- END GPT helper ----------
-
 export async function POST(req: NextRequest) {
   requiredEnv()
   const body: RunReq = await req.json().catch(() => ({} as any))
@@ -157,7 +87,7 @@ export async function POST(req: NextRequest) {
 
   const titlePlus = job.title.trim().split(/\s+/).join('+')
 
-  // Fields + sort asc
+  // All requested fields + ascending created_date sort
   const flFields = [
     'id',
     'first_name',
@@ -174,9 +104,10 @@ export async function POST(req: NextRequest) {
     'edu_institution',
     'edu_training'
   ].join(',')
-  const matrixSegment = encodeURIComponent(`fl=${flFields};sort=created_date asc`)
+  const matrixSegment = encodeURIComponent(
+    `fl=${flFields};sort=created_date asc`
+  )
 
-  // Exact title with Vincere hash (#)
   const qParam = `current_job_title%3A%22${titlePlus}%22%23`
 
   const base = config.VINCERE_TENANT_API_BASE.replace(/\/$/, '')
@@ -188,14 +119,22 @@ export async function POST(req: NextRequest) {
     'x-api-key': config.VINCERE_API_KEY
   }
 
-  let resp = await fetch(searchUrl, { method: 'GET', headers, cache: 'no-store' })
+  let resp = await fetch(searchUrl, {
+    method: 'GET',
+    headers,
+    cache: 'no-store'
+  })
   if (resp.status === 401 || resp.status === 403) {
     const who = session.user?.email || session.sessionId || ''
     if (await refreshIdToken(who)) {
       const s2 = await getSession()
       idToken = s2.tokens?.idToken || idToken
       headers['id-token'] = idToken
-      resp = await fetch(searchUrl, { method: 'GET', headers, cache: 'no-store' })
+      resp = await fetch(searchUrl, {
+        method: 'GET',
+        headers,
+        cache: 'no-store'
+      })
     }
   }
 
@@ -210,7 +149,8 @@ export async function POST(req: NextRequest) {
   const data = await resp.json().catch(() => ({}))
   const items: any[] = data.result?.items || data.items || []
 
-  const toArray = (v: any) => Array.isArray(v) ? v.filter(Boolean) : v ? [v] : []
+  const toArray = (v: any) =>
+    Array.isArray(v) ? v.filter(Boolean) : v ? [v] : []
 
   const results = items.map((c) => ({
     id: c.id ?? c.candidate_id ?? '',
@@ -230,29 +170,10 @@ export async function POST(req: NextRequest) {
     eduTraining: c.edu_training ?? ''
   }))
 
-   // ---- NEW: Score with GPT, filter >= 50, sort desc ----
-  let scored: any[] = results
-  try {
-    const scores = await scoreWithGPT(job, results)
-    const byId = new Map<string, any>(scores.map((s: any) => [String(s.id), s]))
-
-    scored = results
-      .map((r: any) => {
-        const s = byId.get(String(r.id))
-        const scoreNum = Math.max(0, Math.min(100, Number(s?.score ?? 0)))
-        const reason = typeof s?.reason === 'string' ? s.reason : 'Insufficient data to score'
-        return { ...r, score: scoreNum, reason }
-      })
-      .filter((r: any) => r.score >= 50)
-      .sort((a: any, b: any) => b.score - a.score)
-  } catch (_e) {
-    // fallback: leave unscored list
-  }
-
   return NextResponse.json({
     job,
-    results: scored,
-    total: scored.length
+    results,
+    total: results.length
   })
-} // <-- end POST
+}
 
