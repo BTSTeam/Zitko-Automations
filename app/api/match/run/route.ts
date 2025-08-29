@@ -231,28 +231,21 @@ export async function POST(req: NextRequest) {
   }))
 
   // ---- NEW: Score with GPT, filter >= 50, sort desc ----
-  let scored = results
-  try {
-    const scores = await scoreWithGPT(job, results)
-    const byId = new Map(scores.map((s: any) => [String(s.id), s]))
-    scored = results
-      .map(r => {
-        const s = byId.get(String(r.id))
-        return {
-          ...r,
-          score: Math.max(0, Math.min(100, Number(s?.score ?? 0))),
-          reason: String(s?.reason ?? 'Insufficient data to score')
-        }
-      })
-      .filter(r => r.score >= 50)
-      .sort((a, b) => b.score - a.score)
-  } catch {
-    // if scoring fails, fall back to unscored list
-  }
+let scored = results
+try {
+  const scores = await scoreWithGPT(job, results)
+  const byId = new Map<string, any>(scores.map((s: any) => [String(s.id), s as any]))
 
-  return NextResponse.json({
-    job,
-    results: scored,     // only >=50% & sorted by score desc
-    total: scored.length
-  })
+  scored = results
+    .map(r => {
+      const s = byId.get(String(r.id)) as any
+      const scoreNum = Math.max(0, Math.min(100, Number(s?.score ?? 0)))
+      const reason = typeof s?.reason === 'string' ? s.reason : 'Insufficient data to score'
+      return { ...r, score: scoreNum, reason }
+    })
+    .filter(r => (r as any).score >= 50)
+    .sort((a: any, b: any) => b.score - a.score)
+} catch {
+  // fallback: leave unscored list
 }
+
