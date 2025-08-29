@@ -85,16 +85,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Missing job title' }, { status: 400 })
   }
 
-  // Replace spaces with + in title
+  // Replace spaces with + in title (e.g., Security+Engineer)
   const titlePlus = job.title.trim().split(/\s+/).join('+')
+
+  // Normalise skills to string[]
+  const skills: string[] = Array.isArray(job.skills)
+    ? job.skills.map((x: any) => String(x)).filter(Boolean)
+    : []
 
   // Build q param: job title AND at least 2 of the skills
   const skillsPart =
-    job.skills && job.skills.length > 0
-      ? ` AND ((` + job.skills.map(s => `skills:"${s}"`).join(' OR ') + `)~2)`
+    skills.length > 0
+      ? ` AND ((` + skills.map((s: string) => `skills:"${s.replace(/"/g, '\\"')}"`).join(' OR ') + `)~2)`
       : ''
 
-  const qParam = `(current_job_title:"${titlePlus}")${skillsPart}`
+  const qRaw = `(current_job_title:"${titlePlus}")${skillsPart}`
+
+  // Encode, but keep '+' literal in title (avoid %2B)
+  const qEncoded = encodeURIComponent(qRaw).replace(/%2B/g, '+')
 
   // Fields to retrieve (including education)
   const flFields = [
@@ -111,9 +119,7 @@ export async function POST(req: NextRequest) {
   ].join(',')
 
   const base = config.VINCERE_TENANT_API_BASE.replace(/\/$/, '')
-  const searchUrl = `${base}/api/v2/candidate/search/fl=${flFields}&sort=created_date%20desc&q=${encodeURIComponent(
-    qParam
-  )}&limit=${limit}#`
+  const searchUrl = `${base}/api/v2/candidate/search/fl=${flFields}&sort=created_date%20desc&q=${qEncoded}&limit=${limit}#`
 
   const headers: Record<string, string> = {
     accept: 'application/json',
@@ -143,7 +149,7 @@ export async function POST(req: NextRequest) {
   if (!resp.ok) {
     const text = await resp.text().catch(() => '')
     return NextResponse.json(
-      { error: 'Vincere search failed', detail: text },
+      { error: 'Vincere search failed', detail: text, searchUrl },
       { status: resp.status }
     )
   }
@@ -176,6 +182,6 @@ export async function POST(req: NextRequest) {
     job,
     results,
     total: results.length,
-    searchUrl // included for debugging
+    searchUrl // for quick debugging
   })
 }
