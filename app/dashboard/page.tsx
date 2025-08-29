@@ -214,7 +214,7 @@ function MatchTab() {
       // Otherwise, map raw for immediate fallback display
       const rawList: CandidateRow[] = results.map((c: any) => ({
         id: String(c.id ?? c.candidate_id ?? ''),
-        name: String(c.fullName ?? `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim() || c.id),
+        name: String(((c.fullName ?? `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim())) || c.id),
         title: c.title || c.current_job_title || '',
         location: c.location || c.current_location_name || c.city || '',
         linkedin: c.linkedin ?? null,
@@ -255,21 +255,25 @@ function MatchTab() {
 
       const byId = new Map(results.map((c: any) => [String(c.id ?? c.candidate_id ?? ''), c]))
       const scoredRows: ScoredRow[] = (ranked?.ranked || [])
-        .map(r => {
-          const c = byId.get(String(r.candidate_id))
-          const name = c?.fullName || `${c?.firstName ?? ''} ${c?.lastName ?? ''}`.trim() || String(r.candidate_id)
-          return {
-            candidateId: String(r.candidate_id),
-            candidateName: name,
-            title: c?.title || c?.current_job_title || '',
-            location: c?.location || c?.current_location_name || '',
-            score: Math.round(Number(r.score_percent) || 0),
-            reason: r.reason || '—',
-            linkedin: c?.linkedin || undefined
-          }
-        })
-        .filter(r => r.score >= 50)
-        .sort((a, b) => b.score - a.score)
+  .map(r => {
+    const c = byId.get(String(r.candidate_id))
+    const name =
+      (c?.fullName && c.fullName.trim()) ||
+      (`${c?.firstName ?? ''} ${c?.lastName ?? ''}`.trim()) ||
+      String(r.candidate_id)
+
+    return {
+      candidateId: String(r.candidate_id),
+      candidateName: name,
+      title: c?.title || c?.current_job_title || '',
+      location: c?.location || c?.current_location_name || '',
+      score: Math.round(Number(r.score_percent) || 0),
+      reason: r.reason || '—',
+      linkedin: c?.linkedin || undefined
+    }
+  })
+  .filter(r => r.score >= 50)
+  .sort((a, b) => b.score - a.score)
 
       if (scoredRows.length > 0) {
         setScored(scoredRows.slice(0, 50))
