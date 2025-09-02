@@ -12,94 +12,80 @@ type RunReq = {
   jobId?: string
   job?: {
     title?: string
-    location?: string
-    skills?: string[]
+    location?: string      // e.g., "London, UK" -> we'll parse city "London"
+    skills?: string[]      // we'll take first 2
     qualifications?: string[]
     description?: string
   }
-  limit?: number
+  limit?: number           // default to 100
 }
 
-// --- helpers ---
-function esc(str?: string) {
-  return String(str ?? '').replace(/"/g, '\\"').trim()
-}
-function toClause(field: string, value: string) {
-  return `${field}:"${esc(value)}"#`
-}
+// ---------- helpers ----------
+const esc = (s?: string) => String(s ?? '').replace(/"/g, '\\"').trim()
+const toClause = (field: string, value: string) => `${field}:"${esc(value)}"#`
+
 function uniq(a: string[] = []) {
   const seen = new Set<string>()
   const out: string[] = []
   for (const v of a) {
-    const t = v.trim()
+    const t = (v ?? '').toString().trim()
     if (!t) continue
-    const key = t.toLowerCase()
-    if (!seen.has(key)) {
-      seen.add(key)
-      out.push(t)
-    }
+    const k = t.toLowerCase()
+    if (!seen.has(k)) { seen.add(k); out.push(t) }
   }
   return out
 }
 
-// Build q: title AND (any skill), with sensible fallbacks
+// Extract a "city" from a human-readable location (e.g., "London, UK" -> "London")
+function pickCityFromLocation(loc?: string) {
+  if (!loc) return ''
+  const first = loc.split(',')[0]?.trim() || ''
+  return first
+}
+
+// Vincere’s example shows spaces as '+', so we mirror that for the q parameter
+function encodeForVincereQuery(q: string) {
+  return encodeURIComponent(q).replace(/%20/g, '+')
+}
+
+// Build q: title AND city AND (skill1 OR skill2)
+// If city/skills missing, fall back gracefully
 function buildQuery(job: NonNullable<RunReq['job']>) {
   const title = (job.title ?? '').trim()
-  const titleBlock = title ? toClause('current_job_title', title) : ''
+  const city = pickCityFromLocation(job.location)
 
-  // dedupe + cap to keep URL compact
-  const skills = uniq(job.skills ?? []).slice(0, 12)
+  const titleClause = title ? toClause('current_job_title', title) : ''
+  const cityClause  = city  ? toClause('current_city', city) : ''
 
-  // Build ( skill:"X"# OR skill:"Y"# ... )
-  let skillsBlock = ''
-  if (skills.length > 0) {
-    const parts: string[] = []
-    for (const s of skills) {
-      parts.push(toClause('skill', s))
-    }
-    skillsBlock = `(${parts.join(' OR ')})`
-  }
+  const skills = uniq(job.skills ?? []).slice(0, 2)
+  const skillBlock = skills.length
+    ? `(${skills.map(s => toClause('skill', s)).join(' OR ')})`
+    : ''
 
-  // Combine (keep AND so a match needs title + at least one skill)
-  if (titleBlock && skillsBlock) return `(${titleBlock}) AND ${skillsBlock}`
-  if (titleBlock) return `(${titleBlock})`
-  if (skillsBlock) return skillsBlock
+  // Combine per request: title AND city AND (skill1 OR skill2)
+  // Omit missing parts sensibly
+  const parts: string[] = []
+  if (titleClause) parts.push(titleClause)
+  if (cityClause)  parts.push(cityClause)
+  if (skillBlock)  parts.push(skillBlock)
 
-  // Fallback (very broad)
-  return '*:*'
+  if (parts.length === 0) return '*:*'
+  if (parts.length === 1) return parts[0]
+  return parts.map(p => (p.startsWith('(') ? p : `(${p})`)).join(' AND ')
 }
 
-
-// Return fields + sort
+// matrix_vars EXACTLY as requested (no mlt.fl)
 function buildMatrixVars() {
-  const fl = [
-    'id',
-    'first_name',
-    'last_name',
-    'current_location_name',
-    'current_job_title',
-    'linkedin',
-    'keywords',
-    'skill',
-    'edu_qualification',
-    'edu_degree',
-    'edu_course',
-    'edu_institution',
-    'edu_training',
-  ].join(',')
-
-  const mlt = 'first_name,last_name'
-  const sort = 'created_date asc'
-  return `fl=${fl};mlt.fl=${mlt};sort=${sort}`
+  return 'fl=id,first_name,last_name,current_location_name,current_job_title,linkedin,keywords,skill,edu_qualification,edu_degree,edu_course,edu_institution,edu_training;sort=created_date asc'
 }
 
-// Resolve job: prefer provided job (already extracted in UI)
+// Prefer provided job (already extracted on the client)
 async function resolveJob(_session: any, body: RunReq): Promise<RunReq['job'] | null> {
   if (body.job) return body.job
   return null
 }
 
-// GET with single auto-refresh retry
+// GET with one auto-refresh retry
 async function fetchWithAutoRefresh(url: string, idToken: string, userKey: string, init?: RequestInit) {
   const headers = new Headers(init?.headers || {})
   headers.set('id-token', idToken)
@@ -108,14 +94,11 @@ async function fetchWithAutoRefresh(url: string, idToken: string, userKey: strin
 
   const doFetch = (h: Headers) => fetch(url, { ...init, headers: h, method: 'GET', cache: 'no-store' })
 
-  // First attempt
   let resp = await doFetch(headers)
   if (resp.status === 401 || resp.status === 403) {
-    // Try a single refresh (returns boolean)
     try {
       const refreshed = await refreshIdToken(userKey)
       if (refreshed) {
-        // Re-read session to get fresh idToken
         const s2 = await getSession()
         const id2 = s2.tokens?.idToken || ''
         if (id2) {
@@ -123,9 +106,7 @@ async function fetchWithAutoRefresh(url: string, idToken: string, userKey: strin
           resp = await doFetch(headers)
         }
       }
-    } catch {
-      // ignore and fall through to return the original 401/403 response
-    }
+    } catch { /* ignore */ }
   }
   return resp
 }
@@ -148,28 +129,35 @@ export async function POST(req: NextRequest) {
     }
 
     const matrixVars = buildMatrixVars()
-    const q = buildQuery(job)
+    const qRaw = buildQuery(job)
+
+    // clamp limit 1..100, include start=0 as per example
     const limit = Math.max(1, Math.min(100, Number(body.limit ?? 100)))
+    const start = 0
 
     const base = config.VINCERE_TENANT_API_BASE.replace(/\/$/, '')
-    const url = `${base}/api/v2/candidate/search/${encodeURIComponent(matrixVars)}?q=${encodeURIComponent(q)}&limit=${limit}`
+    const encodedMatrix = encodeURIComponent(matrixVars)
+    const encodedQ = encodeForVincereQuery(qRaw)
+
+    const url =
+      `${base}/api/v2/candidate/search/${encodedMatrix}` +
+      `?q=${encodedQ}&start=${start}&limit=${limit}`
 
     const resp = await fetchWithAutoRefresh(url, idToken, userKey)
     const text = await resp.text()
     if (!resp.ok) {
       return NextResponse.json(
-        { error: 'Vincere search failed', status: resp.status, detail: text, url },
+        { error: 'Vincere search failed', status: resp.status, detail: text, url, qRaw },
         { status: 400 }
       )
     }
 
-    // Expected Vincere shape: { count, data: [...] }
     let json: any = {}
     try { json = JSON.parse(text) } catch { json = {} }
+    const candidates = Array.isArray(json?.data ?? json?.items) ? (json.data ?? json.items) : []
+    const count = Number(json?.count ?? json?.total ?? candidates.length ?? 0)
 
-    const candidates = Array.isArray(json?.data) ? json.data : []
-    const count = Number(json?.count ?? candidates.length ?? 0)
-
+    // Compact mapping for the UI/AI
     const results = candidates.map((c: any) => ({
       id: String(c?.id ?? ''),
       first_name: c?.first_name ?? '',
@@ -189,7 +177,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       ok: true,
-      query: { q, limit, matrix_vars: matrixVars, url },
+      query: { matrix_vars: matrixVars, q: qRaw, url, start, limit },
       count,
       candidates: results,
     })
