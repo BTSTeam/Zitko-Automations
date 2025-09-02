@@ -216,7 +216,7 @@ return NextResponse.json({
   results,
   candidates: results,
 })
-
+    
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Unexpected error' }, { status: 500 })
   }
