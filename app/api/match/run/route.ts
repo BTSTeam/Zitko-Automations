@@ -50,15 +50,21 @@ function encodeForVincereQuery(q: string) {
   return encodeURIComponent(q).replace(/%20/g, '+')
 }
 
-// q: current_job_title:"Title"# AND current_city:"City"# AND (skill:"A"# AND skill:"B"#)
+// Build q: current_job_title:"Title"# AND current_city:"City"# AND (skill:"S1"# AND skill:"S2"#)
 function buildQuery(job: NonNullable<RunReq['job']>) {
   const title = (job.title ?? '').trim()
-  const city  = cityFrom(job.location)
-  const titleClause = title ? clause('current_job_title', title) : ''
-  const cityClause  = city  ? clause('current_city', city) : ''
-  const skills = uniq(job.skills ?? []).slice(0, 2)
-  const skillsClause = skills.length ? `(${skills.map(s => clause('skill', s)).join(' AND ')})` : ''
+  const city  = pickCityFromLocation(job.location)
 
+  const titleClause = title ? toClause('current_job_title', title) : ''
+  const cityClause  = city  ? toClause('current_city', city) : ''
+
+  // take first 2 skills from the job summary and require BOTH
+  const skills = uniq(job.skills ?? []).slice(0, 2)
+  const skillsClause = skills.length
+    ? `(${skills.map(s => toClause('skill', s)).join(' AND ')})`
+    : ''
+
+  // Assemble: title AND city AND (skills)
   let q = ''
   if (titleClause) q = titleClause
   if (cityClause)  q = q ? `${q} AND ${cityClause}` : cityClause
