@@ -21,52 +21,32 @@ type RunReq = {
 }
 
 // --- helper: turn a raw location string into city-only ---
-// Examples:
-// "South West London, UK" -> "London"
-// "Birmingham, West Midlands, UK" -> "Birmingham"
-// "San Jose, CA, USA" -> "San Jose"
-// "Paris, Île-de-France, FR" -> "Paris"
 function extractCity(location?: string): string {
   if (!location) return ''
-  // take text before the first comma
   let city = location.split(',')[0].trim()
-
-  // remove standalone directional words (but keep real city names like Northampton, Westons, etc.)
   city = city.replace(/\b(North|South|East|West|Northeast|Northwest|Southeast|Southwest)\b/gi, ' ').trim()
-
-  // collapse multiple spaces that may result from removals
   city = city.replace(/\s{2,}/g, ' ').trim()
-
-  // special-case: anything containing "London" should normalize to "London"
   if (/london/i.test(location)) return 'London'
-
   return city
 }
 
-// convert "Security Engineer" -> "Security+Engineer"
+// "Security Engineer" -> "Security+Engineer"
 function plusJoin(s?: string) {
   return (s || '').trim().replace(/\s+/g, '+')
 }
 
-// build q exactly like your working cURL:
-// current_job_title:"Title"# AND current_city:"City"# AND (skill:Skill1# AND skill:Skill2#)
+// q builder: current_job_title:"Title"# AND current_city:"City"# AND (skill:S1# AND skill:S2#)
 function buildQ(title: string, city: string, skills: string[]) {
   const parts: string[] = []
   if (title) parts.push(`current_job_title:"${title}"#`)
   if (city) parts.push(`current_city:"${city}"#`)
-
   const s = skills.filter(Boolean).slice(0, 2)
-  if (s.length === 2) {
-    parts.push(`(skill:${s[0]}# AND skill:${s[1]}#)`)
-  } else if (s.length === 1) {
-    parts.push(`(skill:${s[0]}#)`)
-  }
-
+  if (s.length === 2) parts.push(`(skill:${s[0]}# AND skill:${s[1]}#)`)
+  else if (s.length === 1) parts.push(`(skill:${s[0]}#)`)
   return parts.join(' AND ')
 }
 
-// Encode like your cURL: keep '+' for spaces we inserted, encode the rest.
-// We do encodeURIComponent, then revert %20 -> '+' and %2B -> '+'
+// Encode like your working cURL (keep '+' for our space replacements)
 function encodeForQ(raw: string) {
   return encodeURIComponent(raw).replace(/%20/g, '+').replace(/%2B/g, '+')
 }
@@ -74,22 +54,17 @@ function encodeForQ(raw: string) {
 const resolveJob = async (session: any, body: RunReq, idToken: string) => {
   const base = config.VINCERE_TENANT_API_BASE.replace(/\/$/, '')
   if (body.job) {
-    // If a job object was provided directly, normalize its location to city-only
-    return {
-      ...body.job,
-      location: extractCity(body.job.location || '')
-    }
+    return { ...body.job, location: extractCity(body.job.location || '') }
   }
   if (!body.jobId) return null
+
   const url = `${base}/api/v2/position/${encodeURIComponent(body.jobId)}`
   const call = () =>
     fetch(url, {
-      headers: {
-        'id-token': idToken,
-        'x-api-key': config.VINCERE_API_KEY
-      },
+      headers: { 'id-token': idToken, 'x-api-key': config.VINCERE_API_KEY },
       cache: 'no-store'
     })
+
   let resp = await call()
   if (resp.status === 401 || resp.status === 403) {
     if (await refreshIdToken(session.user?.email || session.sessionId || '')) {
@@ -101,18 +76,17 @@ const resolveJob = async (session: any, body: RunReq, idToken: string) => {
   if (!resp.ok) return null
   const pos = await resp.json().catch(() => ({}))
 
-  const rawLocation =
-    String(
-      (pos as any)['location-text'] ||
-        (pos as any).location_text ||
-        (pos as any).location ||
-        (pos as any).city ||
-        ''
-    ).trim()
+  const rawLocation = String(
+    (pos as any)['location-text'] ||
+    (pos as any).location_text ||
+    (pos as any).location ||
+    (pos as any).city ||
+    ''
+  ).trim()
 
   return {
     title: (pos as any).job_title || (pos as any).title || (pos as any).name || '',
-    location: extractCity(rawLocation), // <-- city-only value
+    location: extractCity(rawLocation),
     skills: Array.isArray((pos as any).skills)
       ? (pos as any).skills.map((s: any) => s?.name ?? s).filter(Boolean)
       : [],
@@ -121,9 +95,9 @@ const resolveJob = async (session: any, body: RunReq, idToken: string) => {
       : [],
     description: String(
       (pos as any).public_description ||
-        (pos as any).publicDescription ||
-        (pos as any).description ||
-        ''
+      (pos as any).publicDescription ||
+      (pos as any).description ||
+      ''
     )
   }
 }
@@ -136,10 +110,7 @@ export async function POST(req: NextRequest) {
   const session = await getSession()
   let idToken = session.tokens?.idToken
   if (!idToken) {
-    return NextResponse.json(
-      { error: 'Not authenticated with Vincere' },
-      { status: 401 }
-    )
+    return NextResponse.json({ error: 'Not authenticated with Vincere' }, { status: 401 })
   }
 
   const job = await resolveJob(session, body, idToken)
@@ -169,40 +140,36 @@ export async function POST(req: NextRequest) {
   ].join(',')
   const matrixSegment = encodeURIComponent(`fl=${flFields};sort=created_date asc`)
 
-  // Build q exactly as: current_job_title:"Title"# AND current_city:"City"# AND (skill:Skill1# AND skill:Skill2#)
+  // q param (spaces as '+', rest URL-encoded)
   const qRaw = buildQ(titlePlus, cityPlus, skillPluses)
   const qParam = encodeForQ(qRaw)
 
   const base = config.VINCERE_TENANT_API_BASE.replace(/\/$/, '')
   const searchUrl = `${base}/api/v2/candidate/search/${matrixSegment}?q=${qParam}&limit=${limit}`
 
+  const API_KEY = (config as any).VINCERE_PUBLIC_API_KEY || config.VINCERE_API_KEY
   const headers: Record<string, string> = {
     accept: 'application/json',
     'id-token': idToken,
-    'x-api-key': config.VINCERE_API_KEY
+    'x-api-key': API_KEY
   }
 
-  let resp = await fetch(searchUrl, {
-    method: 'GET',
-    headers,
-    cache: 'no-store'
-  })
+  console.info('[candidate.search] calling', { url: searchUrl })
+
+  let resp = await fetch(searchUrl, { method: 'GET', headers, cache: 'no-store' })
   if (resp.status === 401 || resp.status === 403) {
     const who = session.user?.email || session.sessionId || ''
     if (await refreshIdToken(who)) {
       const s2 = await getSession()
       idToken = s2.tokens?.idToken || idToken
       headers['id-token'] = idToken
-      resp = await fetch(searchUrl, {
-        method: 'GET',
-        headers,
-        cache: 'no-store'
-      })
+      resp = await fetch(searchUrl, { method: 'GET', headers, cache: 'no-store' })
     }
   }
 
   if (!resp.ok) {
     const text = await resp.text().catch(() => '')
+    console.error('[candidate.search] non-OK', { status: resp.status, detail: text?.slice(0, 500) })
     return NextResponse.json(
       { error: 'Vincere search failed', detail: text },
       { status: resp.status }
@@ -211,9 +178,12 @@ export async function POST(req: NextRequest) {
 
   const data = await resp.json().catch(() => ({}))
   const items: any[] = (data as any).result?.items || (data as any).items || []
+  console.info('[candidate.search] ok', {
+    status: resp.status,
+    count: Array.isArray(items) ? items.length : 0
+  })
 
-  const toArray = (v: any) =>
-    Array.isArray(v) ? v.filter(Boolean) : v ? [v] : []
+  const toArray = (v: any) => (Array.isArray(v) ? v.filter(Boolean) : v ? [v] : [])
 
   const results = items.map((c) => ({
     id: (c as any).id ?? (c as any).candidate_id ?? '',
@@ -221,7 +191,6 @@ export async function POST(req: NextRequest) {
     lastName: (c as any).last_name ?? '',
     fullName: `${(c as any).first_name ?? ''} ${(c as any).last_name ?? ''}`.trim(),
     title: (c as any).current_job_title ?? '',
-    // employmentType intentionally omitted since it isn't requested in fl
     linkedin: (c as any).linkedin ?? null,
     skills: toArray((c as any).skill),
     keywords: toArray((c as any).keywords),
@@ -233,9 +202,5 @@ export async function POST(req: NextRequest) {
     eduTraining: (c as any).edu_training ?? ''
   }))
 
-  return NextResponse.json({
-    job,
-    results,
-    total: results.length
-  })
+  return NextResponse.json({ job, results, total: results.length })
 }
