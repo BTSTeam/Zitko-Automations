@@ -23,7 +23,6 @@ function pickModel() {
 }
 
 function ensureJson(text: string): any {
-  // Try to extract the first {...} block if the model adds prose/code fences
   const start = text.indexOf('{')
   const end = text.lastIndexOf('}')
   if (start >= 0 && end > start) {
@@ -48,8 +47,8 @@ Return ONLY JSON with keys: "title" (string), "location" (string), "skills" (arr
 Rules:
 - Make "title" concise (no company, no seniority fluff unless essential).
 - Make "location" human-readable (e.g., "London, UK" or closest you can infer).
-- "skills" should be deduplicated and normalized (e.g., "JavaScript", "React", "CCTV", "Access Control").
-- "qualifications" are degrees/certifications/tickets (e.g., "Degree in Electrical Engineering", "CSCS", "Prince2").
+- "skills" should be deduplicated and normalized (e.g., "CCTV", "Access Control", "JavaScript", "React").
+- "qualifications" are degrees/certifications/tickets (e.g., "Degree in Electrical Engineering", "CSCS", "IPAF", "Prince2").
 - If something is unknown, use empty string or empty array.
 No extra commentary.`
 
@@ -60,7 +59,6 @@ ${joined}
 
 Return JSON only.`
 
-  // Chat Completions (compatible with your existing approach)
   const resp = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -87,13 +85,9 @@ Return JSON only.`
   const content = data?.choices?.[0]?.message?.content ?? '{}'
 
   let parsed: ExtractResp
-  try {
-    parsed = ensureJson(content)
-  } catch {
-    parsed = { title: '', location: '', skills: [], qualifications: [] }
-  }
+  try { parsed = ensureJson(content) }
+  catch { parsed = { title: '', location: '', skills: [], qualifications: [] } }
 
-  // Final sanitization
   const title = String(parsed.title || '').trim()
   const location = String(parsed.location || '').trim()
   const skills = Array.isArray(parsed.skills) ? parsed.skills.map(s => String(s).trim()).filter(Boolean) : []
