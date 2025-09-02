@@ -37,7 +37,38 @@ function extractCity(location?: string): string {
   // collapse multiple spaces that may result from removals
   city = city.replace(/\s{2,}/g, ' ').trim()
 
+  // special-case: anything containing "London" should normalize to "London"
+  if (/london/i.test(location)) return 'London'
+
   return city
+}
+
+// convert "Security Engineer" -> "Security+Engineer"
+function plusJoin(s?: string) {
+  return (s || '').trim().replace(/\s+/g, '+')
+}
+
+// build q exactly like your working cURL:
+// current_job_title:"Title"# AND current_city:"City"# AND (skill:Skill1# AND skill:Skill2#)
+function buildQ(title: string, city: string, skills: string[]) {
+  const parts: string[] = []
+  if (title) parts.push(`current_job_title:"${title}"#`)
+  if (city) parts.push(`current_city:"${city}"#`)
+
+  const s = skills.filter(Boolean).slice(0, 2)
+  if (s.length === 2) {
+    parts.push(`(skill:${s[0]}# AND skill:${s[1]}#)`)
+  } else if (s.length === 1) {
+    parts.push(`(skill:${s[0]}#)`)
+  }
+
+  return parts.join(' AND ')
+}
+
+// Encode like your cURL: keep '+' for spaces we inserted, encode the rest.
+// We do encodeURIComponent, then revert %20 -> '+' and %2B -> '+'
+function encodeForQ(raw: string) {
+  return encodeURIComponent(raw).replace(/%20/g, '+').replace(/%2B/g, '+')
 }
 
 const resolveJob = async (session: any, body: RunReq, idToken: string) => {
@@ -72,26 +103,26 @@ const resolveJob = async (session: any, body: RunReq, idToken: string) => {
 
   const rawLocation =
     String(
-      pos['location-text'] ||
-        pos.location_text ||
-        pos.location ||
-        pos.city ||
+      (pos as any)['location-text'] ||
+        (pos as any).location_text ||
+        (pos as any).location ||
+        (pos as any).city ||
         ''
     ).trim()
 
   return {
-    title: pos.job_title || pos.title || pos.name || '',
+    title: (pos as any).job_title || (pos as any).title || (pos as any).name || '',
     location: extractCity(rawLocation), // <-- city-only value
-    skills: Array.isArray(pos.skills)
-      ? pos.skills.map((s: any) => s?.name ?? s).filter(Boolean)
+    skills: Array.isArray((pos as any).skills)
+      ? (pos as any).skills.map((s: any) => s?.name ?? s).filter(Boolean)
       : [],
-    qualifications: Array.isArray(pos.qualifications)
-      ? pos.qualifications.map((q: any) => q?.name ?? q).filter(Boolean)
+    qualifications: Array.isArray((pos as any).qualifications)
+      ? (pos as any).qualifications.map((q: any) => q?.name ?? q).filter(Boolean)
       : [],
     description: String(
-      pos.public_description ||
-        pos.publicDescription ||
-        pos.description ||
+      (pos as any).public_description ||
+        (pos as any).publicDescription ||
+        (pos as any).description ||
         ''
     )
   }
@@ -116,30 +147,31 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Missing job title' }, { status: 400 })
   }
 
-  const titlePlus = job.title.trim().split(/\s+/).join('+')
+  const titlePlus = plusJoin(job.title)
+  const cityPlus = plusJoin(job.location || '')
+  const skillPluses = (job.skills || []).map(plusJoin)
 
-  // All requested fields + ascending created_date sort
+  // EXACT requested fields + ascending created_date sort
   const flFields = [
     'id',
     'first_name',
     'last_name',
-    'current_job_title',
-    'employment_type',
-    'linkedin',
-    'skill',
-    'keywords',
     'current_location_name',
+    'current_job_title',
+    'linkedin',
+    'keywords',
+    'skill',
     'edu_qualification',
     'edu_degree',
     'edu_course',
     'edu_institution',
     'edu_training'
   ].join(',')
-  const matrixSegment = encodeURIComponent(
-    `fl=${flFields};sort=created_date asc`
-  )
+  const matrixSegment = encodeURIComponent(`fl=${flFields};sort=created_date asc`)
 
-  const qParam = `current_job_title%3A%22${titlePlus}%22%23`
+  // Build q exactly as: current_job_title:"Title"# AND current_city:"City"# AND (skill:Skill1# AND skill:Skill2#)
+  const qRaw = buildQ(titlePlus, cityPlus, skillPluses)
+  const qParam = encodeForQ(qRaw)
 
   const base = config.VINCERE_TENANT_API_BASE.replace(/\/$/, '')
   const searchUrl = `${base}/api/v2/candidate/search/${matrixSegment}?q=${qParam}&limit=${limit}`
@@ -178,27 +210,27 @@ export async function POST(req: NextRequest) {
   }
 
   const data = await resp.json().catch(() => ({}))
-  const items: any[] = data.result?.items || data.items || []
+  const items: any[] = (data as any).result?.items || (data as any).items || []
 
   const toArray = (v: any) =>
     Array.isArray(v) ? v.filter(Boolean) : v ? [v] : []
 
   const results = items.map((c) => ({
-    id: c.id ?? c.candidate_id ?? '',
-    firstName: c.first_name ?? '',
-    lastName: c.last_name ?? '',
-    fullName: `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim(),
-    title: c.current_job_title ?? '',
-    employmentType: c.employment_type ?? '',
-    linkedin: c.linkedin ?? null,
-    skills: toArray(c.skill),
-    keywords: toArray(c.keywords),
-    location: c.current_location_name ?? '',
-    eduQualification: c.edu_qualification ?? '',
-    eduDegree: c.edu_degree ?? '',
-    eduCourse: c.edu_course ?? '',
-    eduInstitution: c.edu_institution ?? '',
-    eduTraining: c.edu_training ?? ''
+    id: (c as any).id ?? (c as any).candidate_id ?? '',
+    firstName: (c as any).first_name ?? '',
+    lastName: (c as any).last_name ?? '',
+    fullName: `${(c as any).first_name ?? ''} ${(c as any).last_name ?? ''}`.trim(),
+    title: (c as any).current_job_title ?? '',
+    // employmentType intentionally omitted since it isn't requested in fl
+    linkedin: (c as any).linkedin ?? null,
+    skills: toArray((c as any).skill),
+    keywords: toArray((c as any).keywords),
+    location: (c as any).current_location_name ?? '',
+    eduQualification: (c as any).edu_qualification ?? '',
+    eduDegree: (c as any).edu_degree ?? '',
+    eduCourse: (c as any).edu_course ?? '',
+    eduInstitution: (c as any).edu_institution ?? '',
+    eduTraining: (c as any).edu_training ?? ''
   }))
 
   return NextResponse.json({
