@@ -118,11 +118,13 @@ function Table({
     else cmp = String(va ?? '').localeCompare(String(vb ?? ''))
     return dir === 'asc' ? cmp : -cmp
   }).filter((r: ScoredRow) => JSON.stringify(r).toLowerCase().includes(filter.toLowerCase()))
+
   const header = (key: keyof ScoredRow, label: string) => (
     <th className="cursor-pointer" onClick={()=> setSortBy([key, sortBy[0]===key && sortBy[1]==='asc'?'desc':'asc'])}>
       {label} {sortBy[0]===key ? (sortBy[1]==='asc'?'▲':'▼') : ''}
     </th>
   )
+
   return (
     <div className="card p-4">
       <div className="mb-3">
@@ -132,27 +134,36 @@ function Table({
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-gray-600">
-              {header('candidateId','Candidate ID')}
+              {header('score','Candidate')}
               {header('candidateName','Candidate Name')}
-              <th>LinkedIn</th>
-              {header('score','Suitability Score')}
-              {header('reason','Reason')}
+              <th>LinkedIn & AI Summary</th>
               <th>Vincere</th>
             </tr>
           </thead>
           <tbody>
             {sorted.map(r=> (
-              <tr key={r.candidateId} className="border-t">
-                <td className="py-2">{r.candidateId}</td>
-                <td>{r.candidateName}</td>
-                <td>
+              <tr key={r.candidateId} className="border-t align-top">
+                {/* Candidate: Suitability % above ID */}
+                <td className="py-3">
+                  <div className="text-2xl font-semibold">{r.score}%</div>
+                  <div className="text-xs text-gray-500 mt-1">ID: {r.candidateId}</div>
+                </td>
+
+                {/* Name */}
+                <td className="py-3">{r.candidateName}</td>
+
+                {/* LinkedIn + Reason under link */}
+                <td className="py-3">
                   {r.linkedin
                     ? <a className="text-brand-orange underline" href={r.linkedin} target="_blank" rel="noreferrer">Open</a>
                     : '—'}
+                  {r.reason
+                    ? <div className="text-xs text-gray-600 mt-2 whitespace-pre-wrap">{r.reason}</div>
+                    : null}
                 </td>
-                <td>{r.score}</td>
-                <td>{r.reason}</td>
-                <td>
+
+                {/* Vincere link */}
+                <td className="py-3">
                   <a className="text-brand-orange underline" href={`https://zitko.vincere.io/app/candidate/${r.candidateId}`} target="_blank" rel="noreferrer">View</a>
                 </td>
               </tr>
@@ -250,82 +261,112 @@ function MatchTab() {
     }
   }
 
-  // Run Vincere search, then AI ranking. Always show raw results immediately.
-  const runSearch = async () => {
-    if (!job) return
-    setLoadingSearch(true)
+  // Run Vincere search, then AI ranking. Only show AI-filtered (>=50%) results.
+const runSearch = async () => {
+  if (!job) return
+  setLoadingSearch(true)
+  setScored([])
+  setRawCands([])
+
+  try {
+    // 1) Vincere candidate search
+    const run = await fetch('/api/match/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        job: {
+          title,
+          location, // already normalized to city-only
+          skills: skillsText.split(',').map(s=>s.trim()).filter(Boolean),
+          qualifications: qualsText.split(',').map(s=>s.trim()).filter(Boolean),
+          description: job.public_description || ''
+        },
+        limit: 300,
+        debug: true
+      })
+    })
+    const payload = await run.json()
+    console.log('MATCH/RUN payload:', payload)
+    if (!run.ok) throw new Error(payload?.error || `Search failed (${run.status})`)
+
+    const candidates = (payload?.results || []) as Array<{
+      id: string
+      firstName?: string
+      lastName?: string
+      fullName?: string
+      location?: string
+      city?: string
+      title?: string
+      skills?: string[]
+      qualifications?: string[]
+      linkedin?: string | null
+    }>
+
+    if (candidates.length === 0) {
+      setTotal(0)
+      setScored([])
+      return
+    }
+
+    // 2) AI scoring (score ALL candidates)
+    const ai = await fetch('/api/ai/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        job: {
+          title,
+          location,
+          skills: skillsText.split(',').map(s => s.trim()).filter(Boolean),
+          qualifications: qualsText.split(',').map(s => s.trim()).filter(Boolean),
+          description: job.public_description || ''
+        },
+        candidates: candidates.map(c => ({
+          candidate_id: c.id,
+          full_name: c.fullName || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim(),
+          location: c.location || c.city || '',
+          current_job_title: c.title || '',
+          skills: c.skills || [],
+          qualifications: c.qualifications || [],
+          linkedin: c.linkedin ?? null,
+        }))
+      })
+    })
+
+    const aiText = await ai.text()
+    let ranked: { ranked?: { candidate_id: string; score_percent: number; reason: string }[] } = {}
+    try { ranked = JSON.parse(aiText) } catch { ranked = {} }
+    const all = Array.isArray(ranked?.ranked) ? ranked.ranked : []
+
+    // 3) Join back to candidate rows, filter >=50, sort desc
+    const byId = new Map(candidates.map(c => [String(c.id), c]))
+    const filteredSorted = all
+      .filter(r => (Number(r.score_percent) || 0) >= 50)
+      .sort((a,b) => (Number(b.score_percent) || 0) - (Number(a.score_percent) || 0))
+
+    const scoredRows: ScoredRow[] = filteredSorted.map(r => {
+      const c = byId.get(String(r.candidate_id))
+      const candidateName = c?.fullName || `${c?.firstName ?? ''} ${c?.lastName ?? ''}`.trim() || String(r.candidate_id)
+      return {
+        candidateId: String(r.candidate_id),
+        candidateName,
+        score: Math.round(Number(r.score_percent) || 0),
+        reason: r.reason || '',
+        linkedin: c?.linkedin || undefined
+      }
+    })
+
+    setScored(scoredRows)
+    setTotal(scoredRows.length)
+  } catch (e) {
+    console.error(e)
+    // If AI fails, do NOT show raw fallback (per requirement). Show empty state.
     setScored([])
-    setRawCands([])
-
-    try {
-      // 1) Vincere candidate search
-      const run = await fetch('/api/match/run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          job: {
-            title,
-            location, // already normalized to city-only
-            skills: skillsText.split(',').map(s=>s.trim()).filter(Boolean),
-            qualifications: qualsText.split(',').map(s=>s.trim()).filter(Boolean),
-            description: job.public_description || ''
-          },
-          limit: 300,
-          debug: true
-        })
-      })
-      const payload = await run.json()
-      console.log('MATCH/RUN payload:', payload)
-      if (!run.ok) throw new Error(payload?.error || `Search failed (${run.status})`)
-
-      const candidates = (payload?.results || []) as Array<{
-        id: string
-        firstName?: string
-        lastName?: string
-        fullName?: string
-        location?: string
-        city?: string
-        title?: string
-        skills?: string[]
-        qualifications?: string[]
-        linkedin?: string | null
-      }>
-
-      // Map raw candidates for immediate display
-      const rawList: CandidateRow[] = candidates.map(c => ({
-        id: String(c.id),
-        name: c.fullName || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim(),
-        title: c.title || '',
-        location: c.location || c.city || '',
-        linkedin: c.linkedin ?? null,
-        skills: c.skills || []
-      }))
-      setRawCands(rawList)
-      setTotal(rawList.length)
-
-      // 2) AI scoring
-      const ai = await fetch('/api/ai/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          job: {
-            title,
-            location,
-            skills: skillsText.split(',').map(s => s.trim()).filter(Boolean),
-            qualifications: qualsText.split(',').map(s => s.trim()).filter(Boolean),
-            description: job.public_description || ''
-          },
-          candidates: candidates.map(c => ({
-            candidate_id: c.id,
-            full_name: c.fullName || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim(),
-            location: c.location || c.city || '',
-            current_job_title: c.title || '',
-            skills: c.skills || [],
-            qualifications: c.qualifications || []
-          })),
-          instruction: 'Return only the top 20 as {candidate_id, score_percent, reason}.'
-        })
-      })
+    setTotal(0)
+    alert('AI scoring failed or returned no results ≥ 50%.')
+  } finally {
+    setLoadingSearch(false)
+  }
+}
 
       const aiText = await ai.text()
       let ranked: { ranked?: { candidate_id: string; score_percent: number; reason: string }[] } = {}
@@ -449,58 +490,27 @@ function MatchTab() {
         </div>
 
         <div className="flex flex-col gap-3">
-          {scored.length > 0 ? (
-            <>
-              <Table rows={scored} sortBy={sortBy} setSortBy={setSortBy} filter={filter} setFilter={setFilter} />
-              <div className="flex items-center justify-between text-sm">
-                <div className="text-gray-600">
-                  {showingTo
-                    ? <>Showing <span className="font-medium">{showingFrom}</span>–<span className="font-medium">{showingTo}</span> of <span className="font-medium">{showingTo}</span></>
-                    : 'No results'}
-                </div>
-                <div className="flex gap-2">
-                  <button className="btn btn-grey" disabled>Prev</button>
-                  <button className="btn btn-grey" disabled>Next</button>
-                </div>
-              </div>
-            </>
-          ) : rawCands.length > 0 ? (
-            <div className="card p-6">
-              <h3 className="font-semibold mb-3">Raw Candidates</h3>
-              <ul className="divide-y">
-                {rawCands.slice(0, pageSize).map(c => (
-                  <li key={c.id} className="py-3">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <div className="font-medium">{c.name || c.id}</div>
-                        <div className="text-sm text-gray-600">
-                          {(c.title || '-')}{c.location ? ` • ${c.location}` : ''}
-                        </div>
-                        {c.linkedin && (
-                          <a href={c.linkedin} target="_blank" rel="noreferrer" className="text-sm underline">
-                            LinkedIn
-                          </a>
-                        )}
-                      </div>
-                      <div className="text-xs text-gray-400">ID: {c.id}</div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-3 text-sm text-gray-600">
-                Showing <span className="font-medium">{showingFrom}</span>–<span className="font-medium">{Math.min(pageSize, rawCands.length)}</span> of <span className="font-medium">{rawCands.length}</span>
-              </div>
-            </div>
-          ) : (
-            <div className="card p-6 text-sm text-gray-500">
-              Results will appear here after you click <span className="font-medium">Search Candidates</span>.
-            </div>
-          )}
+  {scored.length > 0 ? (
+    <>
+      <Table rows={scored} sortBy={sortBy} setSortBy={setSortBy} filter={filter} setFilter={setFilter} />
+      <div className="flex items-center justify-between text-sm">
+        <div className="text-gray-600">
+          {total
+            ? <>Showing <span className="font-medium">{Math.min(total, scored.length)}</span> of <span className="font-medium">{total}</span> candidates ≥ 50%</>
+            : 'No candidates meet the 50% suitability threshold.'}
+        </div>
+        <div className="flex gap-2">
+          <button className="btn btn-grey" disabled>Prev</button>
+          <button className="btn btn-grey" disabled>Next</button>
         </div>
       </div>
+    </>
+  ) : (
+    <div className="card p-6 text-sm text-gray-500">
+      No candidates meet the <span className="font-medium">50%</span> suitability threshold.
     </div>
-  )
-}
+  )}
+</div>
 
 function SourceTab() {
   const jotformUrl = process.env.NEXT_PUBLIC_JOTFORM_URL || ''
