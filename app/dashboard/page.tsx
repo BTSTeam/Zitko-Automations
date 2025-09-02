@@ -126,11 +126,11 @@ function Table({
 }
 
 function MatchTab() {
+  // …your existing state…
   const [jobId, setJobId] = useState('')
   const [job, setJob] = useState<JobSummary | null>(null)
   const [loadingJob, setLoadingJob] = useState(false)
 
-  // extracted fields (editable)
   const [title, setTitle] = useState('')
   const [location, setLocation] = useState('')
   const [skillsText, setSkillsText] = useState('')
@@ -142,83 +142,39 @@ function MatchTab() {
   const [filter, setFilter] = useState('')
   const [total, setTotal] = useState(0)
 
-  const [showDesc, setShowDesc] = useState(false)
-
-  const retrieveJob = async () => {
-    if (!jobId) return
-    setLoadingJob(true)
-    setScored([])
-    setTotal(0)
-
-    try {
-      const r = await fetch(`/api/vincere/position/${encodeURIComponent(jobId)}`, { cache: 'no-store' })
-      const data = await r.json()
-
-      const publicRaw = htmlToText(data?.public_description || data?.publicDescription || data?.description || '')
-      const internalRaw = htmlToText(data?.internal_description || data?.internalDescription || data?.job_description || data?.description_internal || '')
-
-      const extractResp = await fetch('/api/job/extract', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ publicDescription: publicRaw, internalDescription: internalRaw })
-      })
-      const extracted = await extractResp.json()
-
-      const skillsArr: string[] = Array.isArray(extracted?.skills) ? extracted.skills : []
-      const qualsArr: string[] = Array.isArray(extracted?.qualifications) ? extracted.qualifications : []
-
-      const locCity = cityOnly(String(extracted?.location || '').trim())
-
-      setJob({
-        id: jobId,
-        job_title: String(extracted?.title || '').trim(),
-        location: locCity,
-        skills: skillsArr,
-        qualifications: qualsArr,
-        public_description: publicRaw,
-        internal_description: internalRaw,
-        coords: null
-      })
-
-      setTitle(String(extracted?.title || '').trim())
-      setLocation(locCity)
-      setSkillsText(skillsArr.join(', '))
-      setQualsText(qualsArr.join(', '))
-    } catch (e) {
-      console.error(e)
-      alert('Failed to retrieve or extract job details.')
-    } finally {
-      setLoadingJob(false)
-    }
-  }
-
-  // Vincere search → AI ranking → show only ≥50%
+  // --- replace the whole runSearch with this version ---
   const runSearch = async () => {
-    if (!job) return
     setLoadingSearch(true)
     setScored([])
     setTotal(0)
 
     try {
-      // 1) Vincere candidate search
-      const run = await fetch('/api/match/run', {
+      // 1) Always run Vincere search first (this preserves your original behaviour)
+      const runResp = await fetch('/api/match/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           job: {
             title,
-            location, // already normalized
+            location,
             skills: skillsText.split(',').map(s=>s.trim()).filter(Boolean),
             qualifications: qualsText.split(',').map(s=>s.trim()).filter(Boolean),
-            description: job.public_description || ''
+            description: job?.public_description || ''
           },
-          limit: 100,
+          limit: 100
         })
       })
-      const payload = await run.json()
-      if (!run.ok) throw new Error(payload?.error || `Search failed (${run.status})`)
+      const runPayload = await runResp.json()
+      console.log('[match/run] status=', runResp.status, 'payload=', runPayload)
 
-      const candidates = (payload?.results || []) as Array<{
+      if (!runResp.ok) {
+        // Surface the *exact* failing URL/q from the API for easy diagnosis
+        const url = runPayload?.url
+        const qRaw = runPayload?.qRaw
+        throw new Error(`Vincere search failed (${runResp.status})\nURL: ${url}\nq: ${qRaw}\nDetail: ${runPayload?.detail || 'n/a'}`)
+      }
+
+      const candidates = (runPayload?.results || []) as Array<{
         id: string
         firstName?: string
         lastName?: string
@@ -230,19 +186,25 @@ function MatchTab() {
         qualifications?: string[]
         linkedin?: string | null
       }>
+
       if (candidates.length === 0) {
-        setTotal(0); setScored([]); return
+        setTotal(0)
+        setScored([])
+        return
       }
 
-      // 2) AI scoring
-      const ai = await fetch('/api/ai/analyze', {
+      // 2) Then send those results to ChatGPT for scoring (before rendering)
+      const aiResp = await fetch('/api/ai/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          job: { title, location,
-            skills: skillsText.split(',').map(s => s.trim()).filter(Boolean),
-            qualifications: qualsText.split(',').map(s => s.trim()).filter(Boolean),
-            description: job.public_description || '' },
+          job: { 
+            title, 
+            location, 
+            skills: skillsText.split(',').map(s=>s.trim()).filter(Boolean),
+            qualifications: qualsText.split(',').map(s=>s.trim()).filter(Boolean),
+            description: job?.public_description || ''
+          },
           candidates: candidates.map(c => ({
             candidate_id: c.id,
             full_name: c.fullName || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim(),
@@ -255,9 +217,15 @@ function MatchTab() {
         })
       })
 
-      const { ranked = [] } = await ai.json().catch(() => ({ ranked: [] as any[] }))
+      // If AI endpoint fails, show a clear error (no raw fallback unless you want it)
+      if (!aiResp.ok) {
+        const errText = await aiResp.text().catch(()=> '')
+        throw new Error(`AI analyze failed (${aiResp.status}): ${errText}`)
+      }
 
-      // 3) Join, filter ≥50, sort desc
+      const { ranked = [] } = await aiResp.json().catch(() => ({ ranked: [] as any[] }))
+
+      // 3) Merge + filter + sort, then present
       const byId = new Map(candidates.map(c => [String(c.id), c]))
       const filteredSorted = (ranked as any[])
         .filter(r => (Number(r?.score_percent) || 0) >= 50)
@@ -265,7 +233,8 @@ function MatchTab() {
 
       const scoredRows: ScoredRow[] = filteredSorted.map(r => {
         const c = byId.get(String(r.candidate_id))
-        const candidateName = c?.fullName || `${c?.firstName ?? ''} ${c?.lastName ?? ''}`.trim() || String(r.candidate_id)
+        const candidateName =
+          c?.fullName || `${c?.firstName ?? ''} ${c?.lastName ?? ''}`.trim() || String(r.candidate_id)
         return {
           candidateId: String(r.candidate_id),
           candidateName,
@@ -277,11 +246,11 @@ function MatchTab() {
 
       setScored(scoredRows)
       setTotal(scoredRows.length)
-    } catch (e) {
+    } catch (e: any) {
       console.error(e)
       setScored([])
       setTotal(0)
-      alert('AI scoring failed or returned no results ≥ 50%.')
+      alert(e?.message || 'Search/AI failed')
     } finally {
       setLoadingSearch(false)
     }
@@ -292,100 +261,135 @@ function MatchTab() {
     await runSearch()
   }
 
-  return (
-    <div className="grid gap-6">
+ return (
+  <div className="grid gap-6">
+    <div className="card p-6">
+      <p className="mb-4">Enter your Vincere Job ID to return the job details.</p>
+      <div className="grid sm:grid-cols-2 gap-4 mb-4">
+        <div>
+          <label className="text-sm text-gray-600">Job ID</label>
+          <input
+            className="input mt-1"
+            placeholder="Enter Job ID"
+            value={jobId}
+            onChange={e => setJobId(e.target.value)}
+          />
+        </div>
+      </div>
+      <div className="grid sm:grid-cols-2 gap-3 items-end">
+        <button className="btn btn-grey" onClick={retrieveJob} disabled={loadingJob}>
+          {loadingJob ? 'Retrieving…' : 'Retrieve Job Information'}
+        </button>
+        <button
+          className="btn btn-brand"
+          onClick={runSearch}
+          disabled={loadingSearch}
+        >
+          {loadingSearch ? 'Searching…' : 'Search Candidates'}
+        </button>
+      </div>
+    </div>
+
+    <div className="grid md:grid-cols-2 gap-6">
       <div className="card p-6">
-        <p className="mb-4">Enter your Vincere Job ID to return the job details.</p>
-        <div className="grid sm:grid-cols-2 gap-4 mb-4">
+        <h3 className="font-semibold mb-3">Job Summary (review & edit)</h3>
+        <div className="grid sm:grid-cols-2 gap-4 text-sm mb-4">
           <div>
-            <label className="text-sm text-gray-600">Job ID</label>
-            <input className="input mt-1" placeholder="Enter Job ID" value={jobId} onChange={e=>setJobId(e.target.value)} />
+            <div className="text-gray-500">Job Title</div>
+            <input
+              className="input mt-1"
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              placeholder="e.g., Fire & Security Engineer"
+            />
+          </div>
+          <div>
+            <div className="text-gray-500">Location</div>
+            <input
+              className="input mt-1"
+              value={location}
+              onChange={e => setLocation(e.target.value)}
+              onBlur={e => setLocation(cityOnly(e.target.value))}
+              placeholder="e.g., London, UK"
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <div className="text-gray-500">Skills (comma-separated)</div>
+            <input
+              className="input mt-1"
+              value={skillsText}
+              onChange={e => setSkillsText(e.target.value)}
+              placeholder="CCTV, Access Control, IP Networking"
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <div className="text-gray-500">Qualifications (comma-separated)</div>
+            <input
+              className="input mt-1"
+              value={qualsText}
+              onChange={e => setQualsText(e.target.value)}
+              placeholder="CSCS, ECS, IPAF, Degree"
+            />
           </div>
         </div>
-        <div className="grid sm:grid-cols-2 gap-3 items-end">
-          <button className="btn btn-grey" onClick={retrieveJob} disabled={loadingJob}>
-            {loadingJob ? 'Retrieving…' : 'Retrieve Job Information'}
-          </button>
-          <button className="btn btn-brand" onClick={searchCandidates} disabled={!job || loadingSearch}>
-            {loadingSearch ? 'Searching…' : 'Search Candidates'}
-          </button>
-        </div>
-      </div>
 
-      <div className="grid md:grid-cols-2 gap-6">
-        <div className="card p-6">
-          <h3 className="font-semibold mb-3">Job Summary (review & edit)</h3>
-          <div className="grid sm:grid-cols-2 gap-4 text-sm mb-4">
-            <div>
-              <div className="text-gray-500">Job Title</div>
-              <input className="input mt-1" value={title} onChange={e=>setTitle(e.target.value)} placeholder="e.g., Fire & Security Engineer" />
-            </div>
-            <div>
-              <div className="text-gray-500">Location</div>
-              <input className="input mt-1" value={location} onChange={e=>setLocation(e.target.value)} onBlur={e=>setLocation(cityOnly(e.target.value))} placeholder="e.g., London, UK" />
-            </div>
-            <div className="sm:col-span-2">
-              <div className="text-gray-500">Skills (comma-separated)</div>
-              <input className="input mt-1" value={skillsText} onChange={e=>setSkillsText(e.target.value)} placeholder="CCTV, Access Control, IP Networking" />
-            </div>
-            <div className="sm:col-span-2">
-              <div className="text-gray-500">Qualifications (comma-separated)</div>
-              <input className="input mt-1" value={qualsText} onChange={e=>setQualsText(e.target.value)} placeholder="CSCS, ECS, IPAF, Degree" />
-            </div>
-          </div>
-
-          {job && (
-            <div className="mt-2">
-              <button type="button" className="text-xs text-gray-500 underline" onClick={() => setShowDesc(v => !v)}>
-                {showDesc ? 'Hide descriptions' : 'Show descriptions'}
-              </button>
-              {showDesc && (
-                <div className="grid gap-4 mt-3">
+        {job && (
+          <div className="mt-2">
+            <button
+              type="button"
+              className="text-xs text-gray-500 underline"
+              onClick={() => setShowDesc(v => !v)}
+            >
+              {showDesc ? 'Hide descriptions' : 'Show descriptions'}
+            </button>
+            {showDesc && (
+              <div className="grid gap-4 mt-3">
+                <div>
+                  <div className="text-gray-500 mb-1">Public Description</div>
+                  <p className="text-sm whitespace-pre-wrap leading-relaxed">
+                    {job.public_description || '—'}
+                  </p>
+                </div>
+                {job.internal_description && (
                   <div>
-                    <div className="text-gray-500 mb-1">Public Description</div>
-                    <p className="text-sm whitespace-pre-wrap leading-relaxed">{job.public_description || '—'}</p>
+                    <div className="text-gray-500 mb-1">Internal Description</div>
+                    <p className="text-sm whitespace-pre-wrap leading-relaxed">
+                      {job.internal_description}
+                    </p>
                   </div>
-                  {job.internal_description && (
-                    <div>
-                      <div className="text-gray-500 mb-1">Internal Description</div>
-                      <p className="text-sm whitespace-pre-wrap leading-relaxed">{job.internal_description}</p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        <div className="flex flex-col gap-3">
-          {scored.length > 0 ? (
-            <>
-              <Table rows={scored} sortBy={sortBy} setSortBy={setSortBy} filter={filter} setFilter={setFilter} />
-              <div className="flex items-center justify-between text-sm">
-                <div className="text-gray-600">Showing <span className="font-medium">{scored.length}</span> candidates ≥ 50%</div>
-                <div className="flex gap-2">
-                  <button className="btn btn-grey" disabled>Prev</button>
-                  <button className="btn btn-grey" disabled>Next</button>
-                </div>
+                )}
               </div>
-            </>
-          ) : (
-            <div className="card p-6 text-sm text-gray-500">No candidates meet the <span className="font-medium">50%</span> suitability threshold.</div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-3">
+        {scored.length > 0 ? (
+          <>
+            <Table
+              rows={scored}
+              sortBy={sortBy}
+              setSortBy={setSortBy}
+              filter={filter}
+              setFilter={setFilter}
+            />
+            <div className="flex items-center justify-between text-sm">
+              <div className="text-gray-600">
+                Showing <span className="font-medium">{scored.length}</span> candidates ≥ 50%
+              </div>
+              <div className="flex gap-2">
+                <button className="btn btn-grey" disabled>Prev</button>
+                <button className="btn btn-grey" disabled>Next</button>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="card p-6 text-sm text-gray-500">
+            No candidates meet the <span className="font-medium">50%</span> suitability threshold.
+          </div>
+        )}
       </div>
     </div>
-  )
-}
-
-export default function Page() {
-  const [tab, setTab] = useState<TabKey>('match')
-  return (
-    <div className="container mx-auto px-4 py-6">
-      <Tabs tab={tab} setTab={setTab} />
-      {tab === 'match' && <MatchTab />}
-      {tab === 'source' && <div className="card p-6 text-sm text-gray-500">Add your sourcing form here.</div>}
-      {tab === 'cv' && <div className="card p-6 text-sm text-gray-500">CV formatter coming soon.</div>}
-    </div>
-  )
-}
+  </div>
+)
