@@ -36,11 +36,21 @@ function uniq(a: string[] = []) {
   return out
 }
 
-// Extract a "city" from a human-readable location (e.g., "London, UK" -> "London")
+// Replace the old pickCityFromLocation with this generic one
 function pickCityFromLocation(loc?: string) {
   if (!loc) return ''
-  const first = loc.split(',')[0]?.trim() || ''
-  return first
+  // take text before the first comma
+  let s = (loc.split(',')[0] || '').trim()
+  // collapse whitespace
+  s = s.replace(/\s+/g, ' ')
+
+  // strip leading qualifiers like:
+  // South, West, North-East, South West, Central, Centre, Greater, Inner, Outer, City of
+  const qualifier = /^(?:(?:north|south|east|west)(?:\s*[- ]\s*(?:east|west))?|central|centre|greater|inner|outer|city of)\s+/i
+  // remove multiple stacked qualifiers, e.g., "Greater South West London"
+  while (qualifier.test(s)) s = s.replace(qualifier, '').trim()
+
+  return s
 }
 
 // Vincere’s example shows spaces as '+', so we mirror that for the q parameter
