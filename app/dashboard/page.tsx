@@ -1,5 +1,4 @@
 // app/dashboard/page.tsx
-// Updated dashboard/page.tsx with AI scoring & cleaned layout
 'use client'
 import { useState, useEffect, type Dispatch, type SetStateAction, type ReactNode } from 'react'
 
@@ -39,7 +38,6 @@ function htmlToText(html?: string): string {
   }
 }
 
-// Normalize a free-text location to city-only (generic; no hard-coding)
 function cityOnly(loc?: string): string {
   if (!loc) return ''
   let s = (loc.split(',')[0] || '').trim()
@@ -49,30 +47,9 @@ function cityOnly(loc?: string): string {
   return s
 }
 
-function KPIs() {
-  return (
-    <div className="grid sm:grid-cols-3 gap-4 mb-6">
-      <div className="kpi"><h3>—</h3><p>Candidates Matched</p></div>
-      <div className="kpi"><h3>—</h3><p>Candidates Sourced</p></div>
-      <div className="kpi"><h3>—</h3><p>CVs Formatted</p></div>
-    </div>
-  )
-}
-
-function Tabs({
-  tab,
-  setTab
-}: {
-  tab: TabKey
-  setTab: Dispatch<SetStateAction<TabKey>>
-}) {
+function Tabs({ tab, setTab }: { tab: TabKey; setTab: Dispatch<SetStateAction<TabKey>> }) {
   const Item = ({ id, children }: { id: TabKey; children: ReactNode }) => (
-    <button
-      onClick={() => setTab(id)}
-      className={`tab ${tab === id ? 'tab-active' : ''}`}
-    >
-      {children}
-    </button>
+    <button onClick={() => setTab(id)} className={`tab ${tab === id ? 'tab-active' : ''}`}>{children}</button>
   )
   return (
     <div className="flex gap-2 mb-6 justify-center">
@@ -125,26 +102,17 @@ function Table({
           <tbody>
             {sorted.map(r=> (
               <tr key={r.candidateId} className="border-t align-top">
-                {/* Candidate: Suitability % above ID */}
                 <td className="py-3">
                   <div className="text-2xl font-semibold">{r.score}%</div>
                   <div className="text-xs text-gray-500 mt-1">ID: {r.candidateId}</div>
                 </td>
-
-                {/* Name */}
                 <td className="py-3">{r.candidateName}</td>
-
-                {/* LinkedIn + Reason under link */}
                 <td className="py-3">
                   {r.linkedin
                     ? <a className="text-brand-orange underline" href={r.linkedin} target="_blank" rel="noreferrer">Open</a>
                     : '—'}
-                  {r.reason
-                    ? <div className="text-xs text-gray-600 mt-2 whitespace-pre-wrap">{r.reason}</div>
-                    : null}
+                  {r.reason ? <div className="text-xs text-gray-600 mt-2 whitespace-pre-wrap">{r.reason}</div> : null}
                 </td>
-
-                {/* Vincere link */}
                 <td className="py-3">
                   <a className="text-brand-orange underline" href={`https://zitko.vincere.io/app/candidate/${r.candidateId}`} target="_blank" rel="noreferrer">View</a>
                 </td>
@@ -162,7 +130,7 @@ function MatchTab() {
   const [job, setJob] = useState<JobSummary | null>(null)
   const [loadingJob, setLoadingJob] = useState(false)
 
-  // extracted + editable fields (from OpenAI)
+  // extracted fields (editable)
   const [title, setTitle] = useState('')
   const [location, setLocation] = useState('')
   const [skillsText, setSkillsText] = useState('')
@@ -186,29 +154,20 @@ function MatchTab() {
       const r = await fetch(`/api/vincere/position/${encodeURIComponent(jobId)}`, { cache: 'no-store' })
       const data = await r.json()
 
-      const publicRaw = htmlToText(
-        data?.public_description || data?.publicDescription || data?.description || ''
-      )
-      const internalRaw = htmlToText(
-        data?.internal_description || data?.internalDescription || data?.job_description || data?.description_internal || ''
-      )
+      const publicRaw = htmlToText(data?.public_description || data?.publicDescription || data?.description || '')
+      const internalRaw = htmlToText(data?.internal_description || data?.internalDescription || data?.job_description || data?.description_internal || '')
 
       const extractResp = await fetch('/api/job/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          publicDescription: publicRaw,
-          internalDescription: internalRaw
-        })
+        body: JSON.stringify({ publicDescription: publicRaw, internalDescription: internalRaw })
       })
       const extracted = await extractResp.json()
 
       const skillsArr: string[] = Array.isArray(extracted?.skills) ? extracted.skills : []
       const qualsArr: string[] = Array.isArray(extracted?.qualifications) ? extracted.qualifications : []
 
-      // city-only normalization
-      const locRaw = String(extracted?.location || '').trim()
-      const locCity = cityOnly(locRaw)
+      const locCity = cityOnly(String(extracted?.location || '').trim())
 
       setJob({
         id: jobId,
@@ -225,7 +184,6 @@ function MatchTab() {
       setLocation(locCity)
       setSkillsText(skillsArr.join(', '))
       setQualsText(qualsArr.join(', '))
-
     } catch (e) {
       console.error(e)
       alert('Failed to retrieve or extract job details.')
@@ -234,7 +192,7 @@ function MatchTab() {
     }
   }
 
-  // Run Vincere search, then AI ranking. Only show AI-filtered (>=50%) results.
+  // Vincere search → AI ranking → show only ≥50%
   const runSearch = async () => {
     if (!job) return
     setLoadingSearch(true)
@@ -249,17 +207,15 @@ function MatchTab() {
         body: JSON.stringify({
           job: {
             title,
-            location, // already normalized to city-only
+            location, // already normalized
             skills: skillsText.split(',').map(s=>s.trim()).filter(Boolean),
             qualifications: qualsText.split(',').map(s=>s.trim()).filter(Boolean),
             description: job.public_description || ''
           },
-          limit: 300,
-          debug: true
+          limit: 100,
         })
       })
       const payload = await run.json()
-      console.log('MATCH/RUN payload:', payload)
       if (!run.ok) throw new Error(payload?.error || `Search failed (${run.status})`)
 
       const candidates = (payload?.results || []) as Array<{
@@ -274,25 +230,19 @@ function MatchTab() {
         qualifications?: string[]
         linkedin?: string | null
       }>
-
       if (candidates.length === 0) {
-        setTotal(0)
-        setScored([])
-        return
+        setTotal(0); setScored([]); return
       }
 
-      // 2) AI scoring (score ALL candidates)
+      // 2) AI scoring
       const ai = await fetch('/api/ai/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          job: {
-            title,
-            location,
+          job: { title, location,
             skills: skillsText.split(',').map(s => s.trim()).filter(Boolean),
             qualifications: qualsText.split(',').map(s => s.trim()).filter(Boolean),
-            description: job.public_description || ''
-          },
+            description: job.public_description || '' },
           candidates: candidates.map(c => ({
             candidate_id: c.id,
             full_name: c.fullName || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim(),
@@ -305,16 +255,13 @@ function MatchTab() {
         })
       })
 
-      const aiText = await ai.text()
-      let ranked: { ranked?: { candidate_id: string; score_percent: number; reason: string }[] } = {}
-      try { ranked = JSON.parse(aiText) } catch { ranked = {} }
-      const all = Array.isArray(ranked?.ranked) ? ranked.ranked : []
+      const { ranked = [] } = await ai.json().catch(() => ({ ranked: [] as any[] }))
 
-      // 3) Join back to candidate rows, filter >=50, sort desc
+      // 3) Join, filter ≥50, sort desc
       const byId = new Map(candidates.map(c => [String(c.id), c]))
-      const filteredSorted = all
-        .filter(r => (Number(r.score_percent) || 0) >= 50)
-        .sort((a,b) => (Number(b.score_percent) || 0) - (Number(a.score_percent) || 0))
+      const filteredSorted = (ranked as any[])
+        .filter(r => (Number(r?.score_percent) || 0) >= 50)
+        .sort((a,b) => (Number(b?.score_percent) || 0) - (Number(a?.score_percent) || 0))
 
       const scoredRows: ScoredRow[] = filteredSorted.map(r => {
         const c = byId.get(String(r.candidate_id))
@@ -323,7 +270,7 @@ function MatchTab() {
           candidateId: String(r.candidate_id),
           candidateName,
           score: Math.round(Number(r.score_percent) || 0),
-          reason: r.reason || '',
+          reason: String(r.reason || ''),
           linkedin: c?.linkedin || undefined
         }
       })
@@ -332,7 +279,6 @@ function MatchTab() {
       setTotal(scoredRows.length)
     } catch (e) {
       console.error(e)
-      // If AI fails, do NOT show raw fallback (per requirement). Show empty state.
       setScored([])
       setTotal(0)
       alert('AI scoring failed or returned no results ≥ 50%.')
@@ -366,11 +312,9 @@ function MatchTab() {
         </div>
       </div>
 
-      {/* Split view: left = reviewed job info, right = candidates */}
       <div className="grid md:grid-cols-2 gap-6">
         <div className="card p-6">
           <h3 className="font-semibold mb-3">Job Summary (review & edit)</h3>
-
           <div className="grid sm:grid-cols-2 gap-4 text-sm mb-4">
             <div>
               <div className="text-gray-500">Job Title</div>
@@ -378,13 +322,7 @@ function MatchTab() {
             </div>
             <div>
               <div className="text-gray-500">Location</div>
-              <input
-                className="input mt-1"
-                value={location}
-                onChange={e=>setLocation(e.target.value)}
-                onBlur={e=>setLocation(cityOnly(e.target.value))}
-                placeholder="e.g., London, UK"
-              />
+              <input className="input mt-1" value={location} onChange={e=>setLocation(e.target.value)} onBlur={e=>setLocation(cityOnly(e.target.value))} placeholder="e.g., London, UK" />
             </div>
             <div className="sm:col-span-2">
               <div className="text-gray-500">Skills (comma-separated)</div>
@@ -398,14 +336,9 @@ function MatchTab() {
 
           {job && (
             <div className="mt-2">
-              <button
-                type="button"
-                className="text-xs text-gray-500 underline"
-                onClick={() => setShowDesc(v => !v)}
-              >
+              <button type="button" className="text-xs text-gray-500 underline" onClick={() => setShowDesc(v => !v)}>
                 {showDesc ? 'Hide descriptions' : 'Show descriptions'}
               </button>
-
               {showDesc && (
                 <div className="grid gap-4 mt-3">
                   <div>
@@ -429,9 +362,7 @@ function MatchTab() {
             <>
               <Table rows={scored} sortBy={sortBy} setSortBy={setSortBy} filter={filter} setFilter={setFilter} />
               <div className="flex items-center justify-between text-sm">
-                <div className="text-gray-600">
-                  Showing <span className="font-medium">{scored.length}</span> candidates ≥ 50%
-                </div>
+                <div className="text-gray-600">Showing <span className="font-medium">{scored.length}</span> candidates ≥ 50%</div>
                 <div className="flex gap-2">
                   <button className="btn btn-grey" disabled>Prev</button>
                   <button className="btn btn-grey" disabled>Next</button>
@@ -439,9 +370,7 @@ function MatchTab() {
               </div>
             </>
           ) : (
-            <div className="card p-6 text-sm text-gray-500">
-              No candidates meet the <span className="font-medium">50%</span> suitability threshold.
-            </div>
+            <div className="card p-6 text-sm text-gray-500">No candidates meet the <span className="font-medium">50%</span> suitability threshold.</div>
           )}
         </div>
       </div>
@@ -449,119 +378,14 @@ function MatchTab() {
   )
 }
 
-function SourceTab() {
-  const jotformUrl = process.env.NEXT_PUBLIC_JOTFORM_URL || ''
-  const hasUrl = jotformUrl.length > 0
-  const formId = hasUrl ? (jotformUrl.match(/\/(\d{10,})(?:$|[/?#])/i)?.[1] ?? null) : null
-  const [height, setHeight] = useState<number>(900)
-  const [iframeKey, setIframeKey] = useState(0)
-  const refreshForm = () => setIframeKey(k => k + 1)
-
-  useEffect(() => {
-    function handleMessage(e: MessageEvent) {
-      if (!formId) return
-      if (typeof e.data !== 'string') return
-      const parts = e.data.split(':')
-      if (parts[0] === 'setHeight') {
-        const newH = Number(parts[1])
-        if (!Number.isNaN(newH) && newH > 0) setHeight(newH + 20)
-      }
-    }
-    window.addEventListener('message', handleMessage)
-    return () => window.removeEventListener('message', handleMessage)
-  }, [formId])
-
-  return (
-    <div className="card p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <p className="m-0">Complete the form below to source relevant candidates directly to your email inbox.</p>
-        {hasUrl && (
-          <button className="btn btn-brand" onClick={refreshForm} title="Reload form">
-            Refresh
-          </button>
-        )}
-      </div>
-
-      {!hasUrl ? (
-        <div className="border-2 border-dashed rounded-2xl p-10 text-center text-gray-500">
-          <div className="mb-2 text-5xl">🧾</div>
-          <div className="font-semibold mb-2">JotForm Integration</div>
-          <p className="mb-2">
-            Add your form URL in the Vercel env var <code>NEXT_PUBLIC_JOTFORM_URL</code> and redeploy.
-          </p>
-          <p className="text-xs break-all">Example: https://form.jotform.com/123456789012345</p>
-        </div>
-      ) : (
-        <div className="rounded-2xl overflow-hidden border">
-          <iframe
-            key={iframeKey}
-            id={formId ? `JotFormIFrame-${formId}` : 'JotFormIFrame'}
-            title="JotForm"
-            src={jotformUrl}
-            className="w-full"
-            style={{ height }}
-            scrolling="no"
-            frameBorder={0}
-            allow="clipboard-write; fullscreen"
-          />
-        </div>
-      )}
-    </div>
-  )
-}
-
-function CvTab() {
-  const [candidateId, setCandidateId] = useState('')
-  const [result, setResult] = useState<any>(null)
-  const [loading, setLoading] = useState(false)
-
-  const generate = async () => {
-    if (!candidateId) return
-    setLoading(true)
-    try {
-      const r = await fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}`)
-      const data = await r.json()
-      setResult(data)
-    } catch (e) {
-      console.error(e)
-      alert('Failed to retrieve candidate. Are you logged in and do you have a valid Candidate ID?')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <div className="card p-6">
-      <p className="mb-4">Enter a Candidate ID to fetch details from Vincere. We will format this into your CV layout later.</p>
-      <div className="grid sm:grid-cols-2 gap-4 mb-4">
-        <div>
-          <label className="text-sm text-gray-600">Candidate ID</label>
-          <input className="input mt-1" placeholder="Enter Candidate ID" value={candidateId} onChange={e=>setCandidateId(e.target.value)} />
-        </div>
-      </div>
-      <button className="btn btn-brand w-full" onClick={generate} disabled={loading}>
-        {loading ? 'Fetching…' : 'Generate CV Preview'}
-      </button>
-
-      {result && (
-        <div className="mt-6">
-          <h3 className="font-semibold mb-2">Raw Candidate Data</h3>
-          <pre className="rounded-2xl border p-4 text-sm overflow-auto">{JSON.stringify(result, null, 2)}</pre>
-        </div>
-      )}
-    </div>
-  )
-}
-
-export default function Dashboard() {
+export default function Page() {
   const [tab, setTab] = useState<TabKey>('match')
   return (
-    <div>
-      {/* <KPIs /> */}
+    <div className="container mx-auto px-4 py-6">
       <Tabs tab={tab} setTab={setTab} />
-      {tab==='match' && <MatchTab />}
-      {tab==='source' && <SourceTab />}
-      {tab==='cv' && <CvTab />}
+      {tab === 'match' && <MatchTab />}
+      {tab === 'source' && <div className="card p-6 text-sm text-gray-500">Add your sourcing form here.</div>}
+      {tab === 'cv' && <div className="card p-6 text-sm text-gray-500">CV formatter coming soon.</div>}
     </div>
   )
 }
