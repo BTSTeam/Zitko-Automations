@@ -48,6 +48,25 @@ function htmlToText(html?: string): string {
   }
 }
 
+// Normalize a free-text location to city-only (generic; no hard-coding)
+// Examples:
+//  "South West London, UK" -> "London"
+//  "Greater Manchester, England" -> "Manchester"
+//  "New York, USA" -> "New York"
+function cityOnly(loc?: string): string {
+  if (!loc) return ''
+  // take text before the first comma
+  let s = (loc.split(',')[0] || '').trim()
+  // collapse whitespace
+  s = s.replace(/\s+/g, ' ')
+  // strip leading qualifiers like:
+  // North, South, East, West, North-East, South West, Central, Centre, Greater, Inner, Outer, City of
+  const qualifier = /^(?:(?:north|south|east|west)(?:\s*[- ]\s*(?:east|west))?|central|centre|greater|inner|outer|city of)\s+/i
+  // remove stacked qualifiers if present
+  while (qualifier.test(s)) s = s.replace(qualifier, '').trim()
+  return s
+}
+
 function KPIs() {
   return (
     <div className="grid sm:grid-cols-3 gap-4 mb-6">
@@ -203,10 +222,14 @@ function MatchTab() {
       const skillsArr: string[] = Array.isArray(extracted?.skills) ? extracted.skills : []
       const qualsArr: string[] = Array.isArray(extracted?.qualifications) ? extracted.qualifications : []
 
+      // --- city-only normalization here ---
+      const locRaw = String(extracted?.location || '').trim()
+      const locCity = cityOnly(locRaw)
+
       setJob({
         id: jobId,
         job_title: String(extracted?.title || '').trim(),
-        location: String(extracted?.location || '').trim(),
+        location: locCity, // <-- normalized
         skills: skillsArr,
         qualifications: qualsArr,
         public_description: publicRaw,
@@ -215,7 +238,7 @@ function MatchTab() {
       })
 
       setTitle(String(extracted?.title || '').trim())
-      setLocation(String(extracted?.location || '').trim())
+      setLocation(locCity) // <-- normalized
       setSkillsText(skillsArr.join(', '))
       setQualsText(qualsArr.join(', '))
 
@@ -235,14 +258,14 @@ function MatchTab() {
     setRawCands([])
 
     try {
-      // 1) Vincere candidate search (by job title)
+      // 1) Vincere candidate search
       const run = await fetch('/api/match/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           job: {
             title,
-            location,
+            location, // already normalized to city-only
             skills: skillsText.split(',').map(s=>s.trim()).filter(Boolean),
             qualifications: qualsText.split(',').map(s=>s.trim()).filter(Boolean),
             description: job.public_description || ''
@@ -280,7 +303,7 @@ function MatchTab() {
       setRawCands(rawList)
       setTotal(rawList.length)
 
-      // 2) AI scoring (priority: location, skills, qualifications, job title)
+      // 2) AI scoring
       const ai = await fetch('/api/ai/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -330,7 +353,6 @@ function MatchTab() {
       }
     } catch (e) {
       console.error(e)
-      // Keep rawCands visible as fallback
       alert('Search or scoring hit an issue. Showing raw candidates (if any).')
     } finally {
       setLoadingSearch(false)
@@ -380,7 +402,13 @@ function MatchTab() {
             </div>
             <div>
               <div className="text-gray-500">Location</div>
-              <input className="input mt-1" value={location} onChange={e=>setLocation(e.target.value)} placeholder="e.g., London, UK" />
+              <input
+                className="input mt-1"
+                value={location}
+                onChange={e=>setLocation(e.target.value)}
+                onBlur={e=>setLocation(cityOnly(e.target.value))} // keep city-only if edited
+                placeholder="e.g., London, UK"
+              />
             </div>
             <div className="sm:col-span-2">
               <div className="text-gray-500">Skills (comma-separated)</div>
