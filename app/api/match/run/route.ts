@@ -12,12 +12,12 @@ type RunReq = {
   jobId?: string
   job?: {
     title?: string
-    location?: string      // e.g., "London, UK" -> we'll parse city "London"
-    skills?: string[]      // we'll take first 2
+    location?: string
+    skills?: string[]
     qualifications?: string[]
     description?: string
   }
-  limit?: number           // default to 100
+  limit?: number
 }
 
 // ---------- helpers ----------
@@ -36,53 +36,48 @@ function uniq(a: string[] = []) {
   return out
 }
 
-// Replace the old pickCityFromLocation with this generic one
 function pickCityFromLocation(loc?: string) {
   if (!loc) return ''
-  // take text before the first comma
   let s = (loc.split(',')[0] || '').trim()
-  // collapse whitespace
   s = s.replace(/\s+/g, ' ')
-
-  // strip leading qualifiers like:
-  // South, West, North-East, South West, Central, Centre, Greater, Inner, Outer, City of
   const qualifier = /^(?:(?:north|south|east|west)(?:\s*[- ]\s*(?:east|west))?|central|centre|greater|inner|outer|city of)\s+/i
   while (qualifier.test(s)) s = s.replace(qualifier, '').trim()
-
+  // normalize any London variant to London
+  if (/london/i.test(loc)) return 'London'
   return s
 }
 
-// Vincere’s example shows spaces as '+', so we mirror that for the q parameter
+// Encode exactly like cURL: encode everything, then convert spaces to '+'
 function encodeForVincereQuery(q: string) {
   return encodeURIComponent(q).replace(/%20/g, '+')
 }
 
-// Build q EXACTLY per your latest spec:
-// current_job_title:"Title"# AND current_city:"City"# AND (skill:S1# OR skill:S2#)
-// (No quotes on skill values; OR between skills.)
+// Build q to mirror the working cURL as closely as possible:
+// current_job_title:"Title"# AND (current_city:"City"# OR current_location_name:"City"#) AND (skill:S1# OR skill:S2#)
 function buildQuery(job: NonNullable<RunReq['job']>) {
   const title = (job.title ?? '').trim()
   const city  = pickCityFromLocation(job.location)
 
   const titleClause = title ? toClause('current_job_title', title) : ''
-  const cityClause  = city  ? toClause('current_city', city) : ''
-
-  const skills = uniq(job.skills ?? []).slice(0, 2)
-  const skillTerms = skills.map(s => `skill:${s}#`) // <-- no quotes for skills
-  const skillsClause = skillTerms.length
-    ? `(${skillTerms.join(' AND ')})`              // <-- AND between the two skills
+  const cityClause = city
+    ? `( ${toClause('current_city', city)} OR ${toClause('current_location_name', city)} )`
     : ''
 
-  // Assemble: title AND city AND (skills)
+  const skills = uniq(job.skills ?? []).slice(0, 2)
+  const skillTerms = skills.map(s => `skill:${s}#`) // no quotes on skills
+  const skillsClause = skillTerms.length
+    ? `(${skillTerms.join(' OR ')})` // OR to match your successful cURL
+    : ''
+
   let q = ''
-  if (titleClause) q = titleClause
-  if (cityClause)  q = q ? `${q} AND ${cityClause}` : cityClause
+  if (titleClause)  q = titleClause
+  if (cityClause)   q = q ? `${q} AND ${cityClause}` : cityClause
   if (skillsClause) q = q ? `${q} AND ${skillsClause}` : skillsClause
 
   return q || '*:*'
 }
 
-// matrix_vars EXACTLY as requested (no mlt.fl)
+// matrix_vars EXACT per your spec
 function buildMatrixVars() {
   return 'fl=id,first_name,last_name,current_location_name,current_job_title,linkedin,keywords,skill,edu_qualification,edu_degree,edu_course,edu_institution,edu_training;sort=created_date asc'
 }
@@ -97,7 +92,7 @@ async function resolveJob(_session: any, body: RunReq): Promise<RunReq['job'] | 
 async function fetchWithAutoRefresh(url: string, idToken: string, userKey: string, init?: RequestInit) {
   const headers = new Headers(init?.headers || {})
   headers.set('id-token', idToken)
-  headers.set('x-api-key', config.VINCERE_API_KEY)
+  headers.set('x-api-key', (config as any).VINCERE_PUBLIC_API_KEY || config.VINCERE_API_KEY)
   headers.set('accept', 'application/json')
 
   const doFetch = (h: Headers) => fetch(url, { ...init, headers: h, method: 'GET', cache: 'no-store' })
@@ -139,17 +134,15 @@ export async function POST(req: NextRequest) {
     const matrixVars = buildMatrixVars()
     const qRaw = buildQuery(job)
 
-    // clamp limit 1..100, include start=0 as per example
     const limit = Math.max(1, Math.min(100, Number(body.limit ?? 100)))
-    const start = 0
 
     const base = config.VINCERE_TENANT_API_BASE.replace(/\/$/, '')
     const encodedMatrix = encodeURIComponent(matrixVars)
-    const encodedQ = encodeForVincereQuery(qRaw)
+    const encodedQ = encodeForVincereQuery(qRaw) // keeps %28/%29 for parentheses
 
     const url =
       `${base}/api/v2/candidate/search/${encodedMatrix}` +
-      `?q=${encodedQ}&start=${start}&limit=${limit}`
+      `?q=${encodedQ}&limit=${limit}` // no &start=0 to mirror cURL
 
     const resp = await fetchWithAutoRefresh(url, idToken, userKey)
     const text = await resp.text()
@@ -160,14 +153,11 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // --- replace from: "let json: any = {}" down to the return JSON ---
-
     let json: any = {}
     try { json = JSON.parse(text) } catch { json = {} }
 
-    // Vincere candidate search shape: { category, result: { start, total, items: [...] } }
+    // { result: { items: [...] } } or fallbacks
     const result = json?.result
-
     const rawItems = Array.isArray(result?.items)
       ? result.items
       : Array.isArray(json?.data)
@@ -184,17 +174,11 @@ export async function POST(req: NextRequest) {
       0
     )
 
-    // helpers to flatten arrays of strings/option objects
     const toList = (v: any) =>
       Array.isArray(v)
-        ? v.map((x) =>
-            typeof x === 'string'
-              ? x
-              : (x?.description ?? x?.value ?? '')
-          ).filter(Boolean)
+        ? v.map((x) => typeof x === 'string' ? x : (x?.description ?? x?.value ?? '')).filter(Boolean)
         : []
 
-    // Map to the shape your UI expects
     const results = rawItems.map((c: any) => {
       const first = c?.first_name ?? c?.firstName ?? ''
       const last  = c?.last_name ?? c?.lastName ?? ''
@@ -228,14 +212,11 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       ok: true,
-      query: { matrix_vars: matrixVars, q: qRaw, url, start, limit },
+      query: { matrix_vars: matrixVars, q: qRaw, url, limit },
       count,
-      // return both keys for UI compatibility
       results,
       candidates: results,
     })
-    // --- end replacement ---
-
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Unexpected error' }, { status: 500 })
   }
