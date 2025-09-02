@@ -58,8 +58,8 @@ function encodeForVincereQuery(q: string) {
 }
 
 // Build q EXACTLY per your latest spec:
-// current_job_title:"Title"# AND current_city:"City"# AND (skill:S1# AND skill:S2#)
-// (No quotes on skill values; AND between skills.)
+// current_job_title:"Title"# AND current_city:"City"# AND (skill:S1# OR skill:S2#)
+// (No quotes on skill values; OR between skills.)
 function buildQuery(job: NonNullable<RunReq['job']>) {
   const title = (job.title ?? '').trim()
   const city  = pickCityFromLocation(job.location)
