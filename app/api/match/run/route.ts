@@ -20,9 +20,35 @@ type RunReq = {
   limit?: number
 }
 
+// --- helper: turn a raw location string into city-only ---
+// Examples:
+// "South West London, UK" -> "London"
+// "Birmingham, West Midlands, UK" -> "Birmingham"
+// "San Jose, CA, USA" -> "San Jose"
+// "Paris, Île-de-France, FR" -> "Paris"
+function extractCity(location?: string): string {
+  if (!location) return ''
+  // take text before the first comma
+  let city = location.split(',')[0].trim()
+
+  // remove standalone directional words (but keep real city names like Northampton, Westons, etc.)
+  city = city.replace(/\b(North|South|East|West|Northeast|Northwest|Southeast|Southwest)\b/gi, ' ').trim()
+
+  // collapse multiple spaces that may result from removals
+  city = city.replace(/\s{2,}/g, ' ').trim()
+
+  return city
+}
+
 const resolveJob = async (session: any, body: RunReq, idToken: string) => {
   const base = config.VINCERE_TENANT_API_BASE.replace(/\/$/, '')
-  if (body.job) return body.job
+  if (body.job) {
+    // If a job object was provided directly, normalize its location to city-only
+    return {
+      ...body.job,
+      location: extractCity(body.job.location || '')
+    }
+  }
   if (!body.jobId) return null
   const url = `${base}/api/v2/position/${encodeURIComponent(body.jobId)}`
   const call = () =>
@@ -43,14 +69,19 @@ const resolveJob = async (session: any, body: RunReq, idToken: string) => {
   }
   if (!resp.ok) return null
   const pos = await resp.json().catch(() => ({}))
+
+  const rawLocation =
+    String(
+      pos['location-text'] ||
+        pos.location_text ||
+        pos.location ||
+        pos.city ||
+        ''
+    ).trim()
+
   return {
     title: pos.job_title || pos.title || pos.name || '',
-    location:
-      pos['location-text'] ||
-      pos.location_text ||
-      pos.location ||
-      pos.city ||
-      '',
+    location: extractCity(rawLocation), // <-- city-only value
     skills: Array.isArray(pos.skills)
       ? pos.skills.map((s: any) => s?.name ?? s).filter(Boolean)
       : [],
