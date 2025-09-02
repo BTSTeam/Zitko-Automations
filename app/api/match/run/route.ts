@@ -159,6 +159,7 @@ export async function POST(req: NextRequest) {
 
     // --- replace from: "let json: any = {}" down to the return JSON ---
 
+// --- replace your current JSON parsing block with this ---
 let json: any = {}
 try { json = JSON.parse(text) } catch { json = {} }
 
