@@ -1,5 +1,5 @@
 // app/dashboard/page.tsx
-// Updated dashboard/page.tsx with Page Size dropdown removed and KPIs section hidden
+// Updated dashboard/page.tsx with AI scoring & cleaned layout
 'use client'
 import { useState, useEffect, type Dispatch, type SetStateAction, type ReactNode } from 'react'
 
@@ -14,15 +14,6 @@ type JobSummary = {
   public_description?: string
   internal_description?: string
   coords?: { lat: number, lng: number } | null
-}
-
-type CandidateRow = {
-  id: string
-  name: string
-  title?: string
-  location?: string
-  linkedin?: string | null
-  skills?: string[]
 }
 
 type ScoredRow = {
@@ -49,20 +40,11 @@ function htmlToText(html?: string): string {
 }
 
 // Normalize a free-text location to city-only (generic; no hard-coding)
-// Examples:
-//  "South West London, UK" -> "London"
-//  "Greater Manchester, England" -> "Manchester"
-//  "New York, USA" -> "New York"
 function cityOnly(loc?: string): string {
   if (!loc) return ''
-  // take text before the first comma
   let s = (loc.split(',')[0] || '').trim()
-  // collapse whitespace
   s = s.replace(/\s+/g, ' ')
-  // strip leading qualifiers like:
-  // North, South, East, West, North-East, South West, Central, Centre, Greater, Inner, Outer, City of
   const qualifier = /^(?:(?:north|south|east|west)(?:\s*[- ]\s*(?:east|west))?|central|centre|greater|inner|outer|city of)\s+/i
-  // remove stacked qualifiers if present
   while (qualifier.test(s)) s = s.replace(qualifier, '').trim()
   return s
 }
@@ -186,27 +168,18 @@ function MatchTab() {
   const [skillsText, setSkillsText] = useState('')
   const [qualsText, setQualsText] = useState('')
 
-  // NEW: hold raw candidates (so UI shows results even if AI ranking is empty)
-  const [rawCands, setRawCands] = useState<CandidateRow[]>([])
-
   const [scored, setScored] = useState<ScoredRow[]>([])
   const [loadingSearch, setLoadingSearch] = useState(false)
   const [sortBy, setSortBy] = useState<[keyof ScoredRow, 'asc'|'desc']>(['score','desc'])
   const [filter, setFilter] = useState('')
-
-  // pagination (page size fixed to 20; dropdown removed)
-  const [page] = useState(1)
-  const pageSize = 20
   const [total, setTotal] = useState(0)
 
-  // NEW: hide/show descriptions
   const [showDesc, setShowDesc] = useState(false)
 
   const retrieveJob = async () => {
     if (!jobId) return
     setLoadingJob(true)
     setScored([])
-    setRawCands([])
     setTotal(0)
 
     try {
@@ -233,14 +206,14 @@ function MatchTab() {
       const skillsArr: string[] = Array.isArray(extracted?.skills) ? extracted.skills : []
       const qualsArr: string[] = Array.isArray(extracted?.qualifications) ? extracted.qualifications : []
 
-      // --- city-only normalization here ---
+      // city-only normalization
       const locRaw = String(extracted?.location || '').trim()
       const locCity = cityOnly(locRaw)
 
       setJob({
         id: jobId,
         job_title: String(extracted?.title || '').trim(),
-        location: locCity, // <-- normalized
+        location: locCity,
         skills: skillsArr,
         qualifications: qualsArr,
         public_description: publicRaw,
@@ -249,7 +222,7 @@ function MatchTab() {
       })
 
       setTitle(String(extracted?.title || '').trim())
-      setLocation(locCity) // <-- normalized
+      setLocation(locCity)
       setSkillsText(skillsArr.join(', '))
       setQualsText(qualsArr.join(', '))
 
@@ -262,121 +235,88 @@ function MatchTab() {
   }
 
   // Run Vincere search, then AI ranking. Only show AI-filtered (>=50%) results.
-const runSearch = async () => {
-  if (!job) return
-  setLoadingSearch(true)
-  setScored([])
-  setRawCands([])
-
-  try {
-    // 1) Vincere candidate search
-    const run = await fetch('/api/match/run', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        job: {
-          title,
-          location, // already normalized to city-only
-          skills: skillsText.split(',').map(s=>s.trim()).filter(Boolean),
-          qualifications: qualsText.split(',').map(s=>s.trim()).filter(Boolean),
-          description: job.public_description || ''
-        },
-        limit: 300,
-        debug: true
-      })
-    })
-    const payload = await run.json()
-    console.log('MATCH/RUN payload:', payload)
-    if (!run.ok) throw new Error(payload?.error || `Search failed (${run.status})`)
-
-    const candidates = (payload?.results || []) as Array<{
-      id: string
-      firstName?: string
-      lastName?: string
-      fullName?: string
-      location?: string
-      city?: string
-      title?: string
-      skills?: string[]
-      qualifications?: string[]
-      linkedin?: string | null
-    }>
-
-    if (candidates.length === 0) {
-      setTotal(0)
-      setScored([])
-      return
-    }
-
-    // 2) AI scoring (score ALL candidates)
-    const ai = await fetch('/api/ai/analyze', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        job: {
-          title,
-          location,
-          skills: skillsText.split(',').map(s => s.trim()).filter(Boolean),
-          qualifications: qualsText.split(',').map(s => s.trim()).filter(Boolean),
-          description: job.public_description || ''
-        },
-        candidates: candidates.map(c => ({
-          candidate_id: c.id,
-          full_name: c.fullName || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim(),
-          location: c.location || c.city || '',
-          current_job_title: c.title || '',
-          skills: c.skills || [],
-          qualifications: c.qualifications || [],
-          linkedin: c.linkedin ?? null,
-        }))
-      })
-    })
-
-    const aiText = await ai.text()
-    let ranked: { ranked?: { candidate_id: string; score_percent: number; reason: string }[] } = {}
-    try { ranked = JSON.parse(aiText) } catch { ranked = {} }
-    const all = Array.isArray(ranked?.ranked) ? ranked.ranked : []
-
-    // 3) Join back to candidate rows, filter >=50, sort desc
-    const byId = new Map(candidates.map(c => [String(c.id), c]))
-    const filteredSorted = all
-      .filter(r => (Number(r.score_percent) || 0) >= 50)
-      .sort((a,b) => (Number(b.score_percent) || 0) - (Number(a.score_percent) || 0))
-
-    const scoredRows: ScoredRow[] = filteredSorted.map(r => {
-      const c = byId.get(String(r.candidate_id))
-      const candidateName = c?.fullName || `${c?.firstName ?? ''} ${c?.lastName ?? ''}`.trim() || String(r.candidate_id)
-      return {
-        candidateId: String(r.candidate_id),
-        candidateName,
-        score: Math.round(Number(r.score_percent) || 0),
-        reason: r.reason || '',
-        linkedin: c?.linkedin || undefined
-      }
-    })
-
-    setScored(scoredRows)
-    setTotal(scoredRows.length)
-  } catch (e) {
-    console.error(e)
-    // If AI fails, do NOT show raw fallback (per requirement). Show empty state.
+  const runSearch = async () => {
+    if (!job) return
+    setLoadingSearch(true)
     setScored([])
     setTotal(0)
-    alert('AI scoring failed or returned no results ≥ 50%.')
-  } finally {
-    setLoadingSearch(false)
-  }
-}
+
+    try {
+      // 1) Vincere candidate search
+      const run = await fetch('/api/match/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          job: {
+            title,
+            location, // already normalized to city-only
+            skills: skillsText.split(',').map(s=>s.trim()).filter(Boolean),
+            qualifications: qualsText.split(',').map(s=>s.trim()).filter(Boolean),
+            description: job.public_description || ''
+          },
+          limit: 300,
+          debug: true
+        })
+      })
+      const payload = await run.json()
+      console.log('MATCH/RUN payload:', payload)
+      if (!run.ok) throw new Error(payload?.error || `Search failed (${run.status})`)
+
+      const candidates = (payload?.results || []) as Array<{
+        id: string
+        firstName?: string
+        lastName?: string
+        fullName?: string
+        location?: string
+        city?: string
+        title?: string
+        skills?: string[]
+        qualifications?: string[]
+        linkedin?: string | null
+      }>
+
+      if (candidates.length === 0) {
+        setTotal(0)
+        setScored([])
+        return
+      }
+
+      // 2) AI scoring (score ALL candidates)
+      const ai = await fetch('/api/ai/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          job: {
+            title,
+            location,
+            skills: skillsText.split(',').map(s => s.trim()).filter(Boolean),
+            qualifications: qualsText.split(',').map(s => s.trim()).filter(Boolean),
+            description: job.public_description || ''
+          },
+          candidates: candidates.map(c => ({
+            candidate_id: c.id,
+            full_name: c.fullName || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim(),
+            location: c.location || c.city || '',
+            current_job_title: c.title || '',
+            skills: c.skills || [],
+            qualifications: c.qualifications || [],
+            linkedin: c.linkedin ?? null,
+          }))
+        })
+      })
 
       const aiText = await ai.text()
       let ranked: { ranked?: { candidate_id: string; score_percent: number; reason: string }[] } = {}
       try { ranked = JSON.parse(aiText) } catch { ranked = {} }
+      const all = Array.isArray(ranked?.ranked) ? ranked.ranked : []
 
-      const top = (ranked?.ranked || []).slice(0, 20)
-
-      // 3) Map AI results to ScoredRow with LinkedIn + names
+      // 3) Join back to candidate rows, filter >=50, sort desc
       const byId = new Map(candidates.map(c => [String(c.id), c]))
-      const scoredRows: ScoredRow[] = top.map(r => {
+      const filteredSorted = all
+        .filter(r => (Number(r.score_percent) || 0) >= 50)
+        .sort((a,b) => (Number(b.score_percent) || 0) - (Number(a.score_percent) || 0))
+
+      const scoredRows: ScoredRow[] = filteredSorted.map(r => {
         const c = byId.get(String(r.candidate_id))
         const candidateName = c?.fullName || `${c?.firstName ?? ''} ${c?.lastName ?? ''}`.trim() || String(r.candidate_id)
         return {
@@ -388,13 +328,14 @@ const runSearch = async () => {
         }
       })
 
-      if (scoredRows.length > 0) {
-        setScored(scoredRows)
-        setTotal(scoredRows.length)
-      }
+      setScored(scoredRows)
+      setTotal(scoredRows.length)
     } catch (e) {
       console.error(e)
-      alert('Search or scoring hit an issue. Showing raw candidates (if any).')
+      // If AI fails, do NOT show raw fallback (per requirement). Show empty state.
+      setScored([])
+      setTotal(0)
+      alert('AI scoring failed or returned no results ≥ 50%.')
     } finally {
       setLoadingSearch(false)
     }
@@ -404,11 +345,6 @@ const runSearch = async () => {
     if (!job) return alert('Retrieve Job Information first.')
     await runSearch()
   }
-
-  const canPrev = false
-  const canNext = false
-  const showingFrom = (scored.length || rawCands.length) ? 1 : 0
-  const showingTo = scored.length || rawCands.length || 0
 
   return (
     <div className="grid gap-6">
@@ -420,7 +356,6 @@ const runSearch = async () => {
             <input className="input mt-1" placeholder="Enter Job ID" value={jobId} onChange={e=>setJobId(e.target.value)} />
           </div>
         </div>
-        {/* Adjusted from 3 to 2 columns and removed Page Size dropdown */}
         <div className="grid sm:grid-cols-2 gap-3 items-end">
           <button className="btn btn-grey" onClick={retrieveJob} disabled={loadingJob}>
             {loadingJob ? 'Retrieving…' : 'Retrieve Job Information'}
@@ -447,7 +382,7 @@ const runSearch = async () => {
                 className="input mt-1"
                 value={location}
                 onChange={e=>setLocation(e.target.value)}
-                onBlur={e=>setLocation(cityOnly(e.target.value))} // keep city-only if edited
+                onBlur={e=>setLocation(cityOnly(e.target.value))}
                 placeholder="e.g., London, UK"
               />
             </div>
@@ -490,27 +425,29 @@ const runSearch = async () => {
         </div>
 
         <div className="flex flex-col gap-3">
-  {scored.length > 0 ? (
-    <>
-      <Table rows={scored} sortBy={sortBy} setSortBy={setSortBy} filter={filter} setFilter={setFilter} />
-      <div className="flex items-center justify-between text-sm">
-        <div className="text-gray-600">
-          {total
-            ? <>Showing <span className="font-medium">{Math.min(total, scored.length)}</span> of <span className="font-medium">{total}</span> candidates ≥ 50%</>
-            : 'No candidates meet the 50% suitability threshold.'}
-        </div>
-        <div className="flex gap-2">
-          <button className="btn btn-grey" disabled>Prev</button>
-          <button className="btn btn-grey" disabled>Next</button>
+          {scored.length > 0 ? (
+            <>
+              <Table rows={scored} sortBy={sortBy} setSortBy={setSortBy} filter={filter} setFilter={setFilter} />
+              <div className="flex items-center justify-between text-sm">
+                <div className="text-gray-600">
+                  Showing <span className="font-medium">{scored.length}</span> candidates ≥ 50%
+                </div>
+                <div className="flex gap-2">
+                  <button className="btn btn-grey" disabled>Prev</button>
+                  <button className="btn btn-grey" disabled>Next</button>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="card p-6 text-sm text-gray-500">
+              No candidates meet the <span className="font-medium">50%</span> suitability threshold.
+            </div>
+          )}
         </div>
       </div>
-    </>
-  ) : (
-    <div className="card p-6 text-sm text-gray-500">
-      No candidates meet the <span className="font-medium">50%</span> suitability threshold.
     </div>
-  )}
-</div>
+  )
+}
 
 function SourceTab() {
   const jotformUrl = process.env.NEXT_PUBLIC_JOTFORM_URL || ''
@@ -620,7 +557,6 @@ export default function Dashboard() {
   const [tab, setTab] = useState<TabKey>('match')
   return (
     <div>
-      {/* KPIs section removed from display */}
       {/* <KPIs /> */}
       <Tabs tab={tab} setTab={setTab} />
       {tab==='match' && <MatchTab />}
