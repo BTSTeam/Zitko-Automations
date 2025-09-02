@@ -42,27 +42,33 @@ function uniq(a: string[] = []) {
   return out
 }
 
-// Build q: title AND (any skill in keywords/skill), with sensible fallbacks
+// Build q: title AND (any skill), with sensible fallbacks
 function buildQuery(job: NonNullable<RunReq['job']>) {
   const title = (job.title ?? '').trim()
   const titleBlock = title ? toClause('current_job_title', title) : ''
 
+  // dedupe + cap to keep URL compact
   const skills = uniq(job.skills ?? []).slice(0, 12)
+
+  // Build ( skill:"X"# OR skill:"Y"# ... )
   let skillsBlock = ''
   if (skills.length > 0) {
     const parts: string[] = []
     for (const s of skills) {
-      parts.push(toClause('keywords', s))
       parts.push(toClause('skill', s))
     }
     skillsBlock = `(${parts.join(' OR ')})`
   }
 
+  // Combine (keep AND so a match needs title + at least one skill)
   if (titleBlock && skillsBlock) return `(${titleBlock}) AND ${skillsBlock}`
   if (titleBlock) return `(${titleBlock})`
   if (skillsBlock) return skillsBlock
+
+  // Fallback (very broad)
   return '*:*'
 }
+
 
 // Return fields + sort
 function buildMatrixVars() {
