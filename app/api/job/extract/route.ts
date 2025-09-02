@@ -1,97 +1,43 @@
-// app/api/job/extract/route.ts
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 export const runtime = 'nodejs'
 
 import { NextRequest, NextResponse } from 'next/server'
-
-type ExtractReq = {
-  publicDescription?: string
-  internalDescription?: string
-  model?: string
-}
-
-type ExtractResp = {
-  title: string
-  location: string
-  skills: string[]
-  qualifications: string[]
-}
-
-function pickModel() {
-  return process.env.OPENAI_MODEL?.trim() || 'gpt-4o-mini'
-}
-
-function ensureJson(text: string): any {
-  const start = text.indexOf('{')
-  const end = text.lastIndexOf('}')
-  if (start >= 0 && end > start) {
-    const slice = text.slice(start, end + 1)
-    return JSON.parse(slice)
-  }
-  return JSON.parse(text)
-}
+import { getSession } from '@/lib/session'
+import { config, requiredEnv } from '@/lib/config'
+import { refreshIdToken } from '@/lib/vincereRefresh'
 
 export async function POST(req: NextRequest) {
-  const { publicDescription = '', internalDescription = '', model } = (await req.json().catch(() => ({}))) as ExtractReq
+  try {
+    requiredEnv()
+    const session = await getSession()
+    const idToken = session.tokens?.idToken || ''
+    const userKey = session.user?.email || session.sessionId || 'anonymous'
+    if (!idToken) return NextResponse.json({ error: 'Not connected to Vincere.' }, { status: 401 })
 
-  const apiKey = process.env.OPENAI_API_KEY
-  if (!apiKey) {
-    return NextResponse.json({ error: 'Missing OPENAI_API_KEY' }, { status: 500 })
+    const body = await req.json()
+    if (!body?.jobId) return NextResponse.json({ error: 'Missing jobId' }, { status: 400 })
+
+    const base = config.VINCERE_TENANT_API_BASE.replace(/\/$/, '')
+    const url = `${base}/api/v2/job/${body.jobId}`
+
+    const headers = new Headers()
+    headers.set('id-token', idToken)
+    headers.set('x-api-key', config.VINCERE_API_KEY)
+
+    let resp = await fetch(url, { method: 'GET', headers })
+    if (resp.status === 401 || resp.status === 403) {
+      await refreshIdToken(userKey)
+      const s2 = await getSession()
+      const id2 = s2.tokens?.idToken || ''
+      headers.set('id-token', id2)
+      resp = await fetch(url, { method: 'GET', headers })
+    }
+
+    const json = await resp.json()
+    if (!resp.ok) return NextResponse.json({ error: 'Failed to retrieve job', detail: json }, { status: 400 })
+    return NextResponse.json(json)
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message || 'Unexpected error' }, { status: 500 })
   }
-
-  const joined = [publicDescription, internalDescription].filter(Boolean).join('\n\n---\n\n')
-
-  const sys = `You extract clean, structured data from job descriptions for recruitment search.
-Return ONLY JSON with keys: "title" (string), "location" (string), "skills" (array of strings), "qualifications" (array of strings).
-Rules:
-- Make "title" concise (no company, no seniority fluff unless essential).
-- Make "location" human-readable (e.g., "London, UK" or closest you can infer).
-- "skills" should be deduplicated and normalized (e.g., "CCTV", "Access Control", "JavaScript", "React").
-- "qualifications" are degrees/certifications/tickets (e.g., "Degree in Electrical Engineering", "CSCS", "IPAF", "Prince2").
-- If something is unknown, use empty string or empty array.
-No extra commentary.`
-
-  const usr = `JOB TEXT BELOW
-"""
-${joined}
-"""
-
-Return JSON only.`
-
-  const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: model || pickModel(),
-      temperature: 0.2,
-      response_format: { type: 'json_object' },
-      messages: [
-        { role: 'system', content: sys },
-        { role: 'user', content: usr },
-      ],
-    }),
-  })
-
-  if (!resp.ok) {
-    const detail = await resp.text().catch(() => '')
-    return NextResponse.json({ error: 'OpenAI extract failed', detail }, { status: 400 })
-  }
-
-  const data = await resp.json()
-  const content = data?.choices?.[0]?.message?.content ?? '{}'
-
-  let parsed: ExtractResp
-  try { parsed = ensureJson(content) }
-  catch { parsed = { title: '', location: '', skills: [], qualifications: [] } }
-
-  const title = String(parsed.title || '').trim()
-  const location = String(parsed.location || '').trim()
-  const skills = Array.isArray(parsed.skills) ? parsed.skills.map(s => String(s).trim()).filter(Boolean) : []
-  const qualifications = Array.isArray(parsed.qualifications) ? parsed.qualifications.map(q => String(q).trim()).filter(Boolean) : []
-
-  return NextResponse.json({ title, location, skills, qualifications })
 }
