@@ -48,6 +48,15 @@ function htmlToText(html?: string): string {
   }
 }
 
+// NEW: normalize any location string to city-only
+function extractCity(location?: string): string {
+  if (!location) return ''
+  let city = location.split(',')[0].trim() // take text before first comma
+  city = city.replace(/\b(North|South|East|West|Northeast|Northwest|Southeast|Southwest)\b/gi, ' ').trim() // drop standalone directions
+  city = city.replace(/\s{2,}/g, ' ').trim() // collapse double spaces
+  return city
+}
+
 function KPIs() {
   return (
     <div className="grid sm:grid-cols-3 gap-4 mb-6">
@@ -203,10 +212,13 @@ function MatchTab() {
       const skillsArr: string[] = Array.isArray(extracted?.skills) ? extracted.skills : []
       const qualsArr: string[] = Array.isArray(extracted?.qualifications) ? extracted.qualifications : []
 
+      // normalize city-only location for UI + downstream search
+      const cleanedLocation = extractCity(String(extracted?.location || '').trim())
+
       setJob({
         id: jobId,
         job_title: String(extracted?.title || '').trim(),
-        location: String(extracted?.location || '').trim(),
+        location: cleanedLocation,
         skills: skillsArr,
         qualifications: qualsArr,
         public_description: publicRaw,
@@ -215,7 +227,7 @@ function MatchTab() {
       })
 
       setTitle(String(extracted?.title || '').trim())
-      setLocation(String(extracted?.location || '').trim())
+      setLocation(cleanedLocation)
       setSkillsText(skillsArr.join(', '))
       setQualsText(qualsArr.join(', '))
 
@@ -380,7 +392,7 @@ function MatchTab() {
             </div>
             <div>
               <div className="text-gray-500">Location</div>
-              <input className="input mt-1" value={location} onChange={e=>setLocation(e.target.value)} placeholder="e.g., London, UK" />
+              <input className="input mt-1" value={location} onChange={e=>setLocation(e.target.value)} placeholder="e.g., London" />
             </div>
             <div className="sm:col-span-2">
               <div className="text-gray-500">Skills (comma-separated)</div>
