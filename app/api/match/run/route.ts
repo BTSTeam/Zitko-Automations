@@ -55,30 +55,28 @@ function encodeForVincereQuery(q: string) {
   return encodeURIComponent(q).replace(/%20/g, '+')
 }
 
-// Build q: title AND city AND (skill1 OR skill2)
-// If city/skills missing, fall back gracefully
+// Build q: current_job_title:"Title"# AND current_city:"City"# AND (skill:"S1"# OR skill:"S2"#)
+// No extra parens around title/city; skills remain wrapped.
 function buildQuery(job: NonNullable<RunReq['job']>) {
   const title = (job.title ?? '').trim()
-  const city = pickCityFromLocation(job.location)
+  const city  = pickCityFromLocation(job.location)
 
   const titleClause = title ? toClause('current_job_title', title) : ''
   const cityClause  = city  ? toClause('current_city', city) : ''
 
   const skills = uniq(job.skills ?? []).slice(0, 2)
-  const skillBlock = skills.length
+  const skillsClause = skills.length
     ? `(${skills.map(s => toClause('skill', s)).join(' OR ')})`
     : ''
 
-  // Combine per request: title AND city AND (skill1 OR skill2)
-  // Omit missing parts sensibly
-  const parts: string[] = []
-  if (titleClause) parts.push(titleClause)
-  if (cityClause)  parts.push(cityClause)
-  if (skillBlock)  parts.push(skillBlock)
+  // Assemble in the exact order/shape you want:
+  // title AND city AND (skills)
+  let q = ''
+  if (titleClause) q = titleClause
+  if (cityClause)  q = q ? `${q} AND ${cityClause}` : cityClause
+  if (skillsClause) q = q ? `${q} AND ${skillsClause}` : skillsClause
 
-  if (parts.length === 0) return '*:*'
-  if (parts.length === 1) return parts[0]
-  return parts.map(p => (p.startsWith('(') ? p : `(${p})`)).join(' AND ')
+  return q || '*:*'
 }
 
 // matrix_vars EXACTLY as requested (no mlt.fl)
