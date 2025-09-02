@@ -58,30 +58,47 @@ function encodeForVincereQuery(q: string) {
   return encodeURIComponent(q).replace(/%20/g, '+')
 }
 
-// Build q: title AND city AND (skill1 OR skill2)
-// If city/skills missing, fall back gracefully
+// Build q: current_job_title:"Title"# AND current_city:"City"# AND (skill:"S1"# OR skill:"S2"#)
+// No extra parens around title/city; skills remain wrapped.
+// In app/api/match/run/route.ts — replace ONLY your buildQuery with this
 function buildQuery(job: NonNullable<RunReq['job']>) {
   const title = (job.title ?? '').trim()
-  const city = pickCityFromLocation(job.location)
+  const city  = pickCityFromLocation(job.location)
 
   const titleClause = title ? toClause('current_job_title', title) : ''
-  const cityClause  = city  ? toClause('current_city', city) : ''
 
-  const skills = uniq(job.skills ?? []).slice(0, 2)
-  const skillBlock = skills.length
+  // Robust city: allow either field to hit
+  const cityClause = city
+    ? `(current_city:"${esc(city)}"# OR current_location_name:"${esc(city)}"#)`
+    : ''
+
+  // Choose the first 2 *useful* skills (filter out generic terms)
+  const skills = pickTopSpecificSkills(job.skills ?? [], 2)
+  const skillsClause = skills.length
     ? `(${skills.map(s => toClause('skill', s)).join(' OR ')})`
     : ''
 
-  // Combine per request: title AND city AND (skill1 OR skill2)
-  // Omit missing parts sensibly
-  const parts: string[] = []
-  if (titleClause) parts.push(titleClause)
-  if (cityClause)  parts.push(cityClause)
-  if (skillBlock)  parts.push(skillBlock)
+  let q = ''
+  if (titleClause) q = titleClause
+  if (cityClause)  q = q ? `${q} AND ${cityClause}` : cityClause
+  if (skillsClause) q = q ? `${q} AND ${skillsClause}` : skillsClause
 
-  if (parts.length === 0) return '*:*'
-  if (parts.length === 1) return parts[0]
-  return parts.map(p => (p.startsWith('(') ? p : `(${p})`)).join(' AND ')
+  return q || '*:*'
+}
+
+// add this helper near your other helpers (top of route.ts)
+function pickTopSpecificSkills(input: string[], take = 2): string[] {
+  const GENERIC = new Set([
+    'service','services','servicing',
+    'installation','installations','installing',
+    'maintenance','maintaining',
+    'repair','repairs','support',
+    'engineer','technician','security','systems'
+  ])
+  const cleaned = uniq(input).map(s => s.trim()).filter(Boolean)
+  const specific = cleaned.filter(s => !GENERIC.has(s.toLowerCase()))
+  const chosen = (specific.length ? specific : cleaned).slice(0, take)
+  return chosen
 }
 
 // matrix_vars EXACTLY as requested (no mlt.fl)
@@ -162,35 +179,82 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    let json: any = {}
-    try { json = JSON.parse(text) } catch { json = {} }
-    const candidates = Array.isArray(json?.data ?? json?.items) ? (json.data ?? json.items) : []
-    const count = Number(json?.count ?? json?.total ?? candidates.length ?? 0)
+    // --- replace your current JSON parsing block with this ---
+// --- replace from: "let json: any = {}" down to the return JSON ---
 
-    // Compact mapping for the UI/AI
-    const results = candidates.map((c: any) => ({
-      id: String(c?.id ?? ''),
-      first_name: c?.first_name ?? '',
-      last_name: c?.last_name ?? '',
-      name: [c?.first_name, c?.last_name].filter(Boolean).join(' ').trim(),
-      current_job_title: c?.current_job_title ?? '',
-      current_location_name: c?.current_location_name ?? '',
-      linkedin: c?.linkedin ?? '',
-      keywords: c?.keywords ?? [],
-      skill: c?.skill ?? [],
-      edu_qualification: c?.edu_qualification ?? [],
-      edu_degree: c?.edu_degree ?? [],
-      edu_course: c?.edu_course ?? [],
-      edu_institution: c?.edu_institution ?? [],
-      edu_training: c?.edu_training ?? [],
-    }))
+let json: any = {}
+try { json = JSON.parse(text) } catch { json = {} }
 
-    return NextResponse.json({
-      ok: true,
-      query: { matrix_vars: matrixVars, q: qRaw, url, start, limit },
-      count,
-      candidates: results,
-    })
+// Vincere candidate search shape: { category, result: { start, total, items: [...] } }
+const result = json?.result
+
+const rawItems = Array.isArray(result?.items)
+  ? result.items
+  : Array.isArray(json?.data)
+    ? json.data
+    : Array.isArray(json?.items)
+      ? json.items
+      : []
+
+const count = Number(
+  result?.total ??
+  json?.count ??
+  json?.total ??
+  rawItems.length ??
+  0
+)
+
+// helpers to flatten arrays of strings/option objects
+const toList = (v: any) =>
+  Array.isArray(v)
+    ? v.map((x) =>
+        typeof x === 'string'
+          ? x
+          : (x?.description ?? x?.value ?? '')
+      ).filter(Boolean)
+    : []
+
+// Map to the shape your UI expects
+const results = rawItems.map((c: any) => {
+  const first = c?.first_name ?? c?.firstName ?? ''
+  const last  = c?.last_name ?? c?.lastName ?? ''
+  const full  = (c?.name || `${first} ${last}`).trim()
+  const title = c?.current_job_title ?? c?.title ?? ''
+  const location = c?.current_location_name ?? c?.location ?? ''
+  const city = c?.current_city ?? ''
+
+  const skills = toList(c?.skill)
+  const quals = [
+    ...toList(c?.edu_qualification),
+    ...toList(c?.edu_degree),
+    ...toList(c?.edu_course),
+    ...toList(c?.edu_institution),
+    ...toList(c?.edu_training),
+  ]
+
+  return {
+    id: String(c?.id ?? ''),
+    firstName: first,
+    lastName: last,
+    fullName: full,
+    title,
+    location,
+    city,
+    skills,
+    qualifications: quals,
+    linkedin: c?.linkedin ?? null,
+  }
+})
+
+return NextResponse.json({
+  ok: true,
+  query: { matrix_vars: matrixVars, q: qRaw, url, start, limit },
+  count,
+  // return both keys for UI compatibility
+  results,
+  candidates: results,
+})
+
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Unexpected error' }, { status: 500 })
   }
