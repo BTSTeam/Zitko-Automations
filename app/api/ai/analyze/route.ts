@@ -33,12 +33,12 @@ function chunk<T>(arr: T[], size: number): T[][] {
 
 function sysPrompt() {
   return [
-`You are an expert recruiter. Score each candidate’s suitability for the job as a PERCENT from 0–100.`,
-`Consider (in order): location fit, demonstrated skills, relevant qualifications, and current job title.`,
-`Be strict but fair. 100% is extremely rare. 0% means clearly unsuitable.`,
-`Return STRICT JSON with this shape ONLY:
-{"ranked":[{"candidate_id":"<id>","score_percent":0-100,"reason":"<1-3 short sentences>"}]}`,
-`Do NOT include any keys other than "ranked". No markdown.`,
+    `You are an expert recruiter. Score each candidate’s suitability for the job as a PERCENT from 0–100.`,
+    `Consider (in order): location fit, demonstrated skills, relevant qualifications, and current job title.`,
+    `Be strict but fair. 100% is extremely rare. 0% means clearly unsuitable.`,
+    `Return STRICT JSON with this shape ONLY:`,
+    `{"ranked":[{"candidate_id":"<id>","score_percent":0-100,"reason":"<1-3 short sentences>"}]}`,
+    `Do NOT include any keys other than "ranked". No markdown.`,
   ].join('\n')
 }
 
@@ -98,7 +98,6 @@ export async function POST(req: NextRequest) {
     const job: JobIn = body?.job ?? {}
     const candidates: CandIn[] = Array.isArray(body?.candidates) ? body.candidates : []
 
-    // Chunk to keep token sizes reasonable
     const batches = chunk(candidates, 20)
     const all: { candidate_id: string, score_percent: number, reason: string }[] = []
 
@@ -106,14 +105,12 @@ export async function POST(req: NextRequest) {
       try {
         const ranked = await callOpenAI(job, batch)
         all.push(...ranked)
-      } catch (e) {
-        // one retry per batch
-        const ranked = await callOpenAI(job, batch)
+      } catch {
+        const ranked = await callOpenAI(job, batch) // one retry
         all.push(...ranked)
       }
     }
 
-    // Deduplicate by candidate_id (last win)
     const byId = new Map<string, { candidate_id: string, score_percent: number, reason: string }>()
     for (const r of all) byId.set(String(r.candidate_id), {
       candidate_id: String(r.candidate_id),
