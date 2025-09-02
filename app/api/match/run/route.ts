@@ -21,8 +21,8 @@ type RunReq = {
 }
 
 // ---------- helpers ----------
-const esc = (s?: string) => String(s ?? '').replace(/"/g, '\\"').trim()
-const toClause = (field: string, value: string) => `${field}:"${esc(value)}"#`
+const toClause = (field: string, value: string) =>
+  `${field}:"${String(value ?? '').trim()}"#`
 
 function uniq(a: string[] = []) {
   const seen = new Set<string>()
