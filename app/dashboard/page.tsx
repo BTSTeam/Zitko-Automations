@@ -1,5 +1,5 @@
 // app/dashboard/page.tsx
-// Single-button pipeline + AI/Raw toggle + robust AI parsing
+// Single-button pipeline + layout reshuffle (summary on right, results below)
 'use client'
 import { useState, useEffect, type Dispatch, type SetStateAction, type ReactNode } from 'react'
 
@@ -413,163 +413,163 @@ function MatchTab() {
 
   return (
     <div className="grid gap-6">
+      {/* TOP CARD: two columns: left = Job ID, right = Job Summary */}
       <div className="card p-6">
-        <p className="mb-4">Enter your Vincere Job ID to return the job details.</p>
-        <div className="grid sm:grid-cols-2 gap-4 mb-4">
+        <div className="grid md:grid-cols-2 gap-6">
+          {/* Left: Job ID / intro */}
           <div>
-            <label className="text-sm text-gray-600">Job ID</label>
-            <input className="input mt-1" placeholder="Enter Job ID" value={jobId} onChange={e=>setJobId(e.target.value)} />
+            <p className="mb-4">Enter your Vincere Job ID to return the job details.</p>
+            <div>
+              <label className="text-sm text-gray-600">Job ID</label>
+              <input
+                className="input mt-1"
+                placeholder="Enter Job ID"
+                value={jobId}
+                onChange={e=>setJobId(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* Right: Job Summary (editable) */}
+          <div>
+            <h3 className="font-semibold mb-3">Job Summary (review & edit)</h3>
+            <div className="grid sm:grid-cols-2 gap-4 text-sm mb-2">
+              <div>
+                <div className="text-gray-500">Job Title</div>
+                <input className="input mt-1" value={title} onChange={e=>setTitle(e.target.value)} placeholder="e.g., Fire & Security Engineer" />
+              </div>
+              <div>
+                <div className="text-gray-500">Location</div>
+                <input className="input mt-1" value={location} onChange={e=>setLocation(e.target.value)} placeholder="e.g., London" />
+              </div>
+              <div className="sm:col-span-2">
+                <div className="text-gray-500">Skills (comma-separated)</div>
+                <input className="input mt-1" value={skillsText} onChange={e=>setSkillsText(e.target.value)} placeholder="CCTV, Access Control, IP Networking" />
+              </div>
+              <div className="sm:col-span-2">
+                <div className="text-gray-500">Qualifications (comma-separated)</div>
+                <input className="input mt-1" value={qualsText} onChange={e=>setQualsText(e.target.value)} placeholder="CSCS, ECS, IPAF, Degree" />
+              </div>
+            </div>
+
+            {job && (
+              <div className="mt-2">
+                <button
+                  type="button"
+                  className="text-xs text-gray-500 underline"
+                  onClick={() => setShowDesc(v => !v)}
+                >
+                  {showDesc ? 'Hide descriptions' : 'Show descriptions'}
+                </button>
+
+                {showDesc && (
+                  <div className="grid gap-2 mt-2">
+                    <div>
+                      <div className="text-gray-500 mb-1">Public Description</div>
+                      <p className="text-sm whitespace-pre-wrap leading-relaxed">{job.public_description || '—'}</p>
+                    </div>
+                    {job.internal_description && (
+                      <div>
+                        <div className="text-gray-500 mb-1">Internal Description</div>
+                        <p className="text-sm whitespace-pre-wrap leading-relaxed">{job.internal_description}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Single full-width action button */}
-        <div className="grid gap-3 items-end">
+        {/* Action row: big button on the left, toggle on the right */}
+        <div className="mt-4 flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
           <button
-            className="btn btn-brand w-full"
+            className="btn btn-brand w-full sm:flex-1"
             onClick={retrieveSearchScore}
             disabled={loadingAll || !jobId}
-            title={!jobId ? 'Enter a Job ID' : 'Search'}
+            title={!jobId ? 'Enter a Job ID' : 'Retrieve job, search & score'}
           >
-            {loadingAll ? 'Searching…' : 'Search'}
+            {loadingAll ? 'Retrieving, searching & scoring…' : 'Retrieve, Search & Score'}
           </button>
+
+          <div className="flex gap-2 justify-end">
+            <button
+              className={`btn ${view==='ai' ? 'btn-brand' : 'btn-grey'}`}
+              onClick={() => setView('ai')}
+              disabled={scored.length === 0}
+              title={scored.length === 0 ? 'No AI scores yet' : 'View AI-scored results'}
+            >
+              AI Scored {scored.length ? `(${scored.length})` : ''}
+            </button>
+            <button
+              className={`btn ${view==='raw' ? 'btn-brand' : 'btn-grey'}`}
+              onClick={() => setView('raw')}
+              disabled={rawCands.length === 0}
+              title={rawCands.length === 0 ? 'No raw results yet' : 'View raw candidates'}
+            >
+              Raw Candidates {rawCands.length ? `(${rawCands.length})` : ''}
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Split view: left = reviewed job info, right = candidates */}
-      <div className="grid md:grid-cols-2 gap-6">
-        <div className="card p-6">
-          <h3 className="font-semibold mb-3">Job Summary</h3>
-
-          <div className="grid sm:grid-cols-2 gap-4 text-sm mb-4">
-            <div>
-              <div className="text-gray-500">Job Title</div>
-              <input className="input mt-1" value={title} onChange={e=>setTitle(e.target.value)} placeholder="e.g., Fire & Security Engineer" />
-            </div>
-            <div>
-              <div className="text-gray-500">Location</div>
-              <input className="input mt-1" value={location} onChange={e=>setLocation(e.target.value)} placeholder="e.g., London" />
-            </div>
-            <div className="sm:col-span-2">
-              <div className="text-gray-500">Skills (comma-separated)</div>
-              <input className="input mt-1" value={skillsText} onChange={e=>setSkillsText(e.target.value)} placeholder="CCTV, Access Control, IP Networking" />
-            </div>
-            <div className="sm:col-span-2">
-              <div className="text-gray-500">Qualifications (comma-separated)</div>
-              <input className="input mt-1" value={qualsText} onChange={e=>setQualsText(e.target.value)} placeholder="CSCS, ECS, IPAF, Degree" />
-            </div>
-          </div>
-
-          {job && (
-            <div className="mt-2">
-              <button
-                type="button"
-                className="text-xs text-gray-500 underline"
-                onClick={() => setShowDesc(v => !v)}
-              >
-                {showDesc ? 'Hide descriptions' : 'Show descriptions'}
-              </button>
-
-              {showDesc && (
-                <div className="grid gap-4 mt-3">
-                  <div>
-                    <div className="text-gray-500 mb-1">Public Description</div>
-                    <p className="text-sm whitespace-pre-wrap leading-relaxed">{job.public_description || '—'}</p>
-                  </div>
-                  {job.internal_description && (
-                    <div>
-                      <div className="text-gray-500 mb-1">Internal Description</div>
-                      <p className="text-sm whitespace-pre-wrap leading-relaxed">{job.internal_description}</p>
-                    </div>
-                  )}
+      {/* RESULTS (single, full-width panel) */}
+      <div className="flex flex-col gap-3">
+        {view === 'ai' ? (
+          scored.length > 0 ? (
+            <>
+              <Table rows={scored} sortBy={sortBy} setSortBy={setSortBy} filter={filter} setFilter={setFilter} />
+              <div className="flex items-center justify-between text-sm">
+                <div className="text-gray-600">
+                  Showing <span className="font-medium">{showingFrom}</span>–
+                  <span className="font-medium">{showingTo}</span> of
+                  <span className="font-medium"> {showingTo}</span>
                 </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        <div className="flex flex-col gap-3">
-          {/* View toggle */}
-          <div className="flex items-center justify-between">
-            <div className="flex gap-2">
-              <button
-                className={`btn ${view==='ai' ? 'btn-brand' : 'btn-grey'}`}
-                onClick={() => setView('ai')}
-                disabled={scored.length === 0}
-                title={scored.length === 0 ? 'No AI scores yet' : 'View AI-scored results'}
-              >
-                AI Scored {scored.length ? `(${scored.length})` : ''}
-              </button>
-              <button
-                className={`btn ${view==='raw' ? 'btn-brand' : 'btn-grey'}`}
-                onClick={() => setView('raw')}
-                disabled={rawCands.length === 0}
-                title={rawCands.length === 0 ? 'No raw results yet' : 'View raw candidates'}
-              >
-                Raw Candidates {rawCands.length ? `(${rawCands.length})` : ''}
-              </button>
-            </div>
-
-            <div className="text-sm text-gray-600">
-              {loadingSearch ? 'Analyzing…' : view === 'ai' ? 'Viewing AI scores' : 'Viewing raw results'}
-            </div>
-          </div>
-
-          {view === 'ai' ? (
-            scored.length > 0 ? (
-              <>
-                <Table rows={scored} sortBy={sortBy} setSortBy={setSortBy} filter={filter} setFilter={setFilter} />
-                <div className="flex items-center justify-between text-sm">
-                  <div className="text-gray-600">
-                    Showing <span className="font-medium">{showingFrom}</span>–
-                    <span className="font-medium">{showingTo}</span> of
-                    <span className="font-medium"> {showingTo}</span>
-                  </div>
-                  <div className="flex gap-2">
-                    <button className="btn btn-grey" disabled>Prev</button>
-                    <button className="btn btn-grey" disabled>Next</button>
-                  </div>
+                <div className="flex gap-2">
+                  <button className="btn btn-grey" disabled>Prev</button>
+                  <button className="btn btn-grey" disabled>Next</button>
                 </div>
-              </>
-            ) : (
-              <div className="card p-6 text-sm text-gray-500">
-                {loadingSearch ? 'Analyzing…' : 'No AI scores yet. Try Search Candidates.'}
               </div>
-            )
-          ) : rawCands.length > 0 ? (
-            <div className="card p-6">
-              <h3 className="font-semibold mb-3">Raw Candidates</h3>
-              <ul className="divide-y">
-                {rawCands.slice(0, pageSize).map(c => (
-                  <li key={c.id} className="py-3">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <div className="font-medium">{c.name || c.id}</div>
-                        <div className="text-sm text-gray-600">
-                          {(c.title || '-')}{c.location ? ` • ${c.location}` : ''}
-                        </div>
-                        {c.linkedin && (
-                          <a href={c.linkedin} target="_blank" rel="noreferrer" className="text-sm underline">
-                            LinkedIn
-                          </a>
-                        )}
-                      </div>
-                      <div className="text-xs text-gray-400">ID: {c.id}</div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-3 text-sm text-gray-600">
-                Showing <span className="font-medium">{rawCands.length ? 1 : 0}</span>–
-                <span className="font-medium">{Math.min(pageSize, rawCands.length)}</span> of
-                <span className="font-medium"> {rawCands.length}</span>
-              </div>
-            </div>
+            </>
           ) : (
             <div className="card p-6 text-sm text-gray-500">
-              Results will appear here after you click <span className="font-medium">Retrieve, Search & Score</span>.
+              {loadingSearch ? 'Analyzing…' : 'No AI scores yet. Click "Retrieve, Search & Score".'}
             </div>
-          )}
-        </div>
+          )
+        ) : rawCands.length > 0 ? (
+          <div className="card p-6">
+            <h3 className="font-semibold mb-3">Raw Candidates</h3>
+            <ul className="divide-y">
+              {rawCands.slice(0, pageSize).map(c => (
+                <li key={c.id} className="py-3">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="font-medium">{c.name || c.id}</div>
+                      <div className="text-sm text-gray-600">
+                        {(c.title || '-')}{c.location ? ` • ${c.location}` : ''}
+                      </div>
+                      {c.linkedin && (
+                        <a href={c.linkedin} target="_blank" rel="noreferrer" className="text-sm underline">
+                          LinkedIn
+                        </a>
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-400">ID: {c.id}</div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <div className="mt-3 text-sm text-gray-600">
+              Showing <span className="font-medium">{rawCands.length ? 1 : 0}</span>–
+              <span className="font-medium">{Math.min(pageSize, rawCands.length)}</span> of
+              <span className="font-medium"> {rawCands.length}</span>
+            </div>
+          </div>
+        ) : (
+          <div className="card p-6 text-sm text-gray-500">
+            Results will appear here after you click <span className="font-medium">Retrieve, Search & Score</span>.
+          </div>
+        )}
       </div>
     </div>
   )
