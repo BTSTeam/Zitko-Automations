@@ -1,5 +1,5 @@
 // app/dashboard/page.tsx
-// Single-button pipeline + layout reshuffle (summary on right, results below)
+// Single-button pipeline + layout tweaks + rotating fun messages + AI list view with % score
 'use client'
 import { useState, useEffect, type Dispatch, type SetStateAction, type ReactNode } from 'react'
 
@@ -31,6 +31,7 @@ type ScoredRow = {
   score: number
   reason: string
   linkedin?: string
+  title?: string          // <— added for AI list layout
 }
 
 // --- helpers ---
@@ -88,68 +89,59 @@ function Tabs({
   )
 }
 
-function Table({
-  rows, sortBy, setSortBy, filter, setFilter
+/** ---------- New: AI list component (score % on right; reason below link/title) ---------- */
+function AIScoredList({
+  rows, filter, setFilter
 }: {
   rows: ScoredRow[],
-  sortBy: [keyof ScoredRow, 'asc'|'desc'],
-  setSortBy: (s:[keyof ScoredRow,'asc'|'desc'])=>void,
   filter: string,
   setFilter: (v:string)=>void
 }) {
-  const sorted = [...rows].sort((a,b)=>{
-    const [key, dir] = sortBy
-    const va = a[key], vb = b[key]
-    let cmp = 0
-    if (typeof va === 'number' && typeof vb === 'number') cmp = va - vb
-    else cmp = String(va ?? '').localeCompare(String(vb ?? ''))
-    return dir === 'asc' ? cmp : -cmp
-  }).filter((r: ScoredRow) => JSON.stringify(r).toLowerCase().includes(filter.toLowerCase()))
-  const header = (key: keyof ScoredRow, label: string) => (
-    <th className="cursor-pointer" onClick={()=> setSortBy([key, sortBy[0]===key && sortBy[1]==='asc'?'desc':'asc'])}>
-      {label} {sortBy[0]===key ? (sortBy[1]==='asc'?'▲':'▼') : ''}
-    </th>
+  const filtered = rows.filter(r =>
+    JSON.stringify(r).toLowerCase().includes(filter.toLowerCase())
   )
   return (
-    <div className="card p-4">
+    <div className="card p-6">
       <div className="mb-3">
         <input className="input" placeholder="Filter..." value={filter} onChange={e=>setFilter(e.target.value)} />
       </div>
-      <div className="overflow-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left text-gray-600">
-              {header('candidateId','Candidate ID')}
-              {header('candidateName','Candidate Name')}
-              <th>LinkedIn</th>
-              {header('score','Suitability Score')}
-              {header('reason','Reason')}
-              <th>Vincere</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map(r=> (
-              <tr key={r.candidateId} className="border-t">
-                <td className="py-2">{r.candidateId}</td>
-                <td>{r.candidateName}</td>
-                <td>
-                  {r.linkedin
-                    ? <a className="text-brand-orange underline" href={r.linkedin} target="_blank" rel="noreferrer">Open</a>
-                    : '—'}
-                </td>
-                <td>{r.score}</td>
-                <td>{r.reason}</td>
-                <td>
-                  <a className="text-brand-orange underline" href={`https://zitko.vincere.io/app/candidate/${r.candidateId}`} target="_blank" rel="noreferrer">View</a>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <ul className="divide-y">
+        {filtered.map(r => (
+          <li key={r.candidateId} className="py-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <div className="font-medium truncate">{r.candidateName}</div>
+                {!!r.title && <div className="text-sm text-gray-600">{r.title}</div>}
+                {r.linkedin
+                  ? <a className="text-sm underline" href={r.linkedin} target="_blank" rel="noreferrer">LinkedIn</a>
+                  : null}
+                {r.reason && (
+                  <div className="text-sm text-gray-700 mt-1 whitespace-pre-wrap">
+                    {r.reason}
+                  </div>
+                )}
+              </div>
+
+              <div className="text-right shrink-0 min-w-[110px]">
+                <div className="text-2xl font-semibold">{r.score}%</div>
+                <div className="text-xs text-gray-500 mt-1">ID: {r.candidateId}</div>
+                <a
+                  className="text-xs text-brand-orange underline mt-1 inline-block"
+                  href={`https://zitko.vincere.io/app/candidate/${r.candidateId}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  View in Vincere
+                </a>
+              </div>
+            </div>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }
+/** --------------------------------------------------------------------------------------- */
 
 function MatchTab() {
   const [jobId, setJobId] = useState('')
@@ -169,8 +161,8 @@ function MatchTab() {
   const [rawCands, setRawCands] = useState<CandidateRow[]>([])
   const [scored, setScored] = useState<ScoredRow[]>([])
 
-  // sorting / filter
-  const [sortBy, setSortBy] = useState<[keyof ScoredRow, 'asc'|'desc']>(['score','desc'])
+  // sorting / filter (sorting already applied by score desc before render)
+  const [sortBy] = useState<[keyof ScoredRow, 'asc'|'desc']>(['score','desc'])
   const [filter, setFilter] = useState('')
 
   // which list is visible (toggle)
@@ -182,7 +174,27 @@ function MatchTab() {
   // show/hide descriptions
   const [showDesc, setShowDesc] = useState(false)
 
-  // --- Retrieve Job: now returns JobSummary ---
+  // FUN rotating messages while AI scoring (≤10-word lyric nods)
+  const funMessages = [
+    'Verifying raw candidates…',
+    "I want it that way.",
+    'Oops! I did it again.',
+    'Hit me baby one more time.',
+    "Backstreet\'s back, alright!",
+    'Stronger than yesterday.',
+    'Everybody, rock your body.',
+    'Shortlisting like a boss.',
+    'Tuning the match engine…',
+  ]
+  const [funIdx, setFunIdx] = useState(0)
+  useEffect(() => {
+    if (!loadingSearch) return
+    setFunIdx(0)
+    const id = setInterval(() => setFunIdx(i => (i + 1) % funMessages.length), 2200)
+    return () => clearInterval(id)
+  }, [loadingSearch])
+
+  // --- Retrieve Job: returns JobSummary ---
   const retrieveJob = async (): Promise<JobSummary | null> => {
     if (!jobId) return null
     setLoadingJob(true)
@@ -373,7 +385,8 @@ function MatchTab() {
           candidateName,
           score: Math.round(r.score_percent),
           reason: r.reason,
-          linkedin: c?.linkedin || undefined
+          linkedin: c?.linkedin || undefined,
+          title: c?.title || ''    // <— carry the job title for list view
         }
       })
 
@@ -411,6 +424,10 @@ function MatchTab() {
   const showingFrom = displayCount ? 1 : 0
   const showingTo = displayCount || 0
 
+  const statusText = loadingSearch
+    ? funMessages[funIdx]
+    : (view === 'ai' ? 'Viewing AI scores' : 'Viewing raw results')
+
   return (
     <div className="grid gap-6">
       {/* TOP CARD: two columns: left = Job ID, right = Job Summary */}
@@ -428,11 +445,18 @@ function MatchTab() {
                 onChange={e=>setJobId(e.target.value)}
               />
             </div>
+            <button
+              className="btn btn-brand mt-4 w-full"
+              onClick={retrieveSearchScore}
+              disabled={loadingAll || !jobId}
+              title={!jobId ? 'Enter a Job ID' : 'Retrieve job, search & score'}
+            >
+              {loadingAll ? 'Searching…' : 'Search'}
+            </button>
           </div>
 
-          {/* Right: Job Summary (editable) */}
+          {/* Right: Job Summary (editable, no title) */}
           <div>
-            <h3 className="font-semibold mb-3">Job Summary (review & edit)</h3>
             <div className="grid sm:grid-cols-2 gap-4 text-sm mb-2">
               <div>
                 <div className="text-gray-500">Job Title</div>
@@ -453,7 +477,7 @@ function MatchTab() {
             </div>
 
             {job && (
-              <div className="mt-2">
+              <div className="mt-1">
                 <button
                   type="button"
                   className="text-xs text-gray-500 underline"
@@ -481,34 +505,27 @@ function MatchTab() {
           </div>
         </div>
 
-        {/* Action row: big button on the left, toggle on the right */}
-        <div className="mt-4 flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+        {/* Toggle row under the card */}
+        <div className="mt-4 flex flex-wrap gap-3 items-center">
           <button
-            className="btn btn-brand w-full sm:flex-1"
-            onClick={retrieveSearchScore}
-            disabled={loadingAll || !jobId}
-            title={!jobId ? 'Enter a Job ID' : 'Retrieve job, search & score'}
+            className={`btn ${view==='raw' ? 'btn-brand' : 'btn-grey'}`}
+            onClick={() => setView('raw')}
+            disabled={rawCands.length === 0}
+            title={rawCands.length === 0 ? 'No raw results yet' : 'View raw candidates'}
           >
-            {loadingAll ? 'Retrieving, searching & scoring…' : 'Retrieve, Search & Score'}
+            Raw Candidates {rawCands.length ? `(${rawCands.length})` : ''}
+          </button>
+          <button
+            className={`btn ${view==='ai' ? 'btn-brand' : 'btn-grey'}`}
+            onClick={() => setView('ai')}
+            disabled={scored.length === 0}
+            title={scored.length === 0 ? 'No AI scores yet' : 'View AI-scored results'}
+          >
+            AI Scored {scored.length ? `(${scored.length})` : ''}
           </button>
 
-          <div className="flex gap-2 justify-end">
-            <button
-              className={`btn ${view==='ai' ? 'btn-brand' : 'btn-grey'}`}
-              onClick={() => setView('ai')}
-              disabled={scored.length === 0}
-              title={scored.length === 0 ? 'No AI scores yet' : 'View AI-scored results'}
-            >
-              AI Scored {scored.length ? `(${scored.length})` : ''}
-            </button>
-            <button
-              className={`btn ${view==='raw' ? 'btn-brand' : 'btn-grey'}`}
-              onClick={() => setView('raw')}
-              disabled={rawCands.length === 0}
-              title={rawCands.length === 0 ? 'No raw results yet' : 'View raw candidates'}
-            >
-              Raw Candidates {rawCands.length ? `(${rawCands.length})` : ''}
-            </button>
+          <div className="text-sm text-gray-600 ml-auto">
+            {statusText}
           </div>
         </div>
       </div>
@@ -518,7 +535,7 @@ function MatchTab() {
         {view === 'ai' ? (
           scored.length > 0 ? (
             <>
-              <Table rows={scored} sortBy={sortBy} setSortBy={setSortBy} filter={filter} setFilter={setFilter} />
+              <AIScoredList rows={scored} filter={filter} setFilter={setFilter} />
               <div className="flex items-center justify-between text-sm">
                 <div className="text-gray-600">
                   Showing <span className="font-medium">{showingFrom}</span>–
@@ -533,7 +550,7 @@ function MatchTab() {
             </>
           ) : (
             <div className="card p-6 text-sm text-gray-500">
-              {loadingSearch ? 'Analyzing…' : 'No AI scores yet. Click "Retrieve, Search & Score".'}
+              {loadingSearch ? funMessages[funIdx] : 'No AI scores yet. Click "Search".'}
             </div>
           )
         ) : rawCands.length > 0 ? (
@@ -567,7 +584,7 @@ function MatchTab() {
           </div>
         ) : (
           <div className="card p-6 text-sm text-gray-500">
-            Results will appear here after you click <span className="font-medium">Retrieve, Search & Score</span>.
+            Results will appear here after you click <span className="font-medium">Search</span>.
           </div>
         )}
       </div>
@@ -587,7 +604,7 @@ function SourceTab() {
     function handleMessage(e: MessageEvent) {
       if (!formId) return
       if (typeof e.data !== 'string') return
-      const parts = e.data.split(':')
+      const parts = e.data split(':')
       if (parts[0] === 'setHeight') {
         const newH = Number(parts[1])
         if (!Number.isNaN(newH) && newH > 0) setHeight(newH + 20)
