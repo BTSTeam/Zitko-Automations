@@ -37,7 +37,6 @@ async function callOpenAI(payload: any) {
     body: JSON.stringify({
       model,
       temperature: 0.2,
-      // Many current OpenAI models support structured JSON responses:
       response_format: { type: 'json_object' },
       messages: [
         {
@@ -54,12 +53,12 @@ async function callOpenAI(payload: any) {
             '• Use synonyms and close variants for skills.',
             '• Qualifications include ECS/CSCS/IPAF/PASMA/etc.',
             '• Title relevance: same/similar titles score higher; junior/embedded score lower.',
-            '• Location: exact city = full 5%; nearby area = partial; far away = 0–1%.',
-            '• Produce a short, specific reason citing matched/missing skills/quals and any title/location notes.',
+            '• Location: exact city = full 5%; nearby = partial; far = 0–1%.',
+            '• Reason must cite specific matched/missing skills/quals and any title/location notes.',
             '',
-            'Output strictly JSON with this shape:',
-            '{"ranked":[{"candidate_id":"id","score_percent":87,"reason":"one or two concise sentences"}]}',
-            'Do not include any extra keys or text outside JSON.'
+            'Output strictly JSON like:',
+            '{"ranked":[{"candidate_id":"id","score_percent":87,"reason":"concise, specific"}]}',
+            'No extra keys or prose.'
           ].join('\n')
         },
         { role: 'user', content: JSON.stringify(payload) }
@@ -67,18 +66,15 @@ async function callOpenAI(payload: any) {
     })
   })
 
-  // Don’t throw on non-200; we’ll degrade gracefully
   const text = await res.text()
   try {
     const json = JSON.parse(text)
-    // Direct JSON
     if (Array.isArray(json?.ranked)) return json
-    // Wrapped JSON (choices[0].message.content)
     const content = json?.choices?.[0]?.message?.content
     if (typeof content === 'string') {
       try { return JSON.parse(content) } catch {}
     }
-  } catch { /* noop */ }
+  } catch {}
   return { ranked: [] }
 }
 
@@ -97,7 +93,6 @@ export async function POST(req: Request) {
       description: String(job.description || '').trim(),
     }
 
-    // Chunk to be safe on tokens
     const chunkSize = 40
     const allRanked: any[] = []
 
