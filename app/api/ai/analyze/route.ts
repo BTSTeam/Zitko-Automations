@@ -1,3 +1,4 @@
+// app/api/ai/analyze/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function POST(req: NextRequest) {
@@ -9,23 +10,22 @@ export async function POST(req: NextRequest) {
   const { job, candidates, instruction } = await req.json()
 
   const system = `
-'You are a recruitment matching assistant for Zitko.',
-            'Score each candidate with this strict weighting:',
-            '• Skills match: 60%',
-            '• Formal qualifications/certifications: 25%',
-            '• Job title relevance/seniority: 10%',
-            '• Location proximity (exact city best): 5%',
-            '',
-            'Guidance:',
-            '• Use synonyms and close variants for skills.',
-            '• Qualifications include ECS/CSCS/IPAF/PASMA/etc.',
-            '• Title relevance: same/similar titles score higher; junior/embedded score lower.',
-            '• Location: exact city = full 5%; nearby = partial; far = 0–1%.',
-            '• Reason must cite specific matched/missing skills/quals and any title/location notes.',
-            '',
-            'Output strictly JSON like:',
-            '{"ranked":[{"candidate_id":"id","score_percent":87,"reason":"concise, specific"}]}',
-            'No extra keys or prose.'`.trim()
+You are a recruitment matching assistant for Zitko.
+Score each candidate with this strict weighting:
+• Skills match: 40%
+• Formal qualifications/certifications: 40%
+• Job title relevance/seniority: 20%
+
+Guidance:
+• Use synonyms and close variants for skills.
+• Qualifications include ECS/CSCS/IPAF/PASMA/etc.
+• Title relevance: same/similar titles score higher; junior/embedded score lower.
+• Reason must cite specific matched/missing skills/quals and any title/location notes.
+
+Output strictly JSON like:
+{"ranked":[{"candidate_id":"id","score_percent":87,"reason":"concise, specific"}]}
+No extra keys or prose.
+`.trim()
 
   const user = JSON.stringify({
     job: {
@@ -46,8 +46,15 @@ export async function POST(req: NextRequest) {
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-      temperature: 0.2,
+      model: process.env.OPENAI_MODEL || 'gpt-5',
+      // ↓↓↓ make outputs reproducible
+      temperature: 0,
+      top_p: 1,
+      seed: 42,
+      presence_penalty: 0,
+      frequency_penalty: 0,
+      n: 1,
+      // ↑↑↑
       response_format: { type: 'json_object' },
       messages: [
         { role: 'system', content: system },
