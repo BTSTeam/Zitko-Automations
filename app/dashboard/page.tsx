@@ -297,7 +297,7 @@ function MatchTab() {
       const payload = await run.json()
       if (!run.ok) throw new Error(payload?.error || `Search failed (${run.status})`)
 
-      type Cand = {
+      const candidates = (payload?.results || []) as Array<{
         id: string
         firstName?: string
         lastName?: string
@@ -317,34 +317,25 @@ function MatchTab() {
         edu_course?: string[] | string
         edu_training?: string[] | string
         certifications?: string[] | string
-      }
+      }>
 
-      const candidates = (payload?.results || []) as Cand[]
-
-      // 1) Canonicalize order so the prompt is identical across runs
-      const canon: Cand[] = [...candidates].sort(
-        (a, b) => String(a.id).localeCompare(String(b.id))
-      )
-
-      // 2) Raw list (use canonical array)
-      setRawCands(
-        canon.map(c => {
-          const title = c.title || c.current_job_title || ''
-          const location = c.location || c.city || c.current_location_name || ''
-          const skills = normalizeList(c.skills, c.skill, c.keywords)
-          return {
-            id: String(c.id),
-            name: c.fullName || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim(),
-            title,
-            location,
-            linkedin: c.linkedin ?? null,
-            skills
-          }
-        })
-      )
+      // Raw list now (show richer fields)
+      setRawCands(candidates.map(c => {
+        const title = c.title || c.current_job_title || ''
+        const location = c.location || c.city || c.current_location_name || ''
+        const skills = normalizeList(c.skills, c.skill, c.keywords)
+        return {
+          id: String(c.id),
+          name: c.fullName || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim(),
+          title,
+          location,
+          linkedin: c.linkedin ?? null,
+          skills
+        }
+      }))
       setView('raw')
 
-      // 3) AI analyze — send full, normalized skills/quals and both job descriptions (use canonical array)
+      // AI analyze — send full, normalized skills/quals and both job descriptions
       const ai = await fetch('/api/ai/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -356,7 +347,7 @@ function MatchTab() {
             qualifications: qualsStr.split(',').map(s => s.trim()).filter(Boolean),
             description: `${activeJob.public_description || ''}\n\n${activeJob.internal_description || ''}`.trim()
           },
-          candidates: canon.map(c => {
+          candidates: candidates.map(c => {
             const skills = normalizeList(c.skills, c.skill, c.keywords)
             const qualifications = normalizeList(
               c.qualifications,
@@ -408,15 +399,12 @@ function MatchTab() {
             return []
           })()
 
-      // Use canonical list for lookup + stable mapping
-      const byId = new Map(canon.map(c => [String(c.id), c]))
-
+      const byId = new Map(candidates.map(c => [String(c.id), c]))
       let scoredRows: ScoredRow[] = ranked.map((r: any) => {
         const scoreRaw = r.score_percent ?? r.score ?? r.score_pct ?? r.suitability_score ?? 0
         const s = Math.max(0, Math.min(100, Math.round(Number(scoreRaw) || 0)))
         const c = byId.get(String(r.candidate_id))
-        const candidateName =
-          c?.fullName || `${c?.firstName ?? ''} ${c?.lastName ?? ''}`.trim() || String(r.candidate_id)
+        const candidateName = c?.fullName || `${c?.firstName ?? ''} ${c?.lastName ?? ''}`.trim() || String(r.candidate_id)
         return {
           candidateId: String(r.candidate_id),
           candidateName,
@@ -427,11 +415,8 @@ function MatchTab() {
         }
       })
 
-      // 4) Stable sort: by score desc, then by candidateId asc as tie-breaker
-      scoredRows = scoredRows.sort(
-        (a: ScoredRow, b: ScoredRow) =>
-          (b.score - a.score) || a.candidateId.localeCompare(b.candidateId)
-      )
+      // Explicit types on comparator for TS
+      scoredRows = scoredRows.sort((a: ScoredRow, b: ScoredRow) => b.score - a.score)
 
       setScored(scoredRows)
       setView('ai')
