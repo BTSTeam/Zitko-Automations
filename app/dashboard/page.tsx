@@ -1,5 +1,5 @@
 // app/dashboard/page.tsx
-// Updated dashboard/page.tsx with Page Size dropdown removed and KPIs section hidden
+// Single-button pipeline + AI/Raw toggle + robust AI parsing
 'use client'
 import { useState, useEffect, type Dispatch, type SetStateAction, type ReactNode } from 'react'
 
@@ -48,12 +48,12 @@ function htmlToText(html?: string): string {
   }
 }
 
-// NEW: normalize any location string to city-only
+// normalize any location string to city-only
 function extractCity(location?: string): string {
   if (!location) return ''
-  let city = location.split(',')[0].trim() // take text before first comma
-  city = city.replace(/\b(North|South|East|West|Northeast|Northwest|Southeast|Southwest)\b/gi, ' ').trim() // drop standalone directions
-  city = city.replace(/\s{2,}/g, ' ').trim() // collapse double spaces
+  let city = location.split(',')[0].trim()
+  city = city.replace(/\b(North|South|East|West|Northeast|Northwest|Southeast|Southwest)\b/gi, ' ').trim()
+  city = city.replace(/\s{2,}/g, ' ').trim()
   return city
 }
 
@@ -75,10 +75,7 @@ function Tabs({
   setTab: Dispatch<SetStateAction<TabKey>>
 }) {
   const Item = ({ id, children }: { id: TabKey; children: ReactNode }) => (
-    <button
-      onClick={() => setTab(id)}
-      className={`tab ${tab === id ? 'tab-active' : ''}`}
-    >
+    <button onClick={() => setTab(id)} className={`tab ${tab === id ? 'tab-active' : ''}`}>
       {children}
     </button>
   )
@@ -157,7 +154,10 @@ function Table({
 function MatchTab() {
   const [jobId, setJobId] = useState('')
   const [job, setJob] = useState<JobSummary | null>(null)
+
   const [loadingJob, setLoadingJob] = useState(false)
+  const [loadingAll, setLoadingAll] = useState(false)
+  const [loadingSearch, setLoadingSearch] = useState(false)
 
   // extracted + editable fields (from OpenAI)
   const [title, setTitle] = useState('')
@@ -165,27 +165,26 @@ function MatchTab() {
   const [skillsText, setSkillsText] = useState('')
   const [qualsText, setQualsText] = useState('')
 
-  // NEW: hold raw candidates (so UI shows results even if AI ranking is empty)
+  // raw & scored candidates
   const [rawCands, setRawCands] = useState<CandidateRow[]>([])
-
   const [scored, setScored] = useState<ScoredRow[]>([])
-  const [loadingSearch, setLoadingSearch] = useState(false)
+
+  // sorting / filter
   const [sortBy, setSortBy] = useState<[keyof ScoredRow, 'asc'|'desc']>(['score','desc'])
   const [filter, setFilter] = useState('')
 
-  // NEW: which list is visible (toggle)
+  // which list is visible (toggle)
   const [view, setView] = useState<'ai' | 'raw'>('raw')
 
-  // pagination (page size fixed to 20; dropdown removed)
-  const [page] = useState(1)
   const pageSize = 20
   const [total, setTotal] = useState(0)
 
-  // NEW: hide/show descriptions
+  // show/hide descriptions
   const [showDesc, setShowDesc] = useState(false)
 
-  const retrieveJob = async () => {
-    if (!jobId) return
+  // --- Retrieve Job: now returns JobSummary ---
+  const retrieveJob = async (): Promise<JobSummary | null> => {
+    if (!jobId) return null
     setLoadingJob(true)
     setScored([])
     setRawCands([])
@@ -215,10 +214,9 @@ function MatchTab() {
       const skillsArr: string[] = Array.isArray(extracted?.skills) ? extracted.skills : []
       const qualsArr: string[] = Array.isArray(extracted?.qualifications) ? extracted.qualifications : []
 
-      // normalize city-only location for UI + downstream search
       const cleanedLocation = extractCity(String(extracted?.location || '').trim())
 
-      setJob({
+      const summary: JobSummary = {
         id: jobId,
         job_title: String(extracted?.title || '').trim(),
         location: cleanedLocation,
@@ -227,40 +225,60 @@ function MatchTab() {
         public_description: publicRaw,
         internal_description: internalRaw,
         coords: null
-      })
+      }
 
-      setTitle(String(extracted?.title || '').trim())
+      // update UI state
+      setJob(summary)
+      setTitle(summary.job_title || '')
       setLocation(cleanedLocation)
       setSkillsText(skillsArr.join(', '))
       setQualsText(qualsArr.join(', '))
 
+      return summary
     } catch (e) {
       console.error(e)
       alert('Failed to retrieve or extract job details.')
+      return null
     } finally {
       setLoadingJob(false)
     }
   }
 
-  // Run Vincere search, then AI ranking. Always show raw results immediately.
-  const runSearch = async () => {
-    if (!job) return
+  // --- Search + AI Score: accepts explicit input to avoid state races ---
+  const runSearch = async (input?: {
+    job: JobSummary
+    title: string
+    location: string
+    skillsText: string
+    qualsText: string
+  }) => {
+    const active = input ?? (job ? {
+      job,
+      title,
+      location,
+      skillsText,
+      qualsText
+    } : null)
+
+    if (!active) return
+    const { job: activeJob, title: t, location: loc, skillsText: skillsStr, qualsText: qualsStr } = active
+
     setLoadingSearch(true)
     setScored([])
     setRawCands([])
 
     try {
-      // 1) Vincere candidate search (by job title)
+      // 1) Vincere candidate search
       const run = await fetch('/api/match/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           job: {
-            title,
-            location,
-            skills: skillsText.split(',').map(s=>s.trim()).filter(Boolean),
-            qualifications: qualsText.split(',').map(s=>s.trim()).filter(Boolean),
-            description: job.public_description || ''
+            title: t,
+            location: loc,
+            skills: skillsStr.split(',').map(s=>s.trim()).filter(Boolean),
+            qualifications: qualsStr.split(',').map(s=>s.trim()).filter(Boolean),
+            description: activeJob.public_description || ''
           },
           limit: 300,
           debug: true
@@ -283,7 +301,7 @@ function MatchTab() {
         linkedin?: string | null
       }>
 
-      // Map raw candidates for immediate display
+      // Raw list immediately
       const rawList: CandidateRow[] = candidates.map(c => ({
         id: String(c.id),
         name: c.fullName || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim(),
@@ -294,19 +312,19 @@ function MatchTab() {
       }))
       setRawCands(rawList)
       setTotal(rawList.length)
-      setView('raw') // show Raw while AI runs
+      setView('raw')
 
-      // 2) AI scoring (priority: location, skills, qualifications, job title)
+      // 2) AI scoring
       const ai = await fetch('/api/ai/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           job: {
-            title,
-            location,
-            skills: skillsText.split(',').map(s => s.trim()).filter(Boolean),
-            qualifications: qualsText.split(',').map(s => s.trim()).filter(Boolean),
-            description: job.public_description || ''
+            title: t,
+            location: loc,
+            skills: skillsStr.split(',').map(s => s.trim()).filter(Boolean),
+            qualifications: qualsStr.split(',').map(s => s.trim()).filter(Boolean),
+            description: activeJob.public_description || ''
           },
           candidates: candidates.map(c => ({
             candidate_id: c.id,
@@ -316,77 +334,77 @@ function MatchTab() {
             skills: c.skills || [],
             qualifications: c.qualifications || []
           }))
-          // no "top 20" instruction; backend system prompt already says "score every candidate"
         })
       })
 
       const aiText = await ai.text()
-// Optional debug:
-// console.log('AI status:', ai.status)
-// console.log('AI text (first 400):', aiText.slice(0, 400))
+      // Robust parse (direct or OpenAI-wrapped)
+      let outer: any = {}
+      try { outer = JSON.parse(aiText) } catch { outer = {} }
 
-// The API may return either:
-// 1) Direct: { ranked: [...] }
-// 2) OpenAI wrapper: { choices: [{ message: { content: '{"ranked":[...]}' } }] }
-let outer: any = {}
-try { outer = JSON.parse(aiText) } catch { outer = {} }
+      let rankedObj: any
+      if (Array.isArray(outer?.ranked)) {
+        rankedObj = outer
+      } else {
+        const content = outer?.choices?.[0]?.message?.content
+        if (typeof content === 'string') {
+          try { rankedObj = JSON.parse(content) } catch { rankedObj = {} }
+        } else {
+          rankedObj = {}
+        }
+      }
 
-let rankedObj: any
-if (Array.isArray(outer?.ranked)) {
-  // direct shape
-  rankedObj = outer
-} else {
-  // OpenAI wrapper shape
-  const content = outer?.choices?.[0]?.message?.content
-  if (typeof content === 'string') {
-    try { rankedObj = JSON.parse(content) } catch { rankedObj = {} }
-  } else {
-    rankedObj = {}
-  }
-}
+      const allSorted =
+        (Array.isArray(rankedObj?.ranked) ? rankedObj.ranked : [])
+          .map((r: any) => ({
+            candidate_id: String(r.candidate_id),
+            score_percent: Number(r.score_percent) || 0,
+            reason: String(r.reason || '')
+          }))
+          .sort((a: any, b: any) => b.score_percent - a.score_percent)
 
-// sort ALL returned candidates by score (desc)
-const allSorted =
-  (Array.isArray(rankedObj?.ranked) ? rankedObj.ranked : [])
-    .map((r: any) => ({
-      candidate_id: String(r.candidate_id),
-      score_percent: Number(r.score_percent) || 0,
-      reason: String(r.reason || '')
-    }))
-    .sort((a: any, b: any) => b.score_percent - a.score_percent)
-
-// 3) Map AI results to ScoredRow with LinkedIn + names
-const byId = new Map(candidates.map(c => [String(c.id), c]))
-const scoredRows: ScoredRow[] = allSorted.map((r: any) => {
-  const c = byId.get(String(r.candidate_id))
-  const candidateName =
-    c?.fullName || `${c?.firstName ?? ''} ${c?.lastName ?? ''}`.trim() || String(r.candidate_id)
-  return {
-    candidateId: String(r.candidate_id),
-    candidateName,
-    score: Math.round(r.score_percent),
-    reason: r.reason,
-    linkedin: c?.linkedin || undefined
-  }
-})
+      const byId = new Map(candidates.map(c => [String(c.id), c]))
+      const scoredRows: ScoredRow[] = allSorted.map((r: any) => {
+        const c = byId.get(String(r.candidate_id))
+        const candidateName =
+          c?.fullName || `${c?.firstName ?? ''} ${c?.lastName ?? ''}`.trim() || String(r.candidate_id)
+        return {
+          candidateId: String(r.candidate_id),
+          candidateName,
+          score: Math.round(r.score_percent),
+          reason: r.reason,
+          linkedin: c?.linkedin || undefined
+        }
+      })
 
       if (scoredRows.length > 0) {
         setScored(scoredRows)
         setTotal(scoredRows.length)
-        setView('ai') // switch to AI view once ready
+        setView('ai')
       }
     } catch (e) {
       console.error(e)
-      // Keep rawCands visible as fallback
       alert('Search or scoring hit an issue. Showing raw candidates (if any).')
     } finally {
       setLoadingSearch(false)
     }
   }
 
-  const searchCandidates = async () => {
-    if (!job) return alert('Retrieve Job Information first.')
-    await runSearch()
+  // --- Orchestrator: single click to run all steps ---
+  const retrieveSearchScore = async () => {
+    if (!jobId) return alert('Enter Job ID')
+    setLoadingAll(true)
+    try {
+      const summary = await retrieveJob()
+      if (!summary) return
+      const t = String(summary.job_title || '').trim()
+      const loc = String(summary.location || '').trim()
+      const skillsStr = (summary.skills || []).join(', ')
+      const qualsStr  = (summary.qualifications || []).join(', ')
+      await runSearch({ job: summary, title: t, location: loc, skillsText: skillsStr, qualsText: qualsStr })
+    } finally {
+      setLoadingAll(false)
+    }
   }
 
   const displayCount = (view === 'ai' ? scored.length : rawCands.length)
@@ -403,13 +421,16 @@ const scoredRows: ScoredRow[] = allSorted.map((r: any) => {
             <input className="input mt-1" placeholder="Enter Job ID" value={jobId} onChange={e=>setJobId(e.target.value)} />
           </div>
         </div>
-        {/* Adjusted from 3 to 2 columns and removed Page Size dropdown */}
-        <div className="grid sm:grid-cols-2 gap-3 items-end">
-          <button className="btn btn-grey" onClick={retrieveJob} disabled={loadingJob}>
-            {loadingJob ? 'Retrieving…' : 'Retrieve Job Information'}
-          </button>
-          <button className="btn btn-brand" onClick={searchCandidates} disabled={!job || loadingSearch}>
-            {loadingSearch ? 'Searching…' : 'Search Candidates'}
+
+        {/* Single full-width action button */}
+        <div className="grid gap-3 items-end">
+          <button
+            className="btn btn-brand w-full"
+            onClick={retrieveSearchScore}
+            disabled={loadingAll || !jobId}
+            title={!jobId ? 'Enter a Job ID' : 'Search'}
+          >
+            {loadingAll ? 'Searching…' : 'Search'}
           </button>
         </div>
       </div>
@@ -417,7 +438,7 @@ const scoredRows: ScoredRow[] = allSorted.map((r: any) => {
       {/* Split view: left = reviewed job info, right = candidates */}
       <div className="grid md:grid-cols-2 gap-6">
         <div className="card p-6">
-          <h3 className="font-semibold mb-3">Job Summary (review & edit)</h3>
+          <h3 className="font-semibold mb-3">Job Summary</h3>
 
           <div className="grid sm:grid-cols-2 gap-4 text-sm mb-4">
             <div>
@@ -545,7 +566,7 @@ const scoredRows: ScoredRow[] = allSorted.map((r: any) => {
             </div>
           ) : (
             <div className="card p-6 text-sm text-gray-500">
-              Results will appear here after you click <span className="font-medium">Search Candidates</span>.
+              Results will appear here after you click <span className="font-medium">Retrieve, Search & Score</span>.
             </div>
           )}
         </div>
