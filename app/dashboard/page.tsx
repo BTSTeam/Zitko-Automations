@@ -156,7 +156,7 @@ function AIScoredList({ rows }: { rows: ScoredRow[] }) {
                 <button
                   type="button"
                   onClick={() => copyId(r.candidateId)}
-                  className="text-xs text-gray-600 mt-1" // no underline
+                  className="text-xs text-gray-600 mt-1"
                   title="Click to copy Candidate ID"
                 >
                   ID: {r.candidateId}
@@ -190,18 +190,14 @@ function MatchTab() {
   const [scored, setScored] = useState<ScoredRow[]>([])
   const [view, setView] = useState<'ai' | 'raw'>('raw')
 
-  const [showDesc, setShowDesc] = useState(false)
-
-  // fun status near AI Scored (slow rotation, Zitko/search/AI vibes)
+  // fun status near AI Scored (slow rotation)
   const funMessages = [
     'Zitko AI is thinking…',
     'Matching skills & qualifications…',
+    'Oops!…we’re ranking again.',
     'Cross-checking titles & keywords…',
     'Comparing against job location…',
     'Backstreet’s back, alright!',
-    'Oops!…we’re ranking again.',
-    'Shortlisting like a boss.',
-    'Humming along with Zitko AI…',
   ]
   const [funIdx, setFunIdx] = useState(0)
   useEffect(() => {
@@ -377,14 +373,12 @@ function MatchTab() {
       const aiText = await ai.text()
       let outer: any = {}
       try { outer = JSON.parse(aiText) } catch {
-        // try to parse string content if it’s a wrapped response
         try {
           const maybe = JSON.parse((aiText || '').replace(/```json|```/g, '').trim())
           outer = maybe
         } catch { outer = {} }
       }
 
-      // Accept direct {ranked:[...]} or wrapped choices[0].message.content
       const ranked = Array.isArray(outer?.ranked)
         ? outer.ranked
         : (() => {
@@ -415,7 +409,6 @@ function MatchTab() {
         }
       })
 
-      // Explicit types on comparator for TS
       scoredRows = scoredRows.sort((a: ScoredRow, b: ScoredRow) => b.score - a.score)
 
       setScored(scoredRows)
@@ -452,10 +445,13 @@ function MatchTab() {
        'Comparing against job location…'][funIdx % 4]
     : (view === 'ai' ? 'Viewing AI scores' : 'Viewing raw results')
 
+  const beforeScores = scored.length === 0
+
   return (
     <div className="grid gap-6">
       <div className="card p-6">
         <div className="grid md:grid-cols-2 gap-6">
+          {/* Left: Search by Job ID */}
           <div>
             <p className="mb-4">Enter your Vincere Job ID to return the job details.</p>
             <div>
@@ -467,7 +463,18 @@ function MatchTab() {
             </button>
           </div>
 
+          {/* Right: Job Summary / Fields */}
           <div>
+            {/* Inline Job Summary: ID • Title • Location */}
+            {job && (
+              <div className="mb-3 text-sm text-gray-700 flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span className="font-semibold">Job</span>
+                {job.id && <span className="rounded-full border px-2 py-0.5 text-xs">ID: {job.id}</span>}
+                {job.job_title && <span className="truncate">{job.job_title}</span>}
+                {job.location && <span>• {job.location}</span>}
+              </div>
+            )}
+
             <div className="grid sm:grid-cols-2 gap-4 text-sm mb-2">
               <div>
                 <div className="text-gray-500">Job Title</div>
@@ -484,33 +491,16 @@ function MatchTab() {
               {/* Qualifications intentionally hidden from UI but used in scoring */}
             </div>
 
-            {job && (
-              <div className="mt-1">
-                <button type="button" className="text-xs text-gray-500 underline" onClick={() => setShowDesc(v => !v)}>
-                  {showDesc ? 'Hide descriptions' : 'Show descriptions'}
-                </button>
-                {showDesc && (
-                  <div className="grid gap-2 mt-2">
-                    <div>
-                      <div className="text-gray-500 mb-1">Public Description</div>
-                      <p className="text-sm whitespace-pre-wrap leading-relaxed">{job.public_description || '—'}</p>
-                    </div>
-                    {job.internal_description && (
-                      <div>
-                        <div className="text-gray-500 mb-1">Internal Description</div>
-                        <p className="text-sm whitespace-pre-wrap leading-relaxed">{job.internal_description}</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
+            {/* Description toggle removed from UI per request; descriptions still used in backend */}
           </div>
         </div>
 
-        <div className="mt-4 flex flex-wrap gap-3 items-center">
+        {/* Faint divider between top section and results controls */}
+        <div className="h-px bg-gray-200 my-4" />
+
+        <div className="mt-2 flex flex-wrap gap-3 items-center">
           <button
-            className={`btn ${view==='raw' ? 'btn-brand' : 'btn-grey'}`}
+            className={`btn ${view==='raw' ? 'btn-brand' : 'btn-grey'} ${beforeScores ? 'opacity-50' : ''}`}
             onClick={() => setView('raw')}
             disabled={rawCands.length === 0}
           >
@@ -518,7 +508,7 @@ function MatchTab() {
           </button>
           <div className="flex items-center gap-2">
             <button
-              className={`btn ${view==='ai' ? 'btn-brand' : 'btn-grey'}`}
+              className={`btn ${view==='ai' ? 'btn-brand' : 'btn-grey'} ${beforeScores ? 'opacity-50' : ''}`}
               onClick={() => setView('ai')}
               disabled={scored.length === 0}
             >
