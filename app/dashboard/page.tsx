@@ -173,6 +173,9 @@ function MatchTab() {
   const [sortBy, setSortBy] = useState<[keyof ScoredRow, 'asc'|'desc']>(['score','desc'])
   const [filter, setFilter] = useState('')
 
+  // NEW: which list is visible (toggle)
+  const [view, setView] = useState<'ai' | 'raw'>('raw')
+
   // pagination (page size fixed to 20; dropdown removed)
   const [page] = useState(1)
   const pageSize = 20
@@ -291,63 +294,65 @@ function MatchTab() {
       }))
       setRawCands(rawList)
       setTotal(rawList.length)
+      setView('raw') // show Raw while AI runs
 
       // 2) AI scoring (priority: location, skills, qualifications, job title)
-const ai = await fetch('/api/ai/analyze', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    job: {
-      title,
-      location,
-      skills: skillsText.split(',').map(s => s.trim()).filter(Boolean),
-      qualifications: qualsText.split(',').map(s => s.trim()).filter(Boolean),
-      description: job.public_description || ''
-    },
-    candidates: candidates.map(c => ({
-      candidate_id: c.id,
-      full_name: c.fullName || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim(),
-      location: c.location || c.city || '',
-      current_job_title: c.title || '',
-      skills: c.skills || [],
-      qualifications: c.qualifications || []
-    })),
-    // no "top 20" instruction; backend system prompt already says "score every candidate"
-  })
-})
+      const ai = await fetch('/api/ai/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          job: {
+            title,
+            location,
+            skills: skillsText.split(',').map(s => s.trim()).filter(Boolean),
+            qualifications: qualsText.split(',').map(s => s.trim()).filter(Boolean),
+            description: job.public_description || ''
+          },
+          candidates: candidates.map(c => ({
+            candidate_id: c.id,
+            full_name: c.fullName || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim(),
+            location: c.location || c.city || '',
+            current_job_title: c.title || '',
+            skills: c.skills || [],
+            qualifications: c.qualifications || []
+          }))
+          // no "top 20" instruction; backend system prompt already says "score every candidate"
+        })
+      })
 
-const aiText = await ai.text()
-// console.log('AI response:', aiText) // <- optional: uncomment to debug
-let ranked: { ranked?: { candidate_id: string; score_percent: number; reason: string }[] } = {}
-try { ranked = JSON.parse(aiText) } catch { ranked = {} }
+      const aiText = await ai.text()
+      // console.log('AI response:', aiText) // <- optional: uncomment to debug
+      let ranked: { ranked?: { candidate_id: string; score_percent: number; reason: string }[] } = {}
+      try { ranked = JSON.parse(aiText) } catch { ranked = {} }
 
-// sort ALL returned candidates by score (desc)
-const all = (ranked?.ranked || [])
-  .map(r => ({
-    candidate_id: String(r.candidate_id),
-    score_percent: Number(r.score_percent) || 0,
-    reason: String(r.reason || '')
-  }))
-  .sort((a, b) => b.score_percent - a.score_percent)
+      // sort ALL returned candidates by score (desc)
+      const all = (ranked?.ranked || [])
+        .map(r => ({
+          candidate_id: String(r.candidate_id),
+          score_percent: Number(r.score_percent) || 0,
+          reason: String(r.reason || '')
+        }))
+        .sort((a, b) => b.score_percent - a.score_percent)
 
-// 3) Map AI results to ScoredRow with LinkedIn + names
-const byId = new Map(candidates.map(c => [String(c.id), c]))
-const scoredRows: ScoredRow[] = all.map(r => {
-  const c = byId.get(String(r.candidate_id))
-  const candidateName =
-    c?.fullName || `${c?.firstName ?? ''} ${c?.lastName ?? ''}`.trim() || String(r.candidate_id)
-  return {
-    candidateId: String(r.candidate_id),
-    candidateName,
-    score: Math.round(r.score_percent),
-    reason: r.reason,
-    linkedin: c?.linkedin || undefined
-  }
-})
+      // 3) Map AI results to ScoredRow with LinkedIn + names
+      const byId = new Map(candidates.map(c => [String(c.id), c]))
+      const scoredRows: ScoredRow[] = all.map(r => {
+        const c = byId.get(String(r.candidate_id))
+        const candidateName =
+          c?.fullName || `${c?.firstName ?? ''} ${c?.lastName ?? ''}`.trim() || String(r.candidate_id)
+        return {
+          candidateId: String(r.candidate_id),
+          candidateName,
+          score: Math.round(r.score_percent),
+          reason: r.reason,
+          linkedin: c?.linkedin || undefined
+        }
+      })
 
       if (scoredRows.length > 0) {
         setScored(scoredRows)
         setTotal(scoredRows.length)
+        setView('ai') // switch to AI view once ready
       }
     } catch (e) {
       console.error(e)
@@ -363,10 +368,9 @@ const scoredRows: ScoredRow[] = all.map(r => {
     await runSearch()
   }
 
-  const canPrev = false
-  const canNext = false
-  const showingFrom = (scored.length || rawCands.length) ? 1 : 0
-  const showingTo = scored.length || rawCands.length || 0
+  const displayCount = (view === 'ai' ? scored.length : rawCands.length)
+  const showingFrom = displayCount ? 1 : 0
+  const showingTo = displayCount || 0
 
   return (
     <div className="grid gap-6">
@@ -442,21 +446,53 @@ const scoredRows: ScoredRow[] = all.map(r => {
         </div>
 
         <div className="flex flex-col gap-3">
-          {scored.length > 0 ? (
-            <>
-              <Table rows={scored} sortBy={sortBy} setSortBy={setSortBy} filter={filter} setFilter={setFilter} />
-              <div className="flex items-center justify-between text-sm">
-                <div className="text-gray-600">
-                  {showingTo
-                    ? <>Showing <span className="font-medium">{showingFrom}</span>–<span className="font-medium">{showingTo}</span> of <span className="font-medium">{showingTo}</span></>
-                    : 'No results'}
+          {/* View toggle */}
+          <div className="flex items-center justify-between">
+            <div className="flex gap-2">
+              <button
+                className={`btn ${view==='ai' ? 'btn-brand' : 'btn-grey'}`}
+                onClick={() => setView('ai')}
+                disabled={scored.length === 0}
+                title={scored.length === 0 ? 'No AI scores yet' : 'View AI-scored results'}
+              >
+                AI Scored {scored.length ? `(${scored.length})` : ''}
+              </button>
+              <button
+                className={`btn ${view==='raw' ? 'btn-brand' : 'btn-grey'}`}
+                onClick={() => setView('raw')}
+                disabled={rawCands.length === 0}
+                title={rawCands.length === 0 ? 'No raw results yet' : 'View raw candidates'}
+              >
+                Raw Candidates {rawCands.length ? `(${rawCands.length})` : ''}
+              </button>
+            </div>
+
+            <div className="text-sm text-gray-600">
+              {loadingSearch ? 'Analyzing…' : view === 'ai' ? 'Viewing AI scores' : 'Viewing raw results'}
+            </div>
+          </div>
+
+          {view === 'ai' ? (
+            scored.length > 0 ? (
+              <>
+                <Table rows={scored} sortBy={sortBy} setSortBy={setSortBy} filter={filter} setFilter={setFilter} />
+                <div className="flex items-center justify-between text-sm">
+                  <div className="text-gray-600">
+                    Showing <span className="font-medium">{showingFrom}</span>–
+                    <span className="font-medium">{showingTo}</span> of
+                    <span className="font-medium"> {showingTo}</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <button className="btn btn-grey" disabled>Prev</button>
+                    <button className="btn btn-grey" disabled>Next</button>
+                  </div>
                 </div>
-                <div className="flex gap-2">
-                  <button className="btn btn-grey" disabled>Prev</button>
-                  <button className="btn btn-grey" disabled>Next</button>
-                </div>
+              </>
+            ) : (
+              <div className="card p-6 text-sm text-gray-500">
+                {loadingSearch ? 'Analyzing…' : 'No AI scores yet. Try Search Candidates.'}
               </div>
-            </>
+            )
           ) : rawCands.length > 0 ? (
             <div className="card p-6">
               <h3 className="font-semibold mb-3">Raw Candidates</h3>
@@ -481,7 +517,9 @@ const scoredRows: ScoredRow[] = all.map(r => {
                 ))}
               </ul>
               <div className="mt-3 text-sm text-gray-600">
-                Showing <span className="font-medium">{showingFrom}</span>–<span className="font-medium">{Math.min(pageSize, rawCands.length)}</span> of <span className="font-medium">{rawCands.length}</span>
+                Showing <span className="font-medium">{rawCands.length ? 1 : 0}</span>–
+                <span className="font-medium">{Math.min(pageSize, rawCands.length)}</span> of
+                <span className="font-medium"> {rawCands.length}</span>
               </div>
             </div>
           ) : (
