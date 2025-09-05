@@ -1,5 +1,5 @@
 // app/dashboard/page.tsx
-// Single-button pipeline + layout tweaks + rotating fun messages + AI list view with % score
+// Single-button pipeline + layout tweaks + rotating fun messages + AI list view with % score + colored score + no pagination
 'use client'
 import { useState, useEffect, type Dispatch, type SetStateAction, type ReactNode } from 'react'
 
@@ -31,7 +31,7 @@ type ScoredRow = {
   score: number
   reason: string
   linkedin?: string
-  title?: string          // <— added for AI list layout
+  title?: string
 }
 
 // --- helpers ---
@@ -58,16 +58,6 @@ function extractCity(location?: string): string {
   return city
 }
 
-function KPIs() {
-  return (
-    <div className="grid sm:grid-cols-3 gap-4 mb-6">
-      <div className="kpi"><h3>—</h3><p>Candidates Matched</p></div>
-      <div className="kpi"><h3>—</h3><p>Candidates Sourced</p></div>
-      <div className="kpi"><h3>—</h3><p>CVs Formatted</p></div>
-    </div>
-  )
-}
-
 function Tabs({
   tab,
   setTab
@@ -89,32 +79,37 @@ function Tabs({
   )
 }
 
-/** ---------- New: AI list component (score % on right; reason below link/title) ---------- */
-function AIScoredList({
-  rows, filter, setFilter
-}: {
-  rows: ScoredRow[],
-  filter: string,
-  setFilter: (v:string)=>void
-}) {
-  const filtered = rows.filter(r =>
-    JSON.stringify(r).toLowerCase().includes(filter.toLowerCase())
-  )
+/** ---------- utilities ---------- */
+function scoreColor(score: number) {
+  if (score >= 80) return 'text-green-600'
+  if (score >= 50) return 'text-amber-600'
+  return 'text-red-600'
+}
+
+/** ---------- AI list (label + colored score + copy ID) ---------- */
+function AIScoredList({ rows }: { rows: ScoredRow[] }) {
+  const [copied, setCopied] = useState<string | null>(null)
+  const copyId = async (id: string) => {
+    try {
+      await navigator.clipboard.writeText(id)
+      setCopied(id)
+      setTimeout(() => setCopied(null), 1200)
+    } catch {
+      // ignore
+    }
+  }
   return (
     <div className="card p-6">
-      <div className="mb-3">
-        <input className="input" placeholder="Filter..." value={filter} onChange={e=>setFilter(e.target.value)} />
-      </div>
       <ul className="divide-y">
-        {filtered.map(r => (
+        {rows.map(r => (
           <li key={r.candidateId} className="py-4">
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <div className="font-medium truncate">{r.candidateName}</div>
                 {!!r.title && <div className="text-sm text-gray-600">{r.title}</div>}
-                {r.linkedin
-                  ? <a className="text-sm underline" href={r.linkedin} target="_blank" rel="noreferrer">LinkedIn</a>
-                  : null}
+                {r.linkedin && (
+                  <a className="text-sm underline" href={r.linkedin} target="_blank" rel="noreferrer">LinkedIn</a>
+                )}
                 {r.reason && (
                   <div className="text-sm text-gray-700 mt-1 whitespace-pre-wrap">
                     {r.reason}
@@ -122,17 +117,20 @@ function AIScoredList({
                 )}
               </div>
 
-              <div className="text-right shrink-0 min-w-[110px]">
-                <div className="text-2xl font-semibold">{r.score}%</div>
-                <div className="text-xs text-gray-500 mt-1">ID: {r.candidateId}</div>
-                <a
-                  className="text-xs text-brand-orange underline mt-1 inline-block"
-                  href={`https://zitko.vincere.io/app/candidate/${r.candidateId}`}
-                  target="_blank"
-                  rel="noreferrer"
+              <div className="text-right shrink-0 min-w-[150px]">
+                <div className="text-[11px] uppercase tracking-wide text-gray-500">Suitability Score:</div>
+                <div className={`text-2xl font-semibold ${scoreColor(r.score)}`}>{r.score}%</div>
+                <button
+                  type="button"
+                  onClick={() => copyId(r.candidateId)}
+                  className="text-xs text-gray-600 underline mt-1"
+                  title="Click to copy Candidate ID"
                 >
-                  View in Vincere
-                </a>
+                  ID: {r.candidateId}
+                </button>
+                {copied === r.candidateId && (
+                  <div className="text-[10px] text-green-600 mt-1">Copied!</div>
+                )}
               </div>
             </div>
           </li>
@@ -141,7 +139,7 @@ function AIScoredList({
     </div>
   )
 }
-/** --------------------------------------------------------------------------------------- */
+/** -------------------------------- */
 
 function MatchTab() {
   const [jobId, setJobId] = useState('')
@@ -155,42 +153,36 @@ function MatchTab() {
   const [title, setTitle] = useState('')
   const [location, setLocation] = useState('')
   const [skillsText, setSkillsText] = useState('')
-  const [qualsText, setQualsText] = useState('')
+  const [qualsText, setQualsText] = useState('') // used for AI only (hidden in UI)
 
   // raw & scored candidates
   const [rawCands, setRawCands] = useState<CandidateRow[]>([])
   const [scored, setScored] = useState<ScoredRow[]>([])
 
-  // sorting / filter (sorting already applied by score desc before render)
-  const [sortBy] = useState<[keyof ScoredRow, 'asc'|'desc']>(['score','desc'])
-  const [filter, setFilter] = useState('')
-
   // which list is visible (toggle)
   const [view, setView] = useState<'ai' | 'raw'>('raw')
 
-  const pageSize = 20
-  const [total, setTotal] = useState(0)
+  const pageSize = 9999 // show all; no pagination
 
   // show/hide descriptions
   const [showDesc, setShowDesc] = useState(false)
 
-  // FUN rotating messages while AI scoring (≤10-word lyric nods)
+  // FUN rotating messages (≤10 words), 4s, with Zitko/AI flavor
   const funMessages = [
-    'Verifying raw candidates…',
-    "I want it that way.",
+    'Zitko AI is thinking…',
+    'Matching skills and qualifications…',
+    'Cross-checking titles and keywords…',
+    'Comparing to London location…',
+    "Backstreet's back, alright!",
     'Oops! I did it again.',
-    'Hit me baby one more time.',
-    "Backstreet\'s back, alright!",
-    'Stronger than yesterday.',
-    'Everybody, rock your body.',
     'Shortlisting like a boss.',
-    'Tuning the match engine…',
+    'Finding near matches, not exact only…',
   ]
   const [funIdx, setFunIdx] = useState(0)
   useEffect(() => {
     if (!loadingSearch) return
     setFunIdx(0)
-    const id = setInterval(() => setFunIdx(i => (i + 1) % funMessages.length), 2200)
+    const id = setInterval(() => setFunIdx(i => (i + 1) % funMessages.length), 4000)
     return () => clearInterval(id)
   }, [loadingSearch])
 
@@ -200,7 +192,6 @@ function MatchTab() {
     setLoadingJob(true)
     setScored([])
     setRawCands([])
-    setTotal(0)
 
     try {
       const r = await fetch(`/api/vincere/position/${encodeURIComponent(jobId)}`, { cache: 'no-store' })
@@ -225,7 +216,6 @@ function MatchTab() {
 
       const skillsArr: string[] = Array.isArray(extracted?.skills) ? extracted.skills : []
       const qualsArr: string[] = Array.isArray(extracted?.qualifications) ? extracted.qualifications : []
-
       const cleanedLocation = extractCity(String(extracted?.location || '').trim())
 
       const summary: JobSummary = {
@@ -239,12 +229,11 @@ function MatchTab() {
         coords: null
       }
 
-      // update UI state
       setJob(summary)
       setTitle(summary.job_title || '')
       setLocation(cleanedLocation)
       setSkillsText(skillsArr.join(', '))
-      setQualsText(qualsArr.join(', '))
+      setQualsText(qualsArr.join(', ')) // used later for AI
 
       return summary
     } catch (e) {
@@ -256,7 +245,7 @@ function MatchTab() {
     }
   }
 
-  // --- Search + AI Score: accepts explicit input to avoid state races ---
+  // --- Search + AI Score ---
   const runSearch = async (input?: {
     job: JobSummary
     title: string
@@ -264,14 +253,7 @@ function MatchTab() {
     skillsText: string
     qualsText: string
   }) => {
-    const active = input ?? (job ? {
-      job,
-      title,
-      location,
-      skillsText,
-      qualsText
-    } : null)
-
+    const active = input ?? (job ? { job, title, location, skillsText, qualsText } : null)
     if (!active) return
     const { job: activeJob, title: t, location: loc, skillsText: skillsStr, qualsText: qualsStr } = active
 
@@ -297,7 +279,6 @@ function MatchTab() {
         })
       })
       const payload = await run.json()
-      console.log('MATCH/RUN payload:', payload)
       if (!run.ok) throw new Error(payload?.error || `Search failed (${run.status})`)
 
       const candidates = (payload?.results || []) as Array<{
@@ -311,6 +292,7 @@ function MatchTab() {
         skills?: string[]
         qualifications?: string[]
         linkedin?: string | null
+        keywords?: string[]
       }>
 
       // Raw list immediately
@@ -323,10 +305,9 @@ function MatchTab() {
         skills: c.skills || []
       }))
       setRawCands(rawList)
-      setTotal(rawList.length)
       setView('raw')
 
-      // 2) AI scoring
+      // 2) AI scoring (explicit instruction for richer reasons)
       const ai = await fetch('/api/ai/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -344,8 +325,11 @@ function MatchTab() {
             location: c.location || c.city || '',
             current_job_title: c.title || '',
             skills: c.skills || [],
-            qualifications: c.qualifications || []
-          }))
+            qualifications: c.qualifications || [],
+            keywords: c.keywords || []
+          })),
+          instruction:
+            'Score every candidate 0–100%. Prioritise skills & formal qualifications matching the job; also consider job title relevance and London location proximity. In "reason", cite specific matched/missing skills/quals and any title/location notes. Avoid generic reasons.'
         })
       })
 
@@ -386,13 +370,12 @@ function MatchTab() {
           score: Math.round(r.score_percent),
           reason: r.reason,
           linkedin: c?.linkedin || undefined,
-          title: c?.title || ''    // <— carry the job title for list view
+          title: c?.title || ''
         }
       })
 
       if (scoredRows.length > 0) {
         setScored(scoredRows)
-        setTotal(scoredRows.length)
         setView('ai')
       }
     } catch (e) {
@@ -420,20 +403,16 @@ function MatchTab() {
     }
   }
 
-  const displayCount = (view === 'ai' ? scored.length : rawCands.length)
-  const showingFrom = displayCount ? 1 : 0
-  const showingTo = displayCount || 0
-
   const statusText = loadingSearch
     ? funMessages[funIdx]
     : (view === 'ai' ? 'Viewing AI scores' : 'Viewing raw results')
 
   return (
     <div className="grid gap-6">
-      {/* TOP CARD: two columns: left = Job ID, right = Job Summary */}
+      {/* TOP CARD: left = Job ID; right = Job Summary (no Qualifications input visible) */}
       <div className="card p-6">
         <div className="grid md:grid-cols-2 gap-6">
-          {/* Left: Job ID / intro */}
+          {/* Left: Job ID + Search */}
           <div>
             <p className="mb-4">Enter your Vincere Job ID to return the job details.</p>
             <div>
@@ -455,7 +434,7 @@ function MatchTab() {
             </button>
           </div>
 
-          {/* Right: Job Summary (editable, no title) */}
+          {/* Right: Job Summary (no Qualifications input displayed) */}
           <div>
             <div className="grid sm:grid-cols-2 gap-4 text-sm mb-2">
               <div>
@@ -469,10 +448,6 @@ function MatchTab() {
               <div className="sm:col-span-2">
                 <div className="text-gray-500">Skills (comma-separated)</div>
                 <input className="input mt-1" value={skillsText} onChange={e=>setSkillsText(e.target.value)} placeholder="CCTV, Access Control, IP Networking" />
-              </div>
-              <div className="sm:col-span-2">
-                <div className="text-gray-500">Qualifications (comma-separated)</div>
-                <input className="input mt-1" value={qualsText} onChange={e=>setQualsText(e.target.value)} placeholder="CSCS, ECS, IPAF, Degree" />
               </div>
             </div>
 
@@ -505,7 +480,7 @@ function MatchTab() {
           </div>
         </div>
 
-        {/* Toggle row under the card */}
+        {/* Toggle row — status next to AI Scored */}
         <div className="mt-4 flex flex-wrap gap-3 items-center">
           <button
             className={`btn ${view==='raw' ? 'btn-brand' : 'btn-grey'}`}
@@ -515,17 +490,16 @@ function MatchTab() {
           >
             Raw Candidates {rawCands.length ? `(${rawCands.length})` : ''}
           </button>
-          <button
-            className={`btn ${view==='ai' ? 'btn-brand' : 'btn-grey'}`}
-            onClick={() => setView('ai')}
-            disabled={scored.length === 0}
-            title={scored.length === 0 ? 'No AI scores yet' : 'View AI-scored results'}
-          >
-            AI Scored {scored.length ? `(${scored.length})` : ''}
-          </button>
-
-          <div className="text-sm text-gray-600 ml-auto">
-            {statusText}
+          <div className="flex items-center gap-2">
+            <button
+              className={`btn ${view==='ai' ? 'btn-brand' : 'btn-grey'}`}
+              onClick={() => setView('ai')}
+              disabled={scored.length === 0}
+              title={scored.length === 0 ? 'No AI scores yet' : 'View AI-scored results'}
+            >
+              AI Scored {scored.length ? `(${scored.length})` : ''}
+            </button>
+            <span className="text-sm text-gray-600">{statusText}</span>
           </div>
         </div>
       </div>
@@ -534,20 +508,7 @@ function MatchTab() {
       <div className="flex flex-col gap-3">
         {view === 'ai' ? (
           scored.length > 0 ? (
-            <>
-              <AIScoredList rows={scored} filter={filter} setFilter={setFilter} />
-              <div className="flex items-center justify-between text-sm">
-                <div className="text-gray-600">
-                  Showing <span className="font-medium">{showingFrom}</span>–
-                  <span className="font-medium">{showingTo}</span> of
-                  <span className="font-medium"> {showingTo}</span>
-                </div>
-                <div className="flex gap-2">
-                  <button className="btn btn-grey" disabled>Prev</button>
-                  <button className="btn btn-grey" disabled>Next</button>
-                </div>
-              </div>
-            </>
+            <AIScoredList rows={scored} />
           ) : (
             <div className="card p-6 text-sm text-gray-500">
               {loadingSearch ? funMessages[funIdx] : 'No AI scores yet. Click "Search".'}
@@ -576,11 +537,6 @@ function MatchTab() {
                 </li>
               ))}
             </ul>
-            <div className="mt-3 text-sm text-gray-600">
-              Showing <span className="font-medium">{rawCands.length ? 1 : 0}</span>–
-              <span className="font-medium">{Math.min(pageSize, rawCands.length)}</span> of
-              <span className="font-medium"> {rawCands.length}</span>
-            </div>
           </div>
         ) : (
           <div className="card p-6 text-sm text-gray-500">
@@ -700,8 +656,6 @@ export default function Dashboard() {
   const [tab, setTab] = useState<TabKey>('match')
   return (
     <div>
-      {/* KPIs section removed from display */}
-      {/* <KPIs /> */}
       <Tabs tab={tab} setTab={setTab} />
       {tab==='match' && <MatchTab />}
       {tab==='source' && <SourceTab />}
