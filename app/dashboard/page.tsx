@@ -293,48 +293,57 @@ function MatchTab() {
       setTotal(rawList.length)
 
       // 2) AI scoring (priority: location, skills, qualifications, job title)
-      const ai = await fetch('/api/ai/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          job: {
-            title,
-            location,
-            skills: skillsText.split(',').map(s => s.trim()).filter(Boolean),
-            qualifications: qualsText.split(',').map(s => s.trim()).filter(Boolean),
-            description: job.public_description || ''
-          },
-          candidates: candidates.map(c => ({
-            candidate_id: c.id,
-            full_name: c.fullName || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim(),
-            location: c.location || c.city || '',
-            current_job_title: c.title || '',
-            skills: c.skills || [],
-            qualifications: c.qualifications || []
-          })),
-          instruction: 'Return only the top 20 as {candidate_id, score_percent, reason}.'
-        })
-      })
+const ai = await fetch('/api/ai/analyze', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    job: {
+      title,
+      location,
+      skills: skillsText.split(',').map(s => s.trim()).filter(Boolean),
+      qualifications: qualsText.split(',').map(s => s.trim()).filter(Boolean),
+      description: job.public_description || ''
+    },
+    candidates: candidates.map(c => ({
+      candidate_id: c.id,
+      full_name: c.fullName || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim(),
+      location: c.location || c.city || '',
+      current_job_title: c.title || '',
+      skills: c.skills || [],
+      qualifications: c.qualifications || []
+    })),
+    // no "top 20" instruction; backend system prompt already says "score every candidate"
+  })
+})
 
-      const aiText = await ai.text()
-      let ranked: { ranked?: { candidate_id: string; score_percent: number; reason: string }[] } = {}
-      try { ranked = JSON.parse(aiText) } catch { ranked = {} }
+const aiText = await ai.text()
+// console.log('AI response:', aiText) // <- optional: uncomment to debug
+let ranked: { ranked?: { candidate_id: string; score_percent: number; reason: string }[] } = {}
+try { ranked = JSON.parse(aiText) } catch { ranked = {} }
 
-      const top = (ranked?.ranked || []).slice(0, 20)
+// sort ALL returned candidates by score (desc)
+const all = (ranked?.ranked || [])
+  .map(r => ({
+    candidate_id: String(r.candidate_id),
+    score_percent: Number(r.score_percent) || 0,
+    reason: String(r.reason || '')
+  }))
+  .sort((a, b) => b.score_percent - a.score_percent)
 
-      // 3) Map AI results to ScoredRow with LinkedIn + names
-      const byId = new Map(candidates.map(c => [String(c.id), c]))
-      const scoredRows: ScoredRow[] = top.map(r => {
-        const c = byId.get(String(r.candidate_id))
-        const candidateName = c?.fullName || `${c?.firstName ?? ''} ${c?.lastName ?? ''}`.trim() || String(r.candidate_id)
-        return {
-          candidateId: String(r.candidate_id),
-          candidateName,
-          score: Math.round(Number(r.score_percent) || 0),
-          reason: r.reason || '',
-          linkedin: c?.linkedin || undefined
-        }
-      })
+// 3) Map AI results to ScoredRow with LinkedIn + names
+const byId = new Map(candidates.map(c => [String(c.id), c]))
+const scoredRows: ScoredRow[] = all.map(r => {
+  const c = byId.get(String(r.candidate_id))
+  const candidateName =
+    c?.fullName || `${c?.firstName ?? ''} ${c?.lastName ?? ''}`.trim() || String(r.candidate_id)
+  return {
+    candidateId: String(r.candidate_id),
+    candidateName,
+    score: Math.round(r.score_percent),
+    reason: r.reason,
+    linkedin: c?.linkedin || undefined
+  }
+})
 
       if (scoredRows.length > 0) {
         setScored(scoredRows)
