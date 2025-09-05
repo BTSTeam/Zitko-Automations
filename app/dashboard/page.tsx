@@ -321,33 +321,54 @@ function MatchTab() {
       })
 
       const aiText = await ai.text()
-      // console.log('AI response:', aiText) // <- optional: uncomment to debug
-      let ranked: { ranked?: { candidate_id: string; score_percent: number; reason: string }[] } = {}
-      try { ranked = JSON.parse(aiText) } catch { ranked = {} }
+// Optional debug:
+// console.log('AI status:', ai.status)
+// console.log('AI text (first 400):', aiText.slice(0, 400))
 
-      // sort ALL returned candidates by score (desc)
-      const all = (ranked?.ranked || [])
-        .map(r => ({
-          candidate_id: String(r.candidate_id),
-          score_percent: Number(r.score_percent) || 0,
-          reason: String(r.reason || '')
-        }))
-        .sort((a, b) => b.score_percent - a.score_percent)
+// The API may return either:
+// 1) Direct: { ranked: [...] }
+// 2) OpenAI wrapper: { choices: [{ message: { content: '{"ranked":[...]}' } }] }
+let outer: any = {}
+try { outer = JSON.parse(aiText) } catch { outer = {} }
 
-      // 3) Map AI results to ScoredRow with LinkedIn + names
-      const byId = new Map(candidates.map(c => [String(c.id), c]))
-      const scoredRows: ScoredRow[] = all.map(r => {
-        const c = byId.get(String(r.candidate_id))
-        const candidateName =
-          c?.fullName || `${c?.firstName ?? ''} ${c?.lastName ?? ''}`.trim() || String(r.candidate_id)
-        return {
-          candidateId: String(r.candidate_id),
-          candidateName,
-          score: Math.round(r.score_percent),
-          reason: r.reason,
-          linkedin: c?.linkedin || undefined
-        }
-      })
+let rankedObj: any
+if (Array.isArray(outer?.ranked)) {
+  // direct shape
+  rankedObj = outer
+} else {
+  // OpenAI wrapper shape
+  const content = outer?.choices?.[0]?.message?.content
+  if (typeof content === 'string') {
+    try { rankedObj = JSON.parse(content) } catch { rankedObj = {} }
+  } else {
+    rankedObj = {}
+  }
+}
+
+// sort ALL returned candidates by score (desc)
+const allSorted =
+  (Array.isArray(rankedObj?.ranked) ? rankedObj.ranked : [])
+    .map((r: any) => ({
+      candidate_id: String(r.candidate_id),
+      score_percent: Number(r.score_percent) || 0,
+      reason: String(r.reason || '')
+    }))
+    .sort((a: any, b: any) => b.score_percent - a.score_percent)
+
+// 3) Map AI results to ScoredRow with LinkedIn + names
+const byId = new Map(candidates.map(c => [String(c.id), c]))
+const scoredRows: ScoredRow[] = allSorted.map((r: any) => {
+  const c = byId.get(String(r.candidate_id))
+  const candidateName =
+    c?.fullName || `${c?.firstName ?? ''} ${c?.lastName ?? ''}`.trim() || String(r.candidate_id)
+  return {
+    candidateId: String(r.candidate_id),
+    candidateName,
+    score: Math.round(r.score_percent),
+    reason: r.reason,
+    linkedin: c?.linkedin || undefined
+  }
+})
 
       if (scoredRows.length > 0) {
         setScored(scoredRows)
