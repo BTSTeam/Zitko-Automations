@@ -62,28 +62,40 @@ function scoreColor(score: number) {
   return 'text-red-600'
 }
 
-// If AI fails, create a light heuristic score to avoid 0% walls
-function fallbackScore(job: JobSummary, c: { title?: string, location?: string, skills?: string[]; qualifications?: string[] }) {
-  const jSkills = new Set((job.skills || []).map(s => s.toLowerCase()))
-  const jQuals  = new Set((job.qualifications || []).map(s => s.toLowerCase()))
-  const cSkills = new Set((c.skills || []).map(s => s.toLowerCase()))
-  const cQuals  = new Set((c.qualifications || []).map(s => s.toLowerCase()))
-  const title   = (c.title || '').toLowerCase()
-  const loc     = (c.location || '').toLowerCase()
-  const jLoc    = (job.location || '').toLowerCase()
-  const jTitle  = (job.job_title || '').toLowerCase()
-
-  const interSkills = [...jSkills].filter(s => cSkills.has(s)).length
-  const skillScore = jSkills.size ? (interSkills / jSkills.size) : 0
-
-  const interQuals = [...jQuals].filter(s => cQuals.has(s)).length
-  const qualScore = jQuals.size ? (interQuals / jQuals.size) : 0
-
-  const titleScore = jTitle && title ? (title.includes(jTitle) || jTitle.includes(title) ? 1 : 0.5 * Number(title.split(' ').some(w => jTitle.includes(w)))) : 0
-  const locScore = jLoc && loc ? (loc.includes(jLoc) ? 1 : 0) : 0
-
-  const composite = 0.6*skillScore + 0.25*qualScore + 0.1*titleScore + 0.05*locScore
-  return Math.round(composite * 100)
+// Normalize any mix of arrays/strings/nulls into a flat, deduped string[]
+function normalizeList(...items: any[]): string[] {
+  const out: string[] = []
+  const push = (s: string) => {
+    const v = s.trim()
+    if (!v) return
+    out.push(v)
+  }
+  for (const item of items) {
+    if (item == null) continue
+    if (Array.isArray(item)) {
+      for (const v of item) {
+        if (typeof v === 'string') {
+          v.split(/[,;|/•#]+/g).forEach(push)
+        } else if (v != null) {
+          push(String(v))
+        }
+      }
+    } else if (typeof item === 'string') {
+      item.split(/[,;|/•#]+/g).forEach(push)
+    } else {
+      push(String(item))
+    }
+  }
+  const seen = new Set<string>()
+  const dedup: string[] = []
+  for (const s of out) {
+    const key = s.toLowerCase()
+    if (!seen.has(key)) {
+      seen.add(key)
+      dedup.push(s)
+    }
+  }
+  return dedup
 }
 
 function Tabs({
@@ -136,7 +148,7 @@ function AIScoredList({ rows }: { rows: ScoredRow[] }) {
                 )}
               </div>
 
-              <div className="text-right shrink-0 min-w-[180px]">
+              <div className="text-right shrink-0 min-w-[200px]">
                 <div className="flex items-baseline justify-end gap-2">
                   <div className="text-[11px] uppercase tracking-wide text-gray-500">Suitability Score:</div>
                   <div className={`text-2xl font-semibold ${scoreColor(r.score)}`}>{r.score}%</div>
@@ -180,16 +192,16 @@ function MatchTab() {
 
   const [showDesc, setShowDesc] = useState(false)
 
-  // fun status near AI Scored
+  // fun status near AI Scored (slow rotation, Zitko/search/AI vibes)
   const funMessages = [
     'Zitko AI is thinking…',
-    'Matching skills and qualifications…',
-    'Cross-checking titles and keywords…',
-    'Comparing to London location…',
-    "Backstreet's back, alright!",
-    'Oops! I did it again.',
+    'Matching skills & qualifications…',
+    'Cross-checking titles & keywords…',
+    'Comparing against job location…',
+    'Backstreet’s back, alright!',
+    'Oops!…we’re ranking again.',
     'Shortlisting like a boss.',
-    'Finding near matches…',
+    'Humming along with Zitko AI…',
   ]
   const [funIdx, setFunIdx] = useState(0)
   useEffect(() => {
@@ -293,24 +305,37 @@ function MatchTab() {
         location?: string
         city?: string
         title?: string
-        skills?: string[]
-        qualifications?: string[]
+        skills?: string[] | string
+        skill?: string[] | string
+        qualifications?: string[] | string
         linkedin?: string | null
-        keywords?: string[]
+        keywords?: string[] | string
+        current_job_title?: string
+        current_location_name?: string
+        edu_qualification?: string[] | string
+        edu_degree?: string[] | string
+        edu_course?: string[] | string
+        edu_training?: string[] | string
+        certifications?: string[] | string
       }>
 
-      // Raw list now
-      setRawCands(candidates.map(c => ({
-        id: String(c.id),
-        name: c.fullName || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim(),
-        title: c.title || '',
-        location: c.location || c.city || '',
-        linkedin: c.linkedin ?? null,
-        skills: c.skills || []
-      })))
+      // Raw list now (show richer fields)
+      setRawCands(candidates.map(c => {
+        const title = c.title || c.current_job_title || ''
+        const location = c.location || c.city || c.current_location_name || ''
+        const skills = normalizeList(c.skills, c.skill, c.keywords)
+        return {
+          id: String(c.id),
+          name: c.fullName || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim(),
+          title,
+          location,
+          linkedin: c.linkedin ?? null,
+          skills
+        }
+      }))
       setView('raw')
 
-      // AI analyze
+      // AI analyze — send full, normalized skills/quals and both job descriptions
       const ai = await fetch('/api/ai/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -320,33 +345,56 @@ function MatchTab() {
             location: loc,
             skills: skillsStr.split(',').map(s => s.trim()).filter(Boolean),
             qualifications: qualsStr.split(',').map(s => s.trim()).filter(Boolean),
-            description: activeJob.public_description || ''
+            description: `${activeJob.public_description || ''}\n\n${activeJob.internal_description || ''}`.trim()
           },
-          candidates: candidates.map(c => ({
-            candidate_id: c.id,
-            full_name: c.fullName || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim(),
-            location: c.location || c.city || '',
-            current_job_title: c.title || '',
-            skills: c.skills || [],
-            qualifications: c.qualifications || [],
-            keywords: c.keywords || []
-          })),
+          candidates: candidates.map(c => {
+            const skills = normalizeList(c.skills, c.skill, c.keywords)
+            const qualifications = normalizeList(
+              c.qualifications,
+              c.edu_qualification,
+              c.edu_degree,
+              c.edu_course,
+              c.edu_training,
+              c.certifications
+            )
+            const title = c.title || c.current_job_title || ''
+            const location = c.location || c.city || c.current_location_name || ''
+            return {
+              candidate_id: c.id,
+              full_name: c.fullName || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim(),
+              location,
+              current_job_title: title,
+              skills,
+              qualifications,
+              keywords: normalizeList(c.keywords)
+            }
+          }),
           instruction:
-            'Score every candidate 0–100%. Prioritise skills & formal qualifications matching the job; also consider job title relevance and London location proximity. In "reason", cite specific matched/missing skills/quals and any title/location notes. Avoid generic reasons.'
+            'Score every candidate 0–100%. Prioritise skills & formal qualifications matching the job; also consider job title relevance and location proximity. In "reason", cite specific matched/missing skills/quals and any title/location notes. Avoid generic reasons.'
         })
       })
 
       const aiText = await ai.text()
       let outer: any = {}
-      try { outer = JSON.parse(aiText) } catch { outer = {} }
+      try { outer = JSON.parse(aiText) } catch {
+        // try to parse string content if it’s a wrapped response
+        try {
+          const maybe = JSON.parse((aiText || '').replace(/```json|```/g, '').trim())
+          outer = maybe
+        } catch { outer = {} }
+      }
 
-      // Coerce variants: score_percent | score | score_pct | suitability_score
+      // Accept direct {ranked:[...]} or wrapped choices[0].message.content
       const ranked = Array.isArray(outer?.ranked)
         ? outer.ranked
         : (() => {
             const content = outer?.choices?.[0]?.message?.content
             if (typeof content === 'string') {
-              try { const p = JSON.parse(content); return Array.isArray(p?.ranked) ? p.ranked : [] } catch { return [] }
+              try {
+                const cleaned = content.replace(/```json|```/g, '').trim()
+                const p = JSON.parse(cleaned)
+                return Array.isArray(p?.ranked) ? p.ranked : []
+              } catch { return [] }
             }
             return []
           })()
@@ -363,35 +411,12 @@ function MatchTab() {
           score: s,
           reason: String(r.reason || ''),
           linkedin: c?.linkedin || undefined,
-          title: c?.title || ''
+          title: c?.title || c?.current_job_title || ''
         }
       })
-      // 💡 Explicitly type the sort callback to satisfy TS
-      scoredRows = scoredRows.sort((a: ScoredRow, b: ScoredRow) => b.score - a.score)
 
-      // Fallback if model returned nothing/zeros
-      if (scoredRows.length === 0 || scoredRows.every(r => r.score === 0)) {
-        const j: JobSummary = {
-          job_title: t,
-          location: loc,
-          skills: skillsStr.split(',').map(s => s.trim()).filter(Boolean),
-          qualifications: qualsStr.split(',').map(s => s.trim()).filter(Boolean)
-        }
-        scoredRows = candidates.map(c => {
-          const s = fallbackScore(j, { title: c.title, location: c.location || c.city, skills: c.skills, qualifications: c.qualifications })
-          const reason = `Heuristic: ${s}% based on skills/quals/title/location overlap.`
-          const candidateName = c.fullName || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim() || String(c.id)
-          return {
-            candidateId: String(c.id),
-            candidateName,
-            score: s,
-            reason,
-            linkedin: c.linkedin || undefined,
-            title: c.title || ''
-          }
-        })
-        scoredRows = scoredRows.sort((a: ScoredRow, b: ScoredRow) => b.score - a.score)
-      }
+      // Explicit types on comparator for TS
+      scoredRows = scoredRows.sort((a: ScoredRow, b: ScoredRow) => b.score - a.score)
 
       setScored(scoredRows)
       setView('ai')
@@ -422,9 +447,9 @@ function MatchTab() {
 
   const statusText = loadingSearch
     ? ['Zitko AI is thinking…',
-       'Matching skills and qualifications…',
-       'Cross-checking titles and keywords…',
-       'Comparing to location…'][funIdx % 4]
+       'Matching skills & qualifications…',
+       'Cross-checking titles & keywords…',
+       'Comparing against job location…'][funIdx % 4]
     : (view === 'ai' ? 'Viewing AI scores' : 'Viewing raw results')
 
   return (
