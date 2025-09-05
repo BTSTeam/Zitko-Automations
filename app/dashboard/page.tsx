@@ -604,7 +604,7 @@ function SourceTab() {
     function handleMessage(e: MessageEvent) {
       if (!formId) return
       if (typeof e.data !== 'string') return
-      const parts = e.data split(':')
+      const parts = e.data.split(':')
       if (parts[0] === 'setHeight') {
         const newH = Number(parts[1])
         if (!Number.isNaN(newH) && newH > 0) setHeight(newH + 20)
