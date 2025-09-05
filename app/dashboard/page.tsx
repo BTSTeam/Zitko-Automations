@@ -365,7 +365,9 @@ function MatchTab() {
           linkedin: c?.linkedin || undefined,
           title: c?.title || ''
         }
-      }).sort((a, b) => b.score - a.score)
+      })
+      // 💡 Explicitly type the sort callback to satisfy TS
+      scoredRows = scoredRows.sort((a: ScoredRow, b: ScoredRow) => b.score - a.score)
 
       // Fallback if model returned nothing/zeros
       if (scoredRows.length === 0 || scoredRows.every(r => r.score === 0)) {
@@ -387,7 +389,8 @@ function MatchTab() {
             linkedin: c.linkedin || undefined,
             title: c.title || ''
           }
-        }).sort((a,b)=>b.score-a.score)
+        })
+        scoredRows = scoredRows.sort((a: ScoredRow, b: ScoredRow) => b.score - a.score)
       }
 
       setScored(scoredRows)
