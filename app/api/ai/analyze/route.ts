@@ -19,11 +19,10 @@ STRICT OUTPUT:
 - Each item in "ranked" must have: "candidate_id" (string), "score_percent" (number), "reason" (string).
 
 SCORING RUBRIC (sum to ~100):
-- Core hard skills/tooling: 35
-- Formal qualifications/certifications: 20
+- Core hard skills/tooling: 40
+- Formal qualifications/certifications: 30
 - Current/last job title relevance: 20
-- Location proximity/commutability: 20
-- Other relevant keywords: 5
+- Other relevant keywords: 10
 
 GUIDELINES:
 - Reward close synonyms (e.g., "Milestone XProtect" ≈ "Milestone"); treat minor spelling variants as matches.
