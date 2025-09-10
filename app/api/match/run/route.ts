@@ -53,7 +53,7 @@ function encodeForVincereQuery(q: string) {
 }
 
 // Build q to mirror the working cURL as closely as possible:
-// current_job_title:"Title"# AND (current_city:"City"# OR current_location_name:"City"#) AND (skill:S1# OR skill:S2#)
+// current_job_title:"Title"# AND (current_city:"City"# OR current_location_name:"City"#) AND (skill:S1# AND skill:S2#)
 function buildQuery(job: NonNullable<RunReq['job']>) {
   const title = (job.title ?? '').trim()
   const city  = pickCityFromLocation(job.location)
@@ -66,7 +66,7 @@ function buildQuery(job: NonNullable<RunReq['job']>) {
   const skills = uniq(job.skills ?? []).slice(0, 2)
   const skillTerms = skills.map(s => `skill:${s}#`) // no quotes on skills
   const skillsClause = skillTerms.length
-    ? `(${skillTerms.join(' OR ')})` // OR to match your successful cURL
+    ? `(${skillTerms.join(' AND ')})` // OR to match your successful cURL
     : ''
 
   let q = ''
