@@ -246,7 +246,6 @@ function MatchTab() {
     'Matching skills & qualifications…',
     'Oops!…we’re ranking again.',
     'Cross-checking titles & keywords…',
-    'Comparing against job location…',
     'Backstreet’s back, alright!',
   ]
   const [funIdx, setFunIdx] = useState(0)
