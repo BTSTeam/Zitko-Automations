@@ -7,7 +7,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Missing OPENAI_API_KEY' }, { status: 500 })
   }
 
-  const { job, candidates, instruction } = await req.json()
+  const { job, candidates } = await req.json()
 
  const system =
   'You are an expert recruitment consultant in the fire & security industry. Return only valid JSON with a "ranked" array.';
