@@ -98,7 +98,7 @@ function buildQueryWithPair(job: NonNullable<RunReq['job']>, pair: [string?, str
 
 // matrix_vars EXACT per your spec
 function buildMatrixVars() {
-  return 'fl=id,first_name,last_name,current_location_name,current_job_title,linkedin,keywords,skill,edu_qualification,edu_degree,edu_course,edu_institution,edu_training;sort=created_date asc';
+  return 'fl=id,first_name,last_name,current_location,current_job_title,linkedin,keywords,skill,edu_qualification,edu_degree,edu_course,edu_institution,edu_training;sort=created_date asc';
 }
 
 // Prefer provided job (already extracted on the client)
