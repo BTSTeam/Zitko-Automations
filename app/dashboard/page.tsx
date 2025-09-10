@@ -31,12 +31,11 @@ type ScoredRow = {
   reason: string
   linkedin?: string
   title?: string
-  // new: show what matched so it's obvious why the AI scored them
   matchedSkills?: string[]
   location?: string
 }
 
-// ---------- helpers ----------
+/* ---------------- helpers ---------------- */
 function htmlToText(html?: string): string {
   if (!html) return ''
   try {
@@ -63,6 +62,16 @@ function scoreColor(score: number) {
   if (score >= 80) return 'text-green-600'
   if (score >= 50) return 'text-amber-600'
   return 'text-red-600'
+}
+
+// skill token normalizer + tiny stemmer to align "service/services/servicing/serviced"
+function stem(s: string): string {
+  const t = s.toLowerCase().replace(/[^a-z0-9+.#/ ]+/g, '').trim()
+  // basic endings commonly seen in skills nouns/verbs
+  return t
+    .replace(/(ing|ed|es)\b/g, '') // servicing -> servic, serviced -> servic, services -> servic
+    .replace(/(\s{2,})/g, ' ')
+    .trim()
 }
 
 // Normalize any mix of arrays/strings/nulls into a flat, deduped string[]
@@ -101,6 +110,7 @@ function normalizeList(...items: any[]): string[] {
   return dedup
 }
 
+/* ---------------- UI bits ---------------- */
 function Tabs({
   tab,
   setTab
@@ -118,6 +128,32 @@ function Tabs({
       <Item id="match">Candidate Matching</Item>
       <Item id="source">Candidate Sourcing</Item>
       <Item id="cv">CV Formatting</Item>
+    </div>
+  )
+}
+
+function Modal({
+  open,
+  onClose,
+  title,
+  children
+}: {
+  open: boolean
+  onClose: () => void
+  title: string
+  children: ReactNode
+}) {
+  if (!open) return null
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-xl max-w-4xl w-[92vw] max-h-[80vh] overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-3 border-b">
+          <div className="font-semibold">{title}</div>
+          <button className="text-gray-500 hover:text-gray-800" onClick={onClose}>✕</button>
+        </div>
+        <div className="p-4 overflow-auto">{children}</div>
+      </div>
     </div>
   )
 }
@@ -200,6 +236,10 @@ function MatchTab() {
   const [scored, setScored] = useState<ScoredRow[]>([])
   const [view, setView] = useState<'ai' | 'raw'>('raw')
 
+  // NEW: JSON modal
+  const [showJson, setShowJson] = useState(false)
+  const [aiPayload, setAiPayload] = useState<any>(null)
+
   // fun status near AI Scored (slow rotation)
   const funMessages = [
     'Zitko AI is thinking…',
@@ -281,7 +321,7 @@ function MatchTab() {
     const { job: activeJob, title: t, location: loc, skillsText: skillsStr, qualsText: qualsStr } = active
 
     setLoadingSearch(true)
-    setScored([]); setRawCands([])
+    setScored([]); setRawCands([]); setAiPayload(null)
 
     try {
       // Vincere search
@@ -326,7 +366,7 @@ function MatchTab() {
         certifications?: string[] | string
       }>
 
-      // Raw list now (show richer fields)
+      // Raw list
       setRawCands(candidates.map(c => {
         const title = c.title || c.current_job_title || ''
         const location = extractCity(c.current_location_name || c.city || c.location || '')
@@ -342,62 +382,65 @@ function MatchTab() {
       }))
       setView('raw')
 
-      // --- AI analyze — send better-normalized data + explicit “matchedSkills” + guaranteed location
+      // --- AI analyze
       const jobSkills = skillsStr.split(',').map(s => s.trim()).filter(Boolean)
-      const jobSkillsLower = new Set(jobSkills.map(s => s.toLowerCase()))
+      const jobSkillsStem = new Set(jobSkills.map(stem))
+
+      const payloadToAI = {
+        meta: {
+          note: `All candidates were pre-filtered by location in Vincere to "${loc}". If candidate location is missing, assume it matches "${loc}". Do not penalize for missing location.`,
+          location_filter_applied: true,
+          city: loc
+        },
+        job: {
+          title: t,
+          location: loc,
+          skills: jobSkills,
+          qualifications: qualsStr.split(',').map(s => s.trim()).filter(Boolean),
+          description: `${activeJob.public_description || ''}\n\n${activeJob.internal_description || ''}`.trim()
+        },
+        candidates: candidates.map(c => {
+          const candSkills = normalizeList(c.skills, c.skill, c.keywords)
+          const candSkillsStem = candSkills.map(stem)
+          const matchedSkills = candSkills.filter((s, i) => jobSkillsStem.has(candSkillsStem[i]))
+          const title = c.title || c.current_job_title || ''
+          const rawLoc = c.current_location_name || c.city || c.location || ''
+          const locCity = extractCity(rawLoc) || loc // if empty, fall back to job city
+          return {
+            candidate_id: String(c.id),
+            full_name: c.fullName || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim() || String(c.id),
+            location: locCity,
+            location_source: extractCity(rawLoc) ? 'candidate_field' : 'inferred_from_filter',
+            current_job_title: title,
+            skills: candSkills,
+            matched_skills: matchedSkills,
+            qualifications: normalizeList(
+              c.qualifications,
+              c.edu_qualification,
+              c.edu_degree,
+              c.edu_course,
+              c.edu_training,
+              c.certifications
+            ),
+            raw: { original_location_field: rawLoc }
+          }
+        })
+      }
+
+      // store payload for "Show JSON"
+      setAiPayload(payloadToAI)
 
       const ai = await fetch('/api/ai/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          meta: {
-            note: `All candidates were pre-filtered by location in Vincere to "${loc}". Treat missing candidate location fields as a match.`,
-            location_filter_applied: true,
-            city: loc
-          },
-          job: {
-            title: t,
-            location: loc,
-            skills: jobSkills,
-            qualifications: qualsStr.split(',').map(s => s.trim()).filter(Boolean),
-            description: `${activeJob.public_description || ''}\n\n${activeJob.internal_description || ''}`.trim()
-          },
-          candidates: candidates.map(c => {
-            const candSkills = normalizeList(c.skills, c.skill, c.keywords)
-            const candSkillsLower = candSkills.map(s => s.toLowerCase())
-            const matchedSkills = candSkills.filter((s) => jobSkillsLower.has(s.toLowerCase()))
-            const title = c.title || c.current_job_title || ''
-            const rawLoc = c.current_location_name || c.city || c.location || ''
-            const locationCity = extractCity(rawLoc)
-            return {
-              candidate_id: String(c.id),
-              full_name: c.fullName || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim() || String(c.id),
-              location: locationCity || 'Unknown', // never empty (helps avoid "Location not provided")
-              current_job_title: title,
-              skills: candSkills, // includes "Service" etc.
-              matched_skills: matchedSkills,
-              qualifications: normalizeList(
-                c.qualifications,
-                c.edu_qualification,
-                c.edu_degree,
-                c.edu_course,
-                c.edu_training,
-                c.certifications
-              ),
-              raw: { // benign extra context for the model if it uses it
-                original_location_field: rawLoc
-              }
-            }
-          })
-        })
+        body: JSON.stringify(payloadToAI)
       })
 
       const aiText = await ai.text()
       let outer: any = {}
       try { outer = JSON.parse(aiText) } catch {
         try {
-          const maybe = JSON.parse((aiText || '').replace(/```json|```/g, '').trim())
-          outer = maybe
+          outer = JSON.parse((aiText || '').replace(/```json|```/g, '').trim())
         } catch { outer = {} }
       }
 
@@ -421,12 +464,11 @@ function MatchTab() {
         const s = Math.max(0, Math.min(100, Math.round(Number(scoreRaw) || 0)))
         const c = byId.get(String(r.candidate_id))
         const candidateName = c?.fullName || `${c?.firstName ?? ''} ${c?.lastName ?? ''}`.trim() || String(r.candidate_id)
-        // prefer the normalized fields we sent to the AI if it echoes them back
         const matchedSkills: string[] | undefined =
           Array.isArray(r?.matched_skills) ? r.matched_skills :
           Array.isArray((r?.details || {})?.matched_skills) ? (r.details.matched_skills) : undefined
 
-        const locationCity = extractCity(c?.current_location_name || c?.city || c?.location || '')
+        const locationCity = extractCity(c?.current_location_name || c?.city || c?.location || '') || loc
         return {
           candidateId: String(r.candidate_id),
           candidateName,
@@ -435,7 +477,7 @@ function MatchTab() {
           linkedin: (c as any)?.linkedinUrl || (c as any)?.linkedin || undefined,
           title: c?.title || c?.current_job_title || '',
           matchedSkills,
-          location: locationCity || undefined
+          location: locationCity
         }
       })
 
@@ -495,7 +537,6 @@ function MatchTab() {
 
           {/* Right: Job Summary / Fields */}
           <div>
-
             <div className="grid sm:grid-cols-2 gap-4 text-sm mb-2">
               <div>
                 <div className="text-gray-500">Job Title</div>
@@ -511,7 +552,6 @@ function MatchTab() {
               </div>
               {/* Qualifications intentionally hidden from UI but used in scoring */}
             </div>
-
             {/* Description toggle removed from UI per request; descriptions still used in backend */}
           </div>
         </div>
@@ -519,7 +559,7 @@ function MatchTab() {
         {/* Faint divider between top section and results controls */}
         <div className="h-px bg-gray-200 my-4" />
 
-        <div className="mt-2 flex flex-wrap gap-3 items-center">
+        <div className="mt-2 flex flex-wrap items-center gap-3">
           <button
             className={`btn ${view==='raw' ? 'btn-brand' : 'btn-grey'} ${beforeScores ? 'opacity-50' : ''}`}
             onClick={() => setView('raw')}
@@ -527,6 +567,7 @@ function MatchTab() {
           >
             Raw Candidates {rawCands.length ? `(${rawCands.length})` : ''}
           </button>
+
           <div className="flex items-center gap-2">
             <button
               className={`btn ${view==='ai' ? 'btn-brand' : 'btn-grey'} ${beforeScores ? 'opacity-50' : ''}`}
@@ -536,6 +577,18 @@ function MatchTab() {
               AI Scored {scored.length ? `(${scored.length})` : ''}
             </button>
             <span className="text-sm text-gray-600">{statusText}</span>
+          </div>
+
+          {/* NEW: Show JSON button aligned far right */}
+          <div className="ml-auto">
+            <button
+              className="btn btn-grey"
+              onClick={() => setShowJson(true)}
+              disabled={!aiPayload}
+              title={aiPayload ? 'Show the exact JSON sent to ChatGPT' : 'Run a search & scoring first'}
+            >
+              Show JSON
+            </button>
           </div>
         </div>
       </div>
@@ -582,6 +635,32 @@ function MatchTab() {
           </div>
         )}
       </div>
+
+      {/* JSON Modal */}
+      <Modal open={showJson} onClose={() => setShowJson(false)} title="JSON sent to ChatGPT">
+        {!aiPayload ? (
+          <div className="text-sm text-gray-500">No payload available yet. Run a search & scoring first.</div>
+        ) : (
+          <div>
+            <div className="mb-2 flex items-center gap-2">
+              <button
+                className="btn btn-grey"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(JSON.stringify(aiPayload, null, 2))
+                    alert('Copied to clipboard')
+                  } catch { /* ignore */ }
+                }}
+              >
+                Copy to clipboard
+              </button>
+            </div>
+            <pre className="rounded-2xl border p-4 text-xs overflow-auto max-h-[60vh]">
+              {JSON.stringify(aiPayload, null, 2)}
+            </pre>
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }
