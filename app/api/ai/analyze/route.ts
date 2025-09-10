@@ -10,21 +10,28 @@ export async function POST(req: NextRequest) {
   const { job, candidates, instruction } = await req.json()
 
   const system = `
-You are a recruitment matching assistant for Zitko.
-Score each candidate with this strict weighting:
-• Skills match: 40%
-• Formal qualifications/certifications: 40%
-• Job title relevance/seniority: 20%
+instruction:
+  `You are scoring candidates for a specific job on a 0–100 scale.
 
-Guidance:
-• Use synonyms and close variants for skills.
-• Qualifications include ECS/CSCS/IPAF/PASMA/etc.
-• Title relevance: same/similar titles score higher; junior/embedded score lower.
-• Reason must cite specific matched/missing skills/quals and any title/location notes.
+SCORING RUBRIC (sum to ~100):
+- Core hard skills/tooling: 35
+- Formal qualifications/certifications: 20
+- Current/last job title relevance: 20
+- Location proximity/commutability: 20
+- Other relevant keywords: 5
 
-Output strictly JSON like:
-{"ranked":[{"candidate_id":"id","score_percent":87,"reason":"concise, specific"}]}
-No extra keys or prose.
+GUIDELINES:
+- Reward close synonyms (e.g., "Milestone XProtect" ≈ "Milestone").
+- Treat commute-friendly nearby cities as acceptable unless the job explicitly requires on-site in a specific city.
+- Do NOT zero a candidate for a single missing skill if the rest is strong—scale proportionally.
+- Title variations like "Senior Security Engineer" or "Security Systems Engineer" should score well.
+- If qualifications are missing but skills are strong, do not drop below 40% solely for that reason.
+
+OUTPUT FORMAT:
+Return JSON with key "ranked": an array of:
+  { "candidate_id": string, "score_percent": number, "reason": string }
+
+"reason" must cite specific matched skills/quals and any notable gaps (40 word response).`
 `.trim()
 
   const user = JSON.stringify({
