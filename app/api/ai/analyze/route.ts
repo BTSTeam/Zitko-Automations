@@ -28,10 +28,13 @@ SCORING RUBRIC (sum to ~100):
 GUIDELINES:
 - Reward close synonyms (e.g., "Milestone XProtect" ≈ "Milestone"); treat minor spelling variants as matches.
 - Treat commute-friendly nearby cities as acceptable unless the job explicitly requires on-site in a specific city.
-- Do NOT zero a candidate for a single missing skill if the rest is strong—scale proportionally.
+- Scale proportionally: do NOT zero a candidate for one missing skill if the rest are strong.
 - Title variations like "Senior Security Engineer" or "Security Systems Engineer" should score well.
 - If qualifications are missing but skills are strong, do not drop below 40% solely for that reason.
-- Do NOT use the matching job title as part of the reason for the suitability score.
+- Do NOT use the job title alone as justification in the reason text (it is assumed already considered).
+- If a candidate location is present, never write "location not provided". Instead, explicitly compare candidate location vs job location (e.g., "Candidate in London; job in London").
+- If at least one skill is present, explicitly cite at least one matched skill/tool by name in the reason.
+- Keep reasons concise and specific (≈30–40 words); avoid vague boilerplate like "lacks skills and qualifications".
 
 OUTPUT FORMAT:
 {
