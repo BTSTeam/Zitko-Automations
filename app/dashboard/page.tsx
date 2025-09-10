@@ -64,13 +64,10 @@ function scoreColor(score: number) {
   return 'text-red-600'
 }
 
-// skill token normalizer + tiny stemmer to align "service/services/servicing/serviced"
+// tiny normalizer/stemmer
 function stem(s: string): string {
   const t = s.toLowerCase().replace(/[^a-z0-9+.#/ ]+/g, '').trim()
-  return t
-    .replace(/(ing|ed|es)\b/g, '') // servicing -> servic, serviced -> servic, services -> servic
-    .replace(/(\s{2,})/g, ' ')
-    .trim()
+  return t.replace(/(ing|ed|es)\b/g, '').replace(/(\s{2,})/g, ' ').trim()
 }
 
 // Normalize any mix of arrays/strings/nulls into a flat, deduped string[]
@@ -109,25 +106,17 @@ function normalizeList(...items: any[]): string[] {
   return dedup
 }
 
-// ⬇️ moved OUTSIDE normalizeList so it’s in scope where we use it
+// Keep non-location reasoning text
 function stripLocationSentences(text: string): string {
   if (!text) return text
   const sentences = text.split(/(?<=\.)\s+/)
-  const filtered = sentences.filter(s =>
-    !/\b(location|commute|commutability|city|distance|relocat)/i.test(s)
-  )
+  const filtered = sentences.filter(s => !/\b(location|commute|commutability|city|distance|relocat)/i.test(s))
   const out = filtered.join(' ').trim()
   return out || text
 }
 
 /* ---------------- UI bits ---------------- */
-function Tabs({
-  tab,
-  setTab
-}: {
-  tab: TabKey
-  setTab: Dispatch<SetStateAction<TabKey>>
-}) {
+function Tabs({ tab, setTab }: { tab: TabKey; setTab: Dispatch<SetStateAction<TabKey>> }) {
   const Item = ({ id, children }: { id: TabKey; children: ReactNode }) => (
     <button onClick={() => setTab(id)} className={`tab ${tab === id ? 'tab-active' : ''}`}>
       {children}
@@ -142,17 +131,7 @@ function Tabs({
   )
 }
 
-function Modal({
-  open,
-  onClose,
-  title,
-  children
-}: {
-  open: boolean
-  onClose: () => void
-  title: string
-  children: ReactNode
-}) {
+function Modal({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: ReactNode }) {
   if (!open) return null
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -198,9 +177,7 @@ function AIScoredList({ rows }: { rows: ScoredRow[] }) {
                   </div>
                 )}
                 {r.reason && (
-                  <div className="text-sm text-gray-700 mt-2 whitespace-pre-wrap">
-                    {r.reason}
-                  </div>
+                  <div className="text-sm text-gray-700 mt-2 whitespace-pre-wrap">{r.reason}</div>
                 )}
               </div>
 
@@ -217,9 +194,7 @@ function AIScoredList({ rows }: { rows: ScoredRow[] }) {
                 >
                   ID: {r.candidateId}
                 </button>
-                {copied === r.candidateId && (
-                  <div className="text-[10px] text-green-600 mt-1">Copied!</div>
-                )}
+                {copied === r.candidateId && <div className="text-[10px] text-green-600 mt-1">Copied!</div>}
               </div>
             </div>
           </li>
@@ -246,11 +221,14 @@ function MatchTab() {
   const [scored, setScored] = useState<ScoredRow[]>([])
   const [view, setView] = useState<'ai' | 'raw'>('raw')
 
-  // NEW: JSON modal
+  // Debug info from /api/match/run (if available)
+  const [serverCount, setServerCount] = useState<number | null>(null)
+  const [serverQuery, setServerQuery] = useState<string | null>(null)
+
+  // JSON modal
   const [showJson, setShowJson] = useState(false)
   const [aiPayload, setAiPayload] = useState<any>(null)
 
-  // fun status near AI Scored (slow rotation)
   const funMessages = [
     'Zitko AI is thinking…',
     'Matching skills & qualifications…',
@@ -268,18 +246,14 @@ function MatchTab() {
   // --- Retrieve job
   const retrieveJob = async (): Promise<JobSummary | null> => {
     if (!jobId) return null
-    setScored([]); setRawCands([])
+    setScored([]); setRawCands([]); setServerCount(null); setServerQuery(null)
 
     try {
       const r = await fetch(`/api/vincere/position/${encodeURIComponent(jobId)}`, { cache: 'no-store' })
       const data = await r.json()
 
-      const publicRaw = htmlToText(
-        data?.public_description || data?.publicDescription || data?.description || ''
-      )
-      const internalRaw = htmlToText(
-        data?.internal_description || data?.internalDescription || data?.job_description || data?.description_internal || ''
-      )
+      const publicRaw = htmlToText(data?.public_description || data?.publicDescription || data?.description || '')
+      const internalRaw = htmlToText(data?.internal_description || data?.internalDescription || data?.job_description || data?.description_internal || '')
 
       const extractResp = await fetch('/api/job/extract', {
         method: 'POST',
@@ -290,8 +264,8 @@ function MatchTab() {
 
       const skillsArr: string[] = Array.isArray(extracted?.skills) ? extracted.skills : []
       const qualsArr: string[] = Array.isArray(extracted?.qualifications) ? extracted.qualifications : []
-
       const cleanedLocation = extractCity(String(extracted?.location || '').trim())
+
       const summary: JobSummary = {
         id: jobId,
         job_title: String(extracted?.title || '').trim(),
@@ -317,22 +291,16 @@ function MatchTab() {
   }
 
   // --- Run search + AI
-  const runSearch = async (input?: {
-    job: JobSummary
-    title: string
-    location: string
-    skillsText: string
-    qualsText: string
-  }) => {
+  const runSearch = async (input?: { job: JobSummary; title: string; location: string; skillsText: string; qualsText: string }) => {
     const active = input ?? (job ? { job, title, location, skillsText, qualsText } : null)
     if (!active) return
     const { job: activeJob, title: t, location: loc, skillsText: skillsStr, qualsText: qualsStr } = active
 
     setLoadingSearch(true)
-    setScored([]); setRawCands([]); setAiPayload(null)
+    setScored([]); setRawCands([]); setAiPayload(null); setServerCount(null); setServerQuery(null)
 
     try {
-      // Vincere search
+      // Vincere search (ask for a high limit; server may cap)
       const run = await fetch('/api/match/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -344,7 +312,7 @@ function MatchTab() {
             qualifications: qualsStr.split(',').map(s=>s.trim()).filter(Boolean),
             description: activeJob.public_description || ''
           },
-          limit: 300,
+          limit: 500,
           debug: true
         })
       })
@@ -374,8 +342,12 @@ function MatchTab() {
         certifications?: string[] | string
       }>
 
+      // Capture server debug (if provided)
+      if (typeof payload?.count === 'number') setServerCount(payload.count)
+      if (typeof payload?.query === 'string') setServerQuery(payload.query)
+
       // Raw list
-      setRawCands(candidates.map(c => {
+      const raw = candidates.map(c => {
         const title = c.title || c.current_job_title || ''
         const location = extractCity(c.current_location_name || c.city || c.location || '')
         const skills = normalizeList(c.skills, c.skill, c.keywords)
@@ -387,10 +359,11 @@ function MatchTab() {
           linkedin: (c.linkedinUrl ?? c.linkedin) ?? null,
           skills
         }
-      }))
+      })
+      setRawCands(raw)
       setView('raw')
 
-      // --- AI analyze (NO location in scoring)
+      // --- AI analyze (IGNORE location for scoring)
       const jobSkills = skillsStr.split(',').map(s => s.trim()).filter(Boolean)
       const jobSkillsStem = new Set(jobSkills.map(stem))
 
@@ -401,7 +374,6 @@ function MatchTab() {
         },
         job: {
           title: t,
-          // location REMOVED
           skills: jobSkills,
           qualifications: qualsStr.split(',').map(s => s.trim()).filter(Boolean),
           description: `${activeJob.public_description || ''}\n\n${activeJob.internal_description || ''}`.trim()
@@ -440,12 +412,10 @@ function MatchTab() {
       const aiText = await ai.text()
       let outer: any = {}
       try { outer = JSON.parse(aiText) } catch {
-        try {
-          outer = JSON.parse((aiText || '').replace(/```json|```/g, '').trim())
-        } catch { outer = {} }
+        try { outer = JSON.parse((aiText || '').replace(/```json|```/g, '').trim()) } catch { outer = {} }
       }
 
-      const ranked = Array.isArray(outer?.ranked)
+      const rankedRaw = Array.isArray(outer?.ranked)
         ? outer.ranked
         : (() => {
             const content = outer?.choices?.[0]?.message?.content
@@ -459,7 +429,19 @@ function MatchTab() {
             return []
           })()
 
+      // === CRITICAL FIX ===
+      // Only keep AI rows that exist in raw Vincere candidates; dedupe by candidate_id.
       const byId = new Map(candidates.map(c => [String(c.id), c]))
+      const seenIds = new Set<string>()
+      const ranked = rankedRaw
+        .filter((r: any) => byId.has(String(r.candidate_id)))
+        .filter((r: any) => {
+          const id = String(r.candidate_id)
+          if (seenIds.has(id)) return false
+          seenIds.add(id)
+          return true
+        })
+
       let scoredRows: ScoredRow[] = ranked.map((r: any) => {
         const scoreRaw = r.score_percent ?? r.score ?? r.score_pct ?? r.suitability_score ?? 0
         const s = Math.max(0, Math.min(100, Math.round(Number(scoreRaw) || 0)))
@@ -482,8 +464,7 @@ function MatchTab() {
         }
       })
 
-      scoredRows = scoredRows.sort((a: ScoredRow, b: ScoredRow) => b.score - a.score)
-
+      scoredRows = scoredRows.sort((a, b) => b.score - a.score)
       setScored(scoredRows)
       setView('ai')
     } catch (e) {
@@ -512,9 +493,7 @@ function MatchTab() {
   }
 
   const statusText = loadingSearch
-    ? ['Zitko AI is thinking…',
-       'Matching skills & qualifications…',
-       'Cross-checking titles & keywords…'][funIdx % 3]
+    ? ['Zitko AI is thinking…','Matching skills & qualifications…','Cross-checking titles & keywords…'][funIdx % 3]
     : (view === 'ai' ? 'Viewing AI scores' : 'Viewing raw results')
 
   const beforeScores = scored.length === 0
@@ -525,7 +504,7 @@ function MatchTab() {
         <div className="grid md:grid-cols-2 gap-6">
           {/* Left: Search by Job ID */}
           <div>
-            <p className="mb-4">Enter your Vincere Job ID to return the job details.</p>
+            <p className="mb-4">Enter your Vincere Job ID to find matching candidates.</p>
             <div>
               <label className="text-sm text-gray-600">Job ID</label>
               <input className="input mt-1" placeholder="Enter Job ID" value={jobId} onChange={e=>setJobId(e.target.value)} />
@@ -550,13 +529,13 @@ function MatchTab() {
                 <div className="text-gray-500">Skills (comma-separated)</div>
                 <input className="input mt-1" value={skillsText} onChange={e=>setSkillsText(e.target.value)} placeholder="CCTV, Access Control, IP Networking" />
               </div>
-              {/* Qualifications intentionally hidden from UI but used in scoring */}
+              {/* Qualifications hidden from UI but used in scoring */}
             </div>
-            {/* Description toggle removed from UI per request; descriptions still used in backend */}
+            {/* Descriptions used in backend; toggle removed */}
           </div>
         </div>
 
-        {/* Faint divider between top section and results controls */}
+        {/* Faint divider */}
         <div className="h-px bg-gray-200 my-4" />
 
         <div className="mt-2 flex flex-wrap items-center gap-3">
@@ -579,7 +558,16 @@ function MatchTab() {
             <span className="text-sm text-gray-600">{statusText}</span>
           </div>
 
-          {/* NEW: Show JSON button aligned far right */}
+          {/* Debug counts (from server) */}
+          {(serverCount !== null || serverQuery) && (
+            <div className="ml-0 md:ml-4 text-xs text-gray-500">
+              {serverCount !== null && <span>Server count: <b>{serverCount}</b></span>}
+              {serverCount !== null && serverQuery && <span> • </span>}
+              {serverQuery && <span>q: <code className="break-all">{serverQuery}</code></span>}
+            </div>
+          )}
+
+          {/* Show JSON button – far right */}
           <div className="ml-auto">
             <button
               className="btn btn-grey"
@@ -649,7 +637,7 @@ function MatchTab() {
                   try {
                     await navigator.clipboard.writeText(JSON.stringify(aiPayload, null, 2))
                     alert('Copied to clipboard')
-                  } catch { /* ignore */ }
+                  } catch {}
                 }}
               >
                 Copy to clipboard
@@ -691,11 +679,7 @@ function SourceTab() {
     <div className="card p-6">
       <div className="mb-4 flex items-center justify-between">
         <p className="m-0">Complete the form below to source relevant candidates directly to your email inbox.</p>
-        {hasUrl && (
-          <button className="btn btn-brand" onClick={refreshForm} title="Reload form">
-            Refresh
-          </button>
-        )}
+        {hasUrl && <button className="btn btn-brand" onClick={refreshForm} title="Reload form">Refresh</button>}
       </div>
 
       {!hasUrl ? (
