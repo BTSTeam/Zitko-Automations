@@ -63,20 +63,34 @@ function buildQuery(job: NonNullable<RunReq['job']>) {
     ? `( ${toClause('current_city', city)} OR ${toClause('current_location_name', city)} )`
     : ''
 
-  // take up to 2 required skills (increase if you want)
+ // take up to N required skills from the user's/job's input
 const skills = uniq(job.skills ?? []).slice(0, 2)
 
-// AND across skills; for each skill, allow match in skill OR keywords
+// simple plural/singular helper (no fixed aliases)
+function variants(raw: string): string[] {
+  const s = String(raw || '').trim()
+  if (!s) return []
+  const lower = s.toLowerCase()
+  const set = new Set<string>([s])
+  if (lower.endsWith('s')) set.add(s.slice(0, -1)) // installations -> installation
+  else set.add(s + 's')                              // installation -> installations
+  return Array.from(set)
+}
+
+// AND across skills; each skill can match exact phrase in `skill` OR containing in `keywords`
 const skillGroups = skills.map((raw) => {
-  const s = String(raw).trim()
-  if (!s) return ''
-  const quoted = `"${s.replace(/"/g, '\\"')}"` // support spaces & quotes
-  return `(skill:${quoted}# OR keywords:${quoted}#)`
+  const alts = variants(raw)
+  if (!alts.length) return ''
+  const parts: string[] = []
+  // exact phrase in structured skills (quoted)
+  parts.push(`skill:"${alts[0].replace(/"/g, '\\"')}"#`)
+  // containing matches in keywords (unquoted so "Service" matches "Customer Service")
+  for (const alt of alts) parts.push(`keywords:${alt.replace(/"/g, '\\"')}#`)
+  return `(${parts.join(' OR ')})`
 }).filter(Boolean)
 
-const skillsClause = skillGroups.length
-  ? `(${skillGroups.join(' AND ')})`
-  : ''
+const skillsClause = skillGroups.length ? `(${skillGroups.join(' AND ')})` : ''
+
 
   let q = ''
   if (titleClause)  q = titleClause
