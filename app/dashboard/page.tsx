@@ -31,6 +31,9 @@ type ScoredRow = {
   reason: string
   linkedin?: string
   title?: string
+  // new: show what matched so it's obvious why the AI scored them
+  matchedSkills?: string[]
+  location?: string
 }
 
 // ---------- helpers ----------
@@ -44,7 +47,7 @@ function htmlToText(html?: string): string {
       .replace(/\n{3,}/g, '\n\n')
       .trim()
   } catch {
-    return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+    return (html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
   }
 }
 
@@ -75,13 +78,13 @@ function normalizeList(...items: any[]): string[] {
     if (Array.isArray(item)) {
       for (const v of item) {
         if (typeof v === 'string') {
-          v.split(/[,;|/•#]+/g).forEach(push)
+          v.split(/[,;|/•#()\-\+]+/g).forEach(push)
         } else if (v != null) {
           push(String(v))
         }
       }
     } else if (typeof item === 'string') {
-      item.split(/[,;|/•#]+/g).forEach(push)
+      item.split(/[,;|/•#()\-\+]+/g).forEach(push)
     } else {
       push(String(item))
     }
@@ -137,12 +140,19 @@ function AIScoredList({ rows }: { rows: ScoredRow[] }) {
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <div className="font-medium truncate">{r.candidateName}</div>
-                {!!r.title && <div className="text-sm text-gray-600">{r.title}</div>}
+                {!!r.title && <div className="text-sm text-gray-600">{r.title}{r.location ? ` • ${r.location}` : ''}</div>}
                 {r.linkedin && (
                   <a className="text-sm underline" href={r.linkedin} target="_blank" rel="noreferrer">LinkedIn</a>
                 )}
+                {r.matchedSkills && r.matchedSkills.length > 0 && (
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {r.matchedSkills.slice(0, 6).map(ms => (
+                      <span key={ms} className="px-2 py-0.5 text-xs rounded-full bg-gray-100 border">{ms}</span>
+                    ))}
+                  </div>
+                )}
                 {r.reason && (
-                  <div className="text-sm text-gray-700 mt-1 whitespace-pre-wrap">
+                  <div className="text-sm text-gray-700 mt-2 whitespace-pre-wrap">
                     {r.reason}
                   </div>
                 )}
@@ -305,6 +315,7 @@ function MatchTab() {
         skill?: string[] | string
         qualifications?: string[] | string
         linkedin?: string | null
+        linkedinUrl?: string | null
         keywords?: string[] | string
         current_job_title?: string
         current_location_name?: string
@@ -318,55 +329,66 @@ function MatchTab() {
       // Raw list now (show richer fields)
       setRawCands(candidates.map(c => {
         const title = c.title || c.current_job_title || ''
-        const location = c.location || c.city || c.current_location_name || ''
+        const location = extractCity(c.current_location_name || c.city || c.location || '')
         const skills = normalizeList(c.skills, c.skill, c.keywords)
         return {
           id: String(c.id),
           name: c.fullName || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim(),
           title,
           location,
-          linkedin: c.linkedin ?? null,
+          linkedin: (c.linkedinUrl ?? c.linkedin) ?? null,
           skills
         }
       }))
       setView('raw')
 
-      // AI analyze — send full, normalized skills/quals and both job descriptions
+      // --- AI analyze — send better-normalized data + explicit “matchedSkills” + guaranteed location
+      const jobSkills = skillsStr.split(',').map(s => s.trim()).filter(Boolean)
+      const jobSkillsLower = new Set(jobSkills.map(s => s.toLowerCase()))
+
       const ai = await fetch('/api/ai/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          meta: {
+            note: `All candidates were pre-filtered by location in Vincere to "${loc}". Treat missing candidate location fields as a match.`,
+            location_filter_applied: true,
+            city: loc
+          },
           job: {
             title: t,
             location: loc,
-            skills: skillsStr.split(',').map(s => s.trim()).filter(Boolean),
+            skills: jobSkills,
             qualifications: qualsStr.split(',').map(s => s.trim()).filter(Boolean),
             description: `${activeJob.public_description || ''}\n\n${activeJob.internal_description || ''}`.trim()
           },
           candidates: candidates.map(c => {
-            const skills = normalizeList(c.skills, c.skill, c.keywords)
-            const qualifications = normalizeList(
-              c.qualifications,
-              c.edu_qualification,
-              c.edu_degree,
-              c.edu_course,
-              c.edu_training,
-              c.certifications
-            )
+            const candSkills = normalizeList(c.skills, c.skill, c.keywords)
+            const candSkillsLower = candSkills.map(s => s.toLowerCase())
+            const matchedSkills = candSkills.filter((s) => jobSkillsLower.has(s.toLowerCase()))
             const title = c.title || c.current_job_title || ''
-            const location = c.location || c.city || c.current_location_name || ''
+            const rawLoc = c.current_location_name || c.city || c.location || ''
+            const locationCity = extractCity(rawLoc)
             return {
-              candidate_id: c.id,
-              full_name: c.fullName || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim(),
-              location,
+              candidate_id: String(c.id),
+              full_name: c.fullName || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim() || String(c.id),
+              location: locationCity || 'Unknown', // never empty (helps avoid "Location not provided")
               current_job_title: title,
-              skills,
-              qualifications,
-              keywords: normalizeList(c.keywords)
+              skills: candSkills, // includes "Service" etc.
+              matched_skills: matchedSkills,
+              qualifications: normalizeList(
+                c.qualifications,
+                c.edu_qualification,
+                c.edu_degree,
+                c.edu_course,
+                c.edu_training,
+                c.certifications
+              ),
+              raw: { // benign extra context for the model if it uses it
+                original_location_field: rawLoc
+              }
             }
-          }),
-          instruction:
-            'Score every candidate 0–100%. Prioritise skills & formal qualifications matching the job; also consider job title relevance and location proximity. In "reason", cite specific matched/missing skills/quals and any title/location notes. Avoid generic reasons.'
+          })
         })
       })
 
@@ -399,13 +421,21 @@ function MatchTab() {
         const s = Math.max(0, Math.min(100, Math.round(Number(scoreRaw) || 0)))
         const c = byId.get(String(r.candidate_id))
         const candidateName = c?.fullName || `${c?.firstName ?? ''} ${c?.lastName ?? ''}`.trim() || String(r.candidate_id)
+        // prefer the normalized fields we sent to the AI if it echoes them back
+        const matchedSkills: string[] | undefined =
+          Array.isArray(r?.matched_skills) ? r.matched_skills :
+          Array.isArray((r?.details || {})?.matched_skills) ? (r.details.matched_skills) : undefined
+
+        const locationCity = extractCity(c?.current_location_name || c?.city || c?.location || '')
         return {
           candidateId: String(r.candidate_id),
           candidateName,
           score: s,
           reason: String(r.reason || ''),
-          linkedin: c?.linkedin || undefined,
-          title: c?.title || c?.current_job_title || ''
+          linkedin: (c as any)?.linkedinUrl || (c as any)?.linkedin || undefined,
+          title: c?.title || c?.current_job_title || '',
+          matchedSkills,
+          location: locationCity || undefined
         }
       })
 
@@ -531,6 +561,13 @@ function MatchTab() {
                         <a href={c.linkedin} target="_blank" rel="noreferrer" className="text-sm underline">
                           LinkedIn
                         </a>
+                      )}
+                      {c.skills && c.skills.length > 0 && (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {c.skills.slice(0, 6).map(s => (
+                            <span key={s} className="px-2 py-0.5 text-xs rounded-full bg-gray-100 border">{s}</span>
+                          ))}
+                        </div>
                       )}
                     </div>
                     <div className="text-xs text-gray-400">ID: {c.id}</div>
