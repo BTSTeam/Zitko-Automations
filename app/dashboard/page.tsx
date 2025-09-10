@@ -67,7 +67,6 @@ function scoreColor(score: number) {
 // skill token normalizer + tiny stemmer to align "service/services/servicing/serviced"
 function stem(s: string): string {
   const t = s.toLowerCase().replace(/[^a-z0-9+.#/ ]+/g, '').trim()
-  // basic endings commonly seen in skills nouns/verbs
   return t
     .replace(/(ing|ed|es)\b/g, '') // servicing -> servic, serviced -> servic, services -> servic
     .replace(/(\s{2,})/g, ' ')
@@ -82,17 +81,6 @@ function normalizeList(...items: any[]): string[] {
     if (!v) return
     out.push(v)
   }
-
-  function stripLocationSentences(text: string): string {
-  if (!text) return text
-  const sentences = text.split(/(?<=\.)\s+/)
-  const filtered = sentences.filter(s =>
-    !/\b(location|commute|commutability|city|distance|relocat)/i.test(s)
-  )
-  const out = filtered.join(' ').trim()
-  return out || text
-}
-
   for (const item of items) {
     if (item == null) continue
     if (Array.isArray(item)) {
@@ -119,6 +107,17 @@ function normalizeList(...items: any[]): string[] {
     }
   }
   return dedup
+}
+
+// ⬇️ moved OUTSIDE normalizeList so it’s in scope where we use it
+function stripLocationSentences(text: string): string {
+  if (!text) return text
+  const sentences = text.split(/(?<=\.)\s+/)
+  const filtered = sentences.filter(s =>
+    !/\b(location|commute|commutability|city|distance|relocat)/i.test(s)
+  )
+  const out = filtered.join(' ').trim()
+  return out || text
 }
 
 /* ---------------- UI bits ---------------- */
@@ -255,7 +254,6 @@ function MatchTab() {
   const funMessages = [
     'Zitko AI is thinking…',
     'Matching skills & qualifications…',
-    'Oops!…we’re ranking again.',
     'Cross-checking titles & keywords…',
     'Backstreet’s back, alright!',
   ]
@@ -393,51 +391,51 @@ function MatchTab() {
       setView('raw')
 
       // --- AI analyze (NO location in scoring)
-const jobSkills = skillsStr.split(',').map(s => s.trim()).filter(Boolean)
-const jobSkillsStem = new Set(jobSkills.map(stem))
+      const jobSkills = skillsStr.split(',').map(s => s.trim()).filter(Boolean)
+      const jobSkillsStem = new Set(jobSkills.map(stem))
 
-const payloadToAI = {
-  meta: {
-    note: 'Candidates were pre-filtered by location in Vincere. Ignore location entirely when scoring.',
-    location_filter_applied: true
-  },
-  job: {
-    title: t,
-    // location REMOVED
-    skills: jobSkills,
-    qualifications: qualsStr.split(',').map(s => s.trim()).filter(Boolean),
-    description: `${activeJob.public_description || ''}\n\n${activeJob.internal_description || ''}`.trim()
-  },
-  candidates: candidates.map(c => {
-    const candSkills = normalizeList(c.skills, c.skill, c.keywords)
-    const candSkillsStem = candSkills.map(stem)
-    const matchedSkills = candSkills.filter((s, i) => jobSkillsStem.has(candSkillsStem[i]))
-    const title = c.title || c.current_job_title || ''
-    return {
-      candidate_id: String(c.id),
-      full_name: c.fullName || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim() || String(c.id),
-      current_job_title: title,
-      skills: candSkills,
-      matched_skills: matchedSkills,
-      qualifications: normalizeList(
-        c.qualifications,
-        c.edu_qualification,
-        c.edu_degree,
-        c.edu_course,
-        c.edu_training,
-        c.certifications
-      )
-    }
-  })
-}
+      const payloadToAI = {
+        meta: {
+          note: 'Candidates were pre-filtered by location in Vincere. Ignore location entirely when scoring.',
+          location_filter_applied: true
+        },
+        job: {
+          title: t,
+          // location REMOVED
+          skills: jobSkills,
+          qualifications: qualsStr.split(',').map(s => s.trim()).filter(Boolean),
+          description: `${activeJob.public_description || ''}\n\n${activeJob.internal_description || ''}`.trim()
+        },
+        candidates: candidates.map(c => {
+          const candSkills = normalizeList(c.skills, c.skill, c.keywords)
+          const candSkillsStem = candSkills.map(stem)
+          const matchedSkills = candSkills.filter((s, i) => jobSkillsStem.has(candSkillsStem[i]))
+          const title = c.title || c.current_job_title || ''
+          return {
+            candidate_id: String(c.id),
+            full_name: c.fullName || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim() || String(c.id),
+            current_job_title: title,
+            skills: candSkills,
+            matched_skills: matchedSkills,
+            qualifications: normalizeList(
+              c.qualifications,
+              c.edu_qualification,
+              c.edu_degree,
+              c.edu_course,
+              c.edu_training,
+              c.certifications
+            )
+          }
+        })
+      }
 
-setAiPayload(payloadToAI)
+      setAiPayload(payloadToAI)
 
-const ai = await fetch('/api/ai/analyze', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify(payloadToAI)
-})
+      const ai = await fetch('/api/ai/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payloadToAI)
+      })
 
       const aiText = await ai.text()
       let outer: any = {}
@@ -516,8 +514,7 @@ const ai = await fetch('/api/ai/analyze', {
   const statusText = loadingSearch
     ? ['Zitko AI is thinking…',
        'Matching skills & qualifications…',
-       'Cross-checking titles & keywords…',
-       'Comparing against job location…'][funIdx % 4]
+       'Cross-checking titles & keywords…'][funIdx % 3]
     : (view === 'ai' ? 'Viewing AI scores' : 'Viewing raw results')
 
   const beforeScores = scored.length === 0
@@ -588,7 +585,7 @@ const ai = await fetch('/api/ai/analyze', {
               className="btn btn-grey"
               onClick={() => setShowJson(true)}
               disabled={!aiPayload}
-              title={aiPayload ? 'Show the exact JSON sent to ChatGPT' : 'Run a search & scoring first'}
+              title={aiPayload ? 'Show the exact JSON sent to ChatGPT (location excluded from scoring)' : 'Run a search & scoring first'}
             >
               Show JSON
             </button>
