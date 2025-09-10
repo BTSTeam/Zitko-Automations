@@ -157,63 +157,77 @@ export async function POST(req: NextRequest) {
     }
 
     // Build up to three adjacent skill pairs: [A,B], [B,C], [C,D]
-    const allSkills = uniq(job.skills ?? []);
-    const pairs: Array<[string?, string?]> = [];
-    for (let i = 0; i < Math.min(allSkills.length - 1, 3); i++) {
-      pairs.push([allSkills[i], allSkills[i + 1]]);
-    }
-    // If less than 2 skills, still run a single search on the one provided
-    if (pairs.length === 0 && allSkills.length === 1) {
-      pairs.push([allSkills[0], undefined]);
-    }
-    // If no skills at all, run a single search with just title/location
-    if (pairs.length === 0) {
-      pairs.push([undefined, undefined]);
-    }
+const allSkills = uniq(job.skills ?? []);
+const skillPairs: Array<[string?, string?]> = [];
 
-    const limit = Math.max(1, Math.min(100, Number(body.limit ?? 100)));
-    const base = config.VINCERE_TENANT_API_BASE.replace(/\/$/, '');
-    const encodedMatrix = encodeURIComponent(buildMatrixVars());
+for (let i = 0; i < Math.min(allSkills.length - 1, 3); i++) {
+  skillPairs.push([allSkills[i], allSkills[i + 1]]);
+}
+// If only one skill exists, we still do a single-skill search
+if (skillPairs.length === 0 && allSkills.length === 1) {
+  skillPairs.push([allSkills[0], undefined]);
+}
+// If no skills at all, we’ll skip directly to the title/location-only fallback later
 
-    // Runner for one query
-    const runOne = async (qRaw: string) => {
-      const encodedQ = encodeForVincereQuery(qRaw);
-      const url =
-        `${base}/api/v2/candidate/search/${encodedMatrix}` +
-        `?q=${encodedQ}&limit=${limit}`;
-      const resp = await fetchWithAutoRefresh(url, idToken, userKey);
-      const text = await resp.text();
-      if (!resp.ok) {
-        return { url, qRaw, ok: false as const, status: resp.status, detail: text, items: [] as any[] };
-      }
-      let json: any = {};
-      try { json = JSON.parse(text); } catch {}
-      const result = json?.result;
-      const rawItems = Array.isArray(result?.items)
-        ? result.items
-        : Array.isArray(json?.data)
-          ? json.data
-          : Array.isArray(json?.items)
-            ? json.items
-            : [];
-      return { url, qRaw, ok: true as const, status: 200, items: rawItems };
-    };
+const limit = Math.max(1, Math.min(100, Number(body.limit ?? 100)));
+const base = config.VINCERE_TENANT_API_BASE.replace(/\/$/, '');
+const encodedMatrix = encodeURIComponent(buildMatrixVars());
 
-    // Execute all runs
-    const queries = pairs.map((pair) => buildQueryWithPair(job, pair));
-    const runs = await Promise.all(queries.map(q => runOne(q)));
+// Runner for one query
+const runOne = async (qRaw: string) => {
+  const encodedQ = encodeForVincereQuery(qRaw);
+  const url =
+    `${base}/api/v2/candidate/search/${encodedMatrix}` +
+    `?q=${encodedQ}&limit=${limit}`;
+  const resp = await fetchWithAutoRefresh(url, idToken, userKey);
+  const text = await resp.text();
+  if (!resp.ok) {
+    return { url, qRaw, ok: false as const, status: resp.status, detail: text, items: [] as any[] };
+  }
+  let json: any = {};
+  try { json = JSON.parse(text); } catch {}
+  const result = json?.result;
+  const rawItems = Array.isArray(result?.items)
+    ? result.items
+    : Array.isArray(json?.data)
+      ? json.data
+      : Array.isArray(json?.items)
+        ? json.items
+        : [];
+  return { url, qRaw, ok: true as const, status: 200, items: rawItems };
+};
 
-    // Merge & de-dupe
-    const seen = new Set<string>();
-    const merged: any[] = [];
-    for (const r of runs) {
-      for (const c of r.items) {
-        const id = String(c?.id ?? '');
-        if (!id || seen.has(id)) continue;
-        seen.add(id);
-        merged.push(c);
-      }
+// 1) Run skill-based queries first (if any)
+const skillQueries = skillPairs.map((pair) => buildQueryWithPair(job, pair));
+let runs = await Promise.all(skillQueries.map(q => runOne(q)));
+
+// Merge & de-dupe results from the skill runs
+const mergeRuns = (runsArr: Array<{items:any[]}>) => {
+  const seen = new Set<string>();
+  const mergedList: any[] = [];
+  for (const r of runsArr) {
+    for (const c of r.items) {
+      const id = String(c?.id ?? '');
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      mergedList.push(c);
     }
+  }
+  return mergedList;
+};
+
+let merged = mergeRuns(runs);
+
+// 2) If zero results from the skill queries OR if there were no skills at all,
+//    run a single fallback query with only title + city.
+if (merged.length === 0) {
+  const fallbackQ = buildQueryWithPair(job, [undefined, undefined]); // title+city only
+  const fallbackRun = await runOne(fallbackQ);
+  runs = [...runs, fallbackRun];
+  merged = mergeRuns(runs);
+}
+
+// Keep `runs` in the response so you can see what was executed.
 
     // Map to your existing shape
     const toList = (v: any) => {
