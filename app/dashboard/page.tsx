@@ -465,15 +465,6 @@ function MatchTab() {
 
           {/* Right: Job Summary / Fields */}
           <div>
-            {/* Inline Job Summary: ID • Title • Location */}
-            {job && (
-              <div className="mb-3 text-sm text-gray-700 flex flex-wrap items-center gap-x-3 gap-y-1">
-                <span className="font-semibold">Job</span>
-                {job.id && <span className="rounded-full border px-2 py-0.5 text-xs">ID: {job.id}</span>}
-                {job.job_title && <span className="truncate">{job.job_title}</span>}
-                {job.location && <span>• {job.location}</span>}
-              </div>
-            )}
 
             <div className="grid sm:grid-cols-2 gap-4 text-sm mb-2">
               <div>
