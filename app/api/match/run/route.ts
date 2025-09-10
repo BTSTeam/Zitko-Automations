@@ -290,7 +290,7 @@ if (merged.length === 0) {
       ok: true,
       // helpful to inspect what was actually run
       runs: runs.map(r => ({ ok: r.ok, status: r.status, url: r.url, q: r.qRaw })),
-      query: { pairs: pairs.map(p => p.filter(Boolean)), limit },
+      query: { pairs: skillPairs.map(p => p.filter(Boolean)), limit },
       count,
       results,
       candidates: results,
