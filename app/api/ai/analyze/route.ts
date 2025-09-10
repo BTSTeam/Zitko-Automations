@@ -17,6 +17,8 @@ export async function POST(req: NextRequest) {
 STRICT OUTPUT:
 - Return only a single JSON object with a top-level key "ranked". No prose, no markdown, no code fences.
 - Each item in "ranked" must have: "candidate_id" (string), "score_percent" (number), "reason" (string).
+- IMPORTANT: Output the SAME NUMBER of items as the input "candidates" array — one per candidate — in the SAME ORDER.
+- Use each candidate's "id" as "candidate_id" exactly. Do not drop, add, or reorder any candidate.
 
 SCORING RUBRIC (sum to ~100):
 - Core hard skills/tooling: 40
