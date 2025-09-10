@@ -31,6 +31,7 @@ GUIDELINES:
 - Do NOT zero a candidate for a single missing skill if the rest is strong—scale proportionally.
 - Title variations like "Senior Security Engineer" or "Security Systems Engineer" should score well.
 - If qualifications are missing but skills are strong, do not drop below 40% solely for that reason.
+- Do NOT use the matching job title as part of the reason for the suitability score.
 
 OUTPUT FORMAT:
 {
