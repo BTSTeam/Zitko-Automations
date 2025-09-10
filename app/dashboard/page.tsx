@@ -570,7 +570,7 @@ function MatchTab() {
           {/* Show JSON button – far right */}
           <div className="ml-auto">
             <button
-              className="btn btn-grey"
+              className="btn btn-grey btn-sm"
               onClick={() => setShowJson(true)}
               disabled={!aiPayload}
               title={aiPayload ? 'Show the exact JSON sent to ChatGPT (location excluded from scoring)' : 'Run a search & scoring first'}
