@@ -75,7 +75,10 @@ function buildBaseClauses(job: NonNullable<RunReq['job']>) {
   const title = (job.title ?? '').trim();
   const city = pickCityFromLocation(job.location);
 
-  const titleClause = title ? toClause('current_job_title', title) : '';
+  // CONTAINING match for title (unquoted) instead of exact phrase
+  const titleClause = title ? `current_job_title:${title}#` : '';
+
+  // city remains exact phrase on indexed fields (this usually works well)
   const cityClause = city
     ? `( ${toClause('current_city', city)} OR ${toClause('current_location_name', city)} )`
     : '';
