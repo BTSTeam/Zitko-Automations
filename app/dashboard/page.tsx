@@ -82,6 +82,17 @@ function normalizeList(...items: any[]): string[] {
     if (!v) return
     out.push(v)
   }
+
+  function stripLocationSentences(text: string): string {
+  if (!text) return text
+  const sentences = text.split(/(?<=\.)\s+/)
+  const filtered = sentences.filter(s =>
+    !/\b(location|commute|commutability|city|distance|relocat)/i.test(s)
+  )
+  const out = filtered.join(' ').trim()
+  return out || text
+}
+
   for (const item of items) {
     if (item == null) continue
     if (Array.isArray(item)) {
@@ -381,59 +392,52 @@ function MatchTab() {
       }))
       setView('raw')
 
-      // --- AI analyze
-      const jobSkills = skillsStr.split(',').map(s => s.trim()).filter(Boolean)
-      const jobSkillsStem = new Set(jobSkills.map(stem))
+      // --- AI analyze (NO location in scoring)
+const jobSkills = skillsStr.split(',').map(s => s.trim()).filter(Boolean)
+const jobSkillsStem = new Set(jobSkills.map(stem))
 
-      const payloadToAI = {
-        meta: {
-          note: `All candidates were pre-filtered by location in Vincere to "${loc}". If candidate location is missing, assume it matches "${loc}". Do not penalize for missing location.`,
-          location_filter_applied: true,
-          city: loc
-        },
-        job: {
-          title: t,
-          location: loc,
-          skills: jobSkills,
-          qualifications: qualsStr.split(',').map(s => s.trim()).filter(Boolean),
-          description: `${activeJob.public_description || ''}\n\n${activeJob.internal_description || ''}`.trim()
-        },
-        candidates: candidates.map(c => {
-          const candSkills = normalizeList(c.skills, c.skill, c.keywords)
-          const candSkillsStem = candSkills.map(stem)
-          const matchedSkills = candSkills.filter((s, i) => jobSkillsStem.has(candSkillsStem[i]))
-          const title = c.title || c.current_job_title || ''
-          const rawLoc = c.current_location_name || c.city || c.location || ''
-          const locCity = extractCity(rawLoc) || loc // if empty, fall back to job city
-          return {
-            candidate_id: String(c.id),
-            full_name: c.fullName || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim() || String(c.id),
-            location: locCity,
-            location_source: extractCity(rawLoc) ? 'candidate_field' : 'inferred_from_filter',
-            current_job_title: title,
-            skills: candSkills,
-            matched_skills: matchedSkills,
-            qualifications: normalizeList(
-              c.qualifications,
-              c.edu_qualification,
-              c.edu_degree,
-              c.edu_course,
-              c.edu_training,
-              c.certifications
-            ),
-            raw: { original_location_field: rawLoc }
-          }
-        })
-      }
+const payloadToAI = {
+  meta: {
+    note: 'Candidates were pre-filtered by location in Vincere. Ignore location entirely when scoring.',
+    location_filter_applied: true
+  },
+  job: {
+    title: t,
+    // location REMOVED
+    skills: jobSkills,
+    qualifications: qualsStr.split(',').map(s => s.trim()).filter(Boolean),
+    description: `${activeJob.public_description || ''}\n\n${activeJob.internal_description || ''}`.trim()
+  },
+  candidates: candidates.map(c => {
+    const candSkills = normalizeList(c.skills, c.skill, c.keywords)
+    const candSkillsStem = candSkills.map(stem)
+    const matchedSkills = candSkills.filter((s, i) => jobSkillsStem.has(candSkillsStem[i]))
+    const title = c.title || c.current_job_title || ''
+    return {
+      candidate_id: String(c.id),
+      full_name: c.fullName || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim() || String(c.id),
+      current_job_title: title,
+      skills: candSkills,
+      matched_skills: matchedSkills,
+      qualifications: normalizeList(
+        c.qualifications,
+        c.edu_qualification,
+        c.edu_degree,
+        c.edu_course,
+        c.edu_training,
+        c.certifications
+      )
+    }
+  })
+}
 
-      // store payload for "Show JSON"
-      setAiPayload(payloadToAI)
+setAiPayload(payloadToAI)
 
-      const ai = await fetch('/api/ai/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payloadToAI)
-      })
+const ai = await fetch('/api/ai/analyze', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(payloadToAI)
+})
 
       const aiText = await ai.text()
       let outer: any = {}
@@ -472,7 +476,7 @@ function MatchTab() {
           candidateId: String(r.candidate_id),
           candidateName,
           score: s,
-          reason: String(r.reason || ''),
+          reason: stripLocationSentences(String(r.reason || '')),
           linkedin: (c as any)?.linkedinUrl || (c as any)?.linkedin || undefined,
           title: c?.title || c?.current_job_title || '',
           matchedSkills,
