@@ -96,9 +96,10 @@ function buildQueryWithPair(job: NonNullable<RunReq['job']>, pair: [string?, str
   return q || '*:*';
 }
 
-// matrix_vars EXACT per your spec
+// matrix_vars: request fields your tenant returns.
+// Note: many tenants return `current_location` (object). We also request `current_city` if available.
 function buildMatrixVars() {
-  return 'fl=id,first_name,last_name,current_location,current_job_title,linkedin,keywords,skill,edu_qualification,edu_degree,edu_course,edu_institution,edu_training;sort=created_date asc';
+  return 'fl=id,first_name,last_name,current_location,current_city,current_job_title,linkedin,skill,edu_qualification,edu_degree,edu_course,edu_institution,edu_training;sort=created_date asc';
 }
 
 // Prefer provided job (already extracted on the client)
@@ -212,20 +213,36 @@ export async function POST(req: NextRequest) {
     }
 
     // Map to your existing shape
-    const toList = (v: any) =>
-      Array.isArray(v)
-        ? v
-            .map((x) => (typeof x === 'string' ? x : (x?.description ?? x?.value ?? '')))
-            .filter(Boolean)
-        : [];
+    const toList = (v: any) => {
+      if (Array.isArray(v)) {
+        return v
+          .map(x => (typeof x === 'string' ? x : (x?.description ?? x?.value ?? '')))
+          .filter(Boolean);
+      }
+      if (typeof v === 'string') {
+        return v.split(/[,;|/•#]+/g).map(s => s.trim()).filter(Boolean);
+      }
+      return [];
+    };
 
     const results = merged.map((c: any) => {
       const first = c?.first_name ?? c?.firstName ?? '';
-      const last = c?.last_name ?? c?.lastName ?? '';
-      const full = (c?.name || `${first} ${last}`).trim();
+      const last  = c?.last_name ?? c?.lastName ?? '';
+      const full  = (c?.name || `${first} ${last}`).trim();
       const title = c?.current_job_title ?? c?.title ?? '';
-      const location = c?.current_location_name ?? c?.location ?? '';
-      const city = c?.current_city ?? '';
+
+      // Handle nested current_location object + fallbacks
+      const locObj = c?.current_location;
+      const location =
+        c?.current_location_name ||
+        locObj?.location_name ||
+        locObj?.address ||
+        c?.location ||
+        '';
+      const city =
+        c?.current_city ||
+        locObj?.city ||
+        '';
 
       const skills = toList(c?.skill);
       const quals = [
