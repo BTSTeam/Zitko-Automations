@@ -9,9 +9,14 @@ export async function POST(req: NextRequest) {
 
   const { job, candidates, instruction } = await req.json()
 
-  const system = `
-instruction:
-  `You are scoring candidates for a specific job on a 0–100 scale.
+ const system =
+  'You are an expert recruitment consultant in the fire & security industry. Return only valid JSON with a "ranked" array.';
+
+const instruction = `You are scoring candidates for a specific job on a 0-100 scale.
+
+STRICT OUTPUT:
+- Return only a single JSON object with a top-level key "ranked". No prose, no markdown, no code fences.
+- Each item in "ranked" must have: "candidate_id" (string), "score_percent" (number), "reason" (string).
 
 SCORING RUBRIC (sum to ~100):
 - Core hard skills/tooling: 35
@@ -21,18 +26,18 @@ SCORING RUBRIC (sum to ~100):
 - Other relevant keywords: 5
 
 GUIDELINES:
-- Reward close synonyms (e.g., "Milestone XProtect" ≈ "Milestone").
+- Reward close synonyms (e.g., "Milestone XProtect" ≈ "Milestone"); treat minor spelling variants as matches.
 - Treat commute-friendly nearby cities as acceptable unless the job explicitly requires on-site in a specific city.
 - Do NOT zero a candidate for a single missing skill if the rest is strong—scale proportionally.
 - Title variations like "Senior Security Engineer" or "Security Systems Engineer" should score well.
 - If qualifications are missing but skills are strong, do not drop below 40% solely for that reason.
 
 OUTPUT FORMAT:
-Return JSON with key "ranked": an array of:
-  { "candidate_id": string, "score_percent": number, "reason": string }
-
-"reason" must cite specific matched skills/quals and any notable gaps (40 word response).`
-`.trim()
+{
+  "ranked": [
+    { "candidate_id": "123", "score_percent": 78, "reason": "40 words max: specific matched skills/quals, key gaps, title/location notes." }
+  ]
+}`.trim();
 
   const user = JSON.stringify({
     job: {
