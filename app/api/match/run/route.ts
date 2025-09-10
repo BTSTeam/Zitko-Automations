@@ -63,11 +63,20 @@ function buildQuery(job: NonNullable<RunReq['job']>) {
     ? `( ${toClause('current_city', city)} OR ${toClause('current_location_name', city)} )`
     : ''
 
-  const skills = uniq(job.skills ?? []).slice(0, 2)
-  const skillTerms = skills.map(s => `skill:${s}#`) // no quotes on skills
-  const skillsClause = skillTerms.length
-    ? `(${skillTerms.join(' AND ')})` // OR to match your successful cURL
-    : ''
+  // take up to 2 required skills (increase if you want)
+const skills = uniq(job.skills ?? []).slice(0, 2)
+
+// AND across skills; for each skill, allow match in skill OR keywords
+const skillGroups = skills.map((raw) => {
+  const s = String(raw).trim()
+  if (!s) return ''
+  const quoted = `"${s.replace(/"/g, '\\"')}"` // support spaces & quotes
+  return `(skill:${quoted}# OR keywords:${quoted}#)`
+}).filter(Boolean)
+
+const skillsClause = skillGroups.length
+  ? `(${skillGroups.join(' AND ')})`
+  : ''
 
   let q = ''
   if (titleClause)  q = titleClause
