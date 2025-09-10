@@ -319,28 +319,46 @@ function MatchTab() {
       const payload = await run.json()
       if (!run.ok) throw new Error(payload?.error || `Search failed (${run.status})`)
 
-      const candidates = (payload?.results || []) as Array<{
-        id: string
-        firstName?: string
-        lastName?: string
-        fullName?: string
-        location?: string
-        city?: string
-        title?: string
-        skills?: string[] | string
-        skill?: string[] | string
-        qualifications?: string[] | string
-        linkedin?: string | null
-        linkedinUrl?: string | null
-        keywords?: string[] | string
-        current_job_title?: string
-        current_location_name?: string
-        edu_qualification?: string[] | string
-        edu_degree?: string[] | string
-        edu_course?: string[] | string
-        edu_training?: string[] | string
-        certifications?: string[] | string
-      }>
+      const candidates = (() => {
+  const raw = (payload?.results || []) as Array<{
+    id: string
+    firstName?: string
+    lastName?: string
+    fullName?: string
+    location?: string
+    city?: string
+    title?: string
+    skills?: string[] | string
+    skill?: string[] | string
+    qualifications?: string[] | string
+    linkedin?: string | null
+    linkedinUrl?: string | null
+    keywords?: string[] | string
+    current_job_title?: string
+    current_location_name?: string
+    edu_qualification?: string[] | string
+    edu_degree?: string[] | string
+    edu_course?: string[] | string
+    edu_training?: string[] | string
+    certifications?: string[] | string
+  }>;
+
+  // normalize IDs, drop blanks, de-dupe
+  const normalized = raw.map(c => ({ ...c, id: String(c?.id ?? '').trim() }));
+  const withIds = normalized.filter(c => c.id.length > 0);
+  const seen = new Set<string>();
+  const dedup = withIds.filter(c => {
+    if (seen.has(c.id)) return false;
+    seen.add(c.id);
+    return true;
+  });
+
+  const dropped = raw.length - dedup.length;
+  if (dropped > 0) {
+    console.warn(`Dropped ${dropped} candidate(s) due to missing/duplicate IDs`);
+  }
+  return dedup;
+})();
 
       // Capture server debug (if provided)
       if (typeof payload?.count === 'number') setServerCount(payload.count)
