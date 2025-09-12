@@ -122,8 +122,8 @@ function Tabs({
 }: {
   tab: TabKey
   setTab: Dispatch<SetStateAction<TabKey>>
-  sourceMode: SourceMode
-  setSourceMode: Dispatch<SetStateAction<SourceMode>>
+  sourceMode: 'candidates' | 'companies'
+  setSourceMode: Dispatch<SetStateAction<'candidates' | 'companies'>>
 }) {
   const [open, setOpen] = useState(false)
 
@@ -147,16 +147,16 @@ function Tabs({
     <div className="flex gap-2 mb-6 justify-center">
       <Item id="match">Candidate Matching</Item>
 
-      {/* Sourcing dropdown */}
+      {/* Sourcing dropdown (no arrow, no tab switch until user selects) */}
       <div className="relative" data-sourcing-root>
         <button
-          onClick={() => { setTab('source'); setOpen(v => !v) }}
-          className={`tab ${tab === 'source' ? 'tab-active' : ''} flex items-center gap-1`}
+          onClick={() => setOpen(v => !v)}
+          className={`tab ${tab === 'source' ? 'tab-active' : ''}`}
           title="Sourcing"
         >
           Sourcing
-          <span className="inline-block text-xs">{open ? '▲' : '▼'}</span>
         </button>
+
         {open && (
           <div className="absolute left-1/2 -translate-x-1/2 mt-2 w-44 rounded-xl border bg-white shadow-lg overflow-hidden z-10">
             <button
@@ -179,6 +179,7 @@ function Tabs({
     </div>
   )
 }
+
 
 function Modal({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: ReactNode }) {
   if (!open) return null
