@@ -159,6 +159,8 @@ function AIScoredList({ rows }: { rows: ScoredRow[] }) {
   }
   return (
     <div className="card p-6">
+      {/* NEW: Title to mirror Raw Candidates */}
+      <h3 className="font-semibold mb-3">AI Scored Candidates</h3>
       <ul className="divide-y">
         {rows.map(r => (
           <li key={r.candidateId} className="py-4">
@@ -320,52 +322,26 @@ function MatchTab() {
       if (!run.ok) throw new Error(payload?.error || `Search failed (${run.status})`)
 
       const candidates = (() => {
-  const raw = (payload?.results || []) as Array<{
-    id: string
-    firstName?: string
-    lastName?: string
-    fullName?: string
-    location?: string
-    city?: string
-    title?: string
-    skills?: string[] | string
-    skill?: string[] | string
-    qualifications?: string[] | string
-    linkedin?: string | null
-    linkedinUrl?: string | null
-    keywords?: string[] | string
-    current_job_title?: string
-    current_location_name?: string
-    edu_qualification?: string[] | string
-    edu_degree?: string[] | string
-    edu_course?: string[] | string
-    edu_training?: string[] | string
-    certifications?: string[] | string
-  }>;
-
-  // normalize IDs, drop blanks, de-dupe
-  const normalized = raw.map(c => ({ ...c, id: String(c?.id ?? '').trim() }));
-  const withIds = normalized.filter(c => c.id.length > 0);
-  const seen = new Set<string>();
-  const dedup = withIds.filter(c => {
-    if (seen.has(c.id)) return false;
-    seen.add(c.id);
-    return true;
-  });
-
-  const dropped = raw.length - dedup.length;
-  if (dropped > 0) {
-    console.warn(`Dropped ${dropped} candidate(s) due to missing/duplicate IDs`);
-  }
-  return dedup;
-})();
+        const raw = (payload?.results || []) as Array<any>
+        const normalized = raw.map((c: any) => ({ ...c, id: String(c?.id ?? '').trim() }))
+        const withIds = normalized.filter((c: any) => c.id.length > 0)
+        const seen = new Set<string>()
+        const dedup = withIds.filter((c: any) => {
+          if (seen.has(c.id)) return false
+          seen.add(c.id)
+          return true
+        })
+        const dropped = raw.length - dedup.length
+        if (dropped > 0) console.warn(`Dropped ${dropped} candidate(s) due to missing/duplicate IDs`)
+        return dedup
+      })()
 
       // Capture server debug (if provided)
       if (typeof payload?.count === 'number') setServerCount(payload.count)
       if (typeof payload?.query === 'string') setServerQuery(payload.query)
 
       // Raw list
-      const raw = candidates.map(c => {
+      const raw = candidates.map((c: any) => {
         const title = c.title || c.current_job_title || ''
         const location = extractCity(c.current_location_name || c.city || c.location || '')
         const skills = normalizeList(c.skills, c.skill, c.keywords)
@@ -396,10 +372,10 @@ function MatchTab() {
           qualifications: qualsStr.split(',').map(s => s.trim()).filter(Boolean),
           description: `${activeJob.public_description || ''}\n\n${activeJob.internal_description || ''}`.trim()
         },
-        candidates: candidates.map(c => {
+        candidates: candidates.map((c: any) => {
           const candSkills = normalizeList(c.skills, c.skill, c.keywords)
           const candSkillsStem = candSkills.map(stem)
-          const matchedSkills = candSkills.filter((s, i) => jobSkillsStem.has(candSkillsStem[i]))
+          const matchedSkills = candSkills.filter((s: string, i: number) => jobSkillsStem.has(candSkillsStem[i]))
           const title = c.title || c.current_job_title || ''
           return {
             candidate_id: String(c.id),
@@ -447,9 +423,8 @@ function MatchTab() {
             return []
           })()
 
-      // === CRITICAL FIX ===
-      // Only keep AI rows that exist in raw Vincere candidates; dedupe by candidate_id.
-      const byId = new Map(candidates.map(c => [String(c.id), c]))
+      // Keep only IDs we fetched from Vincere; dedupe
+      const byId = new Map(candidates.map((c: any) => [String(c.id), c]))
       const seenIds = new Set<string>()
       const ranked = rankedRaw
         .filter((r: any) => byId.has(String(r.candidate_id)))
@@ -576,19 +551,17 @@ function MatchTab() {
             <span className="text-sm text-gray-600">{statusText}</span>
           </div>
 
-          {/* Debug counts (from server) */}
-          {(serverCount !== null || serverQuery) && (
+          {/* Debug (q only) */}
+          {serverQuery && (
             <div className="ml-0 md:ml-4 text-xs text-gray-500">
-              {serverCount !== null && <span>Server count: <b>{serverCount}</b></span>}
-              {serverCount !== null && serverQuery && <span> • </span>}
-              {serverQuery && <span>q: <code className="break-all">{serverQuery}</code></span>}
+              q: <code className="break-all">{serverQuery}</code>
             </div>
           )}
 
-          {/* Show JSON button – far right */}
+          {/* Smaller Show JSON button */}
           <div className="ml-auto">
             <button
-              className="btn btn-grey btn-sm"
+              className="btn btn-grey !px-3 !py-1 !text-xs !h-8 rounded-md"
               onClick={() => setShowJson(true)}
               disabled={!aiPayload}
               title={aiPayload ? 'Show the exact JSON sent to ChatGPT (location excluded from scoring)' : 'Run a search & scoring first'}
@@ -621,13 +594,7 @@ function MatchTab() {
                           LinkedIn
                         </a>
                       )}
-                      {c.skills && c.skills.length > 0 && (
-                        <div className="mt-1 flex flex-wrap gap-1">
-                          {c.skills.slice(0, 6).map(s => (
-                            <span key={s} className="px-2 py-0.5 text-xs rounded-full bg-gray-100 border">{s}</span>
-                          ))}
-                        </div>
-                      )}
+                      {/* SKILLS HIDDEN FOR RAW VIEW */}
                     </div>
                     <div className="text-xs text-gray-400">ID: {c.id}</div>
                   </div>
