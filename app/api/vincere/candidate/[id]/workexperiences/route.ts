@@ -1,41 +1,46 @@
+// app/api/vincere/candidate/[id]/workexperiences/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/session'
-import { config, requiredEnv } from '@/lib/config'
 import { refreshIdToken } from '@/lib/vincereRefresh'
 
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
-  requiredEnv()
+const VINCERE_BASE = 'https://zitko.vincere.io/api/v2'
 
-  const session = await getSession()
-  const base = config.VINCERE_TENANT_API_BASE.replace(/\/$/, '')
-  const url = `${base}/api/v2/candidate/${encodeURIComponent(params.id)}/workexperiences`
-  const userKey = session.user?.email || session.sessionId || ''
-
-  async function call(idToken?: string) {
-    return fetch(url, {
-      headers: {
-        ...(idToken ? { 'id-token': idToken } : {}),
-        'x-api-key': config.VINCERE_API_KEY,
-      },
-    })
-  }
-
-  let idToken = session.tokens?.idToken
-  let resp = await call(idToken)
-
-  if (resp.status === 401 || resp.status === 403) {
-    if (await refreshIdToken(userKey)) {
-      const s2 = await getSession()
-      idToken = s2.tokens?.idToken
-      resp = await call(idToken)
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const session = await getSession()
+    if (!session?.vincere) {
+      return NextResponse.json({ ok: false, error: 'Not connected to Vincere' }, { status: 401 })
     }
-  }
 
-  if (!resp.ok) {
-    const text = await resp.text().catch(() => '')
-    return NextResponse.json({ error: 'Vincere request failed', detail: text }, { status: resp.status || 400 })
-  }
+    const idToken = await refreshIdToken(session)
 
-  const data = await resp.json()
-  return NextResponse.json(data)
+    const url = `${VINCERE_BASE}/candidate/${encodeURIComponent(params.id)}/workexperiences`
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${idToken}`,
+        Accept: 'application/json',
+      },
+      cache: 'no-store',
+    })
+
+    if (!res.ok) {
+      const text = await res.text()
+      return NextResponse.json(
+        { ok: false, status: res.status, error: safeError(text) },
+        { status: res.status }
+      )
+    }
+
+    const data = await res.json()
+    return NextResponse.json(data, { status: 200 })
+  } catch (err: any) {
+    return NextResponse.json({ ok: false, error: err?.message ?? 'Unexpected error' }, { status: 500 })
+  }
+}
+
+function safeError(s: string) {
+  return s.length > 800 ? s.slice(0, 800) + '…' : s
 }
