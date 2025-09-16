@@ -31,6 +31,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   // Raw fetched (debug)
   const [rawCandidate, setRawCandidate] = useState<any>(null)
   const [rawWork, setRawWork] = useState<any[]>([])
+  const [rawMatch, setRawMatch] = useState<any>(null)
 
   // Form that drives preview
   const [form, setForm] = useState<{
@@ -83,6 +84,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     setForm(getEmptyForm())
     setRawCandidate(null)
     setRawWork([])
+    setRawMatch(null)
     setError(null)
   }
 
@@ -116,14 +118,59 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   }
 
   function toSkills(c: any): string {
-    const skills =
+    // Prefer structured skills if present
+    const skillsFromArrays =
       (Array.isArray(c?.skill) ? c.skill : []) ||
-      (typeof c?.keywords === 'string'
-        ? c.keywords.split(',')
-        : Array.isArray(c?.keywords)
-        ? c.keywords
-        : [])
-    return safeJoin(skills, ', ')
+      (Array.isArray(c?.skills) ? c.skills : [])
+
+    const keywordsFromString =
+      typeof c?.keywords === 'string' ? c.keywords.split(',') : []
+
+    const keywordsFromArray =
+      Array.isArray(c?.keywords) ? c.keywords : []
+
+    const merged = [
+      ...skillsFromArrays,
+      ...keywordsFromString,
+      ...keywordsFromArray,
+    ]
+
+    // Deduplicate & clean
+    const uniq = Array.from(new Set(merged.map((s) => String(s).trim()).filter(Boolean)))
+    return safeJoin(uniq, ', ')
+  }
+
+  // Build Education & Qualifications text block from common Vincere fields
+  function toEducation(c: any): string {
+    const qualifications = arrify(c?.edu_qualification)
+    const degrees = arrify(c?.edu_degree)
+    const courses = arrify(c?.edu_course)
+    const institutions = arrify(c?.edu_institution)
+    const trainings = arrify(c?.edu_training)
+
+    // Compose lines like "BSc Electrical Engineering — University of X"
+    const lines: string[] = []
+
+    const maxLen = Math.max(qualifications.length, degrees.length, courses.length, institutions.length)
+    for (let i = 0; i < maxLen; i++) {
+      const parts = [
+        qualifications[i] || degrees[i] || courses[i] || '',
+        institutions[i] || '',
+      ].filter(Boolean)
+      if (parts.length) lines.push(parts.join(' — '))
+    }
+
+    // Add any standalone training entries
+    trainings.forEach(t => lines.push(String(t)))
+
+    if (lines.length === 0) return ''
+    return lines.join('\n')
+  }
+
+  function arrify(v: any): any[] {
+    if (Array.isArray(v)) return v
+    if (v == null) return []
+    return [v]
   }
 
   function mapWorkExperiences(list: any[]): Employment[] {
@@ -166,10 +213,16 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     setLoading(true)
     setError(null)
     try {
-      const [candResp, workResp] = await Promise.all([
+      // A. Try to run the “same search as the matching search”
+      // Adjust this route if your match search endpoint is named differently.
+      const matchUrl = `/api/match/search?candidateId=${encodeURIComponent(candidateId)}`
+      const [candResp, workResp, matchResp] = await Promise.all([
         fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}`, { cache: 'no-store' }),
         fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}/workexperiences`, { cache: 'no-store' }),
+        // Optional: ignore failure if this route doesn’t exist yet
+        fetch(matchUrl, { cache: 'no-store' }).catch(() => undefined) as any,
       ])
+
       if (!candResp.ok) throw new Error(await candResp.text())
       if (!workResp.ok) throw new Error(await workResp.text())
 
@@ -177,17 +230,37 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       const work = await workResp.json()
       const workArr: any[] = Array.isArray(work?.data) ? work.data : Array.isArray(work) ? work : []
 
+      let matchJson: any = null
+      if (matchResp && matchResp.ok) {
+        try { matchJson = await matchResp.json() } catch { /* ignore */ }
+      }
+
       setRawCandidate(cand)
       setRawWork(workArr)
+      setRawMatch(matchJson)
 
+      // Build merged view
       const mappedWork = mapWorkExperiences(workArr)
+
+      // Prefer match-derived skills/education if present in a helpful shape
+      const skillsFromMatch = Array.isArray(matchJson?.skills) ? matchJson.skills : null
+      const educationTextFromMatch =
+        typeof matchJson?.educationText === 'string' ? matchJson.educationText : null
+
+      const mergedSkills = skillsFromMatch?.length
+        ? skillsFromMatch.join(', ')
+        : (toSkills(cand) || '')
+
+      const mergedEducation = educationTextFromMatch || toEducation(cand) || ''
+
       setForm(prev => ({
         ...prev,
         name: toName(cand) || prev.name,
         location: toLocation(cand) || prev.location,
         profile: cand?.summary || cand?.profile || prev.profile,
-        keySkills: prev.keySkills || toSkills(cand),
+        keySkills: prev.keySkills || mergedSkills,
         employment: mappedWork.length ? mappedWork : prev.employment,
+        education: prev.education || mergedEducation,
       }))
     } catch (e: any) {
       setError(e?.message || 'Failed to retrieve data')
@@ -232,7 +305,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       </div>
     )
 
-    // (Layout text stays the same for now; you can conditionally alter sections per template later)
     return (
       <div className="p-6">
         <div className="flex items-center justify-between mb-4">
@@ -434,7 +506,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                       const v = ev.target.value
                       setForm(prev => {
                         const employment = [...prev.employment]
-                        employment[i] = { ...employment[i], description: v }
+                        employment[i] = { ...prev.employment[i], description: v }
                         return { ...prev, employment }
                       })
                     }}
@@ -489,7 +561,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
             </div>
           </Section>
 
-          {(rawCandidate || rawWork.length > 0) && (
+          {(rawCandidate || rawWork.length > 0 || rawMatch) && (
             <div className="rounded-2xl border p-3 text-xs text-gray-600">
               <div className="font-medium mb-1">Fetched (raw)</div>
               {rawCandidate && (
@@ -502,6 +574,12 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                 <details>
                   <summary>Work experiences</summary>
                   <pre className="overflow-auto">{JSON.stringify(rawWork, null, 2)}</pre>
+                </details>
+              )}
+              {rawMatch && (
+                <details>
+                  <summary>Match-style data</summary>
+                  <pre className="overflow-auto">{JSON.stringify(rawMatch, null, 2)}</pre>
                 </details>
               )}
             </div>
