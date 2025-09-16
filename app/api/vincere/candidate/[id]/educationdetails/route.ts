@@ -1,4 +1,3 @@
-// app/api/vincere/candidate/[id]/educationdetails/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/session'
 import { refreshIdToken } from '@/lib/vincereRefresh'
@@ -10,7 +9,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const session = await getSession()
+    const session: any = await getSession()
     if (!session?.vincere) {
       return NextResponse.json({ ok: false, error: 'Not connected to Vincere' }, { status: 401 })
     }
