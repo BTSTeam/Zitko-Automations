@@ -300,46 +300,108 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
   // ========== render ==========
   return (
-    <div className="grid gap-4">
-      <div className="card p-4">
-        {!templateFromShell && (
-          <div className="grid sm:grid-cols-3 gap-2">
-            <button
-              type="button"
-              onClick={() => resetAllForTemplate('permanent')}
-              className={`btn w-full ${template === 'permanent' ? 'btn-brand' : 'btn-grey'}`}
-            >
-              Permanent
-            </button>
-            <div className="btn w-full btn-grey opacity-50 cursor-not-allowed flex items-center justify-center">
-              Contract – Building in progress…
-            </div>
-            <div className="btn w-full btn-grey opacity-50 cursor-not-allowed flex items-center justify-center">
-              US – Building in progress…
-            </div>
+  <div className="grid gap-4">
+    <div className="card p-4">
+      {!templateFromShell && (
+        <div className="grid sm:grid-cols-3 gap-2">
+          <button
+            type="button"
+            onClick={() => resetAllForTemplate('permanent')}
+            className={`btn w-full ${template === 'permanent' ? 'btn-brand' : 'btn-grey'}`}
+          >
+            Permanent
+          </button>
+          <div className="btn w-full btn-grey opacity-50 cursor-not-allowed flex items-center justify-center">
+            Contract – Building in progress…
           </div>
-        )}
+          <div className="btn w-full btn-grey opacity-50 cursor-not-allowed flex items-center justify-center">
+            US – Building in progress…
+          </div>
+        </div>
+      )}
 
-        <div className="grid sm:grid-cols-[1fr_auto] gap-2 mt-4">
-          <input
-            className="input"
-            placeholder="Enter Candidate ID"
-            value={candidateId}
-            onChange={e => setCandidateId(e.target.value)}
-          />
-          <button className="btn btn-brand" onClick={fetchData} disabled={loading || !candidateId}>
-            {loading ? 'Fetching…' : 'Retrieve Candidate'}
+      <div className="grid sm:grid-cols-[1fr_auto] gap-2 mt-4">
+        <input
+          className="input"
+          placeholder="Enter Candidate ID"
+          value={candidateId}
+          onChange={e => setCandidateId(e.target.value)}
+          disabled={loading}
+          autoComplete="off"
+        />
+        <button
+          className="btn btn-brand"
+          onClick={fetchData}
+          disabled={loading || !candidateId}
+        >
+          {loading ? 'Fetching…' : 'Retrieve Candidate'}
+        </button>
+      </div>
+      {error && <div className="mt-3 text-sm text-red-600">{String(error).slice(0, 300)}</div>}
+    </div>
+
+    <div className="grid md:grid-cols-2 gap-4">
+      {/* LEFT: Core Details */}
+      <div className="card p-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold">Core Details</h3>
+          <button
+            type="button"
+            className="text-xs text-gray-500 underline"
+            onClick={() => setForm(getEmptyForm())}
+            disabled={loading}
+          >
+            Clear
           </button>
         </div>
-        {error && <div className="mt-3 text-sm text-red-600">{error}</div>}
-      </div>
 
-      <div className="grid md:grid-cols-2 gap-4">
-        <div className="grid gap-4">{/* LEFT editor fields if needed */}</div>
-        <div className="rounded-2xl border overflow-hidden bg-white">
-          <CVTemplatePreview />
+        <div className="grid gap-3 mt-3">
+          <label className="grid gap-1">
+            <span className="text-xs text-gray-500">Name</span>
+            <input
+              className="input"
+              value={form.name}
+              onChange={e => setField('name', e.target.value)}
+              disabled={loading}
+            />
+          </label>
+
+          <label className="grid gap-1">
+            <span className="text-xs text-gray-500">Location</span>
+            <input
+              className="input"
+              value={form.location}
+              onChange={e => setField('location', e.target.value)}
+              disabled={loading}
+            />
+          </label>
+
+          <label className="grid gap-1">
+            <span className="text-xs text-gray-500">Profile</span>
+            <textarea
+              className="input min-h-[120px]"
+              value={form.profile}
+              onChange={e => setField('profile', e.target.value)}
+              disabled={loading}
+            />
+          </label>
+
+          <label className="grid gap-1">
+            <span className="text-xs text-gray-500">Key Skills (comma or newline)</span>
+            <textarea
+              className="input min-h-[100px]"
+              value={form.keySkills}
+              onChange={e => setField('keySkills', e.target.value)}
+              disabled={loading}
+            />
+          </label>
         </div>
       </div>
+
+      {/* RIGHT: Preview */}
+      <div className="rounded-2xl border overflow-hidden bg-white">
+        <CVTemplatePreview />
+      </div>
     </div>
-  )
-}
+  </div>
+)
