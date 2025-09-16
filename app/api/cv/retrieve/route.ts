@@ -6,7 +6,7 @@ export const runtime = 'nodejs';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { refreshIdToken } from '@/lib/vincereRefresh';
-import { config, requiredEnv } from '@/lib/config';
+import { config } from '@/lib/config';
 
 type VincereError = {
   message?: string;
@@ -25,33 +25,29 @@ function json(res: any, status = 200) {
   return NextResponse.json(res, { status });
 }
 
-// Helper: ensure env ready
-function ensureEnv() {
-  requiredEnv([
-    'VINCERE_CLIENT_ID',
-    'VINCERE_API_KEY',
-    'VINCERE_TENANT', // e.g. zitko.vincere.io
-  ]);
+// Build base URL for Vincere v2
+function getVincereBase(): string {
+  // Prefer whatever your config exposes; fallback to env tenant
+  const fromConfig = (config as any)?.vincereBase as string | undefined;
+  if (fromConfig) return fromConfig.replace(/\/$/, '');
+  const tenant = process.env.VINCERE_TENANT; // e.g. zitko.vincere.io
+  if (!tenant) throw new Error('Missing VINCERE_TENANT or config.vincereBase');
+  return `https://${tenant.replace(/^https?:\/\//, '')}/api/v2`;
 }
 
-// Helper: build full Vincere URL
 function vUrl(path: string) {
-  // config.vincereBase should look like https://{tenant}/api/v2
-  const base = config.vincereBase?.replace(/\/$/, '');
-  return `${base}${path}`;
+  return `${getVincereBase()}${path}`;
 }
 
-// Helper: safe fetch with auth + json parsing + better errors
+// Vincere GET with auth headers and good errors
 async function vGet<T>(path: string, token: string): Promise<T> {
-  const url = vUrl(path);
-  const res = await fetch(url, {
+  const res = await fetch(vUrl(path), {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
-      'x-api-key': process.env.VINCERE_API_KEY as string,
+      'x-api-key': process.env.VINCERE_API_KEY || '',
     },
-    // Avoid caching any CV data
     cache: 'no-store',
   });
 
@@ -60,25 +56,18 @@ async function vGet<T>(path: string, token: string): Promise<T> {
     try {
       details = (await res.json()) as VincereError;
     } catch {
-      // ignore JSON parse issues
+      /* ignore */
     }
 
-    // Normalize some common cases for the UI
     if (res.status === 401) {
-      throw Object.assign(new Error('Unauthorized'), {
-        code: 401,
-        details,
-      });
+      throw Object.assign(new Error('Unauthorized'), { code: 401, details });
     }
     if (res.status === 404) {
       const msg =
         details?.message ||
-        (Array.isArray(details?.errors) ? details?.errors?.[0] : '') ||
+        (Array.isArray(details?.errors) ? details.errors[0] : '') ||
         'Resource not found';
-      throw Object.assign(new Error(msg), {
-        code: 404,
-        details,
-      });
+      throw Object.assign(new Error(msg), { code: 404, details });
     }
 
     throw Object.assign(
@@ -92,48 +81,57 @@ async function vGet<T>(path: string, token: string): Promise<T> {
 
 export async function POST(req: NextRequest) {
   try {
-    ensureEnv();
+    // Light sanity check (don’t use requiredEnv here)
+    if (!process.env.VINCERE_API_KEY) {
+      return json({ ok: false, error: 'Missing VINCERE_API_KEY' }, 500);
+    }
 
     const session = await getSession();
-    // Try to refresh/ensure token
     await refreshIdToken(session);
 
-    const token = session?.vincere?.access_token || session?.vincere?.id_token;
+    const token =
+      session?.vincere?.access_token || session?.vincere?.id_token || '';
+
     if (!token) {
       return json({ ok: false, error: 'Not connected to Vincere' }, 401);
     }
 
     const body = (await req.json()) as RetrieveReq;
-    let idRaw = String(body?.candidateId ?? '').trim();
-    if (!idRaw) {
-      return json({ ok: false, error: 'candidateId is required' }, 400);
-    }
-    // Defensive: strip non-digits if the UI pasted with whitespace/new lines
+    const idRaw = String(body?.candidateId ?? '').trim();
+    if (!idRaw) return json({ ok: false, error: 'candidateId is required' }, 400);
+
     const id = idRaw.replace(/[^\d]/g, '');
-    if (!id) {
-      return json({ ok: false, error: 'candidateId is invalid' }, 400);
-    }
+    if (!id) return json({ ok: false, error: 'candidateId is invalid' }, 400);
 
     // Core profile
     const candidate = await vGet<any>(`/candidate/${id}`, token);
 
-    // Extras: education + work
+    // Education + Work (Vincere uses singular workexperience on v2)
     const [education, work] = await Promise.all([
       vGet<any>(`/candidate/${id}/educationdetails`, token),
       vGet<any>(`/candidate/${id}/workexperience`, token),
     ]);
 
-    // Optional: normalize for your CV UI (light touch; keep raw too)
+    // Normalized shape (keep it minimal; raw is returned too)
     const normalized = {
       id: candidate?.id ?? id,
-      name: [candidate?.first_name, candidate?.last_name].filter(Boolean).join(' ') || '',
-      current_title: candidate?.current_job_title ?? '',
-      location: candidate?.current_location_name ?? candidate?.current_city ?? '',
+      name:
+        [candidate?.first_name, candidate?.last_name].filter(Boolean).join(' ') ||
+        candidate?.full_name ||
+        '',
+      current_title:
+        candidate?.current_job_title || candidate?.job_title || '',
+      location:
+        candidate?.current_location_name ||
+        candidate?.current_city ||
+        candidate?.town_city ||
+        '',
       linkedin: candidate?.linkedin ?? null,
       emails: candidate?.emails ?? [],
       phones: candidate?.phones ?? [],
-      skills: candidate?.skill ?? candidate?.keywords ?? [],
-      // Flatten education/work into friendly arrays (best-effort)
+      skills: candidate?.skill || candidate?.keywords || candidate?.skills || [],
+      // Pass through profile/summary if present
+      profile: candidate?.summary || candidate?.profile || '',
       education: Array.isArray(education)
         ? education.map((e: any) => ({
             degree: e?.degree || e?.qualification || '',
@@ -147,9 +145,9 @@ export async function POST(req: NextRequest) {
       work: Array.isArray(work)
         ? work.map((w: any) => ({
             title: w?.title || w?.job_title || '',
-            company: w?.company || w?.employer || '',
-            start: w?.start_date || w?.from_date || '',
-            end: w?.end_date || w?.to_date || '',
+            company: w?.company || w?.company_name || w?.employer || '',
+            start: w?.start_date || w?.from_date || w?.work_from || '',
+            end: w?.end_date || w?.to_date || w?.work_to || '',
             description: w?.description || '',
           }))
         : [],
@@ -165,13 +163,10 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (err: any) {
-    // Normalize unexpected errors
     const code = typeof err?.code === 'number' ? err.code : 500;
     const message =
-      err?.message ||
-      (typeof err === 'string' ? err : 'Unexpected server error');
+      err?.message || (typeof err === 'string' ? err : 'Unexpected server error');
 
-    // Map some known Vincere messages to friendlier text
     const friendly =
       code === 404
         ? message.includes('No candidate is found')
@@ -186,7 +181,8 @@ export async function POST(req: NextRequest) {
         ok: false,
         status: code,
         error: friendly,
-        debug: process.env.NODE_ENV !== 'production' ? err?.details || null : undefined,
+        debug:
+          process.env.NODE_ENV !== 'production' ? err?.details || null : undefined,
       },
       code
     );
