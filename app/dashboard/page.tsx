@@ -656,32 +656,49 @@ function SourceTab({ mode }: { mode: SourceMode }) {
 }
 
 // --- CV Formatting Tab (template picker + two-pane editable + live preview) ---
-function CvTab() {
+function CvTab(): JSX.Element {
   type TemplateKey = 'permanent' | 'contract' | 'us'
 
   // UI state
   const [template, setTemplate] = useState<TemplateKey | null>(null)
-  const [candidateId, setCandidateId] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [candidateId, setCandidateId] = useState<string>('')
+  const [loading, setLoading] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Raw fetched
+  // Raw fetched (for debug/inspection)
   const [rawCandidate, setRawCandidate] = useState<any>(null)
   const [rawWork, setRawWork] = useState<any[]>([])
 
-  // Editable form state (what feeds the preview)
-  const [form, setForm] = useState({
+  // Editable state driving the preview
+  type Employment = {
+    title?: string
+    company?: string
+    start?: string
+    end?: string
+    description?: string
+  }
+
+  const [form, setForm] = useState<{
+    name: string
+    location: string
+    profile: string
+    keySkills: string // newline or comma separated
+    employment: Employment[]
+    education: string
+    additional: {
+      drivingLicense: string
+      nationality: string
+      availability: string
+      health: string
+      criminalRecord: string
+      financialHistory: string
+    }
+  }>({
     name: '',
     location: '',
     profile: '',
-    keySkills: '' as string, // newline-separated for editing
-    employment: [] as Array<{
-      title?: string
-      company?: string
-      start?: string
-      end?: string
-      description?: string
-    }>,
+    keySkills: '',
+    employment: [],
     education: '',
     additional: {
       drivingLicense: '',
@@ -693,7 +710,7 @@ function CvTab() {
     },
   })
 
-  // Collapsible sections
+  // Collapsibles
   const [open, setOpen] = useState({
     core: true,
     profile: true,
@@ -702,7 +719,6 @@ function CvTab() {
     education: false,
     extra: false,
   })
-
   function toggle(k: keyof typeof open) {
     setOpen(s => ({ ...s, [k]: !s[k] }))
   }
@@ -712,29 +728,26 @@ function CvTab() {
     if (!Array.isArray(arr)) return ''
     return arr.map(v => (v == null ? '' : String(v))).filter(Boolean).join(sep)
   }
-
   function toName(c: any): string {
     const first = c?.first_name ?? c?.firstName ?? ''
     const last = c?.last_name ?? c?.lastName ?? ''
-    const name = `${first} ${last}`.trim()
-    return name || (c?.full_name ?? c?.name ?? '')
+    const fallback = c?.full_name ?? c?.name ?? ''
+    return `${first} ${last}`.trim() || fallback || ''
   }
-
   function toLocation(c: any): string {
     return c?.current_location_name || c?.location || ''
   }
-
   function toSkills(c: any): string {
-    // Try typical Vincere fields: skill array or keywords
     const skills =
-      (Array.isArray(c?.skill) && c.skill) ||
-      (typeof c?.keywords === 'string' ? c.keywords.split(',') : Array.isArray(c?.keywords) ? c.keywords : [])
+      (Array.isArray(c?.skill) ? c.skill : []) ||
+      (typeof c?.keywords === 'string'
+        ? c.keywords.split(',')
+        : Array.isArray(c?.keywords)
+        ? c.keywords
+        : [])
     return safeJoin(skills, ', ')
   }
-
-  function mapWorkExperiences(list: any[]): Array<{
-    title?: string; company?: string; start?: string; end?: string; description?: string
-  }> {
+  function mapWorkExperiences(list: any[]): Employment[] {
     if (!Array.isArray(list)) return []
     return list.map(w => ({
       title: w?.title || w?.job_title || '',
@@ -745,8 +758,9 @@ function CvTab() {
     }))
   }
 
-  function preloadEmptyForTemplate(t: TemplateKey) {
-    // Clear form but keep any manual edits if you prefer; here we reset for clarity
+  function onTemplatePick(t: TemplateKey) {
+    setTemplate(t)
+    // reset the form for clarity when switching templates
     setForm({
       name: '',
       location: '',
@@ -768,23 +782,18 @@ function CvTab() {
     setError(null)
   }
 
-  function onTemplatePick(t: TemplateKey) {
-    setTemplate(t)
-    preloadEmptyForTemplate(t)
-  }
-
   function setField(path: string, value: any) {
-    // simple dot-path setter: 'additional.drivingLicense', 'name', etc.
     setForm(prev => {
-      const clone: any = structuredClone(prev)
-      const parts = path.split('.')
-      let cur = clone
-      for (let i = 0; i < parts.length - 1; i++) {
-        cur[parts[i]] ??= {}
-        cur = cur[parts[i]]
+      const next = { ...prev }
+      if (path.includes('.')) {
+        const [a, b] = path.split('.', 2)
+        // @ts-expect-error dynamic index
+        next[a] = { ...(next as any)[a], [b]: value }
+      } else {
+        // @ts-expect-error dynamic index
+        next[path] = value
       }
-      cur[parts[parts.length - 1]] = value
-      return clone
+      return next
     })
   }
 
@@ -801,7 +810,6 @@ function CvTab() {
         fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}`, { cache: 'no-store' }),
         fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}/workexperiences`, { cache: 'no-store' }),
       ])
-
       if (!candResp.ok) {
         const t = await candResp.text().catch(() => '')
         throw new Error(t || `Failed to fetch candidate (${candResp.status})`)
@@ -815,10 +823,11 @@ function CvTab() {
       const work = await workResp.json()
 
       setRawCandidate(cand)
-      setRawWork(Array.isArray(work?.data) ? work.data : Array.isArray(work) ? work : [])
+      const workArr: any[] = Array.isArray(work?.data) ? work.data : Array.isArray(work) ? work : []
+      setRawWork(workArr)
 
-      // Map -> editable form
-      const mappedWork = mapWorkExperiences(Array.isArray(work?.data) ? work.data : Array.isArray(work) ? work : [])
+      // map → form
+      const mappedWork = mapWorkExperiences(workArr)
       setForm(prev => ({
         ...prev,
         name: toName(cand) || prev.name,
@@ -826,7 +835,6 @@ function CvTab() {
         profile: cand?.summary || cand?.profile || prev.profile,
         keySkills: prev.keySkills || toSkills(cand),
         employment: mappedWork.length ? mappedWork : prev.employment,
-        // You can extend education/additional mappings here when you confirm your Vincere fields
       }))
     } catch (e: any) {
       setError(e?.message || 'Failed to retrieve data')
@@ -835,8 +843,8 @@ function CvTab() {
     }
   }
 
-  // ---------- Right-side CV Template Preview ----------
-  function CVTemplatePreview() {
+  // ---------- Preview (Right) ----------
+  function CVTemplatePreview(): JSX.Element {
     if (!template) {
       return (
         <div className="h-full grid place-items-center text-gray-500">
@@ -848,15 +856,21 @@ function CvTab() {
       )
     }
 
-    // common blocks
-    const EmploymentBlock = () => (
+    const Header = ({ title }: { title: string }) => (
+      <h2 className="text-base font-semibold text-[#F7941D] mt-6 mb-2">{title}</h2>
+    )
+
+    const EmploymentBlock = (): JSX.Element => (
       <div className="space-y-3">
-        {form.employment?.length === 0 ? (
+        {form.employment.length === 0 ? (
           <div className="text-gray-500 text-sm">No employment history yet.</div>
         ) : (
           form.employment.map((e, i) => (
             <div key={i}>
-              <div className="font-medium">{e.title || 'Role'}{(e.company ? ` · ${e.company}` : '')}</div>
+              <div className="font-medium">
+                {e.title || 'Role'}
+                {e.company ? ` · ${e.company}` : ''}
+              </div>
               <div className="text-xs text-gray-500">{[e.start, e.end].filter(Boolean).join(' — ')}</div>
               {e.description && <div className="text-sm mt-1 whitespace-pre-wrap">{e.description}</div>}
             </div>
@@ -865,30 +879,26 @@ function CvTab() {
       </div>
     )
 
-    // Slight style differences per template
-    const Header = ({ title }: { title: string }) => (
-      <h2 className="text-base font-semibold text-[#F7941D] mt-6 mb-2">{title}</h2>
-    )
-
+    // Minimal stylistic differences per template could be added here
     return (
       <div className="p-6">
-        {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div>
             <h1 className="text-2xl font-bold">Curriculum Vitae</h1>
-            <div className="text-sm text-gray-700">{form.name || 'Name'}{form.location ? ` · ${form.location}` : ''}</div>
+            <div className="text-sm text-gray-700">
+              {form.name || 'Name'}
+              {form.location ? ` · ${form.location}` : ''}
+            </div>
           </div>
           <img src="/Zitko_Logo-removebg-preview.png" alt="Zitko" className="h-8" />
         </div>
 
-        {/* Template-specific subtle hint */}
         <div className="text-xs text-gray-500 italic mb-4">
           {template === 'permanent' && 'Permanent Template'}
           {template === 'contract' && 'Contract Template'}
           {template === 'us' && 'US Template'}
         </div>
 
-        {/* Sections */}
         <Header title="Profile" />
         <div className="whitespace-pre-wrap">{form.profile || '—'}</div>
 
@@ -919,10 +929,10 @@ function CvTab() {
     )
   }
 
-  // ---------- Left-side editable collapsibles ----------
+  // ---------- Left-side reusable collapsible ----------
   function Section({
     title, open, onToggle, children
-  }: { title: string, open: boolean, onToggle: () => void, children: React.ReactNode }) {
+  }: { title: string; open: boolean; onToggle: () => void; children: React.ReactNode }): JSX.Element {
     return (
       <div className="rounded-2xl border overflow-hidden">
         <button
@@ -940,7 +950,7 @@ function CvTab() {
 
   return (
     <div className="grid gap-4">
-      {/* Top: Template picker */}
+      {/* Template picker + fetch */}
       <div className="card p-4">
         <div className="grid sm:grid-cols-3 gap-2">
           {(['permanent', 'contract', 'us'] as TemplateKey[]).map(t => (
@@ -955,6 +965,7 @@ function CvTab() {
             </button>
           ))}
         </div>
+
         <div className="grid sm:grid-cols-[1fr_auto] gap-2 mt-4">
           <input
             className="input"
@@ -969,9 +980,9 @@ function CvTab() {
         {error && <div className="mt-3 text-sm text-red-600">{error}</div>}
       </div>
 
-      {/* Main split: left editor / right preview */}
+      {/* Split layout */}
       <div className="grid md:grid-cols-2 gap-4">
-        {/* LEFT: editor panels */}
+        {/* LEFT editor */}
         <div className="grid gap-4">
           <Section title="Core Details" open={open.core} onToggle={() => toggle('core')}>
             <div>
@@ -999,43 +1010,65 @@ function CvTab() {
 
           <Section title="Employment History" open={open.work} onToggle={() => toggle('work')}>
             <div className="space-y-4">
-              {(form.employment || []).map((e, i) => (
+              {form.employment.map((e, i) => (
                 <div key={i} className="rounded-xl border p-3 grid gap-2">
                   <div className="grid sm:grid-cols-2 gap-2">
-                    <input className="input" placeholder="Title" value={e.title || ''} onChange={ev => {
-                      const v = ev.target.value
-                      setForm(prev => {
-                        const c = structuredClone(prev)
-                        c.employment[i].title = v
-                        return c
-                      })
-                    }} />
-                    <input className="input" placeholder="Company" value={e.company || ''} onChange={ev => {
-                      const v = ev.target.value
-                      setForm(prev => {
-                        const c = structuredClone(prev)
-                        c.employment[i].company = v
-                        return c
-                      })
-                    }} />
+                    <input
+                      className="input" placeholder="Title" value={e.title || ''}
+                      onChange={ev => {
+                        const v = ev.target.value
+                        setForm(prev => {
+                          const employment = [...prev.employment]
+                          employment[i] = { ...employment[i], title: v }
+                          return { ...prev, employment }
+                        })
+                      }}
+                    />
+                    <input
+                      className="input" placeholder="Company" value={e.company || ''}
+                      onChange={ev => {
+                        const v = ev.target.value
+                        setForm(prev => {
+                          const employment = [...prev.employment]
+                          employment[i] = { ...employment[i], company: v }
+                          return { ...prev, employment }
+                        })
+                      }}
+                    />
                   </div>
                   <div className="grid sm:grid-cols-2 gap-2">
-                    <input className="input" placeholder="Start" value={e.start || ''} onChange={ev => {
-                      const v = ev.target.value
-                      setForm(prev => { const c = structuredClone(prev); c.employment[i].start = v; return c })
-                    }} />
-                    <input className="input" placeholder="End" value={e.end || ''} onChange={ev => {
-                      const v = ev.target.value
-                      setForm(prev => { const c = structuredClone(prev); c.employment[i].end = v; return c })
-                    }} />
+                    <input
+                      className="input" placeholder="Start" value={e.start || ''}
+                      onChange={ev => {
+                        const v = ev.target.value
+                        setForm(prev => {
+                          const employment = [...prev.employment]
+                          employment[i] = { ...employment[i], start: v }
+                          return { ...prev, employment }
+                        })
+                      }}
+                    />
+                    <input
+                      className="input" placeholder="End" value={e.end || ''}
+                      onChange={ev => {
+                        const v = ev.target.value
+                        setForm(prev => {
+                          const employment = [...prev.employment]
+                          employment[i] = { ...employment[i], end: v }
+                          return { ...prev, employment }
+                        })
+                      }}
+                    />
                   </div>
                   <textarea
-                    className="input h-24"
-                    placeholder="Description"
-                    value={e.description || ''}
+                    className="input h-24" placeholder="Description" value={e.description || ''}
                     onChange={ev => {
                       const v = ev.target.value
-                      setForm(prev => { const c = structuredClone(prev); c.employment[i].description = v; return c })
+                      setForm(prev => {
+                        const employment = [...prev.employment]
+                        employment[i] = { ...employment[i], description: v }
+                        return { ...prev, employment }
+                      })
                     }}
                   />
                 </div>
@@ -1067,32 +1100,47 @@ function CvTab() {
 
           <Section title="Additional Information" open={open.extra} onToggle={() => toggle('extra')}>
             <div className="grid sm:grid-cols-2 gap-2">
-              <input className="input" placeholder="Driving License (Yes/No)" value={form.additional.drivingLicense}
+              <input className="input" placeholder="Driving License (Yes/No)"
+                     value={form.additional.drivingLicense}
                      onChange={e => setField('additional.drivingLicense', e.target.value)} />
-              <input className="input" placeholder="Nationality" value={form.additional.nationality}
+              <input className="input" placeholder="Nationality"
+                     value={form.additional.nationality}
                      onChange={e => setField('additional.nationality', e.target.value)} />
-              <input className="input" placeholder="Availability" value={form.additional.availability}
+              <input className="input" placeholder="Availability"
+                     value={form.additional.availability}
                      onChange={e => setField('additional.availability', e.target.value)} />
-              <input className="input" placeholder="Health" value={form.additional.health}
+              <input className="input" placeholder="Health"
+                     value={form.additional.health}
                      onChange={e => setField('additional.health', e.target.value)} />
-              <input className="input" placeholder="Criminal Record (Yes/No)" value={form.additional.criminalRecord}
+              <input className="input" placeholder="Criminal Record (Yes/No)"
+                     value={form.additional.criminalRecord}
                      onChange={e => setField('additional.criminalRecord', e.target.value)} />
-              <input className="input" placeholder="Financial History" value={form.additional.financialHistory}
+              <input className="input" placeholder="Financial History"
+                     value={form.additional.financialHistory}
                      onChange={e => setField('additional.financialHistory', e.target.value)} />
             </div>
           </Section>
 
-          {/* Debug (optional): show raw JSONs for quick verification */}
-          {(rawCandidate || rawWork.length) && (
+          {(rawCandidate || rawWork.length > 0) && (
             <div className="rounded-2xl border p-3 text-xs text-gray-600">
               <div className="font-medium mb-1">Fetched (raw)</div>
-              {rawCandidate && <details open><summary>Candidate</summary><pre className="overflow-auto">{JSON.stringify(rawCandidate, null, 2)}</pre></details>}
-              {rawWork.length > 0 && <details><summary>Work experiences</summary><pre className="overflow-auto">{JSON.stringify(rawWork, null, 2)}</pre></details>}
+              {rawCandidate && (
+                <details open>
+                  <summary>Candidate</summary>
+                  <pre className="overflow-auto">{JSON.stringify(rawCandidate, null, 2)}</pre>
+                </details>
+              )}
+              {rawWork.length > 0 && (
+                <details>
+                  <summary>Work experiences</summary>
+                  <pre className="overflow-auto">{JSON.stringify(rawWork, null, 2)}</pre>
+                </details>
+              )}
             </div>
           )}
         </div>
 
-        {/* RIGHT: live template preview */}
+        {/* RIGHT preview */}
         <div className="rounded-2xl border overflow-hidden bg-white">
           <CVTemplatePreview />
         </div>
@@ -1100,4 +1148,3 @@ function CvTab() {
     </div>
   )
 }
-
