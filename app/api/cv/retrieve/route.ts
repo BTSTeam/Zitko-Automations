@@ -25,10 +25,11 @@ function json(res: any, status = 200) {
   return NextResponse.json(res, { status });
 }
 
+/** Build Vincere v2 base URL from config or env */
 function getVincereBase(): string {
   const fromConfig = (config as any)?.vincereBase as string | undefined;
   if (fromConfig) return fromConfig.replace(/\/$/, '');
-  const tenant = process.env.VINCERE_TENANT; // e.g. zitko.vincere.io
+  const tenant = process.env.VINCERE_TENANT; // e.g. "zitko.vincere.io"
   if (!tenant) throw new Error('Missing VINCERE_TENANT or config.vincereBase');
   return `https://${tenant.replace(/^https?:\/\//, '')}/api/v2`;
 }
@@ -37,6 +38,7 @@ function vUrl(path: string) {
   return `${getVincereBase()}${path}`;
 }
 
+/** Vincere GET with auth + clear errors */
 async function vGet<T>(path: string, token: string): Promise<T> {
   const res = await fetch(vUrl(path), {
     method: 'GET',
@@ -53,7 +55,7 @@ async function vGet<T>(path: string, token: string): Promise<T> {
     try {
       details = (await res.json()) as VincereError;
     } catch {
-      /* ignore */
+      /* ignore json parse errors */
     }
 
     if (res.status === 401) {
@@ -76,34 +78,41 @@ async function vGet<T>(path: string, token: string): Promise<T> {
   return (await res.json()) as T;
 }
 
+/** Read Vincere token from session without relying on TS shape */
+function readVincereToken(session: any): string {
+  return (
+    session?.vincere?.access_token ||
+    session?.vincere?.id_token ||
+    session?.access_token ||
+    session?.id_token ||
+    session?.tokens?.vincere?.access_token ||
+    ''
+  );
+}
+
 export async function POST(req: NextRequest) {
   try {
     if (!process.env.VINCERE_API_KEY) {
       return json({ ok: false, error: 'Missing VINCERE_API_KEY' }, 500);
     }
 
-    // ---- REFRESH AUTH (supports either signature) ----
+    // ---- REFRESH AUTH (supports both refreshIdToken() and refreshIdToken(cookie)) ----
     try {
-      // Many codebases declare refreshIdToken(cookie: string) or refreshIdToken()
       const anyRefresh = refreshIdToken as unknown as (...args: any[]) => Promise<any>;
       if (typeof anyRefresh === 'function') {
         if (anyRefresh.length === 0) {
           await anyRefresh(); // no-arg variant
         } else {
-          // pass cookie header if it expects something
           await anyRefresh(req.headers.get('cookie') ?? '');
         }
       }
     } catch {
-      // best-effort; we still proceed to read session
+      /* best-effort refresh; proceed to read session */
     }
 
-    // ---- READ SESSION AFTER REFRESH ----
-    const session = await getSession();
-
-    const token =
-      session?.vincere?.access_token || session?.vincere?.id_token || '';
-
+    // ---- READ SESSION & TOKEN ----
+    const session: any = await getSession();
+    const token = readVincereToken(session);
     if (!token) {
       return json({ ok: false, error: 'Not connected to Vincere' }, 401);
     }
@@ -117,12 +126,10 @@ export async function POST(req: NextRequest) {
 
     // ---- VINCERE CALLS ----
     const candidate = await vGet<any>(`/candidate/${id}`, token);
-    const [education, work] = await Promise.all([
-      vGet<any>(`/candidate/${id}/educationdetails`, token),
-      vGet<any>(`/candidate/${id}/workexperience`, token), // v2 uses singular
-    ]);
+    const work = await vGet<any>(`/candidate/${id}/workexperiences`, token); // plural (your tenant)
+    const education = await vGet<any>(`/candidate/${id}/educationdetails`, token);
 
-    // ---- NORMALIZE ----
+    // ---- NORMALIZE (light touch; raw also returned) ----
     const normalized = {
       id: candidate?.id ?? id,
       name:
@@ -186,7 +193,7 @@ export async function POST(req: NextRequest) {
         status: code,
         error: friendly,
         debug:
-          process.env.NODE_ENV !== 'production' ? err?.details || null : undefined,
+        process.env.NODE_ENV !== 'production' ? err?.details || null : undefined,
       },
       code
     );
