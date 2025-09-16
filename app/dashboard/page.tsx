@@ -655,59 +655,449 @@ function SourceTab({ mode }: { mode: SourceMode }) {
   )
 }
 
+// --- CV Formatting Tab (template picker + two-pane editable + live preview) ---
 function CvTab() {
-  const [candidateId, setCandidateId] = useState('')
-  const [result, setResult] = useState<any>(null)
-  const [loading, setLoading] = useState(false)
+  type TemplateKey = 'permanent' | 'contract' | 'us'
 
-  const generate = async () => {
+  // UI state
+  const [template, setTemplate] = useState<TemplateKey | null>(null)
+  const [candidateId, setCandidateId] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // Raw fetched
+  const [rawCandidate, setRawCandidate] = useState<any>(null)
+  const [rawWork, setRawWork] = useState<any[]>([])
+
+  // Editable form state (what feeds the preview)
+  const [form, setForm] = useState({
+    name: '',
+    location: '',
+    profile: '',
+    keySkills: '' as string, // newline-separated for editing
+    employment: [] as Array<{
+      title?: string
+      company?: string
+      start?: string
+      end?: string
+      description?: string
+    }>,
+    education: '',
+    additional: {
+      drivingLicense: '',
+      nationality: '',
+      availability: '',
+      health: '',
+      criminalRecord: '',
+      financialHistory: '',
+    },
+  })
+
+  // Collapsible sections
+  const [open, setOpen] = useState({
+    core: true,
+    profile: true,
+    skills: true,
+    work: true,
+    education: false,
+    extra: false,
+  })
+
+  function toggle(k: keyof typeof open) {
+    setOpen(s => ({ ...s, [k]: !s[k] }))
+  }
+
+  // Helpers
+  function safeJoin(arr?: any[], sep = ', '): string {
+    if (!Array.isArray(arr)) return ''
+    return arr.map(v => (v == null ? '' : String(v))).filter(Boolean).join(sep)
+  }
+
+  function toName(c: any): string {
+    const first = c?.first_name ?? c?.firstName ?? ''
+    const last = c?.last_name ?? c?.lastName ?? ''
+    const name = `${first} ${last}`.trim()
+    return name || (c?.full_name ?? c?.name ?? '')
+  }
+
+  function toLocation(c: any): string {
+    return c?.current_location_name || c?.location || ''
+  }
+
+  function toSkills(c: any): string {
+    // Try typical Vincere fields: skill array or keywords
+    const skills =
+      (Array.isArray(c?.skill) && c.skill) ||
+      (typeof c?.keywords === 'string' ? c.keywords.split(',') : Array.isArray(c?.keywords) ? c.keywords : [])
+    return safeJoin(skills, ', ')
+  }
+
+  function mapWorkExperiences(list: any[]): Array<{
+    title?: string; company?: string; start?: string; end?: string; description?: string
+  }> {
+    if (!Array.isArray(list)) return []
+    return list.map(w => ({
+      title: w?.title || w?.job_title || '',
+      company: w?.company || w?.company_name || '',
+      start: (w?.start_date || w?.startDate || '').toString(),
+      end: (w?.end_date || w?.endDate || '').toString(),
+      description: (w?.description || w?.duties || '').toString(),
+    }))
+  }
+
+  function preloadEmptyForTemplate(t: TemplateKey) {
+    // Clear form but keep any manual edits if you prefer; here we reset for clarity
+    setForm({
+      name: '',
+      location: '',
+      profile: '',
+      keySkills: '',
+      employment: [],
+      education: '',
+      additional: {
+        drivingLicense: '',
+        nationality: '',
+        availability: '',
+        health: '',
+        criminalRecord: '',
+        financialHistory: '',
+      },
+    })
+    setRawCandidate(null)
+    setRawWork([])
+    setError(null)
+  }
+
+  function onTemplatePick(t: TemplateKey) {
+    setTemplate(t)
+    preloadEmptyForTemplate(t)
+  }
+
+  function setField(path: string, value: any) {
+    // simple dot-path setter: 'additional.drivingLicense', 'name', etc.
+    setForm(prev => {
+      const clone: any = structuredClone(prev)
+      const parts = path.split('.')
+      let cur = clone
+      for (let i = 0; i < parts.length - 1; i++) {
+        cur[parts[i]] ??= {}
+        cur = cur[parts[i]]
+      }
+      cur[parts[parts.length - 1]] = value
+      return clone
+    })
+  }
+
+  async function fetchData() {
     if (!candidateId) return
+    if (!template) {
+      alert('Please select a template first.')
+      return
+    }
     setLoading(true)
+    setError(null)
     try {
-      const r = await fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}`)
-      const data = await r.json()
-      setResult(data)
-    } catch (e) {
-      console.error(e)
-      alert('Failed to retrieve candidate. Are you logged in and do you have a valid Candidate ID?')
+      const [candResp, workResp] = await Promise.all([
+        fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}`, { cache: 'no-store' }),
+        fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}/workexperiences`, { cache: 'no-store' }),
+      ])
+
+      if (!candResp.ok) {
+        const t = await candResp.text().catch(() => '')
+        throw new Error(t || `Failed to fetch candidate (${candResp.status})`)
+      }
+      if (!workResp.ok) {
+        const t = await workResp.text().catch(() => '')
+        throw new Error(t || `Failed to fetch work experiences (${workResp.status})`)
+      }
+
+      const cand = await candResp.json()
+      const work = await workResp.json()
+
+      setRawCandidate(cand)
+      setRawWork(Array.isArray(work?.data) ? work.data : Array.isArray(work) ? work : [])
+
+      // Map -> editable form
+      const mappedWork = mapWorkExperiences(Array.isArray(work?.data) ? work.data : Array.isArray(work) ? work : [])
+      setForm(prev => ({
+        ...prev,
+        name: toName(cand) || prev.name,
+        location: toLocation(cand) || prev.location,
+        profile: cand?.summary || cand?.profile || prev.profile,
+        keySkills: prev.keySkills || toSkills(cand),
+        employment: mappedWork.length ? mappedWork : prev.employment,
+        // You can extend education/additional mappings here when you confirm your Vincere fields
+      }))
+    } catch (e: any) {
+      setError(e?.message || 'Failed to retrieve data')
     } finally {
       setLoading(false)
     }
   }
 
-  return (
-    <div className="card p-6">
-      <p className="mb-4">Enter a Candidate ID to fetch details from Vincere. We will format this into your CV layout later.</p>
-      <div className="grid sm:grid-cols-2 gap-4 mb-4">
-        <div>
-          <label className="text-sm text-gray-600">Candidate ID</label>
-          <input className="input mt-1" placeholder="Enter Candidate ID" value={candidateId} onChange={e=>setCandidateId(e.target.value)} />
+  // ---------- Right-side CV Template Preview ----------
+  function CVTemplatePreview() {
+    if (!template) {
+      return (
+        <div className="h-full grid place-items-center text-gray-500">
+          <div className="text-center">
+            <div className="text-lg font-medium">Select a template to preview</div>
+            <div className="text-sm">Permanent · Contract · US</div>
+          </div>
+        </div>
+      )
+    }
+
+    // common blocks
+    const EmploymentBlock = () => (
+      <div className="space-y-3">
+        {form.employment?.length === 0 ? (
+          <div className="text-gray-500 text-sm">No employment history yet.</div>
+        ) : (
+          form.employment.map((e, i) => (
+            <div key={i}>
+              <div className="font-medium">{e.title || 'Role'}{(e.company ? ` · ${e.company}` : '')}</div>
+              <div className="text-xs text-gray-500">{[e.start, e.end].filter(Boolean).join(' — ')}</div>
+              {e.description && <div className="text-sm mt-1 whitespace-pre-wrap">{e.description}</div>}
+            </div>
+          ))
+        )}
+      </div>
+    )
+
+    // Slight style differences per template
+    const Header = ({ title }: { title: string }) => (
+      <h2 className="text-base font-semibold text-[#F7941D] mt-6 mb-2">{title}</h2>
+    )
+
+    return (
+      <div className="p-6">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h1 className="text-2xl font-bold">Curriculum Vitae</h1>
+            <div className="text-sm text-gray-700">{form.name || 'Name'}{form.location ? ` · ${form.location}` : ''}</div>
+          </div>
+          <img src="/Zitko_Logo-removebg-preview.png" alt="Zitko" className="h-8" />
+        </div>
+
+        {/* Template-specific subtle hint */}
+        <div className="text-xs text-gray-500 italic mb-4">
+          {template === 'permanent' && 'Permanent Template'}
+          {template === 'contract' && 'Contract Template'}
+          {template === 'us' && 'US Template'}
+        </div>
+
+        {/* Sections */}
+        <Header title="Profile" />
+        <div className="whitespace-pre-wrap">{form.profile || '—'}</div>
+
+        <Header title="Key Skills" />
+        <div className="whitespace-pre-wrap">
+          {(form.keySkills || '')
+            .split(/\r?\n|,\s*/)
+            .filter(Boolean)
+            .map((s, i) => <div key={i}>• {s}</div>)}
+        </div>
+
+        <Header title="Employment History" />
+        <EmploymentBlock />
+
+        <Header title="Education & Qualifications" />
+        <div className="whitespace-pre-wrap">{form.education || '—'}</div>
+
+        <Header title="Additional Information" />
+        <div className="text-sm grid gap-1">
+          <div>Driving License: {form.additional.drivingLicense || '—'}</div>
+          <div>Nationality: {form.additional.nationality || '—'}</div>
+          <div>Availability: {form.additional.availability || '—'}</div>
+          <div>Health: {form.additional.health || '—'}</div>
+          <div>Criminal Record: {form.additional.criminalRecord || '—'}</div>
+          <div>Financial History: {form.additional.financialHistory || '—'}</div>
         </div>
       </div>
-      <button className="btn btn-brand w-full" onClick={generate} disabled={loading}>
-        {loading ? 'Fetching…' : 'Generate CV Preview'}
-      </button>
+    )
+  }
 
-      {result && (
-        <div className="mt-6">
-          <h3 className="font-semibold mb-2">Raw Candidate Data</h3>
-          <pre className="rounded-2xl border p-4 text-sm overflow-auto">{JSON.stringify(result, null, 2)}</pre>
-        </div>
-      )}
-    </div>
-  )
-}
-
-export default function Dashboard() {
-  const [tab, setTab] = useState<TabKey>('match')
-  const [sourceMode, setSourceMode] = useState<SourceMode>('candidates') // default to Candidates
+  // ---------- Left-side editable collapsibles ----------
+  function Section({
+    title, open, onToggle, children
+  }: { title: string, open: boolean, onToggle: () => void, children: React.ReactNode }) {
+    return (
+      <div className="rounded-2xl border overflow-hidden">
+        <button
+          type="button"
+          onClick={onToggle}
+          className="w-full text-left px-4 py-3 bg-gray-50 hover:bg-gray-100 flex items-center justify-between"
+        >
+          <span className="font-medium">{title}</span>
+          <span className="text-gray-500">{open ? '−' : '+'}</span>
+        </button>
+        {open && <div className="p-4 space-y-3">{children}</div>}
+      </div>
+    )
+  }
 
   return (
-    <div>
-      <Tabs tab={tab} setTab={setTab} sourceMode={sourceMode} setSourceMode={setSourceMode} />
-      {tab==='match' && <MatchTab />}
-      {tab==='source' && <SourceTab mode={sourceMode} />}
-      {tab==='cv' && <CvTab />}
+    <div className="grid gap-4">
+      {/* Top: Template picker */}
+      <div className="card p-4">
+        <div className="grid sm:grid-cols-3 gap-2">
+          {(['permanent', 'contract', 'us'] as TemplateKey[]).map(t => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => onTemplatePick(t)}
+              className={`btn w-full ${template === t ? 'btn-brand' : 'btn-grey'}`}
+              title={`Use ${t} template`}
+            >
+              {t === 'permanent' ? 'Permanent' : t === 'contract' ? 'Contract' : 'US'}
+            </button>
+          ))}
+        </div>
+        <div className="grid sm:grid-cols-[1fr_auto] gap-2 mt-4">
+          <input
+            className="input"
+            placeholder="Enter Candidate ID"
+            value={candidateId}
+            onChange={e => setCandidateId(e.target.value)}
+          />
+          <button className="btn btn-brand" onClick={fetchData} disabled={loading || !candidateId}>
+            {loading ? 'Fetching…' : 'Retrieve Candidate'}
+          </button>
+        </div>
+        {error && <div className="mt-3 text-sm text-red-600">{error}</div>}
+      </div>
+
+      {/* Main split: left editor / right preview */}
+      <div className="grid md:grid-cols-2 gap-4">
+        {/* LEFT: editor panels */}
+        <div className="grid gap-4">
+          <Section title="Core Details" open={open.core} onToggle={() => toggle('core')}>
+            <div>
+              <label className="text-sm text-gray-600">Name</label>
+              <input className="input mt-1" value={form.name} onChange={e => setField('name', e.target.value)} />
+            </div>
+            <div>
+              <label className="text-sm text-gray-600">Location</label>
+              <input className="input mt-1" value={form.location} onChange={e => setField('location', e.target.value)} />
+            </div>
+          </Section>
+
+          <Section title="Profile" open={open.profile} onToggle={() => toggle('profile')}>
+            <textarea className="input h-28" value={form.profile} onChange={e => setField('profile', e.target.value)} />
+          </Section>
+
+          <Section title="Key Skills" open={open.skills} onToggle={() => toggle('skills')}>
+            <textarea
+              className="input h-28"
+              placeholder="One per line or comma-separated"
+              value={form.keySkills}
+              onChange={e => setField('keySkills', e.target.value)}
+            />
+          </Section>
+
+          <Section title="Employment History" open={open.work} onToggle={() => toggle('work')}>
+            <div className="space-y-4">
+              {(form.employment || []).map((e, i) => (
+                <div key={i} className="rounded-xl border p-3 grid gap-2">
+                  <div className="grid sm:grid-cols-2 gap-2">
+                    <input className="input" placeholder="Title" value={e.title || ''} onChange={ev => {
+                      const v = ev.target.value
+                      setForm(prev => {
+                        const c = structuredClone(prev)
+                        c.employment[i].title = v
+                        return c
+                      })
+                    }} />
+                    <input className="input" placeholder="Company" value={e.company || ''} onChange={ev => {
+                      const v = ev.target.value
+                      setForm(prev => {
+                        const c = structuredClone(prev)
+                        c.employment[i].company = v
+                        return c
+                      })
+                    }} />
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-2">
+                    <input className="input" placeholder="Start" value={e.start || ''} onChange={ev => {
+                      const v = ev.target.value
+                      setForm(prev => { const c = structuredClone(prev); c.employment[i].start = v; return c })
+                    }} />
+                    <input className="input" placeholder="End" value={e.end || ''} onChange={ev => {
+                      const v = ev.target.value
+                      setForm(prev => { const c = structuredClone(prev); c.employment[i].end = v; return c })
+                    }} />
+                  </div>
+                  <textarea
+                    className="input h-24"
+                    placeholder="Description"
+                    value={e.description || ''}
+                    onChange={ev => {
+                      const v = ev.target.value
+                      setForm(prev => { const c = structuredClone(prev); c.employment[i].description = v; return c })
+                    }}
+                  />
+                </div>
+              ))}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="btn btn-grey"
+                  onClick={() => setForm(prev => ({ ...prev, employment: [...prev.employment, {}] }))}
+                >
+                  + Add role
+                </button>
+                {form.employment.length > 0 && (
+                  <button
+                    type="button"
+                    className="btn btn-grey"
+                    onClick={() => setForm(prev => ({ ...prev, employment: prev.employment.slice(0, -1) }))}
+                  >
+                    Remove last
+                  </button>
+                )}
+              </div>
+            </div>
+          </Section>
+
+          <Section title="Education & Qualifications" open={open.education} onToggle={() => toggle('education')}>
+            <textarea className="input h-24" value={form.education} onChange={e => setField('education', e.target.value)} />
+          </Section>
+
+          <Section title="Additional Information" open={open.extra} onToggle={() => toggle('extra')}>
+            <div className="grid sm:grid-cols-2 gap-2">
+              <input className="input" placeholder="Driving License (Yes/No)" value={form.additional.drivingLicense}
+                     onChange={e => setField('additional.drivingLicense', e.target.value)} />
+              <input className="input" placeholder="Nationality" value={form.additional.nationality}
+                     onChange={e => setField('additional.nationality', e.target.value)} />
+              <input className="input" placeholder="Availability" value={form.additional.availability}
+                     onChange={e => setField('additional.availability', e.target.value)} />
+              <input className="input" placeholder="Health" value={form.additional.health}
+                     onChange={e => setField('additional.health', e.target.value)} />
+              <input className="input" placeholder="Criminal Record (Yes/No)" value={form.additional.criminalRecord}
+                     onChange={e => setField('additional.criminalRecord', e.target.value)} />
+              <input className="input" placeholder="Financial History" value={form.additional.financialHistory}
+                     onChange={e => setField('additional.financialHistory', e.target.value)} />
+            </div>
+          </Section>
+
+          {/* Debug (optional): show raw JSONs for quick verification */}
+          {(rawCandidate || rawWork.length) && (
+            <div className="rounded-2xl border p-3 text-xs text-gray-600">
+              <div className="font-medium mb-1">Fetched (raw)</div>
+              {rawCandidate && <details open><summary>Candidate</summary><pre className="overflow-auto">{JSON.stringify(rawCandidate, null, 2)}</pre></details>}
+              {rawWork.length > 0 && <details><summary>Work experiences</summary><pre className="overflow-auto">{JSON.stringify(rawWork, null, 2)}</pre></details>}
+            </div>
+          )}
+        </div>
+
+        {/* RIGHT: live template preview */}
+        <div className="rounded-2xl border overflow-hidden bg-white">
+          <CVTemplatePreview />
+        </div>
+      </div>
     </div>
   )
 }
+
