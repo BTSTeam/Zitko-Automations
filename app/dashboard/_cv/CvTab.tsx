@@ -115,24 +115,25 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     return `${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
   }
 
+  // Normalized to your Employment type (the new API route already maps/normalizes)
   function mapWorkExperiences(list: any[]): Employment[] {
     if (!Array.isArray(list)) return []
     return list.map(w => ({
-      title: w?.job_title || '',
-      company: w?.company_name || '',
-      start: formatDate(w?.work_from),
-      end: w?.work_to ? formatDate(w.work_to) : 'Present',
-      description: '', // no description mapped yet
+      title: w?.title || w?.job_title || '',
+      company: w?.company || w?.company_name || '',
+      start: w?.start ? formatDate(w.start) : (w?.work_from ? formatDate(w.work_from) : ''),
+      end: w?.end ? (w.end ? formatDate(w.end) : 'Present') : (w?.work_to ? formatDate(w.work_to) : ''),
+      description: w?.description || '',
     }))
   }
 
   function mapEducation(list: any[]): Education[] {
     if (!Array.isArray(list)) return []
     return list.map(e => ({
-      course: e?.qualification || e?.course || '',
+      course: e?.course || e?.degree || e?.qualification || '',
       institution: e?.institution || '',
-      start: formatDate(e?.start_date),
-      end: e?.end_date ? formatDate(e.end_date) : 'Present',
+      start: e?.start ? formatDate(e.start) : (e?.start_date ? formatDate(e.start_date) : ''),
+      end: e?.end ? (e.end ? formatDate(e.end) : 'Present') : (e?.end_date ? formatDate(e.end_date) : ''),
     }))
   }
 
@@ -149,7 +150,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     })
   }
 
-  // ========== data fetch ==========
+  // ========== data fetch (single server call) ==========
   async function fetchData() {
     if (!candidateId) return
     if (!template) {
@@ -159,34 +160,37 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     setLoading(true)
     setError(null)
     try {
-      const [candResp, workResp, eduResp] = await Promise.all([
-        fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}`, { cache: 'no-store' }),
-        fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}/workexperiences`, { cache: 'no-store' }),
-        fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}/educationdetails`, { cache: 'no-store' }),
-      ])
-      if (!candResp.ok) throw new Error(await candResp.text())
-      if (!workResp.ok) throw new Error(await workResp.text())
-      if (!eduResp.ok) throw new Error(await eduResp.text())
+      const res = await fetch('/api/cv/retrieve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ candidateId: String(candidateId).trim() }),
+      })
+      const data = await res.json()
 
-      const cand = await candResp.json()
-      const work = await workResp.json()
-      const edu = await eduResp.json()
+      if (!res.ok || !data?.ok) {
+        if (res.status === 401) throw new Error('Not connected to Vincere. Please log in again.')
+        if (res.status === 404) throw new Error(data?.error || `Candidate ${candidateId} not found in this tenant.`)
+        throw new Error(data?.error || 'Failed to retrieve candidate.')
+      }
 
-      const workArr: any[] = Array.isArray(work?.data) ? work.data : Array.isArray(work) ? work : []
-      const eduArr: any[] = Array.isArray(edu?.data) ? edu.data : Array.isArray(edu) ? edu : []
-
-      setRawCandidate(cand)
+      // Raw (debug)
+      setRawCandidate(data?.raw?.candidate ?? null)
+      const workArr: any[] = Array.isArray(data?.raw?.work) ? data.raw.work : []
+      const eduArr: any[] = Array.isArray(data?.raw?.education) ? data.raw.education : []
       setRawWork(workArr)
       setRawEdu(eduArr)
 
+      // Normalized (from server)
+      const c = data?.candidate ?? {}
+
       setForm(prev => ({
         ...prev,
-        name: cand?.full_name || prev.name,
-        location: cand?.town_city || prev.location,
-        profile: cand?.summary || cand?.profile || prev.profile,
-        keySkills: Array.isArray(cand?.skills) ? cand.skills.join(', ') : (cand?.skills || prev.keySkills),
-        employment: mapWorkExperiences(workArr),
-        education: mapEducation(eduArr),
+        name: c?.name || prev.name,
+        location: c?.location || prev.location,
+        profile: c?.profile || prev.profile, // server may not populate profile; keeps previous
+        keySkills: Array.isArray(c?.skills) ? c.skills.join(', ') : (c?.skills || prev.keySkills || ''),
+        employment: mapWorkExperiences(Array.isArray(c?.work) ? c.work : []),
+        education: mapEducation(Array.isArray(c?.education) ? c.education : []),
       }))
     } catch (e: any) {
       setError(e?.message || 'Failed to retrieve data')
@@ -300,109 +304,109 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
   // ========== render ==========
   return (
-  <div className="grid gap-4">
-    <div className="card p-4">
-      {!templateFromShell && (
-        <div className="grid sm:grid-cols-3 gap-2">
-          <button
-            type="button"
-            onClick={() => resetAllForTemplate('permanent')}
-            className={`btn w-full ${template === 'permanent' ? 'btn-brand' : 'btn-grey'}`}
-          >
-            Permanent
-          </button>
-          <div className="btn w-full btn-grey opacity-50 cursor-not-allowed flex items-center justify-center">
-            Contract – Building in progress…
-          </div>
-          <div className="btn w-full btn-grey opacity-50 cursor-not-allowed flex items-center justify-center">
-            US – Building in progress…
-          </div>
-        </div>
-      )}
-
-      <div className="grid sm:grid-cols-[1fr_auto] gap-2 mt-4">
-        <input
-          className="input"
-          placeholder="Enter Candidate ID"
-          value={candidateId}
-          onChange={e => setCandidateId(e.target.value)}
-          disabled={loading}
-          autoComplete="off"
-        />
-        <button
-          className="btn btn-brand"
-          onClick={fetchData}
-          disabled={loading || !candidateId}
-        >
-          {loading ? 'Fetching…' : 'Retrieve Candidate'}
-        </button>
-      </div>
-      {error && <div className="mt-3 text-sm text-red-600">{String(error).slice(0, 300)}</div>}
-    </div>
-
-    <div className="grid md:grid-cols-2 gap-4">
-      {/* LEFT: Core Details */}
+    <div className="grid gap-4">
       <div className="card p-4">
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold">Core Details</h3>
-          <button
-            type="button"
-            className="text-xs text-gray-500 underline"
-            onClick={() => setForm(getEmptyForm())}
+        {!templateFromShell && (
+          <div className="grid sm:grid-cols-3 gap-2">
+            <button
+              type="button"
+              onClick={() => resetAllForTemplate('permanent')}
+              className={`btn w-full ${template === 'permanent' ? 'btn-brand' : 'btn-grey'}`}
+            >
+              Permanent
+            </button>
+            <div className="btn w-full btn-grey opacity-50 cursor-not-allowed flex items-center justify-center">
+              Contract – Building in progress…
+            </div>
+            <div className="btn w-full btn-grey opacity-50 cursor-not-allowed flex items-center justify-center">
+              US – Building in progress…
+            </div>
+          </div>
+        )}
+
+        <div className="grid sm:grid-cols-[1fr_auto] gap-2 mt-4">
+          <input
+            className="input"
+            placeholder="Enter Candidate ID"
+            value={candidateId}
+            onChange={e => setCandidateId(e.target.value)}
             disabled={loading}
+            autoComplete="off"
+          />
+          <button
+            className="btn btn-brand"
+            onClick={fetchData}
+            disabled={loading || !candidateId}
           >
-            Clear
+            {loading ? 'Fetching…' : 'Retrieve Candidate'}
           </button>
         </div>
+        {error && <div className="mt-3 text-sm text-red-600">{String(error).slice(0, 300)}</div>}
+      </div>
 
-        <div className="grid gap-3 mt-3">
-          <label className="grid gap-1">
-            <span className="text-xs text-gray-500">Name</span>
-            <input
-              className="input"
-              value={form.name}
-              onChange={e => setField('name', e.target.value)}
+      <div className="grid md:grid-cols-2 gap-4">
+        {/* LEFT: Core Details */}
+        <div className="card p-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold">Core Details</h3>
+            <button
+              type="button"
+              className="text-xs text-gray-500 underline"
+              onClick={() => setForm(getEmptyForm())}
               disabled={loading}
-            />
-          </label>
+            >
+              Clear
+            </button>
+          </div>
 
-          <label className="grid gap-1">
-            <span className="text-xs text-gray-500">Location</span>
-            <input
-              className="input"
-              value={form.location}
-              onChange={e => setField('location', e.target.value)}
-              disabled={loading}
-            />
-          </label>
+          <div className="grid gap-3 mt-3">
+            <label className="grid gap-1">
+              <span className="text-xs text-gray-500">Name</span>
+              <input
+                className="input"
+                value={form.name}
+                onChange={e => setField('name', e.target.value)}
+                disabled={loading}
+              />
+            </label>
 
-          <label className="grid gap-1">
-            <span className="text-xs text-gray-500">Profile</span>
-            <textarea
-              className="input min-h-[120px]"
-              value={form.profile}
-              onChange={e => setField('profile', e.target.value)}
-              disabled={loading}
-            />
-          </label>
+            <label className="grid gap-1">
+              <span className="text-xs text-gray-500">Location</span>
+              <input
+                className="input"
+                value={form.location}
+                onChange={e => setField('location', e.target.value)}
+                disabled={loading}
+              />
+            </label>
 
-          <label className="grid gap-1">
-            <span className="text-xs text-gray-500">Key Skills (comma or newline)</span>
-            <textarea
-              className="input min-h-[100px]"
-              value={form.keySkills}
-              onChange={e => setField('keySkills', e.target.value)}
-              disabled={loading}
-            />
-          </label>
+            <label className="grid gap-1">
+              <span className="text-xs text-gray-500">Profile</span>
+              <textarea
+                className="input min-h-[120px]"
+                value={form.profile}
+                onChange={e => setField('profile', e.target.value)}
+                disabled={loading}
+              />
+            </label>
+
+            <label className="grid gap-1">
+              <span className="text-xs text-gray-500">Key Skills (comma or newline)</span>
+              <textarea
+                className="input min-h-[100px]"
+                value={form.keySkills}
+                onChange={e => setField('keySkills', e.target.value)}
+                disabled={loading}
+              />
+            </label>
+          </div>
+        </div>
+
+        {/* RIGHT: Preview */}
+        <div className="rounded-2xl border overflow-hidden bg-white">
+          <CVTemplatePreview />
         </div>
       </div>
-
-      {/* RIGHT: Preview */}
-      <div className="rounded-2xl border overflow-hidden bg-white">
-        <CVTemplatePreview />
-      </div>
     </div>
-  </div>
-);
+  )
 }
