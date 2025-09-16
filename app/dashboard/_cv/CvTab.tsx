@@ -404,4 +404,5 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       </div>
     </div>
   </div>
-)
+);
+}
