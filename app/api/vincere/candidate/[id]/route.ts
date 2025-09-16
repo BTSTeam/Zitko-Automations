@@ -5,6 +5,34 @@ import { refreshIdToken } from '@/lib/vincereRefresh'
 
 const VINCERE_BASE = config.VINCERE_TENANT_API_BASE.replace(/\/$/, '')
 
+// Helper to retry once if token expired
+async function fetchWithAutoRefresh(url: string, idToken: string, userKey: string) {
+  const headers = new Headers()
+  headers.set('id-token', idToken)
+  headers.set('x-api-key', (config as any).VINCERE_PUBLIC_API_KEY || config.VINCERE_API_KEY)
+  headers.set('accept', 'application/json')
+
+  const doFetch = (h: Headers) => fetch(url, { headers: h, method: 'GET', cache: 'no-store' })
+
+  let resp = await doFetch(headers)
+  if (resp.status === 401 || resp.status === 403) {
+    try {
+      const refreshed = await refreshIdToken(userKey)
+      if (refreshed) {
+        const s2: any = await getSession()
+        const id2 = s2.tokens?.idToken || ''
+        if (id2) {
+          headers.set('id-token', id2)
+          resp = await doFetch(headers)
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return resp
+}
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: { id: string } }
@@ -21,14 +49,7 @@ export async function GET(
     }
 
     const url = `${VINCERE_BASE}/api/v2/candidate/${encodeURIComponent(params.id)}/workexperiences`
-    const res = await fetch(url, {
-      headers: {
-        'id-token': idToken,
-        'x-api-key': (config as any).VINCERE_PUBLIC_API_KEY || config.VINCERE_API_KEY,
-        accept: 'application/json',
-      },
-      cache: 'no-store',
-    })
+    const res = await fetchWithAutoRefresh(url, idToken, userKey)
 
     if (!res.ok) {
       const text = await res.text()
