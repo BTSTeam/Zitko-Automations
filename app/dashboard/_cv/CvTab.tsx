@@ -32,6 +32,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   const [rawCandidate, setRawCandidate] = useState<any>(null)
   const [rawWork, setRawWork] = useState<any[]>([])
   const [rawMatch, setRawMatch] = useState<any>(null)
+  const [rawEdu, setRawEdu] = useState<any[]>([]) // <-- NEW
 
   // Form that drives preview
   const [form, setForm] = useState<{
@@ -85,6 +86,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     setRawCandidate(null)
     setRawWork([])
     setRawMatch(null)
+    setRawEdu([]) // <-- NEW
     setError(null)
   }
 
@@ -135,12 +137,11 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       ...keywordsFromArray,
     ]
 
-    // Deduplicate & clean
     const uniq = Array.from(new Set(merged.map((s) => String(s).trim()).filter(Boolean)))
     return safeJoin(uniq, ', ')
   }
 
-  // Build Education & Qualifications text block from common Vincere fields
+  // Build Education & Qualifications text block from common Vincere fields (fallback)
   function toEducation(c: any): string {
     const qualifications = arrify(c?.edu_qualification)
     const degrees = arrify(c?.edu_degree)
@@ -148,9 +149,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     const institutions = arrify(c?.edu_institution)
     const trainings = arrify(c?.edu_training)
 
-    // Compose lines like "BSc Electrical Engineering — University of X"
     const lines: string[] = []
-
     const maxLen = Math.max(qualifications.length, degrees.length, courses.length, institutions.length)
     for (let i = 0; i < maxLen; i++) {
       const parts = [
@@ -159,10 +158,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       ].filter(Boolean)
       if (parts.length) lines.push(parts.join(' — '))
     }
-
-    // Add any standalone training entries
     trainings.forEach(t => lines.push(String(t)))
-
     if (lines.length === 0) return ''
     return lines.join('\n')
   }
@@ -184,8 +180,30 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     }))
   }
 
+  // NEW: format MM/YYYY from a date-like string
+  function formatDate(dateStr?: string | null): string {
+    if (!dateStr) return ''
+    const d = new Date(dateStr)
+    if (isNaN(d.getTime())) return ''
+    return `${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
+  }
+
+  // NEW: Turn educationdetails array into lines of text
+  function educationDetailsToText(list: any[]): string {
+    if (!Array.isArray(list) || list.length === 0) return ''
+    // Try common keys; we’ll refine once you confirm exact JSON
+    return list.map(e => {
+      const qual = e?.qualification || e?.course || e?.degree || ''
+      const inst = e?.institution || e?.school || ''
+      const start = formatDate(e?.start_date || e?.startDate)
+      const end = e?.end_date || e?.endDate ? formatDate(e?.end_date || e?.endDate) : 'Present'
+      const left = [qual, inst].filter(Boolean).join(' — ')
+      const right = [start, end].filter(Boolean).join(' — ')
+      return right ? `${left} (${right})` : left
+    }).filter(Boolean).join('\n')
+  }
+
   function onTemplatePick(t: TemplateKey) {
-    // If header is controlling the template, ignore local picks & hide buttons anyway
     if (templateFromShell) return
     resetAllForTemplate(t)
   }
@@ -213,22 +231,24 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     setLoading(true)
     setError(null)
     try {
-      // A. Try to run the “same search as the matching search”
-      // Adjust this route if your match search endpoint is named differently.
       const matchUrl = `/api/match/search?candidateId=${encodeURIComponent(candidateId)}`
-      const [candResp, workResp, matchResp] = await Promise.all([
+      const [candResp, workResp, eduResp, matchResp] = await Promise.all([
         fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}`, { cache: 'no-store' }),
         fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}/workexperiences`, { cache: 'no-store' }),
-        // Optional: ignore failure if this route doesn’t exist yet
+        fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}/educationdetails`, { cache: 'no-store' }), // <-- NEW
         fetch(matchUrl, { cache: 'no-store' }).catch(() => undefined) as any,
       ])
 
       if (!candResp.ok) throw new Error(await candResp.text())
       if (!workResp.ok) throw new Error(await workResp.text())
+      if (!eduResp.ok) throw new Error(await eduResp.text())
 
       const cand = await candResp.json()
       const work = await workResp.json()
+      const edu = await eduResp.json()
+
       const workArr: any[] = Array.isArray(work?.data) ? work.data : Array.isArray(work) ? work : []
+      const eduArr: any[] = Array.isArray(edu?.data) ? edu.data : Array.isArray(edu) ? edu : []
 
       let matchJson: any = null
       if (matchResp && matchResp.ok) {
@@ -237,21 +257,22 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
       setRawCandidate(cand)
       setRawWork(workArr)
+      setRawEdu(eduArr)      // <-- NEW
       setRawMatch(matchJson)
 
-      // Build merged view
       const mappedWork = mapWorkExperiences(workArr)
 
-      // Prefer match-derived skills/education if present in a helpful shape
       const skillsFromMatch = Array.isArray(matchJson?.skills) ? matchJson.skills : null
       const educationTextFromMatch =
         typeof matchJson?.educationText === 'string' ? matchJson.educationText : null
 
+      // Prefer explicit educationdetails; fall back to match; then candidate fields
+      const educationTextFromEdu = educationDetailsToText(eduArr)
+      const mergedEducation = educationTextFromEdu || educationTextFromMatch || toEducation(cand) || ''
+
       const mergedSkills = skillsFromMatch?.length
         ? skillsFromMatch.join(', ')
         : (toSkills(cand) || '')
-
-      const mergedEducation = educationTextFromMatch || toEducation(cand) || ''
 
       setForm(prev => ({
         ...prev,
@@ -494,7 +515,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                         const v = ev.target.value
                         setForm(prev => {
                           const employment = [...prev.employment]
-                          employment[i] = { ...employment[i], end: v }
+                          employment[i] = { ...prev.employment[i], end: v }
                           return { ...prev, employment }
                         })
                       }}
@@ -538,59 +559,4 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
             <textarea className="input h-24" value={form.education} onChange={e => setField('education', e.target.value)} />
           </Section>
 
-          <Section title="Additional Information" open={open.extra} onToggle={() => toggle('extra')}>
-            <div className="grid sm:grid-cols-2 gap-2">
-              <input className="input" placeholder="Driving License (Yes/No)"
-                     value={form.additional.drivingLicense}
-                     onChange={e => setField('additional.drivingLicense', e.target.value)} />
-              <input className="input" placeholder="Nationality"
-                     value={form.additional.nationality}
-                     onChange={e => setField('additional.nationality', e.target.value)} />
-              <input className="input" placeholder="Availability"
-                     value={form.additional.availability}
-                     onChange={e => setField('additional.availability', e.target.value)} />
-              <input className="input" placeholder="Health"
-                     value={form.additional.health}
-                     onChange={e => setField('additional.health', e.target.value)} />
-              <input className="input" placeholder="Criminal Record (Yes/No)"
-                     value={form.additional.criminalRecord}
-                     onChange={e => setField('additional.criminalRecord', e.target.value)} />
-              <input className="input" placeholder="Financial History"
-                     value={form.additional.financialHistory}
-                     onChange={e => setField('additional.financialHistory', e.target.value)} />
-            </div>
-          </Section>
-
-          {(rawCandidate || rawWork.length > 0 || rawMatch) && (
-            <div className="rounded-2xl border p-3 text-xs text-gray-600">
-              <div className="font-medium mb-1">Fetched (raw)</div>
-              {rawCandidate && (
-                <details open>
-                  <summary>Candidate</summary>
-                  <pre className="overflow-auto">{JSON.stringify(rawCandidate, null, 2)}</pre>
-                </details>
-              )}
-              {rawWork.length > 0 && (
-                <details>
-                  <summary>Work experiences</summary>
-                  <pre className="overflow-auto">{JSON.stringify(rawWork, null, 2)}</pre>
-                </details>
-              )}
-              {rawMatch && (
-                <details>
-                  <summary>Match-style data</summary>
-                  <pre className="overflow-auto">{JSON.stringify(rawMatch, null, 2)}</pre>
-                </details>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* RIGHT preview */}
-        <div className="rounded-2xl border overflow-hidden bg-white">
-          <CVTemplatePreview />
-        </div>
-      </div>
-    </div>
-  )
-}
+          <Section title="Additional Information" open={open.extra} onToggle
