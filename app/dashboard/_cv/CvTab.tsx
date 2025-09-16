@@ -12,6 +12,13 @@ type Employment = {
   description?: string
 }
 
+type Education = {
+  course?: string
+  institution?: string
+  start?: string
+  end?: string
+}
+
 type OpenState = {
   core: boolean
   profile: boolean
@@ -31,8 +38,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   // Raw fetched (debug)
   const [rawCandidate, setRawCandidate] = useState<any>(null)
   const [rawWork, setRawWork] = useState<any[]>([])
-  const [rawMatch, setRawMatch] = useState<any>(null)
-  const [rawEdu, setRawEdu] = useState<any[]>([]) // <-- NEW
+  const [rawEdu, setRawEdu] = useState<any[]>([])
 
   // Form that drives preview
   const [form, setForm] = useState<{
@@ -41,7 +47,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     profile: string
     keySkills: string
     employment: Employment[]
-    education: string
+    education: Education[]
     additional: {
       drivingLicense: string
       nationality: string
@@ -68,7 +74,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       profile: '',
       keySkills: '',
       employment: [],
-      education: '',
+      education: [],
       additional: {
         drivingLicense: '',
         nationality: '',
@@ -85,8 +91,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     setForm(getEmptyForm())
     setRawCandidate(null)
     setRawWork([])
-    setRawMatch(null)
-    setRawEdu([]) // <-- NEW
+    setRawEdu([])
     setError(null)
   }
 
@@ -103,84 +108,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   }
 
   // ========== helpers ==========
-  function safeJoin(arr?: any[], sep = ', '): string {
-    if (!Array.isArray(arr)) return ''
-    return arr.map(v => (v == null ? '' : String(v))).filter(Boolean).join(sep)
-  }
-
-  function toName(c: any): string {
-    const first = c?.first_name ?? c?.firstName ?? ''
-    const last = c?.last_name ?? c?.lastName ?? ''
-    const fallback = c?.full_name ?? c?.name ?? ''
-    return `${first} ${last}`.trim() || fallback || ''
-  }
-
-  function toLocation(c: any): string {
-    return c?.current_location_name || c?.location || ''
-  }
-
-  function toSkills(c: any): string {
-    // Prefer structured skills if present
-    const skillsFromArrays =
-      (Array.isArray(c?.skill) ? c.skill : []) ||
-      (Array.isArray(c?.skills) ? c.skills : [])
-
-    const keywordsFromString =
-      typeof c?.keywords === 'string' ? c.keywords.split(',') : []
-
-    const keywordsFromArray =
-      Array.isArray(c?.keywords) ? c.keywords : []
-
-    const merged = [
-      ...skillsFromArrays,
-      ...keywordsFromString,
-      ...keywordsFromArray,
-    ]
-
-    const uniq = Array.from(new Set(merged.map((s) => String(s).trim()).filter(Boolean)))
-    return safeJoin(uniq, ', ')
-  }
-
-  // Build Education & Qualifications text block from common Vincere fields (fallback)
-  function toEducation(c: any): string {
-    const qualifications = arrify(c?.edu_qualification)
-    const degrees = arrify(c?.edu_degree)
-    const courses = arrify(c?.edu_course)
-    const institutions = arrify(c?.edu_institution)
-    const trainings = arrify(c?.edu_training)
-
-    const lines: string[] = []
-    const maxLen = Math.max(qualifications.length, degrees.length, courses.length, institutions.length)
-    for (let i = 0; i < maxLen; i++) {
-      const parts = [
-        qualifications[i] || degrees[i] || courses[i] || '',
-        institutions[i] || '',
-      ].filter(Boolean)
-      if (parts.length) lines.push(parts.join(' — '))
-    }
-    trainings.forEach(t => lines.push(String(t)))
-    if (lines.length === 0) return ''
-    return lines.join('\n')
-  }
-
-  function arrify(v: any): any[] {
-    if (Array.isArray(v)) return v
-    if (v == null) return []
-    return [v]
-  }
-
-  function mapWorkExperiences(list: any[]): Employment[] {
-    if (!Array.isArray(list)) return []
-    return list.map(w => ({
-      title: w?.title || w?.job_title || '',
-      company: w?.company || w?.company_name || '',
-      start: (w?.start_date || w?.startDate || '').toString(),
-      end: (w?.end_date || w?.endDate || '').toString(),
-      description: (w?.description || w?.duties || '').toString(),
-    }))
-  }
-
-  // NEW: format MM/YYYY from a date-like string
   function formatDate(dateStr?: string | null): string {
     if (!dateStr) return ''
     const d = new Date(dateStr)
@@ -188,24 +115,25 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     return `${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
   }
 
-  // NEW: Turn educationdetails array into lines of text
-  function educationDetailsToText(list: any[]): string {
-    if (!Array.isArray(list) || list.length === 0) return ''
-    // Try common keys; we’ll refine once you confirm exact JSON
-    return list.map(e => {
-      const qual = e?.qualification || e?.course || e?.degree || ''
-      const inst = e?.institution || e?.school || ''
-      const start = formatDate(e?.start_date || e?.startDate)
-      const end = e?.end_date || e?.endDate ? formatDate(e?.end_date || e?.endDate) : 'Present'
-      const left = [qual, inst].filter(Boolean).join(' — ')
-      const right = [start, end].filter(Boolean).join(' — ')
-      return right ? `${left} (${right})` : left
-    }).filter(Boolean).join('\n')
+  function mapWorkExperiences(list: any[]): Employment[] {
+    if (!Array.isArray(list)) return []
+    return list.map(w => ({
+      title: w?.job_title || '',
+      company: w?.company_name || '',
+      start: formatDate(w?.work_from),
+      end: w?.work_to ? formatDate(w.work_to) : 'Present',
+      description: '', // no description mapped yet
+    }))
   }
 
-  function onTemplatePick(t: TemplateKey) {
-    if (templateFromShell) return
-    resetAllForTemplate(t)
+  function mapEducation(list: any[]): Education[] {
+    if (!Array.isArray(list)) return []
+    return list.map(e => ({
+      course: e?.qualification || e?.course || '',
+      institution: e?.institution || '',
+      start: formatDate(e?.start_date),
+      end: e?.end_date ? formatDate(e.end_date) : 'Present',
+    }))
   }
 
   function setField(path: string, value: any) {
@@ -231,14 +159,11 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     setLoading(true)
     setError(null)
     try {
-      const matchUrl = `/api/match/search?candidateId=${encodeURIComponent(candidateId)}`
-      const [candResp, workResp, eduResp, matchResp] = await Promise.all([
+      const [candResp, workResp, eduResp] = await Promise.all([
         fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}`, { cache: 'no-store' }),
         fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}/workexperiences`, { cache: 'no-store' }),
-        fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}/educationdetails`, { cache: 'no-store' }), // <-- NEW
-        fetch(matchUrl, { cache: 'no-store' }).catch(() => undefined) as any,
+        fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}/educationdetails`, { cache: 'no-store' }),
       ])
-
       if (!candResp.ok) throw new Error(await candResp.text())
       if (!workResp.ok) throw new Error(await workResp.text())
       if (!eduResp.ok) throw new Error(await eduResp.text())
@@ -250,38 +175,18 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       const workArr: any[] = Array.isArray(work?.data) ? work.data : Array.isArray(work) ? work : []
       const eduArr: any[] = Array.isArray(edu?.data) ? edu.data : Array.isArray(edu) ? edu : []
 
-      let matchJson: any = null
-      if (matchResp && matchResp.ok) {
-        try { matchJson = await matchResp.json() } catch { /* ignore */ }
-      }
-
       setRawCandidate(cand)
       setRawWork(workArr)
-      setRawEdu(eduArr)      // <-- NEW
-      setRawMatch(matchJson)
-
-      const mappedWork = mapWorkExperiences(workArr)
-
-      const skillsFromMatch = Array.isArray(matchJson?.skills) ? matchJson.skills : null
-      const educationTextFromMatch =
-        typeof matchJson?.educationText === 'string' ? matchJson.educationText : null
-
-      // Prefer explicit educationdetails; fall back to match; then candidate fields
-      const educationTextFromEdu = educationDetailsToText(eduArr)
-      const mergedEducation = educationTextFromEdu || educationTextFromMatch || toEducation(cand) || ''
-
-      const mergedSkills = skillsFromMatch?.length
-        ? skillsFromMatch.join(', ')
-        : (toSkills(cand) || '')
+      setRawEdu(eduArr)
 
       setForm(prev => ({
         ...prev,
-        name: toName(cand) || prev.name,
-        location: toLocation(cand) || prev.location,
+        name: cand?.full_name || prev.name,
+        location: cand?.town_city || prev.location,
         profile: cand?.summary || cand?.profile || prev.profile,
-        keySkills: prev.keySkills || mergedSkills,
-        employment: mappedWork.length ? mappedWork : prev.employment,
-        education: prev.education || mergedEducation,
+        keySkills: Array.isArray(cand?.skills) ? cand.skills.join(', ') : (cand?.skills || prev.keySkills),
+        employment: mapWorkExperiences(workArr),
+        education: mapEducation(eduArr),
       }))
     } catch (e: any) {
       setError(e?.message || 'Failed to retrieve data')
@@ -313,13 +218,34 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
           <div className="text-gray-500 text-sm">No employment history yet.</div>
         ) : (
           form.employment.map((e, i) => (
-            <div key={i}>
-              <div className="font-medium">
-                {e.title || 'Role'}
-                {e.company ? ` · ${e.company}` : ''}
+            <div key={i} className="flex justify-between">
+              <div>
+                <div className="font-medium">{e.title || 'Role'}</div>
+                <div className="text-xs text-gray-500">{e.company}</div>
               </div>
-              <div className="text-xs text-gray-500">{[e.start, e.end].filter(Boolean).join(' — ')}</div>
-              {e.description && <div className="text-sm mt-1 whitespace-pre-wrap">{e.description}</div>}
+              <div className="text-xs text-gray-500 whitespace-nowrap">
+                {e.start} — {e.end}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    )
+
+    const EducationBlock = (): JSX.Element => (
+      <div className="space-y-3">
+        {form.education.length === 0 ? (
+          <div className="text-gray-500 text-sm">No education history yet.</div>
+        ) : (
+          form.education.map((e, i) => (
+            <div key={i} className="flex justify-between">
+              <div>
+                <div className="font-medium">{e.course || 'Course'}</div>
+                <div className="text-xs text-gray-500">{e.institution}</div>
+              </div>
+              <div className="text-xs text-gray-500 whitespace-nowrap">
+                {e.start} — {e.end}
+              </div>
             </div>
           ))
         )}
@@ -340,8 +266,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
         <div className="text-xs text-gray-500 italic mb-4">
           {template === 'permanent' && 'Permanent Template'}
-          {template === 'contract' && 'Contract Template'}
-          {template === 'us' && 'US Template'}
         </div>
 
         <Header title="Profile" />
@@ -359,7 +283,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         <EmploymentBlock />
 
         <Header title="Education & Qualifications" />
-        <div className="whitespace-pre-wrap">{form.education || '—'}</div>
+        <EducationBlock />
 
         <Header title="Additional Information" />
         <div className="text-sm grid gap-1">
@@ -374,56 +298,25 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     )
   }
 
-  // ========== left collapsible section wrapper ==========
-  function Section({
-    title, open, onToggle, children
-  }: { title: string; open: boolean; onToggle: () => void; children: React.ReactNode }): JSX.Element {
-    return (
-      <div className="rounded-2xl border overflow-hidden">
-        <button
-          type="button"
-          onClick={onToggle}
-          className="w-full text-left px-4 py-3 bg-gray-50 hover:bg-gray-100 flex items-center justify-between"
-        >
-          <span className="font-medium">{title}</span>
-          <span className="text-gray-500">{open ? '−' : '+'}</span>
-        </button>
-        {open && <div className="p-4 space-y-3">{children}</div>}
-      </div>
-    )
-  }
-
   // ========== render ==========
   return (
     <div className="grid gap-4">
-      {/* Template picker + fetch */}
       <div className="card p-4">
-        {/* Hide local picker if parent controls the template via header dropdown */}
         {!templateFromShell && (
           <div className="grid sm:grid-cols-3 gap-2">
-            {(['permanent', 'contract', 'us'] as TemplateKey[]).map(t =>
-              t === 'permanent' ? (
-                // Permanent template remains selectable
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => onTemplatePick(t)}
-                  className={`btn w-full ${template === t ? 'btn-brand' : 'btn-grey'}`}
-                  title="Use Permanent template"
-                >
-                  Permanent
-                </button>
-              ) : (
-                // Contract and US templates show a placeholder message
-                <div
-                  key={t}
-                  className="btn w-full btn-grey opacity-50 cursor-not-allowed flex items-center justify-center"
-                  title="Template in progress"
-                >
-                  {t === 'contract' ? 'Contract' : 'US'} – Building in progress…
-                </div>
-              )
-            )}
+            <button
+              type="button"
+              onClick={() => resetAllForTemplate('permanent')}
+              className={`btn w-full ${template === 'permanent' ? 'btn-brand' : 'btn-grey'}`}
+            >
+              Permanent
+            </button>
+            <div className="btn w-full btn-grey opacity-50 cursor-not-allowed flex items-center justify-center">
+              Contract – Building in progress…
+            </div>
+            <div className="btn w-full btn-grey opacity-50 cursor-not-allowed flex items-center justify-center">
+              US – Building in progress…
+            </div>
           </div>
         )}
 
@@ -441,122 +334,12 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         {error && <div className="mt-3 text-sm text-red-600">{error}</div>}
       </div>
 
-      {/* Split layout */}
       <div className="grid md:grid-cols-2 gap-4">
-        {/* LEFT editor */}
-        <div className="grid gap-4">
-          <Section title="Core Details" open={open.core} onToggle={() => toggle('core')}>
-            <div>
-              <label className="text-sm text-gray-600">Name</label>
-              <input className="input mt-1" value={form.name} onChange={e => setField('name', e.target.value)} />
-            </div>
-            <div>
-              <label className="text-sm text-gray-600">Location</label>
-              <input className="input mt-1" value={form.location} onChange={e => setField('location', e.target.value)} />
-            </div>
-          </Section>
-
-          <Section title="Profile" open={open.profile} onToggle={() => toggle('profile')}>
-            <textarea className="input h-28" value={form.profile} onChange={e => setField('profile', e.target.value)} />
-          </Section>
-
-          <Section title="Key Skills" open={open.skills} onToggle={() => toggle('skills')}>
-            <textarea
-              className="input h-28"
-              placeholder="One per line or comma-separated"
-              value={form.keySkills}
-              onChange={e => setField('keySkills', e.target.value)}
-            />
-          </Section>
-
-          <Section title="Employment History" open={open.work} onToggle={() => toggle('work')}>
-            <div className="space-y-4">
-              {form.employment.map((e, i) => (
-                <div key={i} className="rounded-xl border p-3 grid gap-2">
-                  <div className="grid sm:grid-cols-2 gap-2">
-                    <input
-                      className="input" placeholder="Title" value={e.title || ''}
-                      onChange={ev => {
-                        const v = ev.target.value
-                        setForm(prev => {
-                          const employment = [...prev.employment]
-                          employment[i] = { ...employment[i], title: v }
-                          return { ...prev, employment }
-                        })
-                      }}
-                    />
-                    <input
-                      className="input" placeholder="Company" value={e.company || ''}
-                      onChange={ev => {
-                        const v = ev.target.value
-                        setForm(prev => {
-                          const employment = [...prev.employment]
-                          employment[i] = { ...employment[i], company: v }
-                          return { ...prev, employment }
-                        })
-                      }}
-                    />
-                  </div>
-                  <div className="grid sm:grid-cols-2 gap-2">
-                    <input
-                      className="input" placeholder="Start" value={e.start || ''}
-                      onChange={ev => {
-                        const v = ev.target.value
-                        setForm(prev => {
-                          const employment = [...prev.employment]
-                          employment[i] = { ...employment[i], start: v }
-                          return { ...prev, employment }
-                        })
-                      }}
-                    />
-                    <input
-                      className="input" placeholder="End" value={e.end || ''}
-                      onChange={ev => {
-                        const v = ev.target.value
-                        setForm(prev => {
-                          const employment = [...prev.employment]
-                          employment[i] = { ...prev.employment[i], end: v }
-                          return { ...prev, employment }
-                        })
-                      }}
-                    />
-                  </div>
-                  <textarea
-                    className="input h-24" placeholder="Description" value={e.description || ''}
-                    onChange={ev => {
-                      const v = ev.target.value
-                      setForm(prev => {
-                        const employment = [...prev.employment]
-                        employment[i] = { ...prev.employment[i], description: v }
-                        return { ...prev, employment }
-                      })
-                    }}
-                  />
-                </div>
-              ))}
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  className="btn btn-grey"
-                  onClick={() => setForm(prev => ({ ...prev, employment: [...prev.employment, {}] }))}
-                >
-                  + Add role
-                </button>
-                {form.employment.length > 0 && (
-                  <button
-                    type="button"
-                    className="btn btn-grey"
-                    onClick={() => setForm(prev => ({ ...prev, employment: prev.employment.slice(0, -1) }))}
-                  >
-                    Remove last
-                  </button>
-                )}
-              </div>
-            </div>
-          </Section>
-
-          <Section title="Education & Qualifications" open={open.education} onToggle={() => toggle('education')}>
-            <textarea className="input h-24" value={form.education} onChange={e => setField('education', e.target.value)} />
-          </Section>
-
-          <Section title="Additional Information" open={open.extra} onToggle
+        <div className="grid gap-4">{/* LEFT editor fields if needed */}</div>
+        <div className="rounded-2xl border overflow-hidden bg-white">
+          <CVTemplatePreview />
+        </div>
+      </div>
+    </div>
+  )
+}
