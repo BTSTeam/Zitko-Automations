@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 type TemplateKey = 'permanent' | 'contract' | 'us'
 
@@ -21,9 +21,9 @@ type OpenState = {
   extra: boolean
 }
 
-export default function CvTab(): JSX.Element {
-  // UI state
-  const [template, setTemplate] = useState<TemplateKey | null>(null)
+export default function CvTab({ templateFromShell }: { templateFromShell?: TemplateKey }): JSX.Element {
+  // ========== UI state ==========
+  const [template, setTemplate] = useState<TemplateKey | null>(templateFromShell ?? null)
   const [candidateId, setCandidateId] = useState<string>('')
   const [loading, setLoading] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
@@ -48,22 +48,7 @@ export default function CvTab(): JSX.Element {
       criminalRecord: string
       financialHistory: string
     }
-  }>({
-    name: '',
-    location: '',
-    profile: '',
-    keySkills: '',
-    employment: [],
-    education: '',
-    additional: {
-      drivingLicense: '',
-      nationality: '',
-      availability: '',
-      health: '',
-      criminalRecord: '',
-      financialHistory: '',
-    },
-  })
+  }>(getEmptyForm())
 
   const [open, setOpen] = useState<OpenState>({
     core: true,
@@ -74,11 +59,46 @@ export default function CvTab(): JSX.Element {
     extra: false,
   })
 
+  function getEmptyForm() {
+    return {
+      name: '',
+      location: '',
+      profile: '',
+      keySkills: '',
+      employment: [],
+      education: '',
+      additional: {
+        drivingLicense: '',
+        nationality: '',
+        availability: '',
+        health: '',
+        criminalRecord: '',
+        financialHistory: '',
+      },
+    }
+  }
+
+  function resetAllForTemplate(t: TemplateKey | null) {
+    setTemplate(t)
+    setForm(getEmptyForm())
+    setRawCandidate(null)
+    setRawWork([])
+    setError(null)
+  }
+
+  // Keep component in sync with the header dropdown (if present)
+  useEffect(() => {
+    if (templateFromShell) {
+      resetAllForTemplate(templateFromShell)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [templateFromShell])
+
   function toggle(k: keyof OpenState) {
     setOpen(s => ({ ...s, [k]: !s[k] }))
   }
 
-  // -------- helpers --------
+  // ========== helpers ==========
   function safeJoin(arr?: any[], sep = ', '): string {
     if (!Array.isArray(arr)) return ''
     return arr.map(v => (v == null ? '' : String(v))).filter(Boolean).join(sep)
@@ -118,27 +138,9 @@ export default function CvTab(): JSX.Element {
   }
 
   function onTemplatePick(t: TemplateKey) {
-    setTemplate(t)
-    // reset for clarity when switching templates
-    setForm({
-      name: '',
-      location: '',
-      profile: '',
-      keySkills: '',
-      employment: [],
-      education: '',
-      additional: {
-        drivingLicense: '',
-        nationality: '',
-        availability: '',
-        health: '',
-        criminalRecord: '',
-        financialHistory: '',
-      },
-    })
-    setRawCandidate(null)
-    setRawWork([])
-    setError(null)
+    // If header is controlling the template, ignore local picks & hide buttons anyway
+    if (templateFromShell) return
+    resetAllForTemplate(t)
   }
 
   function setField(path: string, value: any) {
@@ -154,6 +156,7 @@ export default function CvTab(): JSX.Element {
     })
   }
 
+  // ========== data fetch ==========
   async function fetchData() {
     if (!candidateId) return
     if (!template) {
@@ -193,7 +196,7 @@ export default function CvTab(): JSX.Element {
     }
   }
 
-  // -------- preview (right) --------
+  // ========== preview (right) ==========
   function CVTemplatePreview(): JSX.Element {
     if (!template) {
       return (
@@ -229,6 +232,7 @@ export default function CvTab(): JSX.Element {
       </div>
     )
 
+    // (Layout text stays the same for now; you can conditionally alter sections per template later)
     return (
       <div className="p-6">
         <div className="flex items-center justify-between mb-4">
@@ -277,7 +281,7 @@ export default function CvTab(): JSX.Element {
     )
   }
 
-  // -------- left collapsible section wrapper --------
+  // ========== left collapsible section wrapper ==========
   function Section({
     title, open, onToggle, children
   }: { title: string; open: boolean; onToggle: () => void; children: React.ReactNode }): JSX.Element {
@@ -296,23 +300,27 @@ export default function CvTab(): JSX.Element {
     )
   }
 
+  // ========== render ==========
   return (
     <div className="grid gap-4">
       {/* Template picker + fetch */}
       <div className="card p-4">
-        <div className="grid sm:grid-cols-3 gap-2">
-          {(['permanent', 'contract', 'us'] as TemplateKey[]).map(t => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => onTemplatePick(t)}
-              className={`btn w-full ${template === t ? 'btn-brand' : 'btn-grey'}`}
-              title={`Use ${t} template`}
-            >
-              {t === 'permanent' ? 'Permanent' : t === 'contract' ? 'Contract' : 'US'}
-            </button>
-          ))}
-        </div>
+        {/* Hide local picker if parent controls the template via header dropdown */}
+        {!templateFromShell && (
+          <div className="grid sm:grid-cols-3 gap-2">
+            {(['permanent', 'contract', 'us'] as TemplateKey[]).map(t => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => onTemplatePick(t)}
+                className={`btn w-full ${template === t ? 'btn-brand' : 'btn-grey'}`}
+                title={`Use ${t} template`}
+              >
+                {t === 'permanent' ? 'Permanent' : t === 'contract' ? 'Contract' : 'US'}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="grid sm:grid-cols-[1fr_auto] gap-2 mt-4">
           <input
