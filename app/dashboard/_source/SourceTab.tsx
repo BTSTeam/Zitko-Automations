@@ -4,13 +4,7 @@ import { useEffect, useState } from 'react'
 
 type SourceMode = 'candidates' | 'companies'
 
-/**
- * If you render without props it defaults to 'candidates'.
- * You can also do: <SourceTab mode="companies" />
- */
-export default function SourceTab({ mode: initialMode = 'candidates' }: { mode?: SourceMode }) {
-  const [mode, setMode] = useState<SourceMode>(initialMode)
-
+export default function SourceTab({ mode }: { mode: SourceMode }) {
   if (mode === 'companies') {
     return (
       <div className="card p-6">
@@ -23,11 +17,13 @@ export default function SourceTab({ mode: initialMode = 'candidates' }: { mode?:
     )
   }
 
-  // Candidates (existing JotForm embed)
+  // Candidates (JotForm embed)
   const jotformUrl = process.env.NEXT_PUBLIC_JOTFORM_URL || ''
   const hasUrl = jotformUrl.length > 0
   const formId = hasUrl ? (jotformUrl.match(/\/(\d{10,})(?:$|[/?#])/i)?.[1] ?? null) : null
-  const [height, setHeight] = useState<number>(900)
+
+  // Start smaller and auto-resize
+  const [height, setHeight] = useState<number>(700) // reduced from 900 -> 700
   const [iframeKey, setIframeKey] = useState(0)
   const refreshForm = () => setIframeKey(k => k + 1)
 
@@ -38,7 +34,7 @@ export default function SourceTab({ mode: initialMode = 'candidates' }: { mode?:
       const parts = e.data.split(':')
       if (parts[0] === 'setHeight') {
         const newH = Number(parts[1])
-        if (!Number.isNaN(newH) && newH > 0) setHeight(newH + 20)
+        if (!Number.isNaN(newH) && newH > 0) setHeight(Math.max(600, newH + 20)) // minimum 600
       }
     }
     window.addEventListener('message', handleMessage)
@@ -62,7 +58,7 @@ export default function SourceTab({ mode: initialMode = 'candidates' }: { mode?:
           <p className="text-xs break-all">Example: https://form.jotform.com/123456789012345</p>
         </div>
       ) : (
-        <div className="rounded-2xl overflow-hidden border">
+        <div className="rounded-2xl overflow-hidden border max-w-4xl mx-auto"> {/* constrain width */}
           <iframe
             key={iframeKey}
             id={formId ? `JotFormIFrame-${formId}` : 'JotFormIFrame'}
@@ -79,4 +75,3 @@ export default function SourceTab({ mode: initialMode = 'candidates' }: { mode?:
     </div>
   )
 }
-
