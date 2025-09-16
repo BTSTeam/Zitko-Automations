@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 
 /* ====================== Types ====================== */
 type JobSummary = {
@@ -114,7 +114,7 @@ function stripLocationSentences(text: string): string {
 /* ====================== Small UI bits (local) ====================== */
 function Modal({
   open, onClose, title, children,
-}: { open: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
+}: { open: boolean; onClose: () => void; title: string; children: ReactNode }) {
   if (!open) return null
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -210,6 +210,7 @@ export default function MatchTab(): JSX.Element {
   const [showJson, setShowJson] = useState(false)
   const [aiPayload, setAiPayload] = useState<any>(null)
 
+  // keep ONLY ONE funMessages definition
   const funMessages = [
     'Zitko AI is thinking…',
     'Matching skills & qualifications…',
@@ -439,11 +440,7 @@ export default function MatchTab(): JSX.Element {
     }
   }
 
-  const funMessages = [
-    'Zitko AI is thinking…',
-    'Matching skills & qualifications…',
-    'Cross-checking titles & keywords…',
-  ]
+  // use the SAME funMessages above here:
   const statusText = loadingSearch
     ? funMessages[funIdx % funMessages.length]
     : (view === 'ai' ? 'Viewing AI scores' : 'Viewing raw results')
@@ -560,4 +557,3 @@ export default function MatchTab(): JSX.Element {
     </div>
   )
 }
-
