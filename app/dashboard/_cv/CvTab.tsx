@@ -203,7 +203,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         <div className="h-full grid place-items-center text-gray-500">
           <div className="text-center">
             <div className="text-lg font-medium">Select a template to preview</div>
-            <div className="text-sm">Permanent · Contract · US</div>
+            <div className="text-sm">Permanent (Contract/US in progress)</div>
           </div>
         </div>
       )
@@ -308,17 +308,29 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         {/* Hide local picker if parent controls the template via header dropdown */}
         {!templateFromShell && (
           <div className="grid sm:grid-cols-3 gap-2">
-            {(['permanent', 'contract', 'us'] as TemplateKey[]).map(t => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => onTemplatePick(t)}
-                className={`btn w-full ${template === t ? 'btn-brand' : 'btn-grey'}`}
-                title={`Use ${t} template`}
-              >
-                {t === 'permanent' ? 'Permanent' : t === 'contract' ? 'Contract' : 'US'}
-              </button>
-            ))}
+            {(['permanent', 'contract', 'us'] as TemplateKey[]).map(t =>
+              t === 'permanent' ? (
+                // Permanent template remains selectable
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => onTemplatePick(t)}
+                  className={`btn w-full ${template === t ? 'btn-brand' : 'btn-grey'}`}
+                  title="Use Permanent template"
+                >
+                  Permanent
+                </button>
+              ) : (
+                // Contract and US templates show a placeholder message
+                <div
+                  key={t}
+                  className="btn w-full btn-grey opacity-50 cursor-not-allowed flex items-center justify-center"
+                  title="Template in progress"
+                >
+                  {t === 'contract' ? 'Contract' : 'US'} – Building in progress…
+                </div>
+              )
+            )}
           </div>
         )}
 
