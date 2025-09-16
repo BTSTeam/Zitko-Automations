@@ -25,9 +25,7 @@ function json(res: any, status = 200) {
   return NextResponse.json(res, { status });
 }
 
-// Build base URL for Vincere v2
 function getVincereBase(): string {
-  // Prefer whatever your config exposes; fallback to env tenant
   const fromConfig = (config as any)?.vincereBase as string | undefined;
   if (fromConfig) return fromConfig.replace(/\/$/, '');
   const tenant = process.env.VINCERE_TENANT; // e.g. zitko.vincere.io
@@ -39,7 +37,6 @@ function vUrl(path: string) {
   return `${getVincereBase()}${path}`;
 }
 
-// Vincere GET with auth headers and good errors
 async function vGet<T>(path: string, token: string): Promise<T> {
   const res = await fetch(vUrl(path), {
     method: 'GET',
@@ -81,13 +78,28 @@ async function vGet<T>(path: string, token: string): Promise<T> {
 
 export async function POST(req: NextRequest) {
   try {
-    // Light sanity check (don’t use requiredEnv here)
     if (!process.env.VINCERE_API_KEY) {
       return json({ ok: false, error: 'Missing VINCERE_API_KEY' }, 500);
     }
 
+    // ---- REFRESH AUTH (supports either signature) ----
+    try {
+      // Many codebases declare refreshIdToken(cookie: string) or refreshIdToken()
+      const anyRefresh = refreshIdToken as unknown as (...args: any[]) => Promise<any>;
+      if (typeof anyRefresh === 'function') {
+        if (anyRefresh.length === 0) {
+          await anyRefresh(); // no-arg variant
+        } else {
+          // pass cookie header if it expects something
+          await anyRefresh(req.headers.get('cookie') ?? '');
+        }
+      }
+    } catch {
+      // best-effort; we still proceed to read session
+    }
+
+    // ---- READ SESSION AFTER REFRESH ----
     const session = await getSession();
-    await refreshIdToken(session);
 
     const token =
       session?.vincere?.access_token || session?.vincere?.id_token || '';
@@ -96,31 +108,28 @@ export async function POST(req: NextRequest) {
       return json({ ok: false, error: 'Not connected to Vincere' }, 401);
     }
 
+    // ---- INPUT ----
     const body = (await req.json()) as RetrieveReq;
     const idRaw = String(body?.candidateId ?? '').trim();
     if (!idRaw) return json({ ok: false, error: 'candidateId is required' }, 400);
-
     const id = idRaw.replace(/[^\d]/g, '');
     if (!id) return json({ ok: false, error: 'candidateId is invalid' }, 400);
 
-    // Core profile
+    // ---- VINCERE CALLS ----
     const candidate = await vGet<any>(`/candidate/${id}`, token);
-
-    // Education + Work (Vincere uses singular workexperience on v2)
     const [education, work] = await Promise.all([
       vGet<any>(`/candidate/${id}/educationdetails`, token),
-      vGet<any>(`/candidate/${id}/workexperience`, token),
+      vGet<any>(`/candidate/${id}/workexperience`, token), // v2 uses singular
     ]);
 
-    // Normalized shape (keep it minimal; raw is returned too)
+    // ---- NORMALIZE ----
     const normalized = {
       id: candidate?.id ?? id,
       name:
         [candidate?.first_name, candidate?.last_name].filter(Boolean).join(' ') ||
         candidate?.full_name ||
         '',
-      current_title:
-        candidate?.current_job_title || candidate?.job_title || '',
+      current_title: candidate?.current_job_title || candidate?.job_title || '',
       location:
         candidate?.current_location_name ||
         candidate?.current_city ||
@@ -130,7 +139,6 @@ export async function POST(req: NextRequest) {
       emails: candidate?.emails ?? [],
       phones: candidate?.phones ?? [],
       skills: candidate?.skill || candidate?.keywords || candidate?.skills || [],
-      // Pass through profile/summary if present
       profile: candidate?.summary || candidate?.profile || '',
       education: Array.isArray(education)
         ? education.map((e: any) => ({
@@ -156,11 +164,7 @@ export async function POST(req: NextRequest) {
     return json({
       ok: true,
       candidate: normalized,
-      raw: {
-        candidate,
-        education,
-        work,
-      },
+      raw: { candidate, education, work },
     });
   } catch (err: any) {
     const code = typeof err?.code === 'number' ? err.code : 500;
