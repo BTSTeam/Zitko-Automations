@@ -410,14 +410,19 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
         {/* Profile */}
         <h2 className="text-base font-semibold text-[#F7941D] mt-6 mb-2">Profile</h2>
-        <div className="whitespace-pre-wrap text-sm">{form.profile || '—'}</div>
+        <div className="whitespace-pre-wrap text-sm">
+          {form.profile?.trim() ? form.profile : 'No Profile yet'}
+        </div>
 
-        {/* Key Skills (smaller font size) */}
+        {/* Key Skills */}
         <h2 className="text-base font-semibold text-[#F7941D] mt-6 mb-2">Key Skills</h2>
         <div className="whitespace-pre-wrap text-sm">
-          {(form.keySkills || '')
-            .split(/\r?\n|,\s*/).filter(Boolean)
-            .map((s, i) => <div key={i}>• {s}</div>)}
+          {(() => {
+            const items = (form.keySkills || '')
+              .split(/\r?\n|,\s*/).map(s => s.trim()).filter(Boolean)
+            if (items.length === 0) return 'No Key Skills yet'
+            return items.map((s, i) => <div key={i}>• {s}</div>)
+          })()}
         </div>
 
         {/* Employment History */}
@@ -591,8 +596,9 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
             </div>
             {open.profile && (
               <div className="mt-3">
-                {/* AI Profile actions (buttons same size, shorter labels) */}
+                {/* AI Profile actions (two options with divider) */}
                 <div className="flex flex-col sm:flex-row gap-2 mb-3 items-stretch sm:items-center">
+                  {/* Option A */}
                   <button
                     type="button"
                     className="btn btn-grey text-xs !px-3 !py-1.5 w-36 whitespace-nowrap"
@@ -603,6 +609,10 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                     Generate
                   </button>
 
+                  {/* Divider: horizontal (mobile) / vertical (≥sm) */}
+                  <div className="border-t border-gray-200 my-2 sm:my-0 sm:mx-2 sm:border-t-0 sm:border-l sm:h-6" />
+
+                  {/* Option B */}
                   <input
                     className="input flex-1 min-w-[160px]"
                     placeholder="Job ID"
@@ -610,7 +620,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                     onChange={e => setJobId(e.target.value)}
                     disabled={loading}
                   />
-
                   <button
                     type="button"
                     className="btn btn-grey text-xs !px-3 !py-1.5 w-36 whitespace-nowrap"
