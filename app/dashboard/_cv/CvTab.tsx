@@ -591,37 +591,35 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
             </div>
             {open.profile && (
               <div className="mt-3">
-                {/* AI Profile actions */}
-                <div className="flex flex-col sm:flex-row gap-2 mb-3">
+                {/* AI Profile actions (buttons same size, shorter labels) */}
+                <div className="flex flex-col sm:flex-row gap-2 mb-3 items-stretch sm:items-center">
                   <button
                     type="button"
-                    className="btn btn-grey text-xs !px-2 !py-1"
+                    className="btn btn-grey text-xs !px-3 !py-1.5 w-36 whitespace-nowrap"
                     disabled={loading || !rawCandidate}
                     onClick={generateProfile}
                     title={!rawCandidate ? 'Retrieve a candidate first' : 'Generate profile from candidate data'}
                   >
-                    Generate Profile
+                    Generate
                   </button>
 
-                  <div className="flex items-center gap-2">
-                    <input
-                      className="input"
-                      placeholder="Job ID (for Generate Job Profile)"
-                      value={jobId}
-                      onChange={e => setJobId(e.target.value)}
-                      disabled={loading}
-                      style={{ width: 240 }}
-                    />
-                    <button
-                      type="button"
-                      className="btn btn-grey"
-                      disabled={loading || !rawCandidate || !jobId}
-                      onClick={generateJobProfile}
-                      title={!jobId ? 'Enter a Job ID' : 'Generate job-tailored profile'}
-                    >
-                      Generate Job Profile
-                    </button>
-                  </div>
+                  <input
+                    className="input flex-1 min-w-[160px]"
+                    placeholder="Job ID"
+                    value={jobId}
+                    onChange={e => setJobId(e.target.value)}
+                    disabled={loading}
+                  />
+
+                  <button
+                    type="button"
+                    className="btn btn-grey text-xs !px-3 !py-1.5 w-36 whitespace-nowrap"
+                    disabled={loading || !rawCandidate || !jobId}
+                    onClick={generateJobProfile}
+                    title={!jobId ? 'Enter a Job ID' : 'Generate job-tailored profile'}
+                  >
+                    Generate for Job
+                  </button>
                 </div>
 
                 <label className="grid gap-1">
