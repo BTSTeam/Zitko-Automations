@@ -331,7 +331,7 @@ async function fetchData() {
         </div>
         <div>
           <span className="font-semibold">Location:</span>{' '}
-          {form.location ? `"${form.location}"` : '—'}
+          {form.location ? `${form.location}` : '—'}
         </div>
       </div>
 
