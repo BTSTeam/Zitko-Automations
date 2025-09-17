@@ -408,9 +408,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     )
   }
 
-  // ========== render ==========
-  const combinedRaw = { candidate: rawCandidate, work: rawWork, education: rawEdu }
-
   return (
     <div className="grid gap-4">
       <div className="card p-4">
