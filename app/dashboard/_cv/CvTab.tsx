@@ -43,6 +43,9 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   const [rawWork, setRawWork] = useState<any[]>([])
   const [rawEdu, setRawEdu] = useState<any[]>([])
 
+  // NEW: job id for Job Profile generation
+  const [jobId, setJobId] = useState<string>('')
+
   // Form that drives preview
   const [form, setForm] = useState<{
     name: string
@@ -225,199 +228,269 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     setForm(prev => ({ ...prev, education: prev.education.filter((_, i) => i !== index) }))
   }
 
-  // ========== data fetch (single server call) ==========
-async function fetchData() {
-  if (!candidateId) return
-  if (!template) {
-    alert('Please select a template first.')
-    return
-  }
-  setLoading(true)
-  setError(null)
-  try {
-    const res = await fetch('/api/cv/retrieve', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ candidateId: String(candidateId).trim() }),
-    })
-    const data = await res.json()
+  // ========== AI profile generation handlers ==========
+  async function generateProfile() {
+    try {
+      setLoading(true)
+      setError(null)
 
-    if (!res.ok || !data?.ok) {
-      if (res.status === 401) throw new Error('Not connected to Vincere. Please log in again.')
-      if (res.status === 404) throw new Error(data?.error || `Candidate ${candidateId} not found in this tenant.`)
-      throw new Error(data?.error || 'Failed to retrieve candidate.')
+      const res = await fetch('/api/cv/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'profile',
+          candidate: rawCandidate,
+          work: rawWork,
+          education: rawEdu,
+        }),
+      })
+
+      const data = await res.json()
+      if (!res.ok || !data?.ok) throw new Error(data?.error || 'Profile generation failed.')
+      setField('profile', data.profile || '')
+    } catch (e: any) {
+      setError(e?.message || 'Profile generation failed.')
+    } finally {
+      setLoading(false)
     }
-
-    const cRaw = data?.raw?.candidate ?? {}
-    const workArr: any[] =
-      Array.isArray(data?.raw?.work?.data) ? data.raw.work.data :
-      Array.isArray(data?.raw?.work) ? data.raw.work : []
-    const eduArr: any[] =
-      Array.isArray(data?.raw?.education?.data) ? data.raw.education.data :
-      Array.isArray(data?.raw?.education) ? data.raw.education : []
-
-    setRawCandidate(cRaw)
-    setRawWork(workArr)
-    setRawEdu(eduArr)
-
-    const name = [cRaw?.first_name, cRaw?.last_name].filter(Boolean).join(' ').trim()
-    const location = cRaw?.candidate_current_address?.town_city ?? ''
-
-    setForm(prev => ({
-      ...prev,
-      name: name || prev.name,
-      location: location || prev.location,
-      profile: cRaw?.profile ?? prev.profile,
-      keySkills: Array.isArray(cRaw?.skills) ? cRaw.skills.join(', ') : (cRaw?.skills || prev.keySkills || ''),
-      employment: mapWorkExperiences(workArr),
-      education: mapEducation(eduArr),
-    }))
-
-    // 👇 collapse all panels except Core
-    setOpen({
-      core: true,
-      profile: false,
-      skills: false,
-      work: false,
-      education: false,
-      extra: false,
-      rawCandidate: false,
-      rawWork: false,
-      rawEdu: false,
-    })
-  } catch (e: any) {
-    setError(e?.message || 'Failed to retrieve data')
-  } finally {
-    setLoading(false)
   }
-}
+
+  async function generateJobProfile() {
+    try {
+      if (!jobId) throw new Error('Please enter a Job ID.')
+      setLoading(true)
+      setError(null)
+
+      // Try POST first
+      let jobRes = await fetch('/api/job/extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobId }),
+      })
+
+      // Fallback to GET if POST not supported or failed
+      if (!jobRes.ok) {
+        jobRes = await fetch(`/api/job/extract?id=${encodeURIComponent(jobId)}`, { cache: 'no-store' })
+      }
+
+      const jobJson = await jobRes.json()
+      if (!jobRes.ok) throw new Error(jobJson?.error || `Unable to retrieve job ${jobId}`)
+
+      const aiRes = await fetch('/api/cv/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'jobprofile',
+          candidate: rawCandidate,
+          work: rawWork,
+          education: rawEdu,
+          job: jobJson,
+        }),
+      })
+
+      const aiData = await aiRes.json()
+      if (!aiRes.ok || !aiData?.ok) throw new Error(aiData?.error || 'Job Profile generation failed.')
+      setField('profile', aiData.profile || '')
+    } catch (e: any) {
+      setError(e?.message || 'Job Profile generation failed.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // ========== data fetch (single server call) ==========
+  async function fetchData() {
+    if (!candidateId) return
+    if (!template) {
+      alert('Please select a template first.')
+      return
+    }
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/cv/retrieve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ candidateId: String(candidateId).trim() }),
+      })
+      const data = await res.json()
+
+      if (!res.ok || !data?.ok) {
+        if (res.status === 401) throw new Error('Not connected to Vincere. Please log in again.')
+        if (res.status === 404) throw new Error(data?.error || `Candidate ${candidateId} not found in this tenant.`)
+        throw new Error(data?.error || 'Failed to retrieve candidate.')
+      }
+
+      const cRaw = data?.raw?.candidate ?? {}
+      const workArr: any[] =
+        Array.isArray(data?.raw?.work?.data) ? data.raw.work.data :
+        Array.isArray(data?.raw?.work) ? data.raw.work : []
+      const eduArr: any[] =
+        Array.isArray(data?.raw?.education?.data) ? data.raw.education.data :
+        Array.isArray(data?.raw?.education) ? data.raw.education : []
+
+      setRawCandidate(cRaw)
+      setRawWork(workArr)
+      setRawEdu(eduArr)
+
+      const name = [cRaw?.first_name, cRaw?.last_name].filter(Boolean).join(' ').trim()
+      const location = cRaw?.candidate_current_address?.town_city ?? ''
+
+      setForm(prev => ({
+        ...prev,
+        name: name || prev.name,
+        location: location || prev.location,
+        profile: cRaw?.profile ?? prev.profile,
+        keySkills: Array.isArray(cRaw?.skills) ? cRaw.skills.join(', ') : (cRaw?.skills || prev.keySkills || ''),
+        employment: mapWorkExperiences(workArr),
+        education: mapEducation(eduArr),
+      }))
+
+      // 👇 collapse all panels except Core
+      setOpen({
+        core: true,
+        profile: false,
+        skills: false,
+        work: false,
+        education: false,
+        extra: false,
+        rawCandidate: false,
+        rawWork: false,
+        rawEdu: false,
+      })
+    } catch (e: any) {
+      setError(e?.message || 'Failed to retrieve data')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   // ========== preview (right) ==========
   function CVTemplatePreview(): JSX.Element {
-  // Contract & US just show "Building In Progress"
-  if (template === 'contract' || template === 'us') {
+    // Contract & US just show "Building In Progress"
+    if (template === 'contract' || template === 'us') {
+      return (
+        <div className="p-8 h-full grid place-items-center text-gray-500">
+          <div className="text-center">
+            <img src="/zitko-full-logo.png" alt="Zitko" className="h-10 mx-auto mb-4" />
+            <div className="text-xl font-semibold">Building In Progress…</div>
+            <div className="text-sm mt-1">This template is coming soon.</div>
+          </div>
+        </div>
+      )
+    }
+
+    // PERM template
     return (
-      <div className="p-8 h-full grid place-items-center text-gray-500">
-        <div className="text-center">
-          <img src="/zitko-full-logo.png" alt="Zitko" className="h-10 mx-auto mb-4" />
-          <div className="text-xl font-semibold">Building In Progress…</div>
-          <div className="text-sm mt-1">This template is coming soon.</div>
+      <div className="p-8">
+        {/* Top bar with logo (kept high) */}
+        <div className="flex items-start justify-between">
+          <div /> {/* spacer to push logo right */}
+          <img
+            src="/zitko-full-logo.png"
+            alt="Zitko"
+            className="h-12"
+          />
+        </div>
+
+        {/* Title placed lower down to keep logo visually higher */}
+        <h1 className="text-2xl font-bold mt-6">Curriculum Vitae</h1>
+
+        {/* Name & Location in the requested format */}
+        <div className="mt-2 text-sm text-gray-800 space-y-0.5">
+          <div>
+            <span className="font-semibold">Name:</span>{' '}
+            {form.name ? `${form.name}` : '—'}
+          </div>
+          <div>
+            <span className="font-semibold">Location:</span>{' '}
+            {form.location ? `${form.location}` : '—'}
+          </div>
+        </div>
+
+        {/* Profile */}
+        <h2 className="text-base font-semibold text-[#F7941D] mt-6 mb-2">Profile</h2>
+        <div className="whitespace-pre-wrap">{form.profile || '—'}</div>
+
+        {/* Key Skills (smaller font size) */}
+        <h2 className="text-base font-semibold text-[#F7941D] mt-6 mb-2">Key Skills</h2>
+        <div className="whitespace-pre-wrap text-sm">
+          {(form.keySkills || '')
+            .split(/\r?\n|,\s*/).filter(Boolean)
+            .map((s, i) => <div key={i}>• {s}</div>)}
+        </div>
+
+        {/* Employment History */}
+        <h2 className="text-base font-semibold text-[#F7941D] mt-6 mb-2">Employment History</h2>
+        <div className="space-y-3">
+          {form.employment.length === 0 ? (
+            <div className="text-gray-500 text-sm">No employment history yet.</div>
+          ) : (
+            form.employment.map((e, i) => {
+              const range = [e.start, e.end].filter(Boolean).join(' to ')
+              return (
+                <div key={i} className="flex justify-between">
+                  <div>
+                    <div className="font-medium">{e.title || 'Role'}</div>
+                    <div className="text-xs text-gray-500">{e.company}</div>
+                    {e.description?.trim() && (
+                      <div className="text-sm mt-1 whitespace-pre-wrap">{e.description}</div>
+                    )}
+                  </div>
+                  <div className="text-xs text-gray-500 whitespace-nowrap">{range}</div>
+                </div>
+              )
+            })
+          )}
+        </div>
+
+        {/* Education & Qualifications */}
+        <h2 className="text-base font-semibold text-[#F7941D] mt-6 mb-2">Education & Qualifications</h2>
+        <div className="space-y-3">
+          {form.education.length === 0 ? (
+            <div className="text-gray-500 text-sm">No education yet.</div>
+          ) : (
+            form.education.map((e, i) => {
+              const range = [e.start, e.end].filter(Boolean).join(' to ')
+              const showInstitutionLine =
+                !!e.institution &&
+                !!e.course &&
+                e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
+              return (
+                <div key={i} className="flex justify-between">
+                  <div>
+                    <div className="font-medium">{e.course || e.institution || 'Course'}</div>
+                    {showInstitutionLine && (
+                      <div className="text-xs text-gray-500">{e.institution}</div>
+                    )}
+                  </div>
+                  <div className="text-xs text-gray-500 whitespace-nowrap">{range}</div>
+                </div>
+              )
+            })
+          )}
+        </div>
+
+        {/* Additional Information */}
+        <h2 className="text-base font-semibold text-[#F7941D] mt-6 mb-2">Additional Information</h2>
+        <div className="text-sm grid gap-1">
+          <div>Driving License: {form.additional.drivingLicense || '—'}</div>
+          <div>Nationality: {form.additional.nationality || '—'}</div>
+          <div>Availability: {form.additional.availability || '—'}</div>
+          <div>Health: {form.additional.health || '—'}</div>
+          <div>Criminal Record: {form.additional.criminalRecord || '—'}</div>
+          <div>Financial History: {form.additional.financialHistory || '—'}</div>
+        </div>
+
+        {/* Footer: centered & orange */}
+        <div className="mt-8 pt-4 border-t text-center text-[11px] leading-snug text-[#F7941D]">
+          <div>Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Consulting Ltd, Zitko Sales Ltd, Zitko Contracting Ltd and Zitko Talent</div>
+          <div>Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL</div>
+          <div>Tel: 01480 473245 Web: www.zitkogroup.com</div>
         </div>
       </div>
     )
   }
-
-  // PERM template
-  return (
-    <div className="p-8">
-      {/* Top bar with logo (kept high) */}
-      <div className="flex items-start justify-between">
-        <div /> {/* spacer to push logo right */}
-        <img
-          src="/zitko-full-logo.png"
-          alt="Zitko"
-          className="h-12"
-        />
-      </div>
-
-      {/* Title placed lower down to keep logo visually higher */}
-      <h1 className="text-2xl font-bold mt-6">Curriculum Vitae</h1>
-
-      {/* Name & Location in the requested format */}
-      <div className="mt-2 text-sm text-gray-800 space-y-0.5">
-        <div>
-          <span className="font-semibold">Name:</span>{' '}
-          {form.name ? `${form.name}` : '—'}
-        </div>
-        <div>
-          <span className="font-semibold">Location:</span>{' '}
-          {form.location ? `${form.location}` : '—'}
-        </div>
-      </div>
-
-      {/* Profile */}
-      <h2 className="text-base font-semibold text-[#F7941D] mt-6 mb-2">Profile</h2>
-      <div className="whitespace-pre-wrap">{form.profile || '—'}</div>
-
-      {/* Key Skills (smaller font size) */}
-      <h2 className="text-base font-semibold text-[#F7941D] mt-6 mb-2">Key Skills</h2>
-      <div className="whitespace-pre-wrap text-sm">
-        {(form.keySkills || '')
-          .split(/\r?\n|,\s*/).filter(Boolean)
-          .map((s, i) => <div key={i}>• {s}</div>)}
-      </div>
-
-      {/* Employment History */}
-      <h2 className="text-base font-semibold text-[#F7941D] mt-6 mb-2">Employment History</h2>
-      <div className="space-y-3">
-        {form.employment.length === 0 ? (
-          <div className="text-gray-500 text-sm">No employment history yet.</div>
-        ) : (
-          form.employment.map((e, i) => {
-            const range = [e.start, e.end].filter(Boolean).join(' to ')
-            return (
-              <div key={i} className="flex justify-between">
-                <div>
-                  <div className="font-medium">{e.title || 'Role'}</div>
-                  <div className="text-xs text-gray-500">{e.company}</div>
-                  {e.description?.trim() && (
-                    <div className="text-sm mt-1 whitespace-pre-wrap">{e.description}</div>
-                  )}
-                </div>
-                <div className="text-xs text-gray-500 whitespace-nowrap">{range}</div>
-              </div>
-            )
-          })
-        )}
-      </div>
-
-      {/* Education & Qualifications */}
-      <h2 className="text-base font-semibold text-[#F7941D] mt-6 mb-2">Education & Qualifications</h2>
-      <div className="space-y-3">
-        {form.education.length === 0 ? (
-          <div className="text-gray-500 text-sm">No education yet.</div>
-        ) : (
-          form.education.map((e, i) => {
-            const range = [e.start, e.end].filter(Boolean).join(' to ')
-            const showInstitutionLine =
-              !!e.institution &&
-              !!e.course &&
-              e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
-            return (
-              <div key={i} className="flex justify-between">
-                <div>
-                  <div className="font-medium">{e.course || e.institution || 'Course'}</div>
-                  {showInstitutionLine && (
-                    <div className="text-xs text-gray-500">{e.institution}</div>
-                  )}
-                </div>
-                <div className="text-xs text-gray-500 whitespace-nowrap">{range}</div>
-              </div>
-            )
-          })
-        )}
-      </div>
-
-      {/* Additional Information */}
-      <h2 className="text-base font-semibold text-[#F7941D] mt-6 mb-2">Additional Information</h2>
-      <div className="text-sm grid gap-1">
-        <div>Driving License: {form.additional.drivingLicense || '—'}</div>
-        <div>Nationality: {form.additional.nationality || '—'}</div>
-        <div>Availability: {form.additional.availability || '—'}</div>
-        <div>Health: {form.additional.health || '—'}</div>
-        <div>Criminal Record: {form.additional.criminalRecord || '—'}</div>
-        <div>Financial History: {form.additional.financialHistory || '—'}</div>
-      </div>
-
-      {/* Footer: centered & orange */}
-      <div className="mt-8 pt-4 border-t text-center text-[11px] leading-snug text-[#F7941D]">
-        <div>Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Consulting Ltd, Zitko Sales Ltd, Zitko Contracting Ltd and Zitko Talent</div>
-        <div>Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL</div>
-        <div>Tel: 01480 473245 Web: www.zitkogroup.com</div>
-      </div>
-    </div>
-  )
-}
 
   // ========== render ==========
   return (
@@ -517,15 +590,50 @@ async function fetchData() {
               </button>
             </div>
             {open.profile && (
-              <label className="grid gap-1 mt-3">
-                <span className="text-xs text-gray-500">Profile</span>
-                <textarea
-                  className="input min-h-[120px]"
-                  value={form.profile}
-                  onChange={e => setField('profile', e.target.value)}
-                  disabled={loading}
-                />
-              </label>
+              <div className="mt-3">
+                {/* AI Profile actions */}
+                <div className="flex flex-col sm:flex-row gap-2 mb-3">
+                  <button
+                    type="button"
+                    className="btn btn-grey"
+                    disabled={loading || !rawCandidate}
+                    onClick={generateProfile}
+                    title={!rawCandidate ? 'Retrieve a candidate first' : 'Generate profile from candidate data'}
+                  >
+                    Generate Profile
+                  </button>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      className="input"
+                      placeholder="Job ID (for Generate Job Profile)"
+                      value={jobId}
+                      onChange={e => setJobId(e.target.value)}
+                      disabled={loading}
+                      style={{ width: 240 }}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-grey"
+                      disabled={loading || !rawCandidate || !jobId}
+                      onClick={generateJobProfile}
+                      title={!jobId ? 'Enter a Job ID' : 'Generate job-tailored profile'}
+                    >
+                      Generate Job Profile
+                    </button>
+                  </div>
+                </div>
+
+                <label className="grid gap-1">
+                  <span className="text-xs text-gray-500">Profile</span>
+                  <textarea
+                    className="input min-h-[120px]"
+                    value={form.profile}
+                    onChange={e => setField('profile', e.target.value)}
+                    disabled={loading}
+                  />
+                </label>
+              </div>
             )}
           </section>
 
