@@ -1,7 +1,6 @@
-// app/dashboard/_cv/CvTab.tsx
 'use client'
 
-import React, { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 type TemplateKey = 'permanent' | 'contract' | 'us'
 
@@ -14,31 +13,10 @@ type Employment = {
 }
 
 type Education = {
-  institution?: string
   course?: string
-  qualification?: string
+  institution?: string
   start?: string
   end?: string
-  notes?: string
-}
-
-type CandidateCore = {
-  id?: string
-  name?: string
-  location?: string
-  profile?: string
-  keySkills?: string[]
-  additionalInformation?: string
-}
-
-type RetrieveResponse = {
-  ok: boolean
-  candidate?: CandidateCore
-  work?: Employment[]
-  education?: Education[]
-  extra?: Record<string, any> | null
-  raw?: Record<string, any> | null
-  error?: string
 }
 
 type OpenState = {
@@ -48,449 +26,821 @@ type OpenState = {
   work: boolean
   education: boolean
   extra: boolean
-}
-
-const initialOpen: OpenState = {
-  core: true,
-  profile: true,
-  skills: true,
-  work: true,
-  education: true,
-  extra: true,
+  rawCandidate: boolean
+  rawWork: boolean
+  rawEdu: boolean
 }
 
 export default function CvTab({ templateFromShell }: { templateFromShell?: TemplateKey }): JSX.Element {
-  // ---------- UI state ----------
+  // ========== UI state ==========
   const [template, setTemplate] = useState<TemplateKey | null>(templateFromShell ?? null)
   const [candidateId, setCandidateId] = useState<string>('')
-
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
 
-  const [open, setOpen] = useState<OpenState>(initialOpen)
+  // Raw fetched (debug)
+  const [rawCandidate, setRawCandidate] = useState<any>(null)
+  const [rawWork, setRawWork] = useState<any[]>([])
+  const [rawEdu, setRawEdu] = useState<any[]>([])
 
-  // ---------- Data state ----------
-  const [core, setCore] = useState<CandidateCore | null>(null)
-  const [work, setWork] = useState<Employment[]>([])
-  const [education, setEducation] = useState<Education[]>([])
-  const [extra, setExtra] = useState<Record<string, any> | null>(null)
-  const [raw, setRaw] = useState<Record<string, any> | null>(null)
+  // Form that drives preview
+  const [form, setForm] = useState<{
+    name: string
+    location: string
+    profile: string
+    keySkills: string
+    employment: Employment[]
+    education: Education[]
+    additional: {
+      drivingLicense: string
+      nationality: string
+      availability: string
+      health: string
+      criminalRecord: string
+      financialHistory: string
+    }
+  }>(getEmptyForm())
 
-  // ---------- Helpers ----------
-  function toggle(section: keyof OpenState) {
-    setOpen(prev => ({ ...prev, [section]: !prev[section] }))
+  const [open, setOpen] = useState<OpenState>({
+    core: true,
+    profile: true,
+    skills: true,
+    work: true,
+    education: true,
+    extra: true,
+    rawCandidate: false,
+    rawWork: false,
+    rawEdu: false,
+  })
+
+  function getEmptyForm() {
+    return {
+      name: '',
+      location: '',
+      profile: '',
+      keySkills: '',
+      employment: [],
+      education: [],
+      additional: {
+        drivingLicense: '',
+        nationality: '',
+        availability: '',
+        health: '',
+        criminalRecord: '',
+        financialHistory: '',
+      },
+    }
   }
 
-  const rawMini = useMemo(() => {
-    if (!raw) return '{}'
-    try {
-      const text = JSON.stringify(raw, null, 2)
-      // mini truncate for the Core Details block
-      return text.length > 1200 ? text.slice(0, 1200) + '\n… (truncated)' : text
-    } catch {
-      return '{}'
-    }
-  }, [raw])
-
-  async function tryFetch(url: string) {
-    const res = await fetch(url, { method: 'GET' })
-    if (!res.ok) {
-      const errText = await res.text().catch(() => '')
-      throw new Error(errText || `Fetch failed: ${res.status}`)
-    }
-    return res.json()
+  function resetAllForTemplate(t: TemplateKey | null) {
+    setTemplate(t)
+    setForm(getEmptyForm())
+    setRawCandidate(null)
+    setRawWork([])
+    setRawEdu([])
+    setError(null)
   }
 
-  async function retrieve() {
-    if (!candidateId?.trim()) {
-      setError('Please enter a Candidate ID.')
+  // Keep component in sync with the header dropdown (if present)
+  useEffect(() => {
+    if (templateFromShell) {
+      resetAllForTemplate(templateFromShell)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [templateFromShell])
+
+  function toggle(k: keyof OpenState) {
+    setOpen(s => ({ ...s, [k]: !s[k] }))
+  }
+
+  // ========== helpers ==========
+  // Format dates as "Month YYYY", e.g., "October 2019"
+  function formatDate(dateStr?: string | null): string {
+    if (!dateStr) return ''
+    const s = String(dateStr).trim()
+
+    const ymd = s.match(/^(\d{4})-(\d{1,2})(?:-\d{1,2})?$/)
+    const mmyyyy = s.match(/^(\d{1,2})[\/\-](\d{4})$/)
+    const yyyy = s.match(/^(\d{4})$/)
+
+    let y: number | undefined
+    let m: number | undefined
+
+    if (ymd) { y = Number(ymd[1]); m = Number(ymd[2]) }
+    else if (mmyyyy) { y = Number(mmyyyy[2]); m = Number(mmyyyy[1]) }
+    else if (yyyy) { y = Number(yyyy[1]); m = 1 }
+    else {
+      const d = new Date(s)
+      if (!isNaN(d.getTime())) { y = d.getFullYear(); m = d.getMonth() + 1 }
+    }
+
+    if (!y || !m) return ''
+    const month = new Date(y, m - 1, 1).toLocaleString('en-GB', { month: 'long' })
+    return `${month} ${y}`
+  }
+
+  function mapWorkExperiences(list: any[]): Employment[] {
+    if (!Array.isArray(list)) return []
+    return list.map(w => {
+      const start = formatDate(w?.work_from)
+      const end = w?.work_to == null ? 'Present' : formatDate(w?.work_to)
+      return {
+        title: w?.job_title || '',
+        company: w?.company_name || '',
+        start,
+        end,
+        description: w?.description || '',
+      }
+    })
+  }
+
+  function mapEducation(list: any[]): Education[] {
+    if (!Array.isArray(list)) return []
+    return list.map(e => {
+      const qualsRaw = e?.qualificications ?? e?.qualifications ?? e?.qualification
+      const toArr = (v: any) =>
+        Array.isArray(v) ? v.filter(Boolean).map(String)
+        : typeof v === 'string' ? v.split(/[,;]\s*/).filter(Boolean)
+        : []
+
+      const quals = toArr(qualsRaw)
+      const training = toArr(e?.training)
+      const honors = toArr(e?.honors)
+
+      const mainTitle = (e?.degree_name && String(e.degree_name)) || (quals[0] || '')
+      const extras = [...quals.slice(1), ...training, ...honors]
+      let course = extras.length ? `${mainTitle}`.trim() + ` (${extras.join(' • ')})` : `${mainTitle}`.trim()
+
+      const institution = e?.school_name || e?.institution || e?.school || ''
+      if (!course) course = institution // fallback to institution if no course/degree
+
+      // If dates are missing, leave blank
+      const start = formatDate(e?.start_date || e?.from_date || e?.start) || ''
+      const end = formatDate(e?.end_date || e?.to_date || e?.end) || ''
+
+      return {
+        course: course || '',
+        institution,
+        start,
+        end,
+      }
+    })
+  }
+
+  function setField(path: string, value: any) {
+    setForm(prev => {
+      const next: any = { ...prev }
+      if (path.includes('.')) {
+        const [a, b] = path.split('.', 2)
+        next[a] = { ...next[a], [b]: value }
+      } else {
+        next[path] = value
+      }
+      return next
+    })
+  }
+
+  function setEmployment(index: number, key: keyof Employment, value: string) {
+    setForm(prev => {
+      const list = [...prev.employment]
+      list[index] = { ...list[index], [key]: value }
+      return { ...prev, employment: list }
+    })
+  }
+
+  function addEmployment() {
+    setForm(prev => ({ ...prev, employment: [...prev.employment, { title: '', company: '', start: '', end: '', description: '' }] }))
+  }
+
+  function removeEmployment(index: number) {
+    setForm(prev => ({ ...prev, employment: prev.employment.filter((_, i) => i !== index) }))
+  }
+
+  function setEducation(index: number, key: keyof Education, value: string) {
+    setForm(prev => {
+      const list = [...prev.education]
+      list[index] = { ...list[index], [key]: value }
+      return { ...prev, education: list }
+    })
+  }
+
+  function addEducation() {
+    setForm(prev => ({ ...prev, education: [...prev.education, { course: '', institution: '', start: '', end: '' }] }))
+  }
+
+  function removeEducation(index: number) {
+    setForm(prev => ({ ...prev, education: prev.education.filter((_, i) => i !== index) }))
+  }
+
+  // ========== data fetch (single server call) ==========
+  async function fetchData() {
+    if (!candidateId) return
+    if (!template) {
+      alert('Please select a template first.')
       return
     }
-
     setLoading(true)
     setError(null)
-
-    // clear old data to avoid confusion while loading
-    setCore(null)
-    setWork([])
-    setEducation([])
-    setExtra(null)
-    setRaw(null)
-
     try {
-      // 1) Preferred single endpoint you said you updated
-      const combined: RetrieveResponse = await tryFetch(`/api/cv/retrieve?candidateId=${encodeURIComponent(candidateId)}`)
+      const res = await fetch('/api/cv/retrieve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ candidateId: String(candidateId).trim() }),
+      })
+      const data = await res.json()
 
-      // If combined ok – great. If not, fall back to Vincere endpoints you listed.
-      if (!combined?.ok) {
-        // Fallback path
-        const [
-          edu,
-          exp,
-          coreResp,
-        ] = await Promise.allSettled([
-          tryFetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}/educationdetails`),
-          tryFetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}/workexperiences`),
-          tryFetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}/core`), // assume you have a core route or put retrieve here again
-        ])
-
-        const coreFromFB =
-          coreResp.status === 'fulfilled' ? (coreResp.value?.candidate ?? coreResp.value ?? null) : null
-        const workFromFB =
-          exp.status === 'fulfilled' ? (exp.value?.work ?? exp.value ?? []) : []
-        const eduFromFB =
-          edu.status === 'fulfilled' ? (edu.value?.education ?? edu.value ?? []) : []
-
-        setCore(normalizeCore(coreFromFB))
-        setWork(normalizeWork(workFromFB))
-        setEducation(normalizeEducation(eduFromFB))
-        setExtra(null)
-        // raw: include whatever we collected in fallback
-        setRaw({
-          fallback: true,
-          core: coreFromFB,
-          work: workFromFB,
-          education: eduFromFB,
-        })
-
-        // If all three failed, bubble the most relevant error
-        if (coreResp.status === 'rejected' && exp.status === 'rejected' && edu.status === 'rejected') {
-          throw new Error(
-            [
-              'Combined endpoint failed and all fallback endpoints failed.',
-              `Core error: ${coreResp.reason instanceof Error ? coreResp.reason.message : String(coreResp.reason)}`,
-              `Work error: ${exp.reason instanceof Error ? exp.reason.message : String(exp.reason)}`,
-              `Edu error: ${edu.reason instanceof Error ? edu.reason.message : String(edu.reason)}`,
-            ].join('\n'),
-          )
-        }
-      } else {
-        // Combined success
-        setCore(normalizeCore(combined.candidate ?? null))
-        setWork(normalizeWork(combined.work ?? []))
-        setEducation(normalizeEducation(combined.education ?? []))
-        setExtra(combined.extra ?? null)
-        setRaw(combined.raw ?? {
-          candidate: combined.candidate,
-          work: combined.work,
-          education: combined.education,
-          extra: combined.extra,
-        })
+      if (!res.ok || !data?.ok) {
+        if (res.status === 401) throw new Error('Not connected to Vincere. Please log in again.')
+        if (res.status === 404) throw new Error(data?.error || `Candidate ${candidateId} not found in this tenant.`)
+        throw new Error(data?.error || 'Failed to retrieve candidate.')
       }
+
+      // Raw (debug) — keep the full structures
+      const cRaw = data?.raw?.candidate ?? {}
+      const workArr: any[] =
+        Array.isArray(data?.raw?.work?.data) ? data.raw.work.data :
+        Array.isArray(data?.raw?.work) ? data.raw.work : []
+      const eduArr: any[] =
+        Array.isArray(data?.raw?.education?.data) ? data.raw.education.data :
+        Array.isArray(data?.raw?.education) ? data.raw.education : []
+
+      setRawCandidate(cRaw)
+      setRawWork(workArr)
+      setRawEdu(eduArr)
+
+      // Map to form
+      const name = [cRaw?.first_name, cRaw?.last_name].filter(Boolean).join(' ').trim()
+      const location = cRaw?.candidate_current_address?.town_city ?? ''
+
+      setForm(prev => ({
+        ...prev,
+        name: name || prev.name,
+        location: location || prev.location,
+        profile: cRaw?.profile ?? prev.profile,
+        keySkills: Array.isArray(cRaw?.skills) ? cRaw.skills.join(', ') : (cRaw?.skills || prev.keySkills || ''),
+        employment: mapWorkExperiences(workArr),
+        education: mapEducation(eduArr),
+      }))
     } catch (e: any) {
-      setError(parseErr(e))
+      setError(e?.message || 'Failed to retrieve data')
     } finally {
       setLoading(false)
     }
   }
 
-  // ---------- Normalizers (defensive against varying API shapes) ----------
-  function normalizeCore(input: any): CandidateCore | null {
-    if (!input || typeof input !== 'object') return null
-    const name = input.name ?? [input.first_name, input.last_name].filter(Boolean).join(' ') || undefined
-    const keySkills: string[] =
-      Array.isArray(input.keySkills) ? input.keySkills
-        : Array.isArray(input.skills) ? input.skills
-        : typeof input.keywords === 'string' ? splitSkills(input.keywords)
-        : []
+  // helper: "start to end" line
+  function dateLine(start?: string, end?: string) {
+    const s = start?.trim() || ''
+    const e = end?.trim() || ''
+    if (s && e) return `${s} to ${e}`
+    if (s && !e) return s
+    if (!s && e) return e
+    return ''
+  }
 
-    return {
-      id: String(input.id ?? input.candidate_id ?? ''),
-      name,
-      location: input.location ?? input.current_location_name ?? input.current_city ?? undefined,
-      profile: input.profile ?? input.summary ?? input.about ?? undefined,
-      keySkills,
-      additionalInformation: input.additionalInformation ?? input.additional_info ?? input.notes ?? undefined,
+  // ========== preview (right) ==========
+  function CVTemplatePreview(): JSX.Element {
+    if (!template) {
+      return (
+        <div className="h-full grid place-items-center text-gray-500">
+          <div className="text-center">
+            <div className="text-lg font-medium">Select a template to preview</div>
+            <div className="text-sm">Permanent (Contract/US in progress)</div>
+          </div>
+        </div>
+      )
     }
-  }
 
-  function splitSkills(s: string): string[] {
-    return s
-      .split(/[,;|]/g)
-      .map(v => v.trim())
-      .filter(Boolean)
-  }
+    const Header = ({ title }: { title: string }) => (
+      <h2 className="text-base font-semibold text-[#F7941D] mt-6 mb-2">{title}</h2>
+    )
 
-  function normalizeWork(arr: any): Employment[] {
-    if (!Array.isArray(arr)) return []
-    return arr.map((w: any) => ({
-      title: w.title ?? w.job_title ?? w.position ?? undefined,
-      company: w.company ?? w.company_name ?? undefined,
-      start: toDateStr(w.start ?? w.start_date),
-      end: toDateStr(w.end ?? w.end_date),
-      description: w.description ?? w.responsibilities ?? undefined,
-    }))
-  }
+    const EmploymentBlock = (): JSX.Element => (
+      <div className="space-y-3">
+        {form.employment.length === 0 ? (
+          <div className="text-gray-500 text-sm">No employment history yet.</div>
+        ) : (
+          form.employment.map((e, i) => {
+            const range = dateLine(e.start, e.end)
+            return (
+              <div key={i} className="flex justify-between">
+                <div>
+                  <div className="font-medium">{e.title || 'Role'}</div>
+                  <div className="text-xs text-gray-500">{e.company}</div>
+                </div>
+                <div className="text-xs text-gray-500 whitespace-nowrap">
+                  {range}
+                </div>
+              </div>
+            )
+          })
+        )}
+      </div>
+    )
 
-  function normalizeEducation(arr: any): Education[] {
-    if (!Array.isArray(arr)) return []
-    return arr.map((e: any) => ({
-      institution: e.institution ?? e.school ?? e.edu_institution ?? undefined,
-      course: e.course ?? e.edu_course ?? undefined,
-      qualification: e.qualification ?? e.edu_qualification ?? e.degree ?? undefined,
-      start: toDateStr(e.start ?? e.start_date),
-      end: toDateStr(e.end ?? e.end_date),
-      notes: e.notes ?? undefined,
-    }))
-  }
+    const EducationBlock = (): JSX.Element => (
+      <div className="space-y-3">
+        {form.education.length === 0 ? (
+          <div className="text-gray-500 text-sm">No education yet.</div>
+        ) : (
+          form.education.map((e, i) => {
+            const range = dateLine(e.start, e.end) // blank if both missing
+            const showInstitutionLine =
+              !!e.institution &&
+              !!e.course &&
+              e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
+            return (
+              <div key={i} className="flex justify-between">
+                <div>
+                  <div className="font-medium">{e.course || e.institution || 'Course'}</div>
+                  {showInstitutionLine && (
+                    <div className="text-xs text-gray-500">{e.institution}</div>
+                  )}
+                </div>
+                <div className="text-xs text-gray-500 whitespace-nowrap">
+                  {range}
+                </div>
+              </div>
+            )
+          })
+        )}
+      </div>
+    )
 
-  function toDateStr(d?: string): string | undefined {
-    if (!d) return undefined
-    const dt = new Date(d)
-    if (isNaN(dt.getTime())) return String(d)
-    // Show Month YYYY if possible
-    try {
-      return dt.toLocaleDateString(undefined, { year: 'numeric', month: 'short' })
-    } catch {
-      return dt.toISOString().slice(0, 10)
-    }
-  }
-
-  function parseErr(e: unknown): string {
-    if (typeof e === 'string') return e
-    if (e instanceof Error) return e.message
-    try {
-      return JSON.stringify(e)
-    } catch {
-      return 'Unknown error'
-    }
-  }
-
-  // ---------- Small presentational helpers ----------
-  const Section: React.FC<{ title: string; open: boolean; onToggle: () => void; children: React.ReactNode }> = ({
-    title,
-    open,
-    onToggle,
-    children,
-  }) => (
-    <section
-      className="rounded-xl border border-gray-200 bg-white shadow-sm mb-3 overflow-hidden"
-      style={{ borderColor: '#e5e7eb' }}
-    >
-      <header
-        onClick={onToggle}
-        className="cursor-pointer select-none px-4 py-3 flex items-center justify-between bg-gray-50"
-      >
-        <h3 className="text-sm font-semibold text-gray-800">{title}</h3>
-        <span className="text-xs text-gray-500">{open ? '▼' : '►'}</span>
-      </header>
-      {open && <div className="px-4 py-3">{children}</div>}
-    </section>
-  )
-
-  const Label: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-    <div className="text-xs font-medium text-gray-500">{children}</div>
-  )
-
-  const Value: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-    <div className="text-sm text-gray-900">{children}</div>
-  )
-
-  // ---------- Render ----------
-  return (
-    <div className="w-full max-w-4xl mx-auto">
-      {/* Controls */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:gap-4 mb-4">
-        <div className="flex-1">
-          <Label>Template (optional)</Label>
-          <select
-            value={template ?? ''}
-            onChange={(e) => setTemplate((e.target.value || null) as TemplateKey | null)}
-            className="w-full border rounded-md px-3 py-2 text-sm"
-          >
-            <option value="">— Select —</option>
-            <option value="permanent">Permanent</option>
-            <option value="contract">Contract</option>
-            <option value="us">US</option>
-          </select>
+    return (
+      <div className="p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h1 className="text-2xl font-bold">Curriculum Vitae</h1>
+            <div className="text-sm text-gray-700">
+              {form.name || 'Name'}{form.location ? ` · ${form.location}` : ''}
+            </div>
+          </div>
+          <img src="/Zitko_Logo-removebg-preview.png" alt="Zitko" className="h-8" />
         </div>
 
-        <div className="flex-1">
-          <Label>Candidate ID</Label>
-          <input
-            value={candidateId}
-            onChange={(e) => setCandidateId(e.target.value)}
-            placeholder="e.g. 255472"
-            className="w-full border rounded-md px-3 py-2 text-sm"
-          />
+        <div className="text-xs text-gray-500 italic mb-4">
+          {template === 'permanent' && 'Permanent Template'}
         </div>
 
-        <div className="sm:pb-[2px]">
-          <button
-            onClick={retrieve}
-            disabled={loading}
-            className={`px-4 py-2 rounded-md text-sm font-semibold ${
-              loading ? 'bg-gray-300 text-gray-600' : 'bg-black text-white hover:opacity-90'
-            }`}
-            title="Retrieve Candidate"
-          >
-            {loading ? 'Retrieving…' : 'Retrieve Candidate'}
-          </button>
+        <Header title="Profile" />
+        <div className="whitespace-pre-wrap">{form.profile || '—'}</div>
+
+        <Header title="Key Skills" />
+        <div className="whitespace-pre-wrap">
+          {(form.keySkills || '')
+            .split(/\r?\n|,\s*/)
+            .filter(Boolean)
+            .map((s, i) => <div key={i}>• {s}</div>)}
+        </div>
+
+        <Header title="Employment History" />
+        <EmploymentBlock />
+
+        <Header title="Education & Qualifications" />
+        <EducationBlock />
+
+        <Header title="Additional Information" />
+        <div className="text-sm grid gap-1">
+          <div>Driving License: {form.additional.drivingLicense || '—'}</div>
+          <div>Nationality: {form.additional.nationality || '—'}</div>
+          <div>Availability: {form.additional.availability || '—'}</div>
+          <div>Health: {form.additional.health || '—'}</div>
+          <div>Criminal Record: {form.additional.criminalRecord || '—'}</div>
+          <div>Financial History: {form.additional.financialHistory || '—'}</div>
         </div>
       </div>
-
-      {error && (
-        <div className="mb-4 rounded-md border border-red-200 bg-red-50 text-red-800 text-sm px-3 py-2">
-          {error}
-        </div>
-      )}
-
-      {/* CORE DETAILS */}
-      <Section title="Core Details" open={open.core} onToggle={() => toggle('core')}>
-        {core ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <Label>Name</Label>
-              <Value>{core.name || '—'}</Value>
-            </div>
-            <div>
-              <Label>Location</Label>
-              <Value>{core.location || '—'}</Value>
-            </div>
-            <div className="sm:col-span-2">
-              <Label>Candidate ID</Label>
-              <Value>{core.id || '—'}</Value>
-            </div>
-
-            {/* Raw JSON (mini) requested under Core Details (very small) */}
-            <div className="sm:col-span-2">
-              <Label>Raw JSON (mini)</Label>
-              <pre
-                className="mt-1 rounded-md border bg-gray-50 overflow-auto p-2 text-[10px] leading-tight"
-                style={{ maxHeight: 160 }}
-              >
-                {rawMini}
-              </pre>
-            </div>
-          </div>
-        ) : (
-          <div className="text-sm text-gray-500">No data yet. Enter an ID and retrieve.</div>
-        )}
-      </Section>
-
-      {/* PROFILE */}
-      <Section title="Profile" open={open.profile} onToggle={() => toggle('profile')}>
-        <div className="prose prose-sm max-w-none">
-          {core?.profile ? <p className="whitespace-pre-wrap">{core.profile}</p> : <p className="text-gray-500">—</p>}
-        </div>
-      </Section>
-
-      {/* KEY SKILLS */}
-      <Section title="Key Skills" open={open.skills} onToggle={() => toggle('skills')}>
-        {core?.keySkills?.length ? (
-          <div className="flex flex-wrap gap-2">
-            {core.keySkills.map((s, i) => (
-              <span key={`${s}-${i}`} className="text-xs bg-gray-100 border border-gray-200 rounded-full px-2 py-1">
-                {s}
-              </span>
-            ))}
-          </div>
-        ) : (
-          <div className="text-sm text-gray-500">—</div>
-        )}
-      </Section>
-
-      {/* EMPLOYMENT HISTORY */}
-      <Section title="Employment History" open={open.work} onToggle={() => toggle('work')}>
-        {work?.length ? (
-          <ul className="space-y-3">
-            {work.map((w, idx) => (
-              <li key={idx} className="rounded-md border border-gray-200 p-3">
-                <div className="text-sm font-semibold">{w.title || '—'}</div>
-                <div className="text-xs text-gray-600">{w.company || '—'}</div>
-                <div className="text-xs text-gray-500 mt-0.5">
-                  {[w.start, w.end].filter(Boolean).join(' — ') || 'Dates not provided'}
-                </div>
-                {w.description && (
-                  <p className="text-sm text-gray-800 mt-2 whitespace-pre-wrap">{w.description}</p>
-                )}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <div className="text-sm text-gray-500">—</div>
-        )}
-      </Section>
-
-      {/* EDUCATION & QUALIFICATIONS */}
-      <Section title="Education & Qualifications" open={open.education} onToggle={() => toggle('education')}>
-        {education?.length ? (
-          <ul className="space-y-3">
-            {education.map((e, idx) => (
-              <li key={idx} className="rounded-md border border-gray-200 p-3">
-                <div className="text-sm font-semibold">{e.institution || '—'}</div>
-                <div className="text-xs text-gray-600">
-                  {[e.qualification, e.course].filter(Boolean).join(' • ') || '—'}
-                </div>
-                <div className="text-xs text-gray-500 mt-0.5">
-                  {[e.start, e.end].filter(Boolean).join(' — ') || 'Dates not provided'}
-                </div>
-                {e.notes && <p className="text-sm text-gray-800 mt-2 whitespace-pre-wrap">{e.notes}</p>}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <div className="text-sm text-gray-500">—</div>
-        )}
-      </Section>
-
-      {/* ADDITIONAL INFORMATION */}
-      <Section title="Additional Information" open={open.extra} onToggle={() => toggle('extra')}>
-        <div className="space-y-3">
-          <div>
-            <Label>Notes / Additional</Label>
-            <div className="text-sm text-gray-900 whitespace-pre-wrap">
-              {core?.additionalInformation || '—'}
-            </div>
-          </div>
-
-          {/* FULL Raw JSON requested at the very bottom under Additional Information */}
-          <div>
-            <Label>Raw JSON (full, highlighted)</Label>
-            <div className="mt-2 rounded-md border border-gray-200 overflow-hidden">
-              <pre className="m-0 p-3 text-[11px] leading-snug overflow-auto bg-[#0b1021] text-[#cdd9e5]">
-                {raw ? syntaxHighlightJSON(raw) : '// No raw data'}
-              </pre>
-            </div>
-          </div>
-        </div>
-      </Section>
-    </div>
-  )
-}
-
-/** Lightweight client-side JSON highlighter (no deps) */
-function syntaxHighlightJSON(obj: unknown): string {
-  let json: string
-  try {
-    json = JSON.stringify(obj, null, 2)
-  } catch {
-    json = String(obj)
+    )
   }
-  // escape HTML
-  json = json
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
 
-  return json.replace(
-    /("(\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
-    (match) => {
-      let cls = 'text-[#9cdcfe]' // string by default
-      if (/^"/.test(match)) {
-        if (/:$/.test(match)) {
-          cls = 'text-[#c586c0]' // key
-        } else {
-          cls = 'text-[#ce9178]' // string value
-        }
-      } else if (/true|false/.test(match)) {
-        cls = 'text-[#4fc1ff]' // boolean
-      } else if (/null/.test(match)) {
-        cls = 'text-[#dcdcaa]' // null
-      } else {
-        cls = 'text-[#b5cea8]' // number
-      }
-      return `<span style="color:${cls.slice(6, -2)}">${match}</span>`
-    },
+  // ========== render ==========
+  return (
+    <div className="grid gap-4">
+      <div className="card p-4">
+        {!templateFromShell && (
+          <div className="grid sm:grid-cols-3 gap-2">
+            <button
+              type="button"
+              onClick={() => resetAllForTemplate('permanent')}
+              className={`btn w-full ${template === 'permanent' ? 'btn-brand' : 'btn-grey'}`}
+            >
+              Permanent
+            </button>
+            <div className="btn w-full btn-grey opacity-50 cursor-not-allowed flex items-center justify-center">
+              Contract – Building in progress…
+            </div>
+            <div className="btn w-full btn-grey opacity-50 cursor-not-allowed flex items-center justify-center">
+              US – Building in progress…
+            </div>
+          </div>
+        )}
+
+        <div className="grid sm:grid-cols-[1fr_auto] gap-2 mt-4">
+          <input
+            className="input"
+            placeholder="Enter Candidate ID"
+            value={candidateId}
+            onChange={e => setCandidateId(e.target.value)}
+            disabled={loading}
+            autoComplete="off"
+          />
+          <button
+            className="btn btn-brand"
+            onClick={fetchData}
+            disabled={loading || !candidateId}
+          >
+            {loading ? 'Fetching…' : 'Retrieve Candidate'}
+          </button>
+        </div>
+        {error && <div className="mt-3 text-sm text-red-600">{String(error).slice(0, 300)}</div>}
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-4">
+        {/* LEFT: Editor – all collapsible */}
+        <div className="card p-4 space-y-4">
+          {/* Core */}
+          <section>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold">Core Details</h3>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  className="text-xs text-gray-500 underline"
+                  onClick={() => toggle('core')}
+                >
+                  {open.core ? 'Hide' : 'Show'}
+                </button>
+              </div>
+            </div>
+
+            {open.core && (
+              <div className="grid gap-3 mt-3">
+                <label className="grid gap-1">
+                  <span className="text-xs text-gray-500">Name</span>
+                  <input
+                    className="input"
+                    value={form.name}
+                    onChange={e => setField('name', e.target.value)}
+                    disabled={loading}
+                  />
+                </label>
+
+                <label className="grid gap-1">
+                  <span className="text-xs text-gray-500">Location</span>
+                  <input
+                    className="input"
+                    value={form.location}
+                    onChange={e => setField('location', e.target.value)}
+                    disabled={loading}
+                  />
+                </label>
+
+                {/* Raw JSON Data — small, at the bottom of Core */}
+                <div className="mt-2 border rounded-xl p-2 bg-gray-50">
+                  <div className="text-[11px] font-semibold text-gray-600 mb-1">Raw JSON Data (debug)</div>
+
+                  {/* Candidate Data (full JSON) */}
+                  <div className="border rounded-lg mb-2">
+                    <div className="flex items-center justify-between px-2 py-1">
+                      <div className="text-[11px] font-medium">Candidate Data</div>
+                      <button
+                        type="button"
+                        className="text-[11px] text-gray-500 underline"
+                        onClick={() => toggle('rawCandidate')}
+                      >
+                        {open.rawCandidate ? 'Hide' : 'Show'}
+                      </button>
+                    </div>
+                    {open.rawCandidate && (
+                      <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
+{JSON.stringify(rawCandidate, null, 2)}
+                      </pre>
+                    )}
+                  </div>
+
+                  {/* Work Experience (full JSON array) */}
+                  <div className="border rounded-lg mb-2">
+                    <div className="flex items-center justify-between px-2 py-1">
+                      <div className="text-[11px] font-medium">Work Experience</div>
+                      <button
+                        type="button"
+                        className="text-[11px] text-gray-500 underline"
+                        onClick={() => toggle('rawWork')}
+                      >
+                        {open.rawWork ? 'Hide' : 'Show'}
+                      </button>
+                    </div>
+                    {open.rawWork && (
+                      <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
+{JSON.stringify(rawWork, null, 2)}
+                      </pre>
+                    )}
+                  </div>
+
+                  {/* Education Details (full JSON array) */}
+                  <div className="border rounded-lg">
+                    <div className="flex items-center justify-between px-2 py-1">
+                      <div className="text-[11px] font-medium">Education Details</div>
+                      <button
+                        type="button"
+                        className="text-[11px] text-gray-500 underline"
+                        onClick={() => toggle('rawEdu')}
+                      >
+                        {open.rawEdu ? 'Hide' : 'Show'}
+                      </button>
+                    </div>
+                    {open.rawEdu && (
+                      <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
+{JSON.stringify(rawEdu, null, 2)}
+                      </pre>
+                    )}
+                  </div>
+                </div>
+                {/* End Raw JSON Data */}
+              </div>
+            )}
+          </section>
+
+          {/* Profile */}
+          <section>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold">Profile</h3>
+              <button
+                type="button"
+                className="text-xs text-gray-500 underline"
+                onClick={() => toggle('profile')}
+              >
+                {open.profile ? 'Hide' : 'Show'}
+              </button>
+            </div>
+            {open.profile && (
+              <label className="grid gap-1 mt-3">
+                <span className="text-xs text-gray-500">Profile</span>
+                <textarea
+                  className="input min-h-[120px]"
+                  value={form.profile}
+                  onChange={e => setField('profile', e.target.value)}
+                  disabled={loading}
+                />
+              </label>
+            )}
+          </section>
+
+          {/* Key Skills */}
+          <section>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold">Key Skills</h3>
+              <button
+                type="button"
+                className="text-xs text-gray-500 underline"
+                onClick={() => toggle('skills')}
+              >
+                {open.skills ? 'Hide' : 'Show'}
+              </button>
+            </div>
+            {open.skills && (
+              <label className="grid gap-1 mt-3">
+                <span className="text-xs text-gray-500">Key Skills (comma or newline)</span>
+                <textarea
+                  className="input min-h-[100px]"
+                  value={form.keySkills}
+                  onChange={e => setField('keySkills', e.target.value)}
+                  disabled={loading}
+                />
+              </label>
+            )}
+          </section>
+
+          {/* Employment */}
+          <section>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold">Employment History</h3>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  className="text-xs text-gray-500 underline"
+                  onClick={addEmployment}
+                  disabled={loading}
+                >
+                  Add role
+                </button>
+                <button
+                  type="button"
+                  className="text-xs text-gray-500 underline"
+                  onClick={() => toggle('work')}
+                >
+                  {open.work ? 'Hide' : 'Show'}
+                </button>
+              </div>
+            </div>
+
+            {open.work && (
+              <div className="grid gap-3 mt-3">
+                {form.employment.length === 0 ? (
+                  <div className="text-sm text-gray-500">No employment history yet.</div>
+                ) : (
+                  form.employment.map((e, i) => (
+                    <div key={i} className="border rounded-xl p-3 grid gap-2">
+                      <div className="grid sm:grid-cols-2 gap-2">
+                        <input
+                          className="input"
+                          placeholder="Title"
+                          value={e.title || ''}
+                          onChange={ev => setEmployment(i, 'title', ev.target.value)}
+                          disabled={loading}
+                        />
+                        <input
+                          className="input"
+                          placeholder="Company"
+                          value={e.company || ''}
+                          onChange={ev => setEmployment(i, 'company', ev.target.value)}
+                          disabled={loading}
+                        />
+                        <input
+                          className="input"
+                          placeholder="Start (Month YYYY)"
+                          value={e.start || ''}
+                          onChange={ev => setEmployment(i, 'start', ev.target.value)}
+                          disabled={loading}
+                        />
+                        <input
+                          className="input"
+                          placeholder="End (Month YYYY or Present)"
+                          value={e.end || ''}
+                          onChange={ev => setEmployment(i, 'end', ev.target.value)}
+                          disabled={loading}
+                        />
+                      </div>
+                      <textarea
+                        className="input min-h-[80px]"
+                        placeholder="Description"
+                        value={e.description || ''}
+                        onChange={ev => setEmployment(i, 'description', ev.target.value)}
+                        disabled={loading}
+                      />
+                      <div className="text-right">
+                        <button
+                          type="button"
+                          className="text-xs text-red-600 underline"
+                          onClick={() => removeEmployment(i)}
+                          disabled={loading}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </section>
+
+          {/* Education */}
+          <section>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold">Education & Qualifications</h3>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  className="text-xs text-gray-500 underline"
+                  onClick={addEducation}
+                  disabled={loading}
+                >
+                  Add item
+                </button>
+                <button
+                  type="button"
+                  className="text-xs text-gray-500 underline"
+                  onClick={() => toggle('education')}
+                >
+                  {open.education ? 'Hide' : 'Show'}
+                </button>
+              </div>
+            </div>
+
+            {open.education && (
+              <div className="grid gap-3 mt-3">
+                {form.education.length === 0 ? (
+                  <div className="text-sm text-gray-500">No education yet.</div>
+                ) : (
+                  form.education.map((e, i) => (
+                    <div key={i} className="border rounded-xl p-3 grid gap-2">
+                      <div className="grid sm:grid-cols-2 gap-2">
+                        <input
+                          className="input"
+                          placeholder="Course / Degree"
+                          value={e.course || ''}
+                          onChange={ev => setEducation(i, 'course', ev.target.value)}
+                          disabled={loading}
+                        />
+                        <input
+                          className="input"
+                          placeholder="Institution"
+                          value={e.institution || ''}
+                          onChange={ev => setEducation(i, 'institution', ev.target.value)}
+                          disabled={loading}
+                        />
+                        <input
+                          className="input"
+                          placeholder="Start (Month YYYY)"
+                          value={e.start || ''}
+                          onChange={ev => setEducation(i, 'start', ev.target.value)}
+                          disabled={loading}
+                        />
+                        <input
+                          className="input"
+                          placeholder="End (Month YYYY)"
+                          value={e.end || ''}
+                          onChange={ev => setEducation(i, 'end', ev.target.value)}
+                          disabled={loading}
+                        />
+                      </div>
+                      <div className="text-right">
+                        <button
+                          type="button"
+                          className="text-xs text-red-600 underline"
+                          onClick={() => removeEducation(i)}
+                          disabled={loading}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </section>
+
+          {/* Additional */}
+          <section>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold">Additional Information</h3>
+              <button
+                type="button"
+                className="text-xs text-gray-500 underline"
+                onClick={() => toggle('extra')}
+              >
+                {open.extra ? 'Hide' : 'Show'}
+              </button>
+            </div>
+
+            {open.extra && (
+              <div className="grid gap-3 mt-3">
+                <div className="grid sm:grid-cols-2 gap-2">
+                  <input
+                    className="input"
+                    placeholder="Driving License"
+                    value={form.additional.drivingLicense}
+                    onChange={e => setField('additional.drivingLicense', e.target.value)}
+                    disabled={loading}
+                  />
+                  <input
+                    className="input"
+                    placeholder="Nationality"
+                    value={form.additional.nationality}
+                    onChange={e => setField('additional.nationality', e.target.value)}
+                    disabled={loading}
+                  />
+                  <input
+                    className="input"
+                    placeholder="Availability"
+                    value={form.additional.availability}
+                    onChange={e => setField('additional.availability', e.target.value)}
+                    disabled={loading}
+                  />
+                  <input
+                    className="input"
+                    placeholder="Health"
+                    value={form.additional.health}
+                    onChange={e => setField('additional.health', e.target.value)}
+                    disabled={loading}
+                  />
+                  <input
+                    className="input"
+                    placeholder="Criminal Record"
+                    value={form.additional.criminalRecord}
+                    onChange={e => setField('additional.criminalRecord', e.target.value)}
+                    disabled={loading}
+                  />
+                  <input
+                    className="input"
+                    placeholder="Financial History"
+                    value={form.additional.financialHistory}
+                    onChange={e => setField('additional.financialHistory', e.target.value)}
+                    disabled={loading}
+                  />
+                </div>
+              </div>
+            )}
+          </section>
+        </div>
+
+        {/* RIGHT: Preview */}
+        <div className="rounded-2xl border overflow-hidden bg-white">
+          <CVTemplatePreview />
+        </div>
+      </div>
+    </div>
   )
 }
