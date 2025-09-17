@@ -290,51 +290,81 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
   // ========== preview (right) ==========
   function CVTemplatePreview(): JSX.Element {
-    if (!template) {
-      return (
-        <div className="h-full grid place-items-center text-gray-500">
-          <div className="text-center">
-            <div className="text-lg font-medium">Select a template to preview</div>
-            <div className="text-sm">Permanent (Contract/US in progress)</div>
+  // Contract & US just show "Building In Progress"
+  if (template === 'contract' || template === 'us') {
+    return (
+      <div className="p-8 h-full grid place-items-center text-gray-500">
+        <div className="text-center">
+          <img src="/zitko-full-logo.png" alt="Zitko" className="h-10 mx-auto mb-4" />
+          <div className="text-xl font-semibold">Building In Progress…</div>
+          <div className="text-sm mt-1">This template is coming soon.</div>
+        </div>
+      </div>
+    )
+  }
+
+  // Default (and PERM): render the hard-coded permanent template layout
+  return (
+    <div className="p-8">
+      {/* Header with full logo */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold">Curriculum Vitae</h1>
+          <div className="text-sm text-gray-700">
+            {(form.name || 'Name')}{form.location ? ` · ${form.location}` : ''}
           </div>
         </div>
-      )
-    }
+        <img
+          src="/zitko-full-logo.png"
+          alt="Zitko"
+          className="h-10"
+        />
+      </div>
 
-    const Header = ({ title }: { title: string }) => (
-      <h2 className="text-base font-semibold text-[#F7941D] mt-6 mb-2">{title}</h2>
-    )
+      {/* Profile */}
+      <h2 className="text-base font-semibold text-[#F7941D] mt-6 mb-2">Profile</h2>
+      <div className="whitespace-pre-wrap">{form.profile || '—'}</div>
 
-    const EmploymentBlock = (): JSX.Element => (
+      {/* Key Skills */}
+      <h2 className="text-base font-semibold text-[#F7941D] mt-6 mb-2">Key Skills</h2>
+      <div className="whitespace-pre-wrap">
+        {(form.keySkills || '')
+          .split(/\r?\n|,\s*/).filter(Boolean)
+          .map((s, i) => <div key={i}>• {s}</div>)}
+      </div>
+
+      {/* Employment History */}
+      <h2 className="text-base font-semibold text-[#F7941D] mt-6 mb-2">Employment History</h2>
       <div className="space-y-3">
         {form.employment.length === 0 ? (
           <div className="text-gray-500 text-sm">No employment history yet.</div>
         ) : (
           form.employment.map((e, i) => {
-            const range = dateLine(e.start, e.end)
+            const range = [e.start, e.end].filter(Boolean).join(' to ')
             return (
               <div key={i} className="flex justify-between">
                 <div>
                   <div className="font-medium">{e.title || 'Role'}</div>
                   <div className="text-xs text-gray-500">{e.company}</div>
+                  {e.description?.trim() && (
+                    <div className="text-sm mt-1 whitespace-pre-wrap">{e.description}</div>
+                  )}
                 </div>
-                <div className="text-xs text-gray-500 whitespace-nowrap">
-                  {range}
-                </div>
+                <div className="text-xs text-gray-500 whitespace-nowrap">{range}</div>
               </div>
             )
           })
         )}
       </div>
-    )
 
-    const EducationBlock = (): JSX.Element => (
+      {/* Education & Qualifications */}
+      <h2 className="text-base font-semibold text-[#F7941D] mt-6 mb-2">Education & Qualifications</h2>
       <div className="space-y-3">
         {form.education.length === 0 ? (
           <div className="text-gray-500 text-sm">No education yet.</div>
         ) : (
           form.education.map((e, i) => {
-            const range = dateLine(e.start, e.end)
+            const range = [e.start, e.end].filter(Boolean).join(' to ')
             const showInstitutionLine =
               !!e.institution &&
               !!e.course &&
@@ -347,60 +377,33 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                     <div className="text-xs text-gray-500">{e.institution}</div>
                   )}
                 </div>
-                <div className="text-xs text-gray-500 whitespace-nowrap">
-                  {range}
-                </div>
+                <div className="text-xs text-gray-500 whitespace-nowrap">{range}</div>
               </div>
             )
           })
         )}
       </div>
-    )
 
-    return (
-      <div className="p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h1 className="text-2xl font-bold">Curriculum Vitae</h1>
-            <div className="text-sm text-gray-700">
-              {form.name || 'Name'}{form.location ? ` · ${form.location}` : ''}
-            </div>
-          </div>
-          <img src="/Zitko_Logo-removebg-preview.png" alt="Zitko" className="h-8" />
-        </div>
-
-        <div className="text-xs text-gray-500 italic mb-4">
-          {template === 'permanent' && 'Permanent Template'}
-        </div>
-
-        <Header title="Profile" />
-        <div className="whitespace-pre-wrap">{form.profile || '—'}</div>
-
-        <Header title="Key Skills" />
-        <div className="whitespace-pre-wrap">
-          {(form.keySkills || '')
-            .split(/\r?\n|,\s*/).filter(Boolean)
-            .map((s, i) => <div key={i}>• {s}</div>)}
-        </div>
-
-        <Header title="Employment History" />
-        <EmploymentBlock />
-
-        <Header title="Education & Qualifications" />
-        <EducationBlock />
-
-        <Header title="Additional Information" />
-        <div className="text-sm grid gap-1">
-          <div>Driving License: {form.additional.drivingLicense || '—'}</div>
-          <div>Nationality: {form.additional.nationality || '—'}</div>
-          <div>Availability: {form.additional.availability || '—'}</div>
-          <div>Health: {form.additional.health || '—'}</div>
-          <div>Criminal Record: {form.additional.criminalRecord || '—'}</div>
-          <div>Financial History: {form.additional.financialHistory || '—'}</div>
-        </div>
+      {/* Additional Information */}
+      <h2 className="text-base font-semibold text-[#F7941D] mt-6 mb-2">Additional Information</h2>
+      <div className="text-sm grid gap-1">
+        <div>Driving License: {form.additional.drivingLicense || '—'}</div>
+        <div>Nationality: {form.additional.nationality || '—'}</div>
+        <div>Availability: {form.additional.availability || '—'}</div>
+        <div>Health: {form.additional.health || '—'}</div>
+        <div>Criminal Record: {form.additional.criminalRecord || '—'}</div>
+        <div>Financial History: {form.additional.financialHistory || '—'}</div>
       </div>
-    )
-  }
+
+      {/* Footer (matches the template footer content) */}
+      <div className="mt-8 pt-4 border-t text-[11px] leading-snug text-gray-600">
+        <div>Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Consulting Ltd, Zitko Sales Ltd, Zitko Contracting Ltd and Zitko Talent</div>
+        <div>Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL</div>
+        <div>Tel: 01480 473245 Web: www.zitkogroup.com</div>
+      </div>
+    </div>
+  )
+}
 
   // ========== render ==========
   return (
