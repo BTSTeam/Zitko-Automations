@@ -119,9 +119,8 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     if (!dateStr) return ''
     const s = String(dateStr).trim()
 
-    // Try common formats first
-    const ymd = s.match(/^(\d{4})-(\d{1,2})(?:-\d{1,2})?$/)         // 2021-07 or 2021-07-15
-    const mmyyyy = s.match(/^(\d{1,2})[\/\-](\d{4})$/)              // 7/2021 or 07-2021
+    const ymd = s.match(/^(\d{4})-(\d{1,2})(?:-\d{1,2})?$/)
+    const mmyyyy = s.match(/^(\d{1,2})[\/\-](\d{4})$/)
     const yyyy = s.match(/^(\d{4})$/)
 
     let y: number | undefined
@@ -158,11 +157,11 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   function mapEducation(list: any[]): Education[] {
     if (!Array.isArray(list)) return []
     return list.map(e => {
-      // handle variants for qualifications
       const qualsRaw = e?.qualificications ?? e?.qualifications ?? e?.qualification
       const toArr = (v: any) =>
-        Array.isArray(v) ? v.filter(Boolean).map(String) :
-        typeof v === 'string' ? v.split(/[,;]\s*/).filter(Boolean) : []
+        Array.isArray(v) ? v.filter(Boolean).map(String)
+        : typeof v === 'string' ? v.split(/[,;]\s*/).filter(Boolean)
+        : []
 
       const quals = toArr(qualsRaw)
       const training = toArr(e?.training)
@@ -175,7 +174,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       const institution = e?.school_name || e?.institution || e?.school || ''
       if (!course) course = institution // fallback to institution if no course/degree
 
-      // For Education: if dates are missing, leave blank (no "Present", no separator)
+      // If dates are missing, leave blank
       const start = formatDate(e?.start_date || e?.from_date || e?.start) || ''
       const end = formatDate(e?.end_date || e?.to_date || e?.end) || ''
 
@@ -233,42 +232,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     setForm(prev => ({ ...prev, education: prev.education.filter((_, i) => i !== index) }))
   }
 
-  // ---- compactors for debug JSON ----
-  function compactCandidate(c: any) {
-    if (!c) return null
-    return {
-      id: c?.id,
-      first_name: c?.first_name,
-      last_name: c?.last_name,
-      email: c?.email || c?.email1 || c?.email_address,
-      phone: c?.phone || c?.mobile || c?.phone_mobile,
-      town_city: c?.candidate_current_address?.town_city,
-      country: c?.candidate_current_address?.country_name || c?.candidate_current_address?.country,
-      current_job_title: c?.current_job_title,
-      keywords: c?.keywords,
-      skill: c?.skill,
-    }
-  }
-  function compactWork(list: any[] = []) {
-    return list.slice(0, 10).map(w => ({
-      job_title: w?.job_title,
-      company_name: w?.company_name,
-      work_from: w?.work_from,
-      work_to: w?.work_to,
-    }))
-  }
-  function compactEdu(list: any[] = []) {
-    return list.slice(0, 10).map(e => ({
-      school_name: e?.school_name,
-      degree_name: e?.degree_name,
-      qualification: e?.qualification ?? e?.qualifications ?? e?.qualificications,
-      training: e?.training,
-      honors: e?.honors,
-      start_date: e?.start_date ?? e?.from_date,
-      end_date: e?.end_date ?? e?.to_date,
-    }))
-  }
-
   // ========== data fetch (single server call) ==========
   async function fetchData() {
     if (!candidateId) return
@@ -292,7 +255,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         throw new Error(data?.error || 'Failed to retrieve candidate.')
       }
 
-      // ---- Raw (debug panes) ----
+      // Raw (debug) — keep the full structures
       const cRaw = data?.raw?.candidate ?? {}
       const workArr: any[] =
         Array.isArray(data?.raw?.work?.data) ? data.raw.work.data :
@@ -305,7 +268,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       setRawWork(workArr)
       setRawEdu(eduArr)
 
-      // ---- Map to form (your exact keys) ----
+      // Map to form
       const name = [cRaw?.first_name, cRaw?.last_name].filter(Boolean).join(' ').trim()
       const location = cRaw?.candidate_current_address?.town_city ?? ''
 
@@ -313,7 +276,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         ...prev,
         name: name || prev.name,
         location: location || prev.location,
-        // keep current behaviour until you define exact fields for these:
         profile: cRaw?.profile ?? prev.profile,
         keySkills: Array.isArray(cRaw?.skills) ? cRaw.skills.join(', ') : (cRaw?.skills || prev.keySkills || ''),
         employment: mapWorkExperiences(workArr),
@@ -326,7 +288,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     }
   }
 
-  // helper: clean date line with "to"
+  // helper: "start to end" line
   function dateLine(start?: string, end?: string) {
     const s = start?.trim() || ''
     const e = end?.trim() || ''
@@ -482,7 +444,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
             disabled={loading}
             autoComplete="off"
           />
-        <button
+          <button
             className="btn btn-brand"
             onClick={fetchData}
             disabled={loading || !candidateId}
@@ -501,7 +463,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
             <div className="flex items-center justify-between">
               <h3 className="font-semibold">Core Details</h3>
               <div className="flex items-center gap-3">
-                {/* Clear button removed */}
                 <button
                   type="button"
                   className="text-xs text-gray-500 underline"
@@ -533,64 +494,70 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                     disabled={loading}
                   />
                 </label>
+
+                {/* Raw JSON Data — small, at the bottom of Core */}
+                <div className="mt-2 border rounded-xl p-2 bg-gray-50">
+                  <div className="text-[11px] font-semibold text-gray-600 mb-1">Raw JSON Data (debug)</div>
+
+                  {/* Candidate Data (full JSON) */}
+                  <div className="border rounded-lg mb-2">
+                    <div className="flex items-center justify-between px-2 py-1">
+                      <div className="text-[11px] font-medium">Candidate Data</div>
+                      <button
+                        type="button"
+                        className="text-[11px] text-gray-500 underline"
+                        onClick={() => toggle('rawCandidate')}
+                      >
+                        {open.rawCandidate ? 'Hide' : 'Show'}
+                      </button>
+                    </div>
+                    {open.rawCandidate && (
+                      <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
+{JSON.stringify(rawCandidate, null, 2)}
+                      </pre>
+                    )}
+                  </div>
+
+                  {/* Work Experience (full JSON array) */}
+                  <div className="border rounded-lg mb-2">
+                    <div className="flex items-center justify-between px-2 py-1">
+                      <div className="text-[11px] font-medium">Work Experience</div>
+                      <button
+                        type="button"
+                        className="text-[11px] text-gray-500 underline"
+                        onClick={() => toggle('rawWork')}
+                      >
+                        {open.rawWork ? 'Hide' : 'Show'}
+                      </button>
+                    </div>
+                    {open.rawWork && (
+                      <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
+{JSON.stringify(rawWork, null, 2)}
+                      </pre>
+                    )}
+                  </div>
+
+                  {/* Education Details (full JSON array) */}
+                  <div className="border rounded-lg">
+                    <div className="flex items-center justify-between px-2 py-1">
+                      <div className="text-[11px] font-medium">Education Details</div>
+                      <button
+                        type="button"
+                        className="text-[11px] text-gray-500 underline"
+                        onClick={() => toggle('rawEdu')}
+                      >
+                        {open.rawEdu ? 'Hide' : 'Show'}
+                      </button>
+                    </div>
+                    {open.rawEdu && (
+                      <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
+{JSON.stringify(rawEdu, null, 2)}
+                      </pre>
+                    )}
+                  </div>
+                </div>
+                {/* End Raw JSON Data */}
               </div>
-            )}
-          </section>
-
-          {/* Debug: Candidate Data */}
-          <section>
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold">Candidate Data (debug)</h3>
-              <button
-                type="button"
-                className="text-xs text-gray-500 underline"
-                onClick={() => toggle('rawCandidate')}
-              >
-                {open.rawCandidate ? 'Hide' : 'Show'}
-              </button>
-            </div>
-            {open.rawCandidate && (
-              <pre className="mt-3 text-xs bg-gray-50 border rounded-xl p-3 overflow-auto">
-{JSON.stringify(compactCandidate(rawCandidate), null, 2)}
-              </pre>
-            )}
-          </section>
-
-          {/* Debug: Work Experience */}
-          <section>
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold">Work Experience (debug)</h3>
-              <button
-                type="button"
-                className="text-xs text-gray-500 underline"
-                onClick={() => toggle('rawWork')}
-              >
-                {open.rawWork ? 'Hide' : 'Show'}
-              </button>
-            </div>
-            {open.rawWork && (
-              <pre className="mt-3 text-xs bg-gray-50 border rounded-xl p-3 overflow-auto">
-{JSON.stringify(compactWork(rawWork), null, 2)}
-              </pre>
-            )}
-          </section>
-
-          {/* Debug: Education Details */}
-          <section>
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold">Education Details (debug)</h3>
-              <button
-                type="button"
-                className="text-xs text-gray-500 underline"
-                onClick={() => toggle('rawEdu')}
-              >
-                {open.rawEdu ? 'Hide' : 'Show'}
-              </button>
-            </div>
-            {open.rawEdu && (
-              <pre className="mt-3 text-xs bg-gray-50 border rounded-xl p-3 overflow-auto">
-{JSON.stringify(compactEdu(rawEdu), null, 2)}
-              </pre>
             )}
           </section>
 
