@@ -29,7 +29,6 @@ type OpenState = {
   rawCandidate: boolean
   rawWork: boolean
   rawEdu: boolean
-  rawAll: boolean
 }
 
 export default function CvTab({ templateFromShell }: { templateFromShell?: TemplateKey }): JSX.Element {
@@ -72,7 +71,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     rawCandidate: false,
     rawWork: false,
     rawEdu: false,
-    rawAll: false,
   })
 
   function getEmptyForm() {
@@ -116,7 +114,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   }
 
   // ========== helpers ==========
-  // Format dates as "Month YYYY", e.g., "October 2019"
   function formatDate(dateStr?: string | null): string {
     if (!dateStr) return ''
     const s = String(dateStr).trim()
@@ -251,7 +248,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         throw new Error(data?.error || 'Failed to retrieve candidate.')
       }
 
-      // Raw (debug) — keep the full structures
       const cRaw = data?.raw?.candidate ?? {}
       const workArr: any[] =
         Array.isArray(data?.raw?.work?.data) ? data.raw.work.data :
@@ -264,7 +260,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       setRawWork(workArr)
       setRawEdu(eduArr)
 
-      // Map to form
       const name = [cRaw?.first_name, cRaw?.last_name].filter(Boolean).join(' ').trim()
       const location = cRaw?.candidate_current_address?.town_city ?? ''
 
@@ -284,7 +279,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     }
   }
 
-  // helper: "start to end" line
   function dateLine(start?: string, end?: string) {
     const s = start?.trim() || ''
     const e = end?.trim() || ''
@@ -408,6 +402,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     )
   }
 
+  // ========== render ==========
   return (
     <div className="grid gap-4">
       <div className="card p-4">
@@ -766,12 +761,12 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
             )}
           </section>
 
-          {/* Debug: Raw JSON (moved below Additional Information) */}
+          {/* Debug: Raw JSON (below Additional Information) */}
           <section>
             <div className="mt-2 border rounded-xl p-2 bg-gray-50">
               <div className="text-[11px] font-semibold text-gray-600 mb-1">Raw JSON Data (debug)</div>
 
-              {/* Candidate Data (full JSON) */}
+              {/* Candidate Data */}
               <div className="border rounded-lg mb-2">
                 <div className="flex items-center justify-between px-2 py-1">
                   <div className="text-[11px] font-medium">Candidate Data</div>
@@ -790,7 +785,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                 )}
               </div>
 
-              {/* Work Experience (full JSON array) */}
+              {/* Work Experience */}
               <div className="border rounded-lg mb-2">
                 <div className="flex items-center justify-between px-2 py-1">
                   <div className="text-[11px] font-medium">Work Experience</div>
@@ -809,8 +804,8 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                 )}
               </div>
 
-              {/* Education Details (full JSON array) */}
-              <div className="border rounded-lg mb-2">
+              {/* Education Details */}
+              <div className="border rounded-lg">
                 <div className="flex items-center justify-between px-2 py-1">
                   <div className="text-[11px] font-medium">Education Details</div>
                   <button
@@ -825,7 +820,8 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                   <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
 {JSON.stringify(rawEdu, null, 2)}
                   </pre>
-                )
+                )}
+              </div>
             </div>
           </section>
         </div>
