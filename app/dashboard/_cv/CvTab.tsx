@@ -303,31 +303,41 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     )
   }
 
-  // Default (and PERM): render the hard-coded permanent template layout
+  // PERM template
   return (
     <div className="p-8">
-      {/* Header with full logo */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold">Curriculum Vitae</h1>
-          <div className="text-sm text-gray-700">
-            {(form.name || 'Name')}{form.location ? ` · ${form.location}` : ''}
-          </div>
-        </div>
+      {/* Top bar with logo (kept high) */}
+      <div className="flex items-start justify-between">
+        <div /> {/* spacer to push logo right */}
         <img
           src="/zitko-full-logo.png"
           alt="Zitko"
-          className="h-10"
+          className="h-12"
         />
+      </div>
+
+      {/* Title placed lower down to keep logo visually higher */}
+      <h1 className="text-2xl font-bold mt-6">Curriculum Vitae</h1>
+
+      {/* Name & Location in the requested format */}
+      <div className="mt-2 text-sm text-gray-800 space-y-0.5">
+        <div>
+          <span className="font-semibold">Name:</span>{' '}
+          {form.name ? `"${form.name}"` : '—'}
+        </div>
+        <div>
+          <span className="font-semibold">Location:</span>{' '}
+          {form.location ? `"${form.location}"` : '—'}
+        </div>
       </div>
 
       {/* Profile */}
       <h2 className="text-base font-semibold text-[#F7941D] mt-6 mb-2">Profile</h2>
       <div className="whitespace-pre-wrap">{form.profile || '—'}</div>
 
-      {/* Key Skills */}
+      {/* Key Skills (smaller font size) */}
       <h2 className="text-base font-semibold text-[#F7941D] mt-6 mb-2">Key Skills</h2>
-      <div className="whitespace-pre-wrap">
+      <div className="whitespace-pre-wrap text-sm">
         {(form.keySkills || '')
           .split(/\r?\n|,\s*/).filter(Boolean)
           .map((s, i) => <div key={i}>• {s}</div>)}
@@ -395,8 +405,8 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         <div>Financial History: {form.additional.financialHistory || '—'}</div>
       </div>
 
-      {/* Footer (matches the template footer content) */}
-      <div className="mt-8 pt-4 border-t text-[11px] leading-snug text-gray-600">
+      {/* Footer: centered & orange */}
+      <div className="mt-8 pt-4 border-t text-center text-[11px] leading-snug text-[#F7941D]">
         <div>Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Consulting Ltd, Zitko Sales Ltd, Zitko Contracting Ltd and Zitko Talent</div>
         <div>Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL</div>
         <div>Tel: 01480 473245 Web: www.zitkogroup.com</div>
