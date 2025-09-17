@@ -111,32 +111,70 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
   // ========== helpers ==========
   function formatDate(dateStr?: string | null): string {
-    if (!dateStr) return ''
-    const d = new Date(dateStr)
-    if (isNaN(d.getTime())) return ''
-    return `${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
+  if (!dateStr) return ''
+  const s = String(dateStr).trim()
+  // Accepts: "YYYY-MM", "YYYY-MM-DD", "MM/YYYY", "M/YYYY", "YYYY"
+  const ymd = s.match(/^(\d{4})-(\d{1,2})(?:-\d{1,2})?$/) // 2021-07 or 2021-07-15
+  if (ymd) return `${String(ymd[2]).padStart(2, '0')}-${ymd[1]}`
+  const mmyyyy = s.match(/^(\d{1,2})[\/\-](\d{4})$/) // 7/2021 or 07-2021
+  if (mmyyyy) return `${String(mmyyyy[1]).padStart(2, '0')}-${mmyyyy[2]}`
+  const yyyy = s.match(/^(\d{4})$/)
+  if (yyyy) return `01-${yyyy[1]}`
+  const d = new Date(s)
+  if (!isNaN(d.getTime())) {
+    return `${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`
   }
+  return ''
+}
 
   function mapWorkExperiences(list: any[]): Employment[] {
-    if (!Array.isArray(list)) return []
-    return list.map(w => ({
-      title: w?.title || w?.job_title || '',
-      company: w?.company || w?.company_name || '',
-      start: w?.start ? formatDate(w.start) : (w?.work_from ? formatDate(w.work_from) : (w?.start_date ? formatDate(w.start_date) : '')),
-      end: w?.end ? (w.end ? formatDate(w.end) : 'Present') : (w?.work_to ? formatDate(w.work_to) : (w?.end_date ? formatDate(w.end_date) : 'Present')),
+  if (!Array.isArray(list)) return []
+  return list.map(w => {
+    const start = formatDate(w?.work_from)
+    const end = w?.work_to == null ? 'Present' : formatDate(w?.work_to)
+    return {
+      title: w?.job_title || '',
+      company: w?.company_name || '',
+      start,
+      end,
       description: w?.description || '',
-    }))
-  }
+    }
+  })
+}
 
   function mapEducation(list: any[]): Education[] {
-    if (!Array.isArray(list)) return []
-    return list.map(e => ({
-      course: e?.course || e?.degree || e?.qualification || '',
-      institution: e?.institution || e?.school || '',
-      start: e?.start ? formatDate(e.start) : (e?.start_date ? formatDate(e.start_date) : (e?.from_date ? formatDate(e.from_date) : '')),
-      end: e?.end ? (e.end ? formatDate(e.end) : 'Present') : (e?.end_date ? formatDate(e.end_date) : (e?.to_date ? formatDate(e.to_date) : 'Present')),
-    }))
-  }
+  if (!Array.isArray(list)) return []
+  return list.map(e => {
+    // handle misspelling variants for qualifications
+    const qualsRaw = e?.qualificications ?? e?.qualifications ?? e?.qualification
+    const toArr = (v: any) =>
+      Array.isArray(v) ? v.filter(Boolean).map(String) :
+      typeof v === 'string' ? v.split(/[,;]\s*/).filter(Boolean) : []
+
+    const quals = toArr(qualsRaw)
+    const training = toArr(e?.training)
+    const honors = toArr(e?.honors)
+
+    // Build a concise “course/degree” line:
+    // Prefer degree_name; if absent, use first qualification; then append other bits in parentheses.
+    const mainTitle = (e?.degree_name && String(e.degree_name)) || (quals[0] || '')
+    const extras = [...quals.slice(1), ...training, ...honors]
+    const course =
+      extras.length ? `${mainTitle}`.trim() + ` (${extras.join(' • ')})` : `${mainTitle}`.trim()
+
+    return {
+      course: course || '',
+      institution: e?.school_name || '',
+      // If your edu dates arrive under different keys, add them here:
+      start: formatDate(e?.start_date || e?.from_date),
+      end: e?.end_date == null && e?.to_date == null
+        ? '' // if truly no end provided, leave blank
+        : (e?.end_date == null && e?.to_date === null)
+          ? ''
+          : formatDate(e?.end_date ?? e?.to_date) || 'Present',
+    }
+  })
+}
 
   function setField(path: string, value: any) {
     setForm(prev => {
@@ -185,50 +223,60 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
   // ========== data fetch (single server call) ==========
   async function fetchData() {
-    if (!candidateId) return
-    if (!template) {
-      alert('Please select a template first.')
-      return
-    }
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await fetch('/api/cv/retrieve', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ candidateId: String(candidateId).trim() }),
-      })
-      const data = await res.json()
-
-      if (!res.ok || !data?.ok) {
-        if (res.status === 401) throw new Error('Not connected to Vincere. Please log in again.')
-        if (res.status === 404) throw new Error(data?.error || `Candidate ${candidateId} not found in this tenant.`)
-        throw new Error(data?.error || 'Failed to retrieve candidate.')
-      }
-
-      // Raw (debug)
-      setRawCandidate(data?.raw?.candidate ?? null)
-      const workArr: any[] = Array.isArray(data?.raw?.work?.data) ? data.raw.work.data : (Array.isArray(data?.raw?.work) ? data.raw.work : [])
-      const eduArr: any[] = Array.isArray(data?.raw?.education?.data) ? data.raw.education.data : (Array.isArray(data?.raw?.education) ? data.raw.education : [])
-      setRawWork(workArr)
-      setRawEdu(eduArr)
-
-      const c = data?.candidate ?? {}
-      setForm(prev => ({
-        ...prev,
-        name: c?.name || prev.name,
-        location: c?.location || prev.location,
-        profile: c?.profile || prev.profile,
-        keySkills: Array.isArray(c?.skills) ? c.skills.join(', ') : (c?.skills || prev.keySkills || ''),
-        employment: mapWorkExperiences(Array.isArray(c?.work) ? c.work : workArr),
-        education: mapEducation(Array.isArray(c?.education) ? c.education : eduArr),
-      }))
-    } catch (e: any) {
-      setError(e?.message || 'Failed to retrieve data')
-    } finally {
-      setLoading(false)
-    }
+  if (!candidateId) return
+  if (!template) {
+    alert('Please select a template first.')
+    return
   }
+  setLoading(true)
+  setError(null)
+  try {
+    const res = await fetch('/api/cv/retrieve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ candidateId: String(candidateId).trim() }),
+    })
+    const data = await res.json()
+
+    if (!res.ok || !data?.ok) {
+      if (res.status === 401) throw new Error('Not connected to Vincere. Please log in again.')
+      if (res.status === 404) throw new Error(data?.error || `Candidate ${candidateId} not found in this tenant.`)
+      throw new Error(data?.error || 'Failed to retrieve candidate.')
+    }
+
+    // ---- Raw (debug panes) ----
+    const cRaw = data?.raw?.candidate ?? {}
+    const workArr: any[] =
+      Array.isArray(data?.raw?.work?.data) ? data.raw.work.data :
+      Array.isArray(data?.raw?.work) ? data.raw.work : []
+    const eduArr: any[] =
+      Array.isArray(data?.raw?.education?.data) ? data.raw.education.data :
+      Array.isArray(data?.raw?.education) ? data.raw.education : []
+
+    setRawCandidate(cRaw)
+    setRawWork(workArr)
+    setRawEdu(eduArr)
+
+    // ---- Map to form (your exact keys) ----
+    const name = [cRaw?.first_name, cRaw?.last_name].filter(Boolean).join(' ').trim()
+    const location = cRaw?.town_city ?? ''
+
+    setForm(prev => ({
+      ...prev,
+      name: name || prev.name,
+      location: location || prev.location,
+      // keep current behaviour until you define exact fields for these:
+      profile: cRaw?.profile ?? prev.profile,
+      keySkills: Array.isArray(cRaw?.skills) ? cRaw.skills.join(', ') : (cRaw?.skills || prev.keySkills || ''),
+      employment: mapWorkExperiences(workArr),
+      education: mapEducation(eduArr),
+    }))
+  } catch (e: any) {
+    setError(e?.message || 'Failed to retrieve data')
+  } finally {
+    setLoading(false)
+  }
+}
 
   // ========== preview (right) ==========
   function CVTemplatePreview(): JSX.Element {
