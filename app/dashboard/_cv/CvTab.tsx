@@ -26,7 +26,6 @@ type OpenState = {
   work: boolean
   education: boolean
   extra: boolean
-  raw: boolean
   rawCandidate: boolean
   rawWork: boolean
   rawEdu: boolean
@@ -69,7 +68,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     work: true,
     education: true,
     extra: true,
-    raw: false,
     rawCandidate: false,
     rawWork: false,
     rawEdu: false,
@@ -116,7 +114,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   }
 
   // ========== helpers ==========
-  // Format dates as "Month - YYYY", e.g., "October - 2019"
+  // Format dates as "Month YYYY", e.g., "October 2019"
   function formatDate(dateStr?: string | null): string {
     if (!dateStr) return ''
     const s = String(dateStr).trim()
@@ -139,7 +137,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
     if (!y || !m) return ''
     const month = new Date(y, m - 1, 1).toLocaleString('en-GB', { month: 'long' })
-    return `${month} - ${y}`
+    return `${month} ${y}`
   }
 
   function mapWorkExperiences(list: any[]): Employment[] {
@@ -484,7 +482,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
             disabled={loading}
             autoComplete="off"
           />
-          <button
+        <button
             className="btn btn-brand"
             onClick={fetchData}
             disabled={loading || !candidateId}
@@ -539,77 +537,60 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
             )}
           </section>
 
-          {/* Raw fetched (debug) – moved here, below Core */}
+          {/* Debug: Candidate Data */}
           <section>
             <div className="flex items-center justify-between">
-              <h3 className="font-semibold">Raw fetched data (debug)</h3>
+              <h3 className="font-semibold">Candidate Data (debug)</h3>
               <button
                 type="button"
                 className="text-xs text-gray-500 underline"
-                onClick={() => toggle('raw')}
+                onClick={() => toggle('rawCandidate')}
               >
-                {open.raw ? 'Hide' : 'Show'}
+                {open.rawCandidate ? 'Hide' : 'Show'}
               </button>
             </div>
-            {open.raw && (
-              <div className="mt-3 grid gap-3">
-                {/* Candidate */}
-                <div className="border rounded-xl">
-                  <div className="flex items-center justify-between p-3">
-                    <div className="font-medium text-sm">Candidate Data</div>
-                    <button
-                      type="button"
-                      className="text-xs text-gray-500 underline"
-                      onClick={() => toggle('rawCandidate')}
-                    >
-                      {open.rawCandidate ? 'Hide' : 'Show'}
-                    </button>
-                  </div>
-                  {open.rawCandidate && (
-                    <pre className="text-xs bg-gray-50 border-t rounded-b-xl p-3 overflow-auto">
+            {open.rawCandidate && (
+              <pre className="mt-3 text-xs bg-gray-50 border rounded-xl p-3 overflow-auto">
 {JSON.stringify(compactCandidate(rawCandidate), null, 2)}
-                    </pre>
-                  )}
-                </div>
+              </pre>
+            )}
+          </section>
 
-                {/* Work */}
-                <div className="border rounded-xl">
-                  <div className="flex items-center justify-between p-3">
-                    <div className="font-medium text-sm">Work Experience</div>
-                    <button
-                      type="button"
-                      className="text-xs text-gray-500 underline"
-                      onClick={() => toggle('rawWork')}
-                    >
-                      {open.rawWork ? 'Hide' : 'Show'}
-                    </button>
-                  </div>
-                  {open.rawWork && (
-                    <pre className="text-xs bg-gray-50 border-t rounded-b-xl p-3 overflow-auto">
+          {/* Debug: Work Experience */}
+          <section>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold">Work Experience (debug)</h3>
+              <button
+                type="button"
+                className="text-xs text-gray-500 underline"
+                onClick={() => toggle('rawWork')}
+              >
+                {open.rawWork ? 'Hide' : 'Show'}
+              </button>
+            </div>
+            {open.rawWork && (
+              <pre className="mt-3 text-xs bg-gray-50 border rounded-xl p-3 overflow-auto">
 {JSON.stringify(compactWork(rawWork), null, 2)}
-                    </pre>
-                  )}
-                </div>
+              </pre>
+            )}
+          </section>
 
-                {/* Education */}
-                <div className="border rounded-xl">
-                  <div className="flex items-center justify-between p-3">
-                    <div className="font-medium text-sm">Education Details</div>
-                    <button
-                      type="button"
-                      className="text-xs text-gray-500 underline"
-                      onClick={() => toggle('rawEdu')}
-                    >
-                      {open.rawEdu ? 'Hide' : 'Show'}
-                    </button>
-                  </div>
-                  {open.rawEdu && (
-                    <pre className="text-xs bg-gray-50 border-t rounded-b-xl p-3 overflow-auto">
+          {/* Debug: Education Details */}
+          <section>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold">Education Details (debug)</h3>
+              <button
+                type="button"
+                className="text-xs text-gray-500 underline"
+                onClick={() => toggle('rawEdu')}
+              >
+                {open.rawEdu ? 'Hide' : 'Show'}
+              </button>
+            </div>
+            {open.rawEdu && (
+              <pre className="mt-3 text-xs bg-gray-50 border rounded-xl p-3 overflow-auto">
 {JSON.stringify(compactEdu(rawEdu), null, 2)}
-                    </pre>
-                  )}
-                </div>
-              </div>
+              </pre>
             )}
           </section>
 
@@ -710,14 +691,14 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                         />
                         <input
                           className="input"
-                          placeholder="Start (Month - YYYY)"
+                          placeholder="Start (Month YYYY)"
                           value={e.start || ''}
                           onChange={ev => setEmployment(i, 'start', ev.target.value)}
                           disabled={loading}
                         />
                         <input
                           className="input"
-                          placeholder="End (Month - YYYY or Present)"
+                          placeholder="End (Month YYYY or Present)"
                           value={e.end || ''}
                           onChange={ev => setEmployment(i, 'end', ev.target.value)}
                           disabled={loading}
@@ -794,14 +775,14 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                         />
                         <input
                           className="input"
-                          placeholder="Start (Month - YYYY)"
+                          placeholder="Start (Month YYYY)"
                           value={e.start || ''}
                           onChange={ev => setEducation(i, 'start', ev.target.value)}
                           disabled={loading}
                         />
                         <input
                           className="input"
-                          placeholder="End (Month - YYYY)"
+                          placeholder="End (Month YYYY)"
                           value={e.end || ''}
                           onChange={ev => setEducation(i, 'end', ev.target.value)}
                           disabled={loading}
