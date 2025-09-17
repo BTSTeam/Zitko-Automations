@@ -828,27 +828,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                   <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
 {JSON.stringify(rawEdu, null, 2)}
                   </pre>
-                )}
-              </div>
-
-              {/* ALL Retrieved JSON (combined) */}
-              <div className="border rounded-lg">
-                <div className="flex items-center justify-between px-2 py-1">
-                  <div className="text-[11px] font-medium">ALL Retrieved JSON (combined)</div>
-                  <button
-                    type="button"
-                    className="text-[11px] text-gray-500 underline"
-                    onClick={() => toggle('rawAll')}
-                  >
-                    {open.rawAll ? 'Hide' : 'Show'}
-                  </button>
-                </div>
-                {open.rawAll && (
-                  <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-[28rem] overflow-auto">
-{JSON.stringify(combinedRaw, null, 2)}
-                  </pre>
-                )}
-              </div>
+                )
             </div>
           </section>
         </div>
