@@ -29,6 +29,7 @@ type OpenState = {
   rawCandidate: boolean
   rawWork: boolean
   rawEdu: boolean
+  rawAll: boolean
 }
 
 export default function CvTab({ templateFromShell }: { templateFromShell?: TemplateKey }): JSX.Element {
@@ -71,6 +72,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     rawCandidate: false,
     rawWork: false,
     rawEdu: false,
+    rawAll: false,
   })
 
   function getEmptyForm() {
@@ -172,18 +174,12 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       let course = extras.length ? `${mainTitle}`.trim() + ` (${extras.join(' • ')})` : `${mainTitle}`.trim()
 
       const institution = e?.school_name || e?.institution || e?.school || ''
-      if (!course) course = institution // fallback to institution if no course/degree
+      if (!course) course = institution
 
-      // If dates are missing, leave blank
       const start = formatDate(e?.start_date || e?.from_date || e?.start) || ''
       const end = formatDate(e?.end_date || e?.to_date || e?.end) || ''
 
-      return {
-        course: course || '',
-        institution,
-        start,
-        end,
-      }
+      return { course: course || '', institution, start, end }
     })
   }
 
@@ -344,7 +340,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
           <div className="text-gray-500 text-sm">No education yet.</div>
         ) : (
           form.education.map((e, i) => {
-            const range = dateLine(e.start, e.end) // blank if both missing
+            const range = dateLine(e.start, e.end)
             const showInstitutionLine =
               !!e.institution &&
               !!e.course &&
@@ -389,8 +385,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         <Header title="Key Skills" />
         <div className="whitespace-pre-wrap">
           {(form.keySkills || '')
-            .split(/\r?\n|,\s*/)
-            .filter(Boolean)
+            .split(/\r?\n|,\s*/).filter(Boolean)
             .map((s, i) => <div key={i}>• {s}</div>)}
         </div>
 
@@ -414,6 +409,8 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   }
 
   // ========== render ==========
+  const combinedRaw = { candidate: rawCandidate, work: rawWork, education: rawEdu }
+
   return (
     <div className="grid gap-4">
       <div className="card p-4">
@@ -494,69 +491,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                     disabled={loading}
                   />
                 </label>
-
-                {/* Raw JSON Data — small, at the bottom of Core */}
-                <div className="mt-2 border rounded-xl p-2 bg-gray-50">
-                  <div className="text-[11px] font-semibold text-gray-600 mb-1">Raw JSON Data (debug)</div>
-
-                  {/* Candidate Data (full JSON) */}
-                  <div className="border rounded-lg mb-2">
-                    <div className="flex items-center justify-between px-2 py-1">
-                      <div className="text-[11px] font-medium">Candidate Data</div>
-                      <button
-                        type="button"
-                        className="text-[11px] text-gray-500 underline"
-                        onClick={() => toggle('rawCandidate')}
-                      >
-                        {open.rawCandidate ? 'Hide' : 'Show'}
-                      </button>
-                    </div>
-                    {open.rawCandidate && (
-                      <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
-{JSON.stringify(rawCandidate, null, 2)}
-                      </pre>
-                    )}
-                  </div>
-
-                  {/* Work Experience (full JSON array) */}
-                  <div className="border rounded-lg mb-2">
-                    <div className="flex items-center justify-between px-2 py-1">
-                      <div className="text-[11px] font-medium">Work Experience</div>
-                      <button
-                        type="button"
-                        className="text-[11px] text-gray-500 underline"
-                        onClick={() => toggle('rawWork')}
-                      >
-                        {open.rawWork ? 'Hide' : 'Show'}
-                      </button>
-                    </div>
-                    {open.rawWork && (
-                      <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
-{JSON.stringify(rawWork, null, 2)}
-                      </pre>
-                    )}
-                  </div>
-
-                  {/* Education Details (full JSON array) */}
-                  <div className="border rounded-lg">
-                    <div className="flex items-center justify-between px-2 py-1">
-                      <div className="text-[11px] font-medium">Education Details</div>
-                      <button
-                        type="button"
-                        className="text-[11px] text-gray-500 underline"
-                        onClick={() => toggle('rawEdu')}
-                      >
-                        {open.rawEdu ? 'Hide' : 'Show'}
-                      </button>
-                    </div>
-                    {open.rawEdu && (
-                      <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
-{JSON.stringify(rawEdu, null, 2)}
-                      </pre>
-                    )}
-                  </div>
-                </div>
-                {/* End Raw JSON Data */}
               </div>
             )}
           </section>
@@ -833,6 +767,89 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                 </div>
               </div>
             )}
+          </section>
+
+          {/* Debug: Raw JSON (moved below Additional Information) */}
+          <section>
+            <div className="mt-2 border rounded-xl p-2 bg-gray-50">
+              <div className="text-[11px] font-semibold text-gray-600 mb-1">Raw JSON Data (debug)</div>
+
+              {/* Candidate Data (full JSON) */}
+              <div className="border rounded-lg mb-2">
+                <div className="flex items-center justify-between px-2 py-1">
+                  <div className="text-[11px] font-medium">Candidate Data</div>
+                  <button
+                    type="button"
+                    className="text-[11px] text-gray-500 underline"
+                    onClick={() => toggle('rawCandidate')}
+                  >
+                    {open.rawCandidate ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+                {open.rawCandidate && (
+                  <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
+{JSON.stringify(rawCandidate, null, 2)}
+                  </pre>
+                )}
+              </div>
+
+              {/* Work Experience (full JSON array) */}
+              <div className="border rounded-lg mb-2">
+                <div className="flex items-center justify-between px-2 py-1">
+                  <div className="text-[11px] font-medium">Work Experience</div>
+                  <button
+                    type="button"
+                    className="text-[11px] text-gray-500 underline"
+                    onClick={() => toggle('rawWork')}
+                  >
+                    {open.rawWork ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+                {open.rawWork && (
+                  <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
+{JSON.stringify(rawWork, null, 2)}
+                  </pre>
+                )}
+              </div>
+
+              {/* Education Details (full JSON array) */}
+              <div className="border rounded-lg mb-2">
+                <div className="flex items-center justify-between px-2 py-1">
+                  <div className="text-[11px] font-medium">Education Details</div>
+                  <button
+                    type="button"
+                    className="text-[11px] text-gray-500 underline"
+                    onClick={() => toggle('rawEdu')}
+                  >
+                    {open.rawEdu ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+                {open.rawEdu && (
+                  <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
+{JSON.stringify(rawEdu, null, 2)}
+                  </pre>
+                )}
+              </div>
+
+              {/* ALL Retrieved JSON (combined) */}
+              <div className="border rounded-lg">
+                <div className="flex items-center justify-between px-2 py-1">
+                  <div className="text-[11px] font-medium">ALL Retrieved JSON (combined)</div>
+                  <button
+                    type="button"
+                    className="text-[11px] text-gray-500 underline"
+                    onClick={() => toggle('rawAll')}
+                  >
+                    {open.rawAll ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+                {open.rawAll && (
+                  <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-[28rem] overflow-auto">
+{JSON.stringify(combinedRaw, null, 2)}
+                  </pre>
+                )}
+              </div>
+            </div>
           </section>
         </div>
 
