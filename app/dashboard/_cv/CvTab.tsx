@@ -323,7 +323,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       <div className="mt-2 text-sm text-gray-800 space-y-0.5">
         <div>
           <span className="font-semibold">Name:</span>{' '}
-          {form.name ? `"${form.name}"` : '—'}
+          {form.name ? `${form.name}` : '—'}
         </div>
         <div>
           <span className="font-semibold">Location:</span>{' '}
