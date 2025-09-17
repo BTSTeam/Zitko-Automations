@@ -410,7 +410,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
         {/* Profile */}
         <h2 className="text-base font-semibold text-[#F7941D] mt-6 mb-2">Profile</h2>
-        <div className="whitespace-pre-wrap">{form.profile || '—'}</div>
+        <div className="whitespace-pre-wrap text-sm">{form.profile || '—'}</div>
 
         {/* Key Skills (smaller font size) */}
         <h2 className="text-base font-semibold text-[#F7941D] mt-6 mb-2">Key Skills</h2>
@@ -595,7 +595,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                 <div className="flex flex-col sm:flex-row gap-2 mb-3">
                   <button
                     type="button"
-                    className="btn btn-grey"
+                    className="btn btn-grey text-xs !px-2 !py-1"
                     disabled={loading || !rawCandidate}
                     onClick={generateProfile}
                     title={!rawCandidate ? 'Retrieve a candidate first' : 'Generate profile from candidate data'}
