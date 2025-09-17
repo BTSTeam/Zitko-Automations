@@ -27,6 +27,9 @@ type OpenState = {
   education: boolean
   extra: boolean
   raw: boolean
+  rawCandidate: boolean
+  rawWork: boolean
+  rawEdu: boolean
 }
 
 export default function CvTab({ templateFromShell }: { templateFromShell?: TemplateKey }): JSX.Element {
@@ -67,6 +70,9 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     education: true,
     extra: true,
     raw: false,
+    rawCandidate: false,
+    rawWork: false,
+    rawEdu: false,
   })
 
   function getEmptyForm() {
@@ -110,71 +116,77 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   }
 
   // ========== helpers ==========
+  // Format dates as "Month - YYYY", e.g., "October - 2019"
   function formatDate(dateStr?: string | null): string {
-  if (!dateStr) return ''
-  const s = String(dateStr).trim()
-  // Accepts: "YYYY-MM", "YYYY-MM-DD", "MM/YYYY", "M/YYYY", "YYYY"
-  const ymd = s.match(/^(\d{4})-(\d{1,2})(?:-\d{1,2})?$/) // 2021-07 or 2021-07-15
-  if (ymd) return `${String(ymd[2]).padStart(2, '0')}-${ymd[1]}`
-  const mmyyyy = s.match(/^(\d{1,2})[\/\-](\d{4})$/) // 7/2021 or 07-2021
-  if (mmyyyy) return `${String(mmyyyy[1]).padStart(2, '0')}-${mmyyyy[2]}`
-  const yyyy = s.match(/^(\d{4})$/)
-  if (yyyy) return `01-${yyyy[1]}`
-  const d = new Date(s)
-  if (!isNaN(d.getTime())) {
-    return `${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`
+    if (!dateStr) return ''
+    const s = String(dateStr).trim()
+
+    // Try common formats first
+    const ymd = s.match(/^(\d{4})-(\d{1,2})(?:-\d{1,2})?$/)         // 2021-07 or 2021-07-15
+    const mmyyyy = s.match(/^(\d{1,2})[\/\-](\d{4})$/)              // 7/2021 or 07-2021
+    const yyyy = s.match(/^(\d{4})$/)
+
+    let y: number | undefined
+    let m: number | undefined
+
+    if (ymd) { y = Number(ymd[1]); m = Number(ymd[2]) }
+    else if (mmyyyy) { y = Number(mmyyyy[2]); m = Number(mmyyyy[1]) }
+    else if (yyyy) { y = Number(yyyy[1]); m = 1 }
+    else {
+      const d = new Date(s)
+      if (!isNaN(d.getTime())) { y = d.getFullYear(); m = d.getMonth() + 1 }
+    }
+
+    if (!y || !m) return ''
+    const month = new Date(y, m - 1, 1).toLocaleString('en-GB', { month: 'long' })
+    return `${month} - ${y}`
   }
-  return ''
-}
 
   function mapWorkExperiences(list: any[]): Employment[] {
-  if (!Array.isArray(list)) return []
-  return list.map(w => {
-    const start = formatDate(w?.work_from)
-    const end = w?.work_to == null ? 'Present' : formatDate(w?.work_to)
-    return {
-      title: w?.job_title || '',
-      company: w?.company_name || '',
-      start,
-      end,
-      description: w?.description || '',
-    }
-  })
-}
+    if (!Array.isArray(list)) return []
+    return list.map(w => {
+      const start = formatDate(w?.work_from)
+      const end = w?.work_to == null ? 'Present' : formatDate(w?.work_to)
+      return {
+        title: w?.job_title || '',
+        company: w?.company_name || '',
+        start,
+        end,
+        description: w?.description || '',
+      }
+    })
+  }
 
   function mapEducation(list: any[]): Education[] {
-  if (!Array.isArray(list)) return []
-  return list.map(e => {
-    // handle misspelling variants for qualifications
-    const qualsRaw = e?.qualificications ?? e?.qualifications ?? e?.qualification
-    const toArr = (v: any) =>
-      Array.isArray(v) ? v.filter(Boolean).map(String) :
-      typeof v === 'string' ? v.split(/[,;]\s*/).filter(Boolean) : []
+    if (!Array.isArray(list)) return []
+    return list.map(e => {
+      // handle variants for qualifications
+      const qualsRaw = e?.qualificications ?? e?.qualifications ?? e?.qualification
+      const toArr = (v: any) =>
+        Array.isArray(v) ? v.filter(Boolean).map(String) :
+        typeof v === 'string' ? v.split(/[,;]\s*/).filter(Boolean) : []
 
-    const quals = toArr(qualsRaw)
-    const training = toArr(e?.training)
-    const honors = toArr(e?.honors)
+      const quals = toArr(qualsRaw)
+      const training = toArr(e?.training)
+      const honors = toArr(e?.honors)
 
-    // Build a concise “course/degree” line:
-    // Prefer degree_name; if absent, use first qualification; then append other bits in parentheses.
-    const mainTitle = (e?.degree_name && String(e.degree_name)) || (quals[0] || '')
-    const extras = [...quals.slice(1), ...training, ...honors]
-    const course =
-      extras.length ? `${mainTitle}`.trim() + ` (${extras.join(' • ')})` : `${mainTitle}`.trim()
+      const mainTitle = (e?.degree_name && String(e.degree_name)) || (quals[0] || '')
+      const extras = [...quals.slice(1), ...training, ...honors]
+      let course = extras.length ? `${mainTitle}`.trim() + ` (${extras.join(' • ')})` : `${mainTitle}`.trim()
 
-    return {
-      course: course || '',
-      institution: e?.school_name || '',
-      // If your edu dates arrive under different keys, add them here:
-      start: formatDate(e?.start_date || e?.from_date),
-      end: e?.end_date == null && e?.to_date == null
-        ? '' // if truly no end provided, leave blank
-        : (e?.end_date == null && e?.to_date === null)
-          ? ''
-          : formatDate(e?.end_date ?? e?.to_date) || 'Present',
-    }
-  })
-}
+      const institution = e?.school_name || e?.institution || e?.school || ''
+      if (!course) course = institution // fallback to institution if no course/degree
+
+      return {
+        course: course || '',
+        institution,
+        start: formatDate(e?.start_date || e?.from_date || e?.start),
+        end: (e?.end_date ?? e?.to_date ?? e?.end) == null
+          ? 'Present'
+          : (formatDate(e?.end_date || e?.to_date || e?.end) || 'Present'),
+      }
+    })
+  }
 
   function setField(path: string, value: any) {
     setForm(prev => {
@@ -221,62 +233,98 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     setForm(prev => ({ ...prev, education: prev.education.filter((_, i) => i !== index) }))
   }
 
+  // ---- compactors for debug JSON ----
+  function compactCandidate(c: any) {
+    if (!c) return null
+    return {
+      id: c?.id,
+      first_name: c?.first_name,
+      last_name: c?.last_name,
+      email: c?.email || c?.email1 || c?.email_address,
+      phone: c?.phone || c?.mobile || c?.phone_mobile,
+      town_city: c?.candidate_current_address?.town_city,
+      country: c?.candidate_current_address?.country_name || c?.candidate_current_address?.country,
+      current_job_title: c?.current_job_title,
+      keywords: c?.keywords,
+      skill: c?.skill,
+    }
+  }
+  function compactWork(list: any[] = []) {
+    return list.slice(0, 10).map(w => ({
+      job_title: w?.job_title,
+      company_name: w?.company_name,
+      work_from: w?.work_from,
+      work_to: w?.work_to,
+    }))
+  }
+  function compactEdu(list: any[] = []) {
+    return list.slice(0, 10).map(e => ({
+      school_name: e?.school_name,
+      degree_name: e?.degree_name,
+      qualification: e?.qualification ?? e?.qualifications ?? e?.qualificications,
+      training: e?.training,
+      honors: e?.honors,
+      start_date: e?.start_date ?? e?.from_date,
+      end_date: e?.end_date ?? e?.to_date,
+    }))
+  }
+
   // ========== data fetch (single server call) ==========
   async function fetchData() {
-  if (!candidateId) return
-  if (!template) {
-    alert('Please select a template first.')
-    return
-  }
-  setLoading(true)
-  setError(null)
-  try {
-    const res = await fetch('/api/cv/retrieve', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ candidateId: String(candidateId).trim() }),
-    })
-    const data = await res.json()
-
-    if (!res.ok || !data?.ok) {
-      if (res.status === 401) throw new Error('Not connected to Vincere. Please log in again.')
-      if (res.status === 404) throw new Error(data?.error || `Candidate ${candidateId} not found in this tenant.`)
-      throw new Error(data?.error || 'Failed to retrieve candidate.')
+    if (!candidateId) return
+    if (!template) {
+      alert('Please select a template first.')
+      return
     }
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/cv/retrieve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ candidateId: String(candidateId).trim() }),
+      })
+      const data = await res.json()
 
-    // ---- Raw (debug panes) ----
-    const cRaw = data?.raw?.candidate ?? {}
-    const workArr: any[] =
-      Array.isArray(data?.raw?.work?.data) ? data.raw.work.data :
-      Array.isArray(data?.raw?.work) ? data.raw.work : []
-    const eduArr: any[] =
-      Array.isArray(data?.raw?.education?.data) ? data.raw.education.data :
-      Array.isArray(data?.raw?.education) ? data.raw.education : []
+      if (!res.ok || !data?.ok) {
+        if (res.status === 401) throw new Error('Not connected to Vincere. Please log in again.')
+        if (res.status === 404) throw new Error(data?.error || `Candidate ${candidateId} not found in this tenant.`)
+        throw new Error(data?.error || 'Failed to retrieve candidate.')
+      }
 
-    setRawCandidate(cRaw)
-    setRawWork(workArr)
-    setRawEdu(eduArr)
+      // ---- Raw (debug panes) ----
+      const cRaw = data?.raw?.candidate ?? {}
+      const workArr: any[] =
+        Array.isArray(data?.raw?.work?.data) ? data.raw.work.data :
+        Array.isArray(data?.raw?.work) ? data.raw.work : []
+      const eduArr: any[] =
+        Array.isArray(data?.raw?.education?.data) ? data.raw.education.data :
+        Array.isArray(data?.raw?.education) ? data.raw.education : []
 
-    // ---- Map to form (your exact keys) ----
-    const name = [cRaw?.first_name, cRaw?.last_name].filter(Boolean).join(' ').trim()
-    const location = cRaw?.town_city ?? ''
+      setRawCandidate(cRaw)
+      setRawWork(workArr)
+      setRawEdu(eduArr)
 
-    setForm(prev => ({
-      ...prev,
-      name: name || prev.name,
-      location: location || prev.location,
-      // keep current behaviour until you define exact fields for these:
-      profile: cRaw?.profile ?? prev.profile,
-      keySkills: Array.isArray(cRaw?.skills) ? cRaw.skills.join(', ') : (cRaw?.skills || prev.keySkills || ''),
-      employment: mapWorkExperiences(workArr),
-      education: mapEducation(eduArr),
-    }))
-  } catch (e: any) {
-    setError(e?.message || 'Failed to retrieve data')
-  } finally {
-    setLoading(false)
+      // ---- Map to form (your exact keys) ----
+      const name = [cRaw?.first_name, cRaw?.last_name].filter(Boolean).join(' ').trim()
+      const location = cRaw?.candidate_current_address?.town_city ?? ''
+
+      setForm(prev => ({
+        ...prev,
+        name: name || prev.name,
+        location: location || prev.location,
+        // keep current behaviour until you define exact fields for these:
+        profile: cRaw?.profile ?? prev.profile,
+        keySkills: Array.isArray(cRaw?.skills) ? cRaw.skills.join(', ') : (cRaw?.skills || prev.keySkills || ''),
+        employment: mapWorkExperiences(workArr),
+        education: mapEducation(eduArr),
+      }))
+    } catch (e: any) {
+      setError(e?.message || 'Failed to retrieve data')
+    } finally {
+      setLoading(false)
+    }
   }
-}
 
   // ========== preview (right) ==========
   function CVTemplatePreview(): JSX.Element {
@@ -318,12 +366,12 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     const EducationBlock = (): JSX.Element => (
       <div className="space-y-3">
         {form.education.length === 0 ? (
-          <div className="text-gray-500 text-sm">No education history yet.</div>
+          <div className="text-gray-500 text-sm">No education yet.</div>
         ) : (
           form.education.map((e, i) => (
             <div key={i} className="flex justify-between">
               <div>
-                <div className="font-medium">{e.course || 'Course'}</div>
+                <div className="font-medium">{e.course || e.institution || 'Course'}</div>
                 <div className="text-xs text-gray-500">{e.institution}</div>
               </div>
               <div className="text-xs text-gray-500 whitespace-nowrap">
@@ -571,14 +619,14 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                         />
                         <input
                           className="input"
-                          placeholder="Start (MM/YYYY)"
+                          placeholder="Start (Month - YYYY)"
                           value={e.start || ''}
                           onChange={ev => setEmployment(i, 'start', ev.target.value)}
                           disabled={loading}
                         />
                         <input
                           className="input"
-                          placeholder="End (MM/YYYY or Present)"
+                          placeholder="End (Month - YYYY or Present)"
                           value={e.end || ''}
                           onChange={ev => setEmployment(i, 'end', ev.target.value)}
                           disabled={loading}
@@ -655,14 +703,14 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                         />
                         <input
                           className="input"
-                          placeholder="Start (MM/YYYY)"
+                          placeholder="Start (Month - YYYY)"
                           value={e.start || ''}
                           onChange={ev => setEducation(i, 'start', ev.target.value)}
                           disabled={loading}
                         />
                         <input
                           className="input"
-                          placeholder="End (MM/YYYY or Present)"
+                          placeholder="End (Month - YYYY or Present)"
                           value={e.end || ''}
                           onChange={ev => setEducation(i, 'end', ev.target.value)}
                           disabled={loading}
@@ -762,15 +810,62 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
             </div>
             {open.raw && (
               <div className="mt-3 grid gap-3">
-                <pre className="text-xs bg-gray-50 border rounded-xl p-3 overflow-auto">
-{JSON.stringify(rawCandidate, null, 2)}
-                </pre>
-                <pre className="text-xs bg-gray-50 border rounded-xl p-3 overflow-auto">
-{JSON.stringify(rawWork, null, 2)}
-                </pre>
-                <pre className="text-xs bg-gray-50 border rounded-xl p-3 overflow-auto">
-{JSON.stringify(rawEdu, null, 2)}
-                </pre>
+                {/* Candidate */}
+                <div className="border rounded-xl">
+                  <div className="flex items-center justify-between p-3">
+                    <div className="font-medium text-sm">Candidate Data</div>
+                    <button
+                      type="button"
+                      className="text-xs text-gray-500 underline"
+                      onClick={() => toggle('rawCandidate')}
+                    >
+                      {open.rawCandidate ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
+                  {open.rawCandidate && (
+                    <pre className="text-xs bg-gray-50 border-t rounded-b-xl p-3 overflow-auto">
+{JSON.stringify(compactCandidate(rawCandidate), null, 2)}
+                    </pre>
+                  )}
+                </div>
+
+                {/* Work */}
+                <div className="border rounded-xl">
+                  <div className="flex items-center justify-between p-3">
+                    <div className="font-medium text-sm">Work Experience</div>
+                    <button
+                      type="button"
+                      className="text-xs text-gray-500 underline"
+                      onClick={() => toggle('rawWork')}
+                    >
+                      {open.rawWork ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
+                  {open.rawWork && (
+                    <pre className="text-xs bg-gray-50 border-t rounded-b-xl p-3 overflow-auto">
+{JSON.stringify(compactWork(rawWork), null, 2)}
+                    </pre>
+                  )}
+                </div>
+
+                {/* Education */}
+                <div className="border rounded-xl">
+                  <div className="flex items-center justify-between p-3">
+                    <div className="font-medium text-sm">Education Details</div>
+                    <button
+                      type="button"
+                      className="text-xs text-gray-500 underline"
+                      onClick={() => toggle('rawEdu')}
+                    >
+                      {open.rawEdu ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
+                  {open.rawEdu && (
+                    <pre className="text-xs bg-gray-50 border-t rounded-b-xl p-3 overflow-auto">
+{JSON.stringify(compactEdu(rawEdu), null, 2)}
+                    </pre>
+                  )}
+                </div>
               </div>
             )}
           </section>
