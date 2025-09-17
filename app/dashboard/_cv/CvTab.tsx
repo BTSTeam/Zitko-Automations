@@ -226,67 +226,71 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   }
 
   // ========== data fetch (single server call) ==========
-  async function fetchData() {
-    if (!candidateId) return
-    if (!template) {
-      alert('Please select a template first.')
-      return
-    }
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await fetch('/api/cv/retrieve', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ candidateId: String(candidateId).trim() }),
-      })
-      const data = await res.json()
-
-      if (!res.ok || !data?.ok) {
-        if (res.status === 401) throw new Error('Not connected to Vincere. Please log in again.')
-        if (res.status === 404) throw new Error(data?.error || `Candidate ${candidateId} not found in this tenant.`)
-        throw new Error(data?.error || 'Failed to retrieve candidate.')
-      }
-
-      const cRaw = data?.raw?.candidate ?? {}
-      const workArr: any[] =
-        Array.isArray(data?.raw?.work?.data) ? data.raw.work.data :
-        Array.isArray(data?.raw?.work) ? data.raw.work : []
-      const eduArr: any[] =
-        Array.isArray(data?.raw?.education?.data) ? data.raw.education.data :
-        Array.isArray(data?.raw?.education) ? data.raw.education : []
-
-      setRawCandidate(cRaw)
-      setRawWork(workArr)
-      setRawEdu(eduArr)
-
-      const name = [cRaw?.first_name, cRaw?.last_name].filter(Boolean).join(' ').trim()
-      const location = cRaw?.candidate_current_address?.town_city ?? ''
-
-      setForm(prev => ({
-        ...prev,
-        name: name || prev.name,
-        location: location || prev.location,
-        profile: cRaw?.profile ?? prev.profile,
-        keySkills: Array.isArray(cRaw?.skills) ? cRaw.skills.join(', ') : (cRaw?.skills || prev.keySkills || ''),
-        employment: mapWorkExperiences(workArr),
-        education: mapEducation(eduArr),
-      }))
-    } catch (e: any) {
-      setError(e?.message || 'Failed to retrieve data')
-    } finally {
-      setLoading(false)
-    }
+async function fetchData() {
+  if (!candidateId) return
+  if (!template) {
+    alert('Please select a template first.')
+    return
   }
+  setLoading(true)
+  setError(null)
+  try {
+    const res = await fetch('/api/cv/retrieve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ candidateId: String(candidateId).trim() }),
+    })
+    const data = await res.json()
 
-  function dateLine(start?: string, end?: string) {
-    const s = start?.trim() || ''
-    const e = end?.trim() || ''
-    if (s && e) return `${s} to ${e}`
-    if (s && !e) return s
-    if (!s && e) return e
-    return ''
+    if (!res.ok || !data?.ok) {
+      if (res.status === 401) throw new Error('Not connected to Vincere. Please log in again.')
+      if (res.status === 404) throw new Error(data?.error || `Candidate ${candidateId} not found in this tenant.`)
+      throw new Error(data?.error || 'Failed to retrieve candidate.')
+    }
+
+    const cRaw = data?.raw?.candidate ?? {}
+    const workArr: any[] =
+      Array.isArray(data?.raw?.work?.data) ? data.raw.work.data :
+      Array.isArray(data?.raw?.work) ? data.raw.work : []
+    const eduArr: any[] =
+      Array.isArray(data?.raw?.education?.data) ? data.raw.education.data :
+      Array.isArray(data?.raw?.education) ? data.raw.education : []
+
+    setRawCandidate(cRaw)
+    setRawWork(workArr)
+    setRawEdu(eduArr)
+
+    const name = [cRaw?.first_name, cRaw?.last_name].filter(Boolean).join(' ').trim()
+    const location = cRaw?.candidate_current_address?.town_city ?? ''
+
+    setForm(prev => ({
+      ...prev,
+      name: name || prev.name,
+      location: location || prev.location,
+      profile: cRaw?.profile ?? prev.profile,
+      keySkills: Array.isArray(cRaw?.skills) ? cRaw.skills.join(', ') : (cRaw?.skills || prev.keySkills || ''),
+      employment: mapWorkExperiences(workArr),
+      education: mapEducation(eduArr),
+    }))
+
+    // 👇 collapse all panels except Core
+    setOpen({
+      core: true,
+      profile: false,
+      skills: false,
+      work: false,
+      education: false,
+      extra: false,
+      rawCandidate: false,
+      rawWork: false,
+      rawEdu: false,
+    })
+  } catch (e: any) {
+    setError(e?.message || 'Failed to retrieve data')
+  } finally {
+    setLoading(false)
   }
+}
 
   // ========== preview (right) ==========
   function CVTemplatePreview(): JSX.Element {
