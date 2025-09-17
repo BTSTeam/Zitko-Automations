@@ -177,13 +177,15 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       const institution = e?.school_name || e?.institution || e?.school || ''
       if (!course) course = institution // fallback to institution if no course/degree
 
+      // For Education: if dates are missing, leave blank (no "Present", no separator)
+      const start = formatDate(e?.start_date || e?.from_date || e?.start) || ''
+      const end = formatDate(e?.end_date || e?.to_date || e?.end) || ''
+
       return {
         course: course || '',
         institution,
-        start: formatDate(e?.start_date || e?.from_date || e?.start),
-        end: (e?.end_date ?? e?.to_date ?? e?.end) == null
-          ? 'Present'
-          : (formatDate(e?.end_date || e?.to_date || e?.end) || 'Present'),
+        start,
+        end,
       }
     })
   }
@@ -326,6 +328,16 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     }
   }
 
+  // helper: clean date line with "to"
+  function dateLine(start?: string, end?: string) {
+    const s = start?.trim() || ''
+    const e = end?.trim() || ''
+    if (s && e) return `${s} to ${e}`
+    if (s && !e) return s
+    if (!s && e) return e
+    return ''
+  }
+
   // ========== preview (right) ==========
   function CVTemplatePreview(): JSX.Element {
     if (!template) {
@@ -348,17 +360,20 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         {form.employment.length === 0 ? (
           <div className="text-gray-500 text-sm">No employment history yet.</div>
         ) : (
-          form.employment.map((e, i) => (
-            <div key={i} className="flex justify-between">
-              <div>
-                <div className="font-medium">{e.title || 'Role'}</div>
-                <div className="text-xs text-gray-500">{e.company}</div>
+          form.employment.map((e, i) => {
+            const range = dateLine(e.start, e.end)
+            return (
+              <div key={i} className="flex justify-between">
+                <div>
+                  <div className="font-medium">{e.title || 'Role'}</div>
+                  <div className="text-xs text-gray-500">{e.company}</div>
+                </div>
+                <div className="text-xs text-gray-500 whitespace-nowrap">
+                  {range}
+                </div>
               </div>
-              <div className="text-xs text-gray-500 whitespace-nowrap">
-                {e.start} — {e.end}
-              </div>
-            </div>
-          ))
+            )
+          })
         )}
       </div>
     )
@@ -368,17 +383,26 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         {form.education.length === 0 ? (
           <div className="text-gray-500 text-sm">No education yet.</div>
         ) : (
-          form.education.map((e, i) => (
-            <div key={i} className="flex justify-between">
-              <div>
-                <div className="font-medium">{e.course || e.institution || 'Course'}</div>
-                <div className="text-xs text-gray-500">{e.institution}</div>
+          form.education.map((e, i) => {
+            const range = dateLine(e.start, e.end) // blank if both missing
+            const showInstitutionLine =
+              !!e.institution &&
+              !!e.course &&
+              e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
+            return (
+              <div key={i} className="flex justify-between">
+                <div>
+                  <div className="font-medium">{e.course || e.institution || 'Course'}</div>
+                  {showInstitutionLine && (
+                    <div className="text-xs text-gray-500">{e.institution}</div>
+                  )}
+                </div>
+                <div className="text-xs text-gray-500 whitespace-nowrap">
+                  {range}
+                </div>
               </div>
-              <div className="text-xs text-gray-500 whitespace-nowrap">
-                {e.start} — {e.end}
-              </div>
-            </div>
-          ))
+            )
+          })
         )}
       </div>
     )
@@ -479,14 +503,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
             <div className="flex items-center justify-between">
               <h3 className="font-semibold">Core Details</h3>
               <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  className="text-xs text-gray-500 underline"
-                  onClick={() => setForm(getEmptyForm())}
-                  disabled={loading}
-                >
-                  Clear
-                </button>
+                {/* Clear button removed */}
                 <button
                   type="button"
                   className="text-xs text-gray-500 underline"
@@ -518,6 +535,80 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                     disabled={loading}
                   />
                 </label>
+              </div>
+            )}
+          </section>
+
+          {/* Raw fetched (debug) – moved here, below Core */}
+          <section>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold">Raw fetched data (debug)</h3>
+              <button
+                type="button"
+                className="text-xs text-gray-500 underline"
+                onClick={() => toggle('raw')}
+              >
+                {open.raw ? 'Hide' : 'Show'}
+              </button>
+            </div>
+            {open.raw && (
+              <div className="mt-3 grid gap-3">
+                {/* Candidate */}
+                <div className="border rounded-xl">
+                  <div className="flex items-center justify-between p-3">
+                    <div className="font-medium text-sm">Candidate Data</div>
+                    <button
+                      type="button"
+                      className="text-xs text-gray-500 underline"
+                      onClick={() => toggle('rawCandidate')}
+                    >
+                      {open.rawCandidate ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
+                  {open.rawCandidate && (
+                    <pre className="text-xs bg-gray-50 border-t rounded-b-xl p-3 overflow-auto">
+{JSON.stringify(compactCandidate(rawCandidate), null, 2)}
+                    </pre>
+                  )}
+                </div>
+
+                {/* Work */}
+                <div className="border rounded-xl">
+                  <div className="flex items-center justify-between p-3">
+                    <div className="font-medium text-sm">Work Experience</div>
+                    <button
+                      type="button"
+                      className="text-xs text-gray-500 underline"
+                      onClick={() => toggle('rawWork')}
+                    >
+                      {open.rawWork ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
+                  {open.rawWork && (
+                    <pre className="text-xs bg-gray-50 border-t rounded-b-xl p-3 overflow-auto">
+{JSON.stringify(compactWork(rawWork), null, 2)}
+                    </pre>
+                  )}
+                </div>
+
+                {/* Education */}
+                <div className="border rounded-xl">
+                  <div className="flex items-center justify-between p-3">
+                    <div className="font-medium text-sm">Education Details</div>
+                    <button
+                      type="button"
+                      className="text-xs text-gray-500 underline"
+                      onClick={() => toggle('rawEdu')}
+                    >
+                      {open.rawEdu ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
+                  {open.rawEdu && (
+                    <pre className="text-xs bg-gray-50 border-t rounded-b-xl p-3 overflow-auto">
+{JSON.stringify(compactEdu(rawEdu), null, 2)}
+                    </pre>
+                  )}
+                </div>
               </div>
             )}
           </section>
@@ -710,7 +801,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                         />
                         <input
                           className="input"
-                          placeholder="End (Month - YYYY or Present)"
+                          placeholder="End (Month - YYYY)"
                           value={e.end || ''}
                           onChange={ev => setEducation(i, 'end', ev.target.value)}
                           disabled={loading}
@@ -791,80 +882,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                     onChange={e => setField('additional.financialHistory', e.target.value)}
                     disabled={loading}
                   />
-                </div>
-              </div>
-            )}
-          </section>
-
-          {/* Raw fetched (debug) */}
-          <section>
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold">Raw fetched data (debug)</h3>
-              <button
-                type="button"
-                className="text-xs text-gray-500 underline"
-                onClick={() => toggle('raw')}
-              >
-                {open.raw ? 'Hide' : 'Show'}
-              </button>
-            </div>
-            {open.raw && (
-              <div className="mt-3 grid gap-3">
-                {/* Candidate */}
-                <div className="border rounded-xl">
-                  <div className="flex items-center justify-between p-3">
-                    <div className="font-medium text-sm">Candidate Data</div>
-                    <button
-                      type="button"
-                      className="text-xs text-gray-500 underline"
-                      onClick={() => toggle('rawCandidate')}
-                    >
-                      {open.rawCandidate ? 'Hide' : 'Show'}
-                    </button>
-                  </div>
-                  {open.rawCandidate && (
-                    <pre className="text-xs bg-gray-50 border-t rounded-b-xl p-3 overflow-auto">
-{JSON.stringify(compactCandidate(rawCandidate), null, 2)}
-                    </pre>
-                  )}
-                </div>
-
-                {/* Work */}
-                <div className="border rounded-xl">
-                  <div className="flex items-center justify-between p-3">
-                    <div className="font-medium text-sm">Work Experience</div>
-                    <button
-                      type="button"
-                      className="text-xs text-gray-500 underline"
-                      onClick={() => toggle('rawWork')}
-                    >
-                      {open.rawWork ? 'Hide' : 'Show'}
-                    </button>
-                  </div>
-                  {open.rawWork && (
-                    <pre className="text-xs bg-gray-50 border-t rounded-b-xl p-3 overflow-auto">
-{JSON.stringify(compactWork(rawWork), null, 2)}
-                    </pre>
-                  )}
-                </div>
-
-                {/* Education */}
-                <div className="border rounded-xl">
-                  <div className="flex items-center justify-between p-3">
-                    <div className="font-medium text-sm">Education Details</div>
-                    <button
-                      type="button"
-                      className="text-xs text-gray-500 underline"
-                      onClick={() => toggle('rawEdu')}
-                    >
-                      {open.rawEdu ? 'Hide' : 'Show'}
-                    </button>
-                  </div>
-                  {open.rawEdu && (
-                    <pre className="text-xs bg-gray-50 border-t rounded-b-xl p-3 overflow-auto">
-{JSON.stringify(compactEdu(rawEdu), null, 2)}
-                    </pre>
-                  )}
                 </div>
               </div>
             )}
