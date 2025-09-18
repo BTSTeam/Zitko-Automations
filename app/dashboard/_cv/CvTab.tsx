@@ -186,10 +186,56 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     })
   }
 
+  // ---------- state helpers (ensure in scope before usage) ----------
+  function setField(path: string, value: any) {
+    setForm(prev => {
+      const next: any = { ...prev }
+      if (path.includes('.')) {
+        const [a, b] = path.split('.', 2)
+        next[a] = { ...next[a], [b]: value }
+      } else {
+        next[path] = value
+      }
+      return next
+    })
+  }
+
+  function setEmployment(index: number, key: keyof Employment, value: string) {
+    setForm(prev => {
+      const list = [...prev.employment]
+      list[index] = { ...list[index], [key]: value }
+      return { ...prev, employment: list }
+    })
+  }
+
+  function addEmployment() {
+    setForm(prev => ({ ...prev, employment: [...prev.employment, { title: '', company: '', start: '', end: '', description: '' }] }))
+  }
+
+  function removeEmployment(index: number) {
+    setForm(prev => ({ ...prev, employment: prev.employment.filter((_, i) => i !== index) }))
+  }
+
+  function setEducation(index: number, key: keyof Education, value: string) {
+    setForm(prev => {
+      const list = [...prev.education]
+      list[index] = { ...list[index], [key]: value }
+      return { ...prev, education: list }
+    })
+  }
+
+  function addEducation() {
+    setForm(prev => ({ ...prev, education: [...prev.education, { course: '', institution: '', start: '', end: '' }] }))
+  }
+
+  function removeEducation(index: number) {
+    setForm(prev => ({ ...prev, education: prev.education.filter((_, i) => i !== index) }))
+  }
+
   // ---------- Custom fields helpers (match your JSON) ----------
   type CustomEntry = {
     key?: string
-    type?: string
+    type?: 'COMBO_BOX' | 'CHECK_BOX' | string
     field_values?: any[] | null
     field_value_ids?: any[] | null
     value?: any
@@ -199,7 +245,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   function customArray(custom: any): CustomEntry[] {
     if (Array.isArray(custom?.data)) return custom.data as CustomEntry[]
     if (Array.isArray(custom)) return custom as CustomEntry[]
-    // occasionally APIs return an object keyed by uuid
     if (custom && typeof custom === 'object') {
       return Object.entries(custom).map(([k, v]) => {
         const obj = (typeof v === 'object' && v) ? (v as any) : { value: v }
@@ -214,7 +259,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     return arr.find(e => e?.key === uuid) ?? null
   }
 
-  // returns the first selected code from field_values, or null
+  // returns the first selected numeric code from field_values, or null
   function firstCode(entry: CustomEntry | null): number | null {
     if (!entry) return null
     if (Array.isArray(entry.field_values) && entry.field_values.length > 0) {
@@ -222,7 +267,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       const n = parseInt(String(raw), 10)
       return Number.isFinite(n) ? n : null
     }
-    // fallback: some APIs might place it under entry.value
     if (entry.value != null) {
       const n = parseInt(String(entry.value), 10)
       return Number.isFinite(n) ? n : null
@@ -381,6 +425,28 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       const healthCode = firstCode(healthEntry) // 1 => Good
       const criminalCode = firstCode(criminalEntry) // 1 => Good
       const financialCode = firstCode(financialEntry) // 1 => Good
+
+      const DRIVING_MAP: Record<number, string> = {
+        1: 'Banned',
+        2: 'Full UK – No Points',
+        3: 'Full UK - Points',
+        4: 'Full - Clean',
+        5: 'International',
+        6: 'No Driving License',
+        7: 'Other',
+      }
+      const AVAILABILITY_MAP: Record<number, string> = {
+        1: '1 Month',
+        2: '1 Week',
+        3: '12 Weeks',
+        4: '2 Weeks',
+        5: '3 Weeks',
+        6: '4 Weeks',
+        7: '6 Weeks',
+        8: '8 Weeks',
+        9: 'Flexible',
+        10: 'Immediate',
+      }
 
       const drivingLicense = drivingCode ? (DRIVING_MAP[drivingCode] || '') : ''
       const availability = availabilityCode ? (AVAILABILITY_MAP[availabilityCode] || '') : ''
