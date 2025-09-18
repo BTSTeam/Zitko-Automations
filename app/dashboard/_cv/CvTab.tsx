@@ -186,122 +186,51 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     })
   }
 
-  function setField(path: string, value: any) {
-    setForm(prev => {
-      const next: any = { ...prev }
-      if (path.includes('.')) {
-        const [a, b] = path.split('.', 2)
-        next[a] = { ...next[a], [b]: value }
-      } else {
-        next[path] = value
-      }
-      return next
-    })
+  // ---------- Custom fields helpers (match your JSON) ----------
+  type CustomEntry = {
+    key?: string
+    type?: string
+    field_values?: any[] | null
+    field_value_ids?: any[] | null
+    value?: any
+    [k: string]: any
   }
 
-  function setEmployment(index: number, key: keyof Employment, value: string) {
-    setForm(prev => {
-      const list = [...prev.employment]
-      list[index] = { ...list[index], [key]: value }
-      return { ...prev, employment: list }
-    })
-  }
-
-  function addEmployment() {
-    setForm(prev => ({ ...prev, employment: [...prev.employment, { title: '', company: '', start: '', end: '', description: '' }] }))
-  }
-
-  function removeEmployment(index: number) {
-    setForm(prev => ({ ...prev, employment: prev.employment.filter((_, i) => i !== index) }))
-  }
-
-  function setEducation(index: number, key: keyof Education, value: string) {
-    setForm(prev => {
-      const list = [...prev.education]
-      list[index] = { ...list[index], [key]: value }
-      return { ...prev, education: list }
-    })
-  }
-
-  function addEducation() {
-    setForm(prev => ({ ...prev, education: [...prev.education, { course: '', institution: '', start: '', end: '' }] }))
-  }
-
-  function removeEducation(index: number) {
-    setForm(prev => ({ ...prev, education: prev.education.filter((_, i) => i !== index) }))
-  }
-
-  // ---------- Custom fields helpers (uses field_values) ----------
-  type AnyObj = Record<string, any>
-
-  // Get a field entry by UUID from various Vincere shapes
-  function findCustomFieldEntry(custom: any, uuid: string): AnyObj | null {
-    if (!custom) return null
-
-    // A) { "<uuid>": { value: "2", field_values: {...} } } or { "<uuid>": "2" }
-    if (typeof custom === 'object' && !Array.isArray(custom) && uuid in custom) {
-      const val = (custom as AnyObj)[uuid]
-      if (val && typeof val === 'object') return val
-      return { value: val }
+  function customArray(custom: any): CustomEntry[] {
+    if (Array.isArray(custom?.data)) return custom.data as CustomEntry[]
+    if (Array.isArray(custom)) return custom as CustomEntry[]
+    // occasionally APIs return an object keyed by uuid
+    if (custom && typeof custom === 'object') {
+      return Object.entries(custom).map(([k, v]) => {
+        const obj = (typeof v === 'object' && v) ? (v as any) : { value: v }
+        return { key: k, ...obj }
+      })
     }
+    return []
+  }
 
-    // B) { data: [...] } or direct array
-    const arr = Array.isArray(custom?.data) ? custom.data : Array.isArray(custom) ? custom : null
-    if (arr) {
-      for (const f of arr) {
-        const idMatch =
-          f?.id === uuid || f?.fieldId === uuid || f?.fieldUUID === uuid || f?.uuid === uuid || f?.key === uuid || f?.code === uuid
-        if (idMatch) return f
-      }
+  function findByKey(custom: any, uuid: string): CustomEntry | null {
+    const arr = customArray(custom)
+    return arr.find(e => e?.key === uuid) ?? null
+  }
+
+  // returns the first selected code from field_values, or null
+  function firstCode(entry: CustomEntry | null): number | null {
+    if (!entry) return null
+    if (Array.isArray(entry.field_values) && entry.field_values.length > 0) {
+      const raw = entry.field_values[0]
+      const n = parseInt(String(raw), 10)
+      return Number.isFinite(n) ? n : null
     }
-
+    // fallback: some APIs might place it under entry.value
+    if (entry.value != null) {
+      const n = parseInt(String(entry.value), 10)
+      return Number.isFinite(n) ? n : null
+    }
     return null
   }
 
-  function toCodeString(v: any): string | null {
-    if (v === null || v === undefined) return null
-    // common nesting { value: { id: "2", label: "..." } }
-    if (typeof v === 'object') {
-      const id = v?.id ?? v?.value ?? v?.code ?? v?.key
-      if (id === null || id === undefined) return null
-      return String(id)
-    }
-    return String(v).trim() || null
-  }
-
-  // Return the display label using field_values when present; otherwise optional fallback map
-  function codeToLabelUsingFieldValues(entry: AnyObj | null, fallback?: Record<number, string>): string {
-    if (!entry) return ''
-    const code = toCodeString(entry.value)
-    if (!code) return ''
-
-    // 1) Prefer entry.field_values
-    const fv = entry.field_values
-    if (fv) {
-      // Handle object map { "1": "Banned", ... }
-      if (typeof fv === 'object' && !Array.isArray(fv) && code in fv) {
-        const label = fv[code]
-        if (label) return String(label)
-      }
-      // Handle array of options [{id,label}] or [{value,label}]
-      if (Array.isArray(fv)) {
-        const opt = fv.find(o => String(o?.id ?? o?.value ?? o?.code ?? o?.key) === code)
-        const label = opt?.label ?? opt?.name ?? opt?.text
-        if (label) return String(label)
-      }
-    }
-
-    // 2) Fallback map if provided
-    if (fallback) {
-      const n = parseInt(code, 10)
-      if (Number.isFinite(n) && fallback[n]) return fallback[n]
-    }
-
-    // 3) Last resort: raw code
-    return code
-  }
-
-  // Static fallbacks you provided (used only if field_values missing)
+  // Static mappings (fallbacks)
   const DRIVING_MAP: Record<number, string> = {
     1: 'Banned',
     2: 'Full UK – No Points',
@@ -311,7 +240,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     6: 'No Driving License',
     7: 'Other',
   }
-
   const AVAILABILITY_MAP: Record<number, string> = {
     1: '1 Month',
     2: '1 Week',
@@ -339,7 +267,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
           candidate: rawCandidate,
           work: rawWork,
           education: rawEdu,
-          // customfields: rawCustom, // if needed later
         }),
       })
 
@@ -383,7 +310,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
           work: rawWork,
           education: rawEdu,
           job: jobJson,
-          // customfields: rawCustom, // if needed later
         }),
       })
 
@@ -437,42 +363,30 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       const name = [cRaw?.first_name, cRaw?.last_name].filter(Boolean).join(' ').trim()
       const location = cRaw?.candidate_current_address?.town_city ?? ''
 
-      // ------- Map Additional Information from custom fields using field_values -------
-      // UUIDs provided
+      // ---- Map Additional Information using field_values (your samples) ----
       const UUID_DRIVING = 'edd971dc2678f05b5757fe31f2c586a8'
       const UUID_AVAIL   = 'a18b8e0d62e27548df904106cfde1584'
       const UUID_HEALTH  = '25bf6829933a29172af40f977e9422bc'
       const UUID_CRIM    = '4a4fa5b084a6efee647f98041ccfbc65'
       const UUID_FIN     = '0a8914a354a50d327453c0342effb2c8'
 
-      const drivingEntry = findCustomFieldEntry(customRaw, UUID_DRIVING)
-      const availabilityEntry = findCustomFieldEntry(customRaw, UUID_AVAIL)
-      const healthEntry = findCustomFieldEntry(customRaw, UUID_HEALTH)
-      const criminalEntry = findCustomFieldEntry(customRaw, UUID_CRIM)
-      const financialEntry = findCustomFieldEntry(customRaw, UUID_FIN)
+      const drivingEntry = findByKey(customRaw, UUID_DRIVING)
+      const availabilityEntry = findByKey(customRaw, UUID_AVAIL)
+      const healthEntry = findByKey(customRaw, UUID_HEALTH)
+      const criminalEntry = findByKey(customRaw, UUID_CRIM)
+      const financialEntry = findByKey(customRaw, UUID_FIN)
 
-      // Prefer each field's own field_values; otherwise fall back to the static maps / rules
-      const drivingLicense =
-        codeToLabelUsingFieldValues(drivingEntry, DRIVING_MAP)
+      const drivingCode = firstCode(drivingEntry) // e.g. 4
+      const availabilityCode = firstCode(availabilityEntry) // e.g. 6
+      const healthCode = firstCode(healthEntry) // 1 => Good
+      const criminalCode = firstCode(criminalEntry) // 1 => Good
+      const financialCode = firstCode(financialEntry) // 1 => Good
 
-      const availability =
-        codeToLabelUsingFieldValues(availabilityEntry, AVAILABILITY_MAP)
-
-      // Health / Criminal / Financial: code "1" => "Good", else blank, unless field_values provides a label.
-      const healthFromFV = codeToLabelUsingFieldValues(healthEntry)
-      const health =
-        healthFromFV ||
-        (toCodeString(healthEntry?.value) === '1' ? 'Good' : '')
-
-      const criminalFromFV = codeToLabelUsingFieldValues(criminalEntry)
-      const criminalRecord =
-        criminalFromFV ||
-        (toCodeString(criminalEntry?.value) === '1' ? 'Good' : '')
-
-      const financialFromFV = codeToLabelUsingFieldValues(financialEntry)
-      const financialHistory =
-        financialFromFV ||
-        (toCodeString(financialEntry?.value) === '1' ? 'Good' : '')
+      const drivingLicense = drivingCode ? (DRIVING_MAP[drivingCode] || '') : ''
+      const availability = availabilityCode ? (AVAILABILITY_MAP[availabilityCode] || '') : ''
+      const health = healthCode === 1 ? 'Good' : ''
+      const criminalRecord = criminalCode === 1 ? 'Good' : ''
+      const financialHistory = financialCode === 1 ? 'Good' : ''
 
       // Nationality from candidate JSON (title "nationality")
       const nationality =
