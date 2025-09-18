@@ -29,6 +29,7 @@ type OpenState = {
   rawCandidate: boolean
   rawWork: boolean
   rawEdu: boolean
+  rawCustom: boolean
 }
 
 export default function CvTab({ templateFromShell }: { templateFromShell?: TemplateKey }): JSX.Element {
@@ -42,6 +43,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   const [rawCandidate, setRawCandidate] = useState<any>(null)
   const [rawWork, setRawWork] = useState<any[]>([])
   const [rawEdu, setRawEdu] = useState<any[]>([])
+  const [rawCustom, setRawCustom] = useState<any>(null)
 
   // NEW: job id for Job Profile generation
   const [jobId, setJobId] = useState<string>('')
@@ -74,6 +76,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     rawCandidate: false,
     rawWork: false,
     rawEdu: false,
+    rawCustom: false,
   })
 
   function getEmptyForm() {
@@ -101,6 +104,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     setRawCandidate(null)
     setRawWork([])
     setRawEdu([])
+    setRawCustom(null)
     setError(null)
   }
 
@@ -228,6 +232,80 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     setForm(prev => ({ ...prev, education: prev.education.filter((_, i) => i !== index) }))
   }
 
+  // ---------- Custom fields helpers ----------
+  // Attempts to pull a value for a given custom field UUID from various Vincere shapes.
+  function getCustomFieldValue(custom: any, fieldId: string): any {
+    if (!custom) return null
+
+    // Case A: direct object map { "<uuid>": "2" }
+    if (typeof custom === 'object' && fieldId in custom) return (custom as any)[fieldId]
+
+    // Case B: { data: [...] }
+    const arr = Array.isArray(custom?.data) ? custom.data : Array.isArray(custom) ? custom : null
+    if (arr) {
+      for (const f of arr) {
+        const idMatch =
+          f?.id === fieldId ||
+          f?.fieldId === fieldId ||
+          f?.fieldUUID === fieldId ||
+          f?.uuid === fieldId ||
+          f?.key === fieldId ||
+          f?.code === fieldId
+
+        if (idMatch) {
+          // Common value locations
+          const v =
+            f?.value ??
+            f?.option ??
+            f?.selected ??
+            f?.answer ??
+            f?.input ??
+            f?.optionId ??
+            f?.selectedOption ??
+            f?.selected_value
+
+          // Some APIs nest like { value: { id: "2", label: "Full UK" } }
+          if (v && typeof v === 'object') {
+            return v?.id ?? v?.value ?? v?.code ?? v?.key ?? v?.label ?? null
+          }
+          return v ?? null
+        }
+      }
+    }
+
+    return null
+  }
+
+  function toCodeNumber(v: any): number | null {
+    if (v === null || v === undefined) return null
+    if (typeof v === 'number' && Number.isFinite(v)) return v
+    const n = parseInt(String(v).trim(), 10)
+    return Number.isFinite(n) ? n : null
+  }
+
+  const DRIVING_MAP: Record<number, string> = {
+    1: 'Banned',
+    2: 'Full UK – No Points',
+    3: 'Full UK - Points',
+    4: 'Full - Clean',
+    5: 'International',
+    6: 'No Driving License',
+    7: 'Other',
+  }
+
+  const AVAILABILITY_MAP: Record<number, string> = {
+    1: '1 Month',
+    2: '1 Week',
+    3: '12 Weeks',
+    4: '2 Weeks',
+    5: '3 Weeks',
+    6: '4 Weeks',
+    7: '6 Weeks',
+    8: '8 Weeks',
+    9: 'Flexible',
+    10: 'Immediate',
+  }
+
   // ========== AI profile generation handlers ==========
   async function generateProfile() {
     try {
@@ -242,6 +320,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
           candidate: rawCandidate,
           work: rawWork,
           education: rawEdu,
+          // customfields: rawCustom, // if needed later
         }),
       })
 
@@ -285,6 +364,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
           work: rawWork,
           education: rawEdu,
           job: jobJson,
+          // customfields: rawCustom, // if needed later
         }),
       })
 
@@ -328,13 +408,37 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       const eduArr: any[] =
         Array.isArray(data?.raw?.education?.data) ? data.raw.education.data :
         Array.isArray(data?.raw?.education) ? data.raw.education : []
+      const customRaw: any = data?.raw?.customfields ?? null
 
       setRawCandidate(cRaw)
       setRawWork(workArr)
       setRawEdu(eduArr)
+      setRawCustom(customRaw)
 
       const name = [cRaw?.first_name, cRaw?.last_name].filter(Boolean).join(' ').trim()
       const location = cRaw?.candidate_current_address?.town_city ?? ''
+
+      // ---- Map Additional Information from custom fields + candidate.nationality ----
+      const drivingCode = toCodeNumber(getCustomFieldValue(customRaw, 'edd971dc2678f05b5757fe31f2c586a8'))
+      const drivingLicense = drivingCode ? (DRIVING_MAP[drivingCode] || '') : ''
+
+      const availabilityCode = toCodeNumber(getCustomFieldValue(customRaw, 'a18b8e0d62e27548df904106cfde1584'))
+      const availability = availabilityCode ? (AVAILABILITY_MAP[availabilityCode] || '') : ''
+
+      const healthCode = toCodeNumber(getCustomFieldValue(customRaw, '25bf6829933a29172af40f977e9422bc'))
+      const health = healthCode === 1 ? 'Good' : ''
+
+      const criminalCode = toCodeNumber(getCustomFieldValue(customRaw, '4a4fa5b084a6efee647f98041ccfbc65'))
+      const criminalRecord = criminalCode === 1 ? 'Good' : ''
+
+      const financialCode = toCodeNumber(getCustomFieldValue(customRaw, '0a8914a354a50d327453c0342effb2c8'))
+      const financialHistory = financialCode === 1 ? 'Good' : ''
+
+      const nationality =
+        cRaw?.nationality ??
+        cRaw?.candidate_nationality ??
+        cRaw?.personal_info?.nationality ??
+        ''
 
       setForm(prev => ({
         ...prev,
@@ -344,6 +448,14 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         keySkills: Array.isArray(cRaw?.skills) ? cRaw.skills.join(', ') : (cRaw?.skills || prev.keySkills || ''),
         employment: mapWorkExperiences(workArr),
         education: mapEducation(eduArr),
+        additional: {
+          drivingLicense,
+          nationality,
+          availability,
+          health,
+          criminalRecord,
+          financialHistory,
+        },
       }))
 
       // 👇 collapse all panels except Core
@@ -357,6 +469,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         rawCandidate: false,
         rawWork: false,
         rawEdu: false,
+        rawCustom: false,
       })
     } catch (e: any) {
       setError(e?.message || 'Failed to retrieve data')
@@ -937,7 +1050,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
               </div>
 
               {/* Education Details */}
-              <div className="border rounded-lg">
+              <div className="border rounded-lg mb-2">
                 <div className="flex items-center justify-between px-2 py-1">
                   <div className="text-[11px] font-medium">Education Details</div>
                   <button
@@ -951,6 +1064,25 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                 {open.rawEdu && (
                   <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
 {JSON.stringify(rawEdu, null, 2)}
+                  </pre>
+                )}
+              </div>
+
+              {/* Custom Fields */}
+              <div className="border rounded-lg">
+                <div className="flex items-center justify-between px-2 py-1">
+                  <div className="text-[11px] font-medium">Custom Fields</div>
+                  <button
+                    type="button"
+                    className="text-[11px] text-gray-500 underline"
+                    onClick={() => toggle('rawCustom')}
+                  >
+                    {open.rawCustom ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+                {open.rawCustom && (
+                  <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
+{JSON.stringify(rawCustom, null, 2)}
                   </pre>
                 )}
               </div>
