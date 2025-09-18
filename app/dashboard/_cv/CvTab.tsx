@@ -45,7 +45,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   const [rawEdu, setRawEdu] = useState<any[]>([])
   const [rawCustom, setRawCustom] = useState<any>(null)
 
-  // NEW: job id for Job Profile generation
+  // Job Profile helper
   const [jobId, setJobId] = useState<string>('')
 
   // Form that drives preview
@@ -108,7 +108,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     setError(null)
   }
 
-  // Keep component in sync with the header dropdown (if present)
   useEffect(() => {
     if (templateFromShell) {
       resetAllForTemplate(templateFromShell)
@@ -232,57 +231,77 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     setForm(prev => ({ ...prev, education: prev.education.filter((_, i) => i !== index) }))
   }
 
-  // ---------- Custom fields helpers ----------
-  // Attempts to pull a value for a given custom field UUID from various Vincere shapes.
-  function getCustomFieldValue(custom: any, fieldId: string): any {
+  // ---------- Custom fields helpers (uses field_values) ----------
+  type AnyObj = Record<string, any>
+
+  // Get a field entry by UUID from various Vincere shapes
+  function findCustomFieldEntry(custom: any, uuid: string): AnyObj | null {
     if (!custom) return null
 
-    // Case A: direct object map { "<uuid>": "2" }
-    if (typeof custom === 'object' && fieldId in custom) return (custom as any)[fieldId]
+    // A) { "<uuid>": { value: "2", field_values: {...} } } or { "<uuid>": "2" }
+    if (typeof custom === 'object' && !Array.isArray(custom) && uuid in custom) {
+      const val = (custom as AnyObj)[uuid]
+      if (val && typeof val === 'object') return val
+      return { value: val }
+    }
 
-    // Case B: { data: [...] }
+    // B) { data: [...] } or direct array
     const arr = Array.isArray(custom?.data) ? custom.data : Array.isArray(custom) ? custom : null
     if (arr) {
       for (const f of arr) {
         const idMatch =
-          f?.id === fieldId ||
-          f?.fieldId === fieldId ||
-          f?.fieldUUID === fieldId ||
-          f?.uuid === fieldId ||
-          f?.key === fieldId ||
-          f?.code === fieldId
-
-        if (idMatch) {
-          // Common value locations
-          const v =
-            f?.value ??
-            f?.option ??
-            f?.selected ??
-            f?.answer ??
-            f?.input ??
-            f?.optionId ??
-            f?.selectedOption ??
-            f?.selected_value
-
-          // Some APIs nest like { value: { id: "2", label: "Full UK" } }
-          if (v && typeof v === 'object') {
-            return v?.id ?? v?.value ?? v?.code ?? v?.key ?? v?.label ?? null
-          }
-          return v ?? null
-        }
+          f?.id === uuid || f?.fieldId === uuid || f?.fieldUUID === uuid || f?.uuid === uuid || f?.key === uuid || f?.code === uuid
+        if (idMatch) return f
       }
     }
 
     return null
   }
 
-  function toCodeNumber(v: any): number | null {
+  function toCodeString(v: any): string | null {
     if (v === null || v === undefined) return null
-    if (typeof v === 'number' && Number.isFinite(v)) return v
-    const n = parseInt(String(v).trim(), 10)
-    return Number.isFinite(n) ? n : null
+    // common nesting { value: { id: "2", label: "..." } }
+    if (typeof v === 'object') {
+      const id = v?.id ?? v?.value ?? v?.code ?? v?.key
+      if (id === null || id === undefined) return null
+      return String(id)
+    }
+    return String(v).trim() || null
   }
 
+  // Return the display label using field_values when present; otherwise optional fallback map
+  function codeToLabelUsingFieldValues(entry: AnyObj | null, fallback?: Record<number, string>): string {
+    if (!entry) return ''
+    const code = toCodeString(entry.value)
+    if (!code) return ''
+
+    // 1) Prefer entry.field_values
+    const fv = entry.field_values
+    if (fv) {
+      // Handle object map { "1": "Banned", ... }
+      if (typeof fv === 'object' && !Array.isArray(fv) && code in fv) {
+        const label = fv[code]
+        if (label) return String(label)
+      }
+      // Handle array of options [{id,label}] or [{value,label}]
+      if (Array.isArray(fv)) {
+        const opt = fv.find(o => String(o?.id ?? o?.value ?? o?.code ?? o?.key) === code)
+        const label = opt?.label ?? opt?.name ?? opt?.text
+        if (label) return String(label)
+      }
+    }
+
+    // 2) Fallback map if provided
+    if (fallback) {
+      const n = parseInt(code, 10)
+      if (Number.isFinite(n) && fallback[n]) return fallback[n]
+    }
+
+    // 3) Last resort: raw code
+    return code
+  }
+
+  // Static fallbacks you provided (used only if field_values missing)
   const DRIVING_MAP: Record<number, string> = {
     1: 'Banned',
     2: 'Full UK – No Points',
@@ -418,22 +437,44 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       const name = [cRaw?.first_name, cRaw?.last_name].filter(Boolean).join(' ').trim()
       const location = cRaw?.candidate_current_address?.town_city ?? ''
 
-      // ---- Map Additional Information from custom fields + candidate.nationality ----
-      const drivingCode = toCodeNumber(getCustomFieldValue(customRaw, 'edd971dc2678f05b5757fe31f2c586a8'))
-      const drivingLicense = drivingCode ? (DRIVING_MAP[drivingCode] || '') : ''
+      // ------- Map Additional Information from custom fields using field_values -------
+      // UUIDs provided
+      const UUID_DRIVING = 'edd971dc2678f05b5757fe31f2c586a8'
+      const UUID_AVAIL   = 'a18b8e0d62e27548df904106cfde1584'
+      const UUID_HEALTH  = '25bf6829933a29172af40f977e9422bc'
+      const UUID_CRIM    = '4a4fa5b084a6efee647f98041ccfbc65'
+      const UUID_FIN     = '0a8914a354a50d327453c0342effb2c8'
 
-      const availabilityCode = toCodeNumber(getCustomFieldValue(customRaw, 'a18b8e0d62e27548df904106cfde1584'))
-      const availability = availabilityCode ? (AVAILABILITY_MAP[availabilityCode] || '') : ''
+      const drivingEntry = findCustomFieldEntry(customRaw, UUID_DRIVING)
+      const availabilityEntry = findCustomFieldEntry(customRaw, UUID_AVAIL)
+      const healthEntry = findCustomFieldEntry(customRaw, UUID_HEALTH)
+      const criminalEntry = findCustomFieldEntry(customRaw, UUID_CRIM)
+      const financialEntry = findCustomFieldEntry(customRaw, UUID_FIN)
 
-      const healthCode = toCodeNumber(getCustomFieldValue(customRaw, '25bf6829933a29172af40f977e9422bc'))
-      const health = healthCode === 1 ? 'Good' : ''
+      // Prefer each field's own field_values; otherwise fall back to the static maps / rules
+      const drivingLicense =
+        codeToLabelUsingFieldValues(drivingEntry, DRIVING_MAP)
 
-      const criminalCode = toCodeNumber(getCustomFieldValue(customRaw, '4a4fa5b084a6efee647f98041ccfbc65'))
-      const criminalRecord = criminalCode === 1 ? 'Good' : ''
+      const availability =
+        codeToLabelUsingFieldValues(availabilityEntry, AVAILABILITY_MAP)
 
-      const financialCode = toCodeNumber(getCustomFieldValue(customRaw, '0a8914a354a50d327453c0342effb2c8'))
-      const financialHistory = financialCode === 1 ? 'Good' : ''
+      // Health / Criminal / Financial: code "1" => "Good", else blank, unless field_values provides a label.
+      const healthFromFV = codeToLabelUsingFieldValues(healthEntry)
+      const health =
+        healthFromFV ||
+        (toCodeString(healthEntry?.value) === '1' ? 'Good' : '')
 
+      const criminalFromFV = codeToLabelUsingFieldValues(criminalEntry)
+      const criminalRecord =
+        criminalFromFV ||
+        (toCodeString(criminalEntry?.value) === '1' ? 'Good' : '')
+
+      const financialFromFV = codeToLabelUsingFieldValues(financialEntry)
+      const financialHistory =
+        financialFromFV ||
+        (toCodeString(financialEntry?.value) === '1' ? 'Good' : '')
+
+      // Nationality from candidate JSON (title "nationality")
       const nationality =
         cRaw?.nationality ??
         cRaw?.candidate_nationality ??
@@ -458,7 +499,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         },
       }))
 
-      // 👇 collapse all panels except Core
+      // Collapse all panels except Core
       setOpen({
         core: true,
         profile: false,
@@ -480,7 +521,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
   // ========== preview (right) ==========
   function CVTemplatePreview(): JSX.Element {
-    // Contract & US just show "Building In Progress"
     if (template === 'contract' || template === 'us') {
       return (
         <div className="p-8 h-full grid place-items-center text-gray-500">
@@ -493,52 +533,34 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       )
     }
 
-    // PERM template
     return (
       <div className="p-8">
-        {/* Top bar with logo (kept high) */}
         <div className="flex items-start justify-between">
-          <div /> {/* spacer to push logo right */}
-          <img
-            src="/zitko-full-logo.png"
-            alt="Zitko"
-            className="h-12"
-          />
+          <div />
+          <img src="/zitko-full-logo.png" alt="Zitko" className="h-12" />
         </div>
 
-        {/* Title placed lower down to keep logo visually higher */}
         <h1 className="text-2xl font-bold mt-6">Curriculum Vitae</h1>
 
-        {/* Name & Location in the requested format */}
         <div className="mt-2 text-sm text-gray-800 space-y-0.5">
-          <div>
-            <span className="font-semibold">Name:</span>{' '}
-            {form.name ? `${form.name}` : '—'}
-          </div>
-          <div>
-            <span className="font-semibold">Location:</span>{' '}
-            {form.location ? `${form.location}` : '—'}
-          </div>
+          <div><span className="font-semibold">Name:</span> {form.name ? `${form.name}` : '—'}</div>
+          <div><span className="font-semibold">Location:</span> {form.location ? `${form.location}` : '—'}</div>
         </div>
 
-        {/* Profile */}
         <h2 className="text-base font-semibold text-[#F7941D] mt-6 mb-2">Profile</h2>
         <div className="whitespace-pre-wrap text-sm">
           {form.profile?.trim() ? form.profile : 'No Profile yet'}
         </div>
 
-        {/* Key Skills */}
         <h2 className="text-base font-semibold text-[#F7941D] mt-6 mb-2">Key Skills</h2>
         <div className="whitespace-pre-wrap text-sm">
           {(() => {
-            const items = (form.keySkills || '')
-              .split(/\r?\n|,\s*/).map(s => s.trim()).filter(Boolean)
+            const items = (form.keySkills || '').split(/\r?\n|,\s*/).map(s => s.trim()).filter(Boolean)
             if (items.length === 0) return 'No Key Skills yet'
             return items.map((s, i) => <div key={i}>• {s}</div>)
           })()}
         </div>
 
-        {/* Employment History */}
         <h2 className="text-base font-semibold text-[#F7941D] mt-6 mb-2">Employment History</h2>
         <div className="space-y-3">
           {form.employment.length === 0 ? (
@@ -562,7 +584,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
           )}
         </div>
 
-        {/* Education & Qualifications */}
         <h2 className="text-base font-semibold text-[#F7941D] mt-6 mb-2">Education & Qualifications</h2>
         <div className="space-y-3">
           {form.education.length === 0 ? (
@@ -571,9 +592,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
             form.education.map((e, i) => {
               const range = [e.start, e.end].filter(Boolean).join(' to ')
               const showInstitutionLine =
-                !!e.institution &&
-                !!e.course &&
-                e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
+                !!e.institution && !!e.course && e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
               return (
                 <div key={i} className="flex justify-between">
                   <div>
@@ -589,7 +608,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
           )}
         </div>
 
-        {/* Additional Information */}
         <h2 className="text-base font-semibold text-[#F7941D] mt-6 mb-2">Additional Information</h2>
         <div className="text-sm grid gap-1">
           <div>Driving License: {form.additional.drivingLicense || '—'}</div>
@@ -600,7 +618,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
           <div>Financial History: {form.additional.financialHistory || '—'}</div>
         </div>
 
-        {/* Footer: centered & orange */}
         <div className="mt-8 pt-4 border-t text-center text-[11px] leading-snug text-[#F7941D]">
           <div>Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Consulting Ltd, Zitko Sales Ltd, Zitko Contracting Ltd and Zitko Talent</div>
           <div>Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL</div>
@@ -660,11 +677,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
             <div className="flex items-center justify-between">
               <h3 className="font-semibold">Core Details</h3>
               <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  className="text-xs text-gray-500 underline"
-                  onClick={() => toggle('core')}
-                >
+                <button type="button" className="text-xs text-gray-500 underline" onClick={() => toggle('core')}>
                   {open.core ? 'Hide' : 'Show'}
                 </button>
               </div>
@@ -674,22 +687,12 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
               <div className="grid gap-3 mt-3">
                 <label className="grid gap-1">
                   <span className="text-xs text-gray-500">Name</span>
-                  <input
-                    className="input"
-                    value={form.name}
-                    onChange={e => setField('name', e.target.value)}
-                    disabled={loading}
-                  />
+                  <input className="input" value={form.name} onChange={e => setField('name', e.target.value)} disabled={loading} />
                 </label>
 
                 <label className="grid gap-1">
                   <span className="text-xs text-gray-500">Location</span>
-                  <input
-                    className="input"
-                    value={form.location}
-                    onChange={e => setField('location', e.target.value)}
-                    disabled={loading}
-                  />
+                  <input className="input" value={form.location} onChange={e => setField('location', e.target.value)} disabled={loading} />
                 </label>
               </div>
             )}
@@ -699,19 +702,13 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
           <section>
             <div className="flex items-center justify-between">
               <h3 className="font-semibold">Profile</h3>
-              <button
-                type="button"
-                className="text-xs text-gray-500 underline"
-                onClick={() => toggle('profile')}
-              >
+              <button type="button" className="text-xs text-gray-500 underline" onClick={() => toggle('profile')}>
                 {open.profile ? 'Hide' : 'Show'}
               </button>
             </div>
             {open.profile && (
               <div className="mt-3">
-                {/* AI Profile actions (two options with divider) */}
                 <div className="flex flex-col sm:flex-row gap-2 mb-3 items-stretch sm:items-center">
-                  {/* Option A */}
                   <button
                     type="button"
                     className="btn btn-grey text-xs !px-3 !py-1.5 w-36 whitespace-nowrap"
@@ -721,18 +718,8 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                   >
                     Generate
                   </button>
-
-                  {/* Divider: horizontal (mobile) / vertical (≥sm) */}
                   <div className="border-t border-gray-200 my-2 sm:my-0 sm:mx-2 sm:border-t-0 sm:border-l sm:h-6" />
-
-                  {/* Option B */}
-                  <input
-                    className="input flex-1 min-w-[160px]"
-                    placeholder="Job ID"
-                    value={jobId}
-                    onChange={e => setJobId(e.target.value)}
-                    disabled={loading}
-                  />
+                  <input className="input flex-1 min-w-[160px]" placeholder="Job ID" value={jobId} onChange={e => setJobId(e.target.value)} disabled={loading} />
                   <button
                     type="button"
                     className="btn btn-grey text-xs !px-3 !py-1.5 w-36 whitespace-nowrap"
@@ -746,12 +733,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
                 <label className="grid gap-1">
                   <span className="text-xs text-gray-500">Profile</span>
-                  <textarea
-                    className="input min-h-[120px]"
-                    value={form.profile}
-                    onChange={e => setField('profile', e.target.value)}
-                    disabled={loading}
-                  />
+                  <textarea className="input min-h-[120px]" value={form.profile} onChange={e => setField('profile', e.target.value)} disabled={loading} />
                 </label>
               </div>
             )}
@@ -761,23 +743,14 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
           <section>
             <div className="flex items-center justify-between">
               <h3 className="font-semibold">Key Skills</h3>
-              <button
-                type="button"
-                className="text-xs text-gray-500 underline"
-                onClick={() => toggle('skills')}
-              >
+              <button type="button" className="text-xs text-gray-500 underline" onClick={() => toggle('skills')}>
                 {open.skills ? 'Hide' : 'Show'}
               </button>
             </div>
             {open.skills && (
               <label className="grid gap-1 mt-3">
                 <span className="text-xs text-gray-500">Key Skills (comma or newline)</span>
-                <textarea
-                  className="input min-h-[100px]"
-                  value={form.keySkills}
-                  onChange={e => setField('keySkills', e.target.value)}
-                  disabled={loading}
-                />
+                <textarea className="input min-h-[100px]" value={form.keySkills} onChange={e => setField('keySkills', e.target.value)} disabled={loading} />
               </label>
             )}
           </section>
@@ -787,19 +760,10 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
             <div className="flex items-center justify-between">
               <h3 className="font-semibold">Employment History</h3>
               <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  className="text-xs text-gray-500 underline"
-                  onClick={addEmployment}
-                  disabled={loading}
-                >
+                <button type="button" className="text-xs text-gray-500 underline" onClick={addEmployment} disabled={loading}>
                   Add role
                 </button>
-                <button
-                  type="button"
-                  className="text-xs text-gray-500 underline"
-                  onClick={() => toggle('work')}
-                >
+                <button type="button" className="text-xs text-gray-500 underline" onClick={() => toggle('work')}>
                   {open.work ? 'Hide' : 'Show'}
                 </button>
               </div>
@@ -813,49 +777,14 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                   form.employment.map((e, i) => (
                     <div key={i} className="border rounded-xl p-3 grid gap-2">
                       <div className="grid sm:grid-cols-2 gap-2">
-                        <input
-                          className="input"
-                          placeholder="Title"
-                          value={e.title || ''}
-                          onChange={ev => setEmployment(i, 'title', ev.target.value)}
-                          disabled={loading}
-                        />
-                        <input
-                          className="input"
-                          placeholder="Company"
-                          value={e.company || ''}
-                          onChange={ev => setEmployment(i, 'company', ev.target.value)}
-                          disabled={loading}
-                        />
-                        <input
-                          className="input"
-                          placeholder="Start (Month YYYY)"
-                          value={e.start || ''}
-                          onChange={ev => setEmployment(i, 'start', ev.target.value)}
-                          disabled={loading}
-                        />
-                        <input
-                          className="input"
-                          placeholder="End (Month YYYY or Present)"
-                          value={e.end || ''}
-                          onChange={ev => setEmployment(i, 'end', ev.target.value)}
-                          disabled={loading}
-                        />
+                        <input className="input" placeholder="Title" value={e.title || ''} onChange={ev => setEmployment(i, 'title', ev.target.value)} disabled={loading} />
+                        <input className="input" placeholder="Company" value={e.company || ''} onChange={ev => setEmployment(i, 'company', ev.target.value)} disabled={loading} />
+                        <input className="input" placeholder="Start (Month YYYY)" value={e.start || ''} onChange={ev => setEmployment(i, 'start', ev.target.value)} disabled={loading} />
+                        <input className="input" placeholder="End (Month YYYY or Present)" value={e.end || ''} onChange={ev => setEmployment(i, 'end', ev.target.value)} disabled={loading} />
                       </div>
-                      <textarea
-                        className="input min-h-[80px]"
-                        placeholder="Description"
-                        value={e.description || ''}
-                        onChange={ev => setEmployment(i, 'description', ev.target.value)}
-                        disabled={loading}
-                      />
+                      <textarea className="input min-h-[80px]" placeholder="Description" value={e.description || ''} onChange={ev => setEmployment(i, 'description', ev.target.value)} disabled={loading} />
                       <div className="text-right">
-                        <button
-                          type="button"
-                          className="text-xs text-red-600 underline"
-                          onClick={() => removeEmployment(i)}
-                          disabled={loading}
-                        >
+                        <button type="button" className="text-xs text-red-600 underline" onClick={() => removeEmployment(i)} disabled={loading}>
                           Remove
                         </button>
                       </div>
@@ -871,19 +800,10 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
             <div className="flex items-center justify-between">
               <h3 className="font-semibold">Education & Qualifications</h3>
               <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  className="text-xs text-gray-500 underline"
-                  onClick={addEducation}
-                  disabled={loading}
-                >
+                <button type="button" className="text-xs text-gray-500 underline" onClick={addEducation} disabled={loading}>
                   Add item
                 </button>
-                <button
-                  type="button"
-                  className="text-xs text-gray-500 underline"
-                  onClick={() => toggle('education')}
-                >
+                <button type="button" className="text-xs text-gray-500 underline" onClick={() => toggle('education')}>
                   {open.education ? 'Hide' : 'Show'}
                 </button>
               </div>
@@ -897,42 +817,13 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                   form.education.map((e, i) => (
                     <div key={i} className="border rounded-xl p-3 grid gap-2">
                       <div className="grid sm:grid-cols-2 gap-2">
-                        <input
-                          className="input"
-                          placeholder="Course / Degree"
-                          value={e.course || ''}
-                          onChange={ev => setEducation(i, 'course', ev.target.value)}
-                          disabled={loading}
-                        />
-                        <input
-                          className="input"
-                          placeholder="Institution"
-                          value={e.institution || ''}
-                          onChange={ev => setEducation(i, 'institution', ev.target.value)}
-                          disabled={loading}
-                        />
-                        <input
-                          className="input"
-                          placeholder="Start (Month YYYY)"
-                          value={e.start || ''}
-                          onChange={ev => setEducation(i, 'start', ev.target.value)}
-                          disabled={loading}
-                        />
-                        <input
-                          className="input"
-                          placeholder="End (Month YYYY)"
-                          value={e.end || ''}
-                          onChange={ev => setEducation(i, 'end', ev.target.value)}
-                          disabled={loading}
-                        />
+                        <input className="input" placeholder="Course / Degree" value={e.course || ''} onChange={ev => setEducation(i, 'course', ev.target.value)} disabled={loading} />
+                        <input className="input" placeholder="Institution" value={e.institution || ''} onChange={ev => setEducation(i, 'institution', ev.target.value)} disabled={loading} />
+                        <input className="input" placeholder="Start (Month YYYY)" value={e.start || ''} onChange={ev => setEducation(i, 'start', ev.target.value)} disabled={loading} />
+                        <input className="input" placeholder="End (Month YYYY)" value={e.end || ''} onChange={ev => setEducation(i, 'end', ev.target.value)} disabled={loading} />
                       </div>
                       <div className="text-right">
-                        <button
-                          type="button"
-                          className="text-xs text-red-600 underline"
-                          onClick={() => removeEducation(i)}
-                          disabled={loading}
-                        >
+                        <button type="button" className="text-xs text-red-600 underline" onClick={() => removeEducation(i)} disabled={loading}>
                           Remove
                         </button>
                       </div>
@@ -947,11 +838,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
           <section>
             <div className="flex items-center justify-between">
               <h3 className="font-semibold">Additional Information</h3>
-              <button
-                type="button"
-                className="text-xs text-gray-500 underline"
-                onClick={() => toggle('extra')}
-              >
+              <button type="button" className="text-xs text-gray-500 underline" onClick={() => toggle('extra')}>
                 {open.extra ? 'Hide' : 'Show'}
               </button>
             </div>
@@ -959,48 +846,12 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
             {open.extra && (
               <div className="grid gap-3 mt-3">
                 <div className="grid sm:grid-cols-2 gap-2">
-                  <input
-                    className="input"
-                    placeholder="Driving License"
-                    value={form.additional.drivingLicense}
-                    onChange={e => setField('additional.drivingLicense', e.target.value)}
-                    disabled={loading}
-                  />
-                  <input
-                    className="input"
-                    placeholder="Nationality"
-                    value={form.additional.nationality}
-                    onChange={e => setField('additional.nationality', e.target.value)}
-                    disabled={loading}
-                  />
-                  <input
-                    className="input"
-                    placeholder="Availability"
-                    value={form.additional.availability}
-                    onChange={e => setField('additional.availability', e.target.value)}
-                    disabled={loading}
-                  />
-                  <input
-                    className="input"
-                    placeholder="Health"
-                    value={form.additional.health}
-                    onChange={e => setField('additional.health', e.target.value)}
-                    disabled={loading}
-                  />
-                  <input
-                    className="input"
-                    placeholder="Criminal Record"
-                    value={form.additional.criminalRecord}
-                    onChange={e => setField('additional.criminalRecord', e.target.value)}
-                    disabled={loading}
-                  />
-                  <input
-                    className="input"
-                    placeholder="Financial History"
-                    value={form.additional.financialHistory}
-                    onChange={e => setField('additional.financialHistory', e.target.value)}
-                    disabled={loading}
-                  />
+                  <input className="input" placeholder="Driving License" value={form.additional.drivingLicense} onChange={e => setField('additional.drivingLicense', e.target.value)} disabled={loading} />
+                  <input className="input" placeholder="Nationality" value={form.additional.nationality} onChange={e => setField('additional.nationality', e.target.value)} disabled={loading} />
+                  <input className="input" placeholder="Availability" value={form.additional.availability} onChange={e => setField('additional.availability', e.target.value)} disabled={loading} />
+                  <input className="input" placeholder="Health" value={form.additional.health} onChange={e => setField('additional.health', e.target.value)} disabled={loading} />
+                  <input className="input" placeholder="Criminal Record" value={form.additional.criminalRecord} onChange={e => setField('additional.criminalRecord', e.target.value)} disabled={loading} />
+                  <input className="input" placeholder="Financial History" value={form.additional.financialHistory} onChange={e => setField('additional.financialHistory', e.target.value)} disabled={loading} />
                 </div>
               </div>
             )}
@@ -1015,11 +866,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
               <div className="border rounded-lg mb-2">
                 <div className="flex items-center justify-between px-2 py-1">
                   <div className="text-[11px] font-medium">Candidate Data</div>
-                  <button
-                    type="button"
-                    className="text-[11px] text-gray-500 underline"
-                    onClick={() => toggle('rawCandidate')}
-                  >
+                  <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('rawCandidate')}>
                     {open.rawCandidate ? 'Hide' : 'Show'}
                   </button>
                 </div>
@@ -1034,11 +881,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
               <div className="border rounded-lg mb-2">
                 <div className="flex items-center justify-between px-2 py-1">
                   <div className="text-[11px] font-medium">Work Experience</div>
-                  <button
-                    type="button"
-                    className="text-[11px] text-gray-500 underline"
-                    onClick={() => toggle('rawWork')}
-                  >
+                  <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('rawWork')}>
                     {open.rawWork ? 'Hide' : 'Show'}
                   </button>
                 </div>
@@ -1053,11 +896,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
               <div className="border rounded-lg mb-2">
                 <div className="flex items-center justify-between px-2 py-1">
                   <div className="text-[11px] font-medium">Education Details</div>
-                  <button
-                    type="button"
-                    className="text-[11px] text-gray-500 underline"
-                    onClick={() => toggle('rawEdu')}
-                  >
+                  <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('rawEdu')}>
                     {open.rawEdu ? 'Hide' : 'Show'}
                   </button>
                 </div>
@@ -1072,11 +911,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
               <div className="border rounded-lg">
                 <div className="flex items-center justify-between px-2 py-1">
                   <div className="text-[11px] font-medium">Custom Fields</div>
-                  <button
-                    type="button"
-                    className="text-[11px] text-gray-500 underline"
-                    onClick={() => toggle('rawCustom')}
-                  >
+                  <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('rawCustom')}>
                     {open.rawCustom ? 'Hide' : 'Show'}
                   </button>
                 </div>
