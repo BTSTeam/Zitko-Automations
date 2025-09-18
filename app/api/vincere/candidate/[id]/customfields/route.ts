@@ -10,42 +10,65 @@ import { refreshIdToken } from '@/lib/vincereRefresh';
 
 type RouteCtx = { params: { id: string } };
 
+// Use the same base as your other Vincere calls
+const BASE = config.VINCERE_TENANT_API_BASE.replace(/\/$/, '');
+
+async function fetchWithAutoRefresh(url: string, idToken: string, userKey: string) {
+  const headers = new Headers();
+  headers.set('id-token', idToken);
+  headers.set('x-api-key', (config as any).VINCERE_PUBLIC_API_KEY || config.VINCERE_API_KEY);
+  headers.set('accept', 'application/json');
+
+  const doFetch = (h: Headers) =>
+    fetch(url, { method: 'GET', headers: h, cache: 'no-store' });
+
+  let resp = await doFetch(headers);
+
+  if (resp.status === 401 || resp.status === 403) {
+    try {
+      const refreshed = await refreshIdToken(userKey);
+      if (refreshed) {
+        const s2: any = await getSession();
+        const id2 = s2.tokens?.idToken || '';
+        if (id2) {
+          headers.set('id-token', id2);
+          resp = await doFetch(headers);
+        }
+      }
+    } catch {
+      // ignore, fall through with original resp
+    }
+  }
+
+  return resp;
+}
+
 export async function GET(_req: NextRequest, { params }: RouteCtx) {
-  requiredEnv(['VINCERE_API_BASE']); // keep in step with your other Vincere routes
-  const session = await getSession();
-
-  if (!session?.vincere?.idToken) {
-    return NextResponse.json({ ok: false, error: 'Not connected to Vincere' }, { status: 401 });
-  }
-
-  const id = params?.id?.trim();
-  if (!id) {
-    return NextResponse.json({ ok: false, error: 'Missing candidate id' }, { status: 400 });
-  }
-
-  // ensure token is fresh (same pattern as your other vincere endpoints)
-  const idToken = await refreshIdToken(session).catch(() => session.vincere.idToken);
-
-  const url = `${config.vincere.apiBase}/candidate/${encodeURIComponent(id)}/customfields`;
-
   try {
-    const res = await fetch(url, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${idToken}`,
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      // IMPORTANT: Vincere can be picky with caches via Vercel
-      cache: 'no-store',
-    });
+    // In your codebase requiredEnv() takes no args
+    requiredEnv();
 
+    const id = String(params?.id ?? '').trim();
+    if (!id) {
+      return NextResponse.json({ ok: false, error: 'Missing candidate id' }, { status: 400 });
+    }
+
+    const session: any = await getSession();
+    const idToken = session.tokens?.idToken || '';
+    const userKey = session.user?.email || session.sessionId || 'anonymous';
+
+    if (!idToken) {
+      return NextResponse.json({ ok: false, error: 'Not connected to Vincere' }, { status: 401 });
+    }
+
+    const url = `${BASE}/api/v2/candidate/${encodeURIComponent(id)}/customfields`;
+    const res = await fetchWithAutoRefresh(url, idToken, userKey);
     const text = await res.text();
     const json = text ? JSON.parse(text) : null;
 
     if (!res.ok) {
       return NextResponse.json(
-        { ok: false, status: res.status, error: JSON.stringify(json ?? text) },
+        { ok: false, status: res.status, error: text?.slice(0, 800) ?? 'Request failed' },
         { status: res.status }
       );
     }
