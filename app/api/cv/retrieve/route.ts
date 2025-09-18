@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 1) Retrieve core candidate
+    // ---------- 1) Core candidate ----------
     const candUrl = `${BASE}/api/v2/candidate/${encodeURIComponent(idRaw)}`;
     let res = await fetchWithAutoRefresh(candUrl, idToken, userKey);
     if (!res.ok) {
@@ -91,31 +91,46 @@ export async function POST(req: NextRequest) {
     }
     const candidate = await res.json();
 
-    // 2) Retrieve education details
+    // ---------- 2) Education, Work, CustomFields (parallel) ----------
     const eduUrl = `${BASE}/api/v2/candidate/${encodeURIComponent(idRaw)}/educationdetails`;
-    res = await fetchWithAutoRefresh(eduUrl, idToken, userKey);
-    if (!res.ok) {
-      const text = await res.text();
-      return NextResponse.json(
-        { ok: false, status: res.status, error: safeError(text) },
-        { status: res.status },
-      );
-    }
-    const education = await res.json();
-
-    // 3) Retrieve work experiences (plural endpoint matches existing route)
     const workUrl = `${BASE}/api/v2/candidate/${encodeURIComponent(idRaw)}/workexperiences`;
-    res = await fetchWithAutoRefresh(workUrl, idToken, userKey);
-    if (!res.ok) {
-      const text = await res.text();
+    const customUrl = `${BASE}/api/v2/candidate/${encodeURIComponent(idRaw)}/customfields`;
+
+    const [eduRes, workRes, customRes] = await Promise.all([
+      fetchWithAutoRefresh(eduUrl, idToken, userKey),
+      fetchWithAutoRefresh(workUrl, idToken, userKey),
+      fetchWithAutoRefresh(customUrl, idToken, userKey),
+    ]);
+
+    if (!eduRes.ok) {
+      const text = await eduRes.text();
       return NextResponse.json(
-        { ok: false, status: res.status, error: safeError(text) },
-        { status: res.status },
+        { ok: false, status: eduRes.status, error: safeError(text) },
+        { status: eduRes.status },
       );
     }
-    const work = await res.json();
+    if (!workRes.ok) {
+      const text = await workRes.text();
+      return NextResponse.json(
+        { ok: false, status: workRes.status, error: safeError(text) },
+        { status: workRes.status },
+      );
+    }
+    if (!customRes.ok) {
+      const text = await customRes.text();
+      return NextResponse.json(
+        { ok: false, status: customRes.status, error: safeError(text) },
+        { status: customRes.status },
+      );
+    }
 
-    // Normalise fields so the CV form can rely on consistent keys
+    const [education, work, customfields] = await Promise.all([
+      eduRes.json(),
+      workRes.json(),
+      customRes.json(),
+    ]);
+
+    // ---------- Normalise fields so the CV form can rely on consistent keys ----------
     const normalised = {
       id: candidate?.id ?? idRaw,
       name:
@@ -153,12 +168,14 @@ export async function POST(req: NextRequest) {
             description: w?.description || '',
           }))
         : [],
+      // NOTE: not mapping customfields into Additional Information yet;
+      // returning raw below so you can specify mapping later.
     };
 
     return NextResponse.json({
       ok: true,
       candidate: normalised,
-      raw: { candidate, education, work },
+      raw: { candidate, education, work, customfields }, // <-- includes customfields
     });
   } catch (err: any) {
     const code = typeof err?.status === 'number' ? err.status : 500;
