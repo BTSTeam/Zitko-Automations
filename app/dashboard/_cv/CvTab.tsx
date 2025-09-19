@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-type TemplateKey = 'permanent' | 'contract' | 'sales'
+type TemplateKey = 'standard' | 'sales'
 
 type Employment = {
   title?: string
@@ -35,7 +35,7 @@ type OpenState = {
 export default function CvTab({ templateFromShell }: { templateFromShell?: TemplateKey }): JSX.Element {
   // ========== UI state ==========
   const [template, setTemplate] = useState<TemplateKey | null>(templateFromShell ?? null)
-  const [candidateId, setCandidateId] = useState<string>('') // used by Perm/Contract only
+  const [candidateId, setCandidateId] = useState<string>('') // used by Standard only
   const [loading, setLoading] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -45,10 +45,10 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   const [rawEdu, setRawEdu] = useState<any[]>([])
   const [rawCustom, setRawCustom] = useState<any>(null)
 
-  // Job Profile helper (Perm/Contract)
+  // Job Profile helper (Standard)
   const [jobId, setJobId] = useState<string>('')
 
-  // Form that drives preview (Perm/Contract)
+  // Form that drives preview (Standard)
   const [form, setForm] = useState<{
     name: string
     location: string
@@ -66,7 +66,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     }
   }>(getEmptyForm())
 
-  // Collapsible sections (Perm/Contract)
+  // Collapsible sections (Standard)
   const [open, setOpen] = useState<OpenState>({
     core: true, profile: true, skills: true, work: true, education: true, extra: true,
     rawCandidate: false, rawWork: false, rawEdu: false, rawCustom: false,
@@ -190,7 +190,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     setForm(prev => ({ ...prev, employment: [...prev.employment, { title: '', company: '', start: '', end: '', description: '' }] }))
   }
 
-  // ========== AI profile (Perm/Contract) ==========
+  // ========== AI profile (Standard) ==========
   async function generateProfile() {
     try {
       setLoading(true); setError(null)
@@ -243,7 +243,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     }
   }
 
-  // ========== data fetch (Perm/Contract) ==========
+  // ========== data fetch (Standard) ==========
   async function fetchData() {
     if (!candidateId) return
     if (!template) { alert('Please select a template first.'); return }
@@ -279,7 +279,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       const name = [cRaw?.first_name, cRaw?.last_name].filter(Boolean).join(' ').trim()
       const location = cRaw?.candidate_current_address?.town_city ?? ''
 
-      // Custom Field UUID maps (optional)
+      // Optional custom fields mapping
       const UUID_DRIVING = 'edd971dc2678f05b5757fe31f2c586a8'
       const UUID_AVAIL   = 'a18b8e0d62e27548df904106cfde1584'
       const UUID_HEALTH  = '25bf6829933a29172af40f977e9422bc'
@@ -464,20 +464,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       )
     }
 
-    // Contract: placeholder (reuses Perm editor when you’re ready)
-    if (template === 'contract') {
-      return (
-        <div className="p-8 h-full grid place-items-center text-gray-500">
-          <div className="text-center">
-            <img src="/zitko-full-logo.png" alt="Zitko" className="h-10 mx-auto mb-4" />
-            <div className="text-xl font-semibold">Building In Progress…</div>
-            <div className="text-sm mt-1">This template is coming soon.</div>
-          </div>
-        </div>
-      )
-    }
-
-    // Permanent (existing editor preview)
+    // Standard (existing editor preview)
     return (
       <div className="p-8">
         <div className="flex items-start justify-between">
@@ -570,22 +557,13 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     <div className="grid gap-4">
       <div className="card p-4">
         {!templateFromShell && (
-          <div className="grid sm:grid-cols-3 gap-2">
+          <div className="grid sm:grid-cols-2 gap-2">
             <button
               type="button"
-              onClick={() => resetAllForTemplate('permanent')}
-              className={`btn w-full ${template === 'permanent' ? 'btn-brand' : 'btn-grey'}`}
+              onClick={() => resetAllForTemplate('standard')}
+              className={`btn w-full ${template === 'standard' ? 'btn-brand' : 'btn-grey'}`}
             >
-              Permanent
-            </button>
-
-            <button
-              type="button"
-              onClick={() => resetAllForTemplate('contract')}
-              className={`btn w-full ${template === 'contract' ? 'btn-brand' : 'btn-grey'}`}
-              title="Contract template uses a different layout soon"
-            >
-              Contract
+              Standard
             </button>
 
             <button
@@ -599,8 +577,8 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
           </div>
         )}
 
-        {/* Candidate ID controls only for non-Sales */}
-        {template !== 'sales' && (
+        {/* Candidate ID controls only for Standard */}
+        {template === 'standard' && (
           <div className="grid sm:grid-cols-[1fr_auto] gap-2 mt-4">
             <input
               className="input"
@@ -624,8 +602,8 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       </div>
 
       <div className="grid md:grid-cols-2 gap-4">
-        {/* LEFT: Editor – all collapsible (only for Permanent; Contract not yet wired) */}
-        {template !== 'sales' && (
+        {/* LEFT: Editor – all collapsible (only for Standard) */}
+        {template === 'standard' && (
           <div className="card p-4 space-y-4">
             {/* Core */}
             <section>
