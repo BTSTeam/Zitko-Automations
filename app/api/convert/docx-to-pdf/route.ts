@@ -1,5 +1,5 @@
 // app/api/convert/docx-to-pdf/route.ts
-export const runtime = 'nodejs' // puppeteer requires Node.js runtime on Vercel
+export const runtime = 'nodejs'
 
 import { NextRequest, NextResponse } from 'next/server'
 import chromium from '@sparticuz/chromium'
@@ -14,7 +14,10 @@ export async function POST(req: NextRequest) {
 
     const name = (file as any).name || 'document.docx'
     if (!/\.docx$/i.test(name)) {
-      return NextResponse.json({ ok: false, error: 'Only DOCX is supported for auto-conversion. Upload PDF or DOCX.' }, { status: 415 })
+      return NextResponse.json(
+        { ok: false, error: 'Only DOCX is supported for auto-conversion. Upload PDF or DOCX.' },
+        { status: 415 }
+      )
     }
 
     const buf = Buffer.from(await file.arrayBuffer())
@@ -22,7 +25,7 @@ export async function POST(req: NextRequest) {
     // DOCX -> HTML
     const { value: htmlBody } = await mammoth.convertToHtml({ buffer: buf })
 
-    // Minimal HTML wrapper (style as needed)
+    // Minimal HTML wrapper (tweak styles as needed)
     const html = `<!doctype html>
 <html><head><meta charset="utf-8">
 <style>
@@ -36,7 +39,6 @@ ${htmlBody}
 
     // HTML -> PDF (headless Chrome)
     const executablePath = await chromium.executablePath()
-
     const browser = await puppeteer.launch({
       args: chromium.args,
       defaultViewport: chromium.defaultViewport,
@@ -47,7 +49,7 @@ ${htmlBody}
     const page = await browser.newPage()
     await page.setContent(html, { waitUntil: 'networkidle0' })
 
-    const pdf = await page.pdf({
+    const pdfBytes = await page.pdf({
       format: 'A4',
       printBackground: true,
       margin: { top: '12mm', bottom: '12mm', left: '12mm', right: '12mm' },
@@ -55,13 +57,17 @@ ${htmlBody}
 
     await browser.close()
 
+    // ✅ FIX: wrap Uint8Array/Buffer in a Blob so the type is valid BodyInit
+    const blob = new Blob([pdfBytes], { type: 'application/pdf' })
+
     const outName = name.replace(/\.docx$/i, '.pdf')
-    return new NextResponse(pdf, {
+    return new NextResponse(blob, {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `inline; filename="${outName}"`,
         'Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff',
       },
     })
   } catch (e: any) {
