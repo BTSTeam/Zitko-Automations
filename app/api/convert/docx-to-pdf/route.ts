@@ -4,7 +4,7 @@ export const runtime = 'nodejs' // puppeteer requires Node.js runtime on Vercel
 import { NextRequest, NextResponse } from 'next/server'
 import chromium from '@sparticuz/chromium'
 import puppeteer from 'puppeteer-core'
-import mammoth from 'mammoth'
+import * as mammoth from 'mammoth'
 
 export async function POST(req: NextRequest) {
   try {
