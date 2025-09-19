@@ -1,4 +1,3 @@
-// app/api/convert/docx-to-pdf/route.ts
 export const runtime = 'nodejs'
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -16,16 +15,14 @@ export async function POST(req: NextRequest) {
     if (!/\.docx$/i.test(name)) {
       return NextResponse.json(
         { ok: false, error: 'Only DOCX is supported for auto-conversion. Upload PDF or DOCX.' },
-        { status: 415 }
+        { status: 415 },
       )
     }
 
     const buf = Buffer.from(await file.arrayBuffer())
 
-    // DOCX -> HTML
+    // DOCX → HTML
     const { value: htmlBody } = await mammoth.convertToHtml({ buffer: buf })
-
-    // Minimal HTML wrapper (tweak styles as needed)
     const html = `<!doctype html>
 <html><head><meta charset="utf-8">
 <style>
@@ -37,7 +34,7 @@ export async function POST(req: NextRequest) {
 ${htmlBody}
 </body></html>`
 
-    // HTML -> PDF (headless Chrome)
+    // HTML → PDF (headless Chrome)
     const executablePath = await chromium.executablePath()
     const browser = await puppeteer.launch({
       args: chromium.args,
@@ -57,11 +54,14 @@ ${htmlBody}
 
     await browser.close()
 
-    // ✅ FIX: wrap Uint8Array/Buffer in a Blob so the type is valid BodyInit
-    const blob = new Blob([pdfBytes], { type: 'application/pdf' })
+    // ✅ Return ArrayBuffer to satisfy NextResponse's BodyInit
+    const arrayBuffer: ArrayBuffer = pdfBytes.buffer.slice(
+      pdfBytes.byteOffset,
+      pdfBytes.byteOffset + pdfBytes.byteLength,
+    )
 
     const outName = name.replace(/\.docx$/i, '.pdf')
-    return new NextResponse(blob, {
+    return new NextResponse(arrayBuffer, {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
