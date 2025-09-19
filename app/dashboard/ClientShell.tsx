@@ -9,7 +9,7 @@ const CvTab     = dynamic(() => import('./_cv/CvTab'),         { ssr: false })
 
 type TabKey = 'match' | 'source' | 'cv'
 type SourceMode = 'candidates' | 'companies'
-type CvTemplate = 'permanent' | 'contract' | 'us'
+type CvTemplate = 'standard' | 'sales'
 
 export default function ClientShell(): JSX.Element {
   const [tab, setTab] = useState<TabKey>('match')
@@ -20,7 +20,7 @@ export default function ClientShell(): JSX.Element {
 
   // cv dropdown
   const [cvOpen, setCvOpen] = useState(false)
-  const [cvTemplate, setCvTemplate] = useState<CvTemplate>('permanent')
+  const [cvTemplate, setCvTemplate] = useState<CvTemplate>('standard')
 
   useEffect(() => {
     function onClick(e: MouseEvent) {
@@ -85,22 +85,16 @@ export default function ClientShell(): JSX.Element {
           {cvOpen && (
             <div className="absolute left-1/2 -translate-x-1/2 mt-2 w-44 rounded-xl border bg-white shadow-lg overflow-hidden z-10">
               <button
-                className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${cvTemplate==='permanent' ? 'font-medium' : ''}`}
-                onClick={() => { setCvTemplate('permanent'); setTab('cv'); setCvOpen(false) }}
+                className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${cvTemplate==='standard' ? 'font-medium' : ''}`}
+                onClick={() => { setCvTemplate('standard'); setTab('cv'); setCvOpen(false) }}
               >
-                Permanent
+                Standard
               </button>
               <button
-                className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${cvTemplate==='contract' ? 'font-medium' : ''}`}
-                onClick={() => { setCvTemplate('contract'); setTab('cv'); setCvOpen(false) }}
+                className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${cvTemplate==='sales' ? 'font-medium' : ''}`}
+                onClick={() => { setCvTemplate('sales'); setTab('cv'); setCvOpen(false) }}
               >
-                Contract
-              </button>
-              <button
-                className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${cvTemplate==='us' ? 'font-medium' : ''}`}
-                onClick={() => { setCvTemplate('us'); setTab('cv'); setCvOpen(false) }}
-              >
-                US
+                Sales
               </button>
             </div>
           )}
