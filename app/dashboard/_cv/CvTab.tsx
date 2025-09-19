@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 
-type TemplateKey = 'permanent' | 'contract' | 'sales'
+type TemplateKey = 'permanent' | 'contract' | 'us'
 
 type Employment = {
   title?: string
