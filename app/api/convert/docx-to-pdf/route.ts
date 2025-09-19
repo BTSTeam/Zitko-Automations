@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
     if (!/\.docx$/i.test(name)) {
       return NextResponse.json(
         { ok: false, error: 'Only DOCX is supported for auto-conversion. Upload PDF or DOCX.' },
-        { status: 415 },
+        { status: 415 }
       )
     }
 
@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
 ${htmlBody}
 </body></html>`
 
-    // HTML → PDF (headless Chrome)
+    // HTML → PDF
     const executablePath = await chromium.executablePath()
     const browser = await puppeteer.launch({
       args: chromium.args,
@@ -54,11 +54,8 @@ ${htmlBody}
 
     await browser.close()
 
-    // ✅ Return ArrayBuffer to satisfy NextResponse's BodyInit
-    const arrayBuffer: ArrayBuffer = pdfBytes.buffer.slice(
-      pdfBytes.byteOffset,
-      pdfBytes.byteOffset + pdfBytes.byteLength,
-    )
+    // ✅ Ensure BodyInit is a plain ArrayBuffer (avoid SharedArrayBuffer typing)
+    const arrayBuffer = new Uint8Array(pdfBytes).buffer
 
     const outName = name.replace(/\.docx$/i, '.pdf')
     return new NextResponse(arrayBuffer, {
