@@ -214,7 +214,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     try {
       setLoading(true); setError(null)
 
-      // Try POST /api/job/extract first, fallback to GET if needed
       let jobRes = await fetch('/api/job/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -354,11 +353,11 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     return null
   }
 
-  // ====================== SALES TEMPLATE (Upload + auto DOCX→PDF) ======================
+  // ====================== SALES (Upload + auto DOCX→PDF) ======================
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [salesErr, setSalesErr] = useState<string | null>(null)
   const [salesDocUrl, setSalesDocUrl] = useState<string | null>(null) // object URL
-  const [salesDocName, setSalesDocName] = useState<string>('')        // filename (final, usually .pdf)
+  const [salesDocName, setSalesDocName] = useState<string>('')        // filename (final)
   const [salesDocType, setSalesDocType] = useState<string>('')        // mime type
   const [processing, setProcessing] = useState<boolean>(false)
 
@@ -394,14 +393,10 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         setSalesDocName(f.name)
         setSalesDocType('application/pdf')
       } else if (isDocx) {
-        // Send to converter
         const fd = new FormData()
         fd.append('file', f)
         const res = await fetch('/api/convert/docx-to-pdf', { method: 'POST', body: fd })
-        if (!res.ok) {
-          const text = await res.text()
-          throw new Error(text || 'DOCX→PDF conversion failed')
-        }
+        if (!res.ok) throw new Error((await res.text()) || 'DOCX→PDF conversion failed')
         const blob = await res.blob()
         const url = URL.createObjectURL(blob)
         setSalesDocUrl(url)
@@ -414,7 +409,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       }
     } catch (err: any) {
       setSalesErr(err?.message || 'Upload failed')
-      // Reset selection so the same file can be re-picked
       e.currentTarget.value = ''
     } finally {
       setProcessing(false)
@@ -426,31 +420,43 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     [salesDocType, salesDocName]
   )
 
-  // Branded panel with header button
-  function SalesPanel() {
+  // Top toolbar panel (button on the right, tip on the left)
+  function SalesToolbar() {
     return (
-      <div className="mt-0 border rounded-xl overflow-hidden">
-        {/* Header with Upload button */}
+      <div className="rounded-full border bg-white shadow-sm px-4 py-2 flex items-center justify-between">
+        <div className="text-xs text-gray-500 truncate">
+          Tip: PDFs preview inline. DOCX files will be converted to PDF automatically.
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            onChange={onUploadChange}
+            className="hidden"
+          />
+          <button
+            type="button"
+            className="btn btn-brand"
+            onClick={onClickUpload}
+            disabled={processing}
+            title="Upload a PDF or Word (DOCX) document"
+          >
+            {processing ? 'Processing…' : 'Upload CV'}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // Branded viewer card (logo header + footer). No upload button here anymore.
+  function SalesViewerCard() {
+    return (
+      <div className="border rounded-2xl overflow-hidden bg-white">
+        {/* Header */}
         <div className="flex items-center justify-between px-4 py-2 bg-white">
           <img src="/zitko-full-logo.png" alt="Zitko" className="h-10" />
-          <div className="flex items-center gap-2">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-              onChange={onUploadChange}
-              className="hidden"
-            />
-            <button
-              type="button"
-              className="btn btn-brand"
-              onClick={onClickUpload}
-              disabled={processing}
-              title="Upload a PDF or Word (DOCX) document"
-            >
-              {processing ? 'Processing…' : 'Upload CV'}
-            </button>
-          </div>
+          <div className="text-xs text-[#F7941D]">Zitko™ • www.zitkogroup.com • 01480 473245</div>
         </div>
 
         {/* Document area */}
@@ -467,7 +473,9 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
               </div>
             )
           ) : (
-            <div className="p-6 text-sm text-gray-500 bg-white">No document uploaded yet. Use “Upload CV” in the header.</div>
+            <div className="p-6 text-sm text-gray-600 bg-white">
+              No document uploaded yet. Use “Upload CV” above.
+            </div>
           )}
         </div>
 
@@ -485,11 +493,11 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     if (template === 'sales') {
       return (
         <div className="p-4">
-          <div className="mt-2 text-xs text-gray-500">
-            Tip: PDFs preview inline. DOCX files will be converted to PDF automatically for preview.
-          </div>
+          <SalesToolbar />
           {salesErr && <div className="mt-2 text-sm text-red-600">{String(salesErr).slice(0, 300)}</div>}
-          <SalesPanel />
+          <div className="mt-4">
+            <SalesViewerCard />
+          </div>
         </div>
       )
     }
@@ -631,10 +639,11 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         {error && <div className="mt-3 text-sm text-red-600">{String(error).slice(0, 300)}</div>}
       </div>
 
+      {/* When Sales is selected we only show the right column (toolbar + viewer) */}
       <div className="grid md:grid-cols-2 gap-4">
-        {/* LEFT: Editor – all collapsible (Standard only) */}
         {template === 'standard' && (
           <div className="card p-4 space-y-4">
+            {/* Standard editor (unchanged) */}
             {/* Core */}
             <section>
               <div className="flex items-center justify-between">
@@ -837,7 +846,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
           </div>
         )}
 
-        {/* RIGHT: Preview panel */}
+        {/* RIGHT: toolbar + viewer always render in one wide column */}
         <div className="card p-0 overflow-hidden">
           <CVTemplatePreview />
         </div>
