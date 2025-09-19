@@ -354,12 +354,13 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     return null
   }
 
-  // ====================== SALES TEMPLATE (Upload only) ======================
+  // ====================== SALES TEMPLATE (Upload + auto DOCX→PDF) ======================
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [salesErr, setSalesErr] = useState<string | null>(null)
   const [salesDocUrl, setSalesDocUrl] = useState<string | null>(null) // object URL
-  const [salesDocName, setSalesDocName] = useState<string>('')        // filename
+  const [salesDocName, setSalesDocName] = useState<string>('')        // filename (final, usually .pdf)
   const [salesDocType, setSalesDocType] = useState<string>('')        // mime type
+  const [processing, setProcessing] = useState<boolean>(false)
 
   function resetSalesState() {
     setSalesErr(null)
@@ -367,23 +368,57 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     setSalesDocUrl(null)
     setSalesDocName('')
     setSalesDocType('')
+    setProcessing(false)
   }
 
   function onClickUpload() {
     fileInputRef.current?.click()
   }
 
-  function onUploadChange(e: React.ChangeEvent<HTMLInputElement>) {
+  async function onUploadChange(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0]
     if (!f) return
     setSalesErr(null)
     if (salesDocUrl) URL.revokeObjectURL(salesDocUrl)
-    const url = URL.createObjectURL(f)
-    setSalesDocUrl(url)
-    setSalesDocName(f.name)
-    setSalesDocType(f.type || '')
-    // Optional: also POST to /api/upload if you want server persistence later:
-    // const fd = new FormData(); fd.append('file', f); fetch('/api/upload', { method: 'POST', body: fd })
+
+    const isPdfFile = f.type?.includes('pdf') || /\.pdf$/i.test(f.name)
+    const isDocx    = f.type?.includes('officedocument.wordprocessingml.document') || /\.docx$/i.test(f.name)
+    const isDoc     = f.type === 'application/msword' || /\.doc$/i.test(f.name)
+
+    try {
+      setProcessing(true)
+
+      if (isPdfFile) {
+        const url = URL.createObjectURL(f)
+        setSalesDocUrl(url)
+        setSalesDocName(f.name)
+        setSalesDocType('application/pdf')
+      } else if (isDocx) {
+        // Send to converter
+        const fd = new FormData()
+        fd.append('file', f)
+        const res = await fetch('/api/convert/docx-to-pdf', { method: 'POST', body: fd })
+        if (!res.ok) {
+          const text = await res.text()
+          throw new Error(text || 'DOCX→PDF conversion failed')
+        }
+        const blob = await res.blob()
+        const url = URL.createObjectURL(blob)
+        setSalesDocUrl(url)
+        setSalesDocName(f.name.replace(/\.docx$/i, '.pdf'))
+        setSalesDocType('application/pdf')
+      } else if (isDoc) {
+        throw new Error('Legacy .doc files are not supported for auto-conversion. Please upload a PDF or DOCX.')
+      } else {
+        throw new Error('Unsupported file type. Please upload a PDF or DOCX.')
+      }
+    } catch (err: any) {
+      setSalesErr(err?.message || 'Upload failed')
+      // Reset selection so the same file can be re-picked
+      e.currentTarget.value = ''
+    } finally {
+      setProcessing(false)
+    }
   }
 
   const isPdf = useMemo(
@@ -391,33 +426,51 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     [salesDocType, salesDocName]
   )
 
-  // Branded wrapper around the doc preview (visual chrome)
-  function SalesDocumentViewer() {
-    if (!salesDocUrl) return null
+  // Branded panel with header button
+  function SalesPanel() {
     return (
-      <div className="mt-4 border rounded-xl overflow-hidden">
-        {/* Header */}
+      <div className="mt-0 border rounded-xl overflow-hidden">
+        {/* Header with Upload button */}
         <div className="flex items-center justify-between px-4 py-2 bg-white">
           <img src="/zitko-full-logo.png" alt="Zitko" className="h-10" />
-          <div className="text-xs text-[#F7941D]">Zitko™ • www.zitkogroup.com • 01480 473245</div>
+          <div className="flex items-center gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              onChange={onUploadChange}
+              className="hidden"
+            />
+            <button
+              type="button"
+              className="btn btn-brand"
+              onClick={onClickUpload}
+              disabled={processing}
+              title="Upload a PDF or Word (DOCX) document"
+            >
+              {processing ? 'Processing…' : 'Upload CV'}
+            </button>
+          </div>
         </div>
+
         {/* Document area */}
         <div className="bg-gray-50">
-          {isPdf ? (
-            <iframe
-              className="w-full h-[70vh] bg-white"
-              src={salesDocUrl}
-              title={salesDocName || 'Document'}
-            />
+          {salesDocUrl ? (
+            isPdf ? (
+              <iframe className="w-full h-[70vh] bg-white" src={salesDocUrl} title={salesDocName || 'Document'} />
+            ) : (
+              <div className="p-4 bg-white">
+                <div className="text-sm mb-2">Preview not available for this file type.</div>
+                <a className="text-[#F7941D] underline" href={salesDocUrl} download={salesDocName || 'document'}>
+                  Download {salesDocName || 'file'}
+                </a>
+              </div>
+            )
           ) : (
-            <div className="p-4 bg-white">
-              <div className="text-sm mb-2">Preview not available for this file type.</div>
-              <a className="text-[#F7941D] underline" href={salesDocUrl} download={salesDocName || 'document'}>
-                Download {salesDocName || 'file'}
-              </a>
-            </div>
+            <div className="p-6 text-sm text-gray-500 bg-white">No document uploaded yet. Use “Upload CV” in the header.</div>
           )}
         </div>
+
         {/* Footer */}
         <div className="px-4 py-2 text-center text-[11px] leading-snug text-[#F7941D] bg-white">
           <div>Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Consulting Ltd, Zitko Sales Ltd, Zitko Contracting Ltd and Zitko Talent</div>
@@ -429,37 +482,14 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
   // ========== preview (right) ==========
   function CVTemplatePreview(): JSX.Element {
-    // Sales: upload-only layout
     if (template === 'sales') {
       return (
         <div className="p-4">
-          {/* Actions row */}
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-              onChange={onUploadChange}
-              className="hidden"
-            />
-            <button
-              type="button"
-              className="btn btn-brand w-full sm:w-auto"
-              onClick={onClickUpload}
-              title="Upload a PDF or Word document"
-            >
-              Upload CV
-            </button>
-          </div>
-
-          {/* Helper + error */}
           <div className="mt-2 text-xs text-gray-500">
-            Tip: PDFs preview inline. Word files will be downloadable here, or convert to PDF for inline preview.
+            Tip: PDFs preview inline. DOCX files will be converted to PDF automatically for preview.
           </div>
           {salesErr && <div className="mt-2 text-sm text-red-600">{String(salesErr).slice(0, 300)}</div>}
-
-          {/* Document viewer */}
-          <SalesDocumentViewer />
+          <SalesPanel />
         </div>
       )
     }
@@ -570,7 +600,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
               type="button"
               onClick={() => resetAllForTemplate('sales')}
               className={`btn w-full ${template === 'sales' ? 'btn-brand' : 'btn-grey'}`}
-              title="Sales template: upload a CV (PDF/DOC/DOCX)"
+              title="Sales template: upload a CV (PDF/DOCX)"
             >
               Sales
             </button>
@@ -602,7 +632,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       </div>
 
       <div className="grid md:grid-cols-2 gap-4">
-        {/* LEFT: Editor – all collapsible (only for Standard) */}
+        {/* LEFT: Editor – all collapsible (Standard only) */}
         {template === 'standard' && (
           <div className="card p-4 space-y-4">
             {/* Core */}
