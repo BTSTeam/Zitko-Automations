@@ -353,7 +353,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     return null
   }
 
-  // ====================== SALES (Upload + auto DOCX→PDF) ======================
+  // ====================== SALES ( + auto DOCX→PDF) ======================
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [salesErr, setSalesErr] = useState<string | null>(null)
   const [salesDocUrl, setSalesDocUrl] = useState<string | null>(null) // object URL
@@ -372,7 +372,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     setDragOver(false)
   }
 
-  function onClickUpload() {
+  function onClick() {
     fileInputRef.current?.click()
   }
 
@@ -403,12 +403,12 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         setSalesDocName(f.name.replace(/\.docx$/i, '.pdf'))
         setSalesDocType('application/pdf')
       } else if (isDoc) {
-        throw new Error('Legacy .doc files are not supported for auto-conversion. Please upload a PDF or DOCX.')
+        throw new Error('Legacy .doc files are not supported for auto-conversion. Please import a PDF or DOCX.')
       } else {
-        throw new Error('Unsupported file type. Please upload a PDF or DOCX.')
+        throw new Error('Unsupported file type. Please import a PDF or DOCX.')
       }
     } catch (err: any) {
-      setSalesErr(err?.message || 'Upload failed')
+      setSalesErr(err?.message || 'Import failed')
     } finally {
       setProcessing(false)
     }
@@ -461,7 +461,7 @@ function SalesViewerCard() {
           )
         ) : (
           <div className="p-6 text-sm text-gray-600 bg-white">
-            No document uploaded yet. Use “Upload CV” above.
+            No document imported yet. Use “Import CV” above.
           </div>
         )}
       </div>
@@ -608,7 +608,7 @@ function SalesViewerCard() {
               type="button"
               onClick={() => resetAllForTemplate('sales')}
               className={`btn w-full ${template === 'sales' ? 'btn-brand' : 'btn-grey'}`}
-              title="Sales template: upload a CV (PDF/DOCX)"
+              title="Sales template: import a CV (PDF/DOCX)"
             >
               Sales
             </button>
@@ -656,11 +656,11 @@ function SalesViewerCard() {
             >
               <div
                 className={`input flex items-center justify-between cursor-pointer ${dragOver ? 'ring-2 ring-[#F7941D]/50' : ''}`}
-                title="Upload or drag a file here"
+                title="Import or drag a file here"
                 onClick={onClickUpload}
               >
                 <span className={`text-gray-400 select-none ${salesDocName ? '!text-gray-700 truncate' : ''}`}>
-                  {salesDocName ? salesDocName : 'Upload or drag a file here'}
+                  {salesDocName ? salesDocName : 'Import or drag a file here'}
                 </span>
               </div>
 
@@ -669,9 +669,9 @@ function SalesViewerCard() {
                 className="btn btn-brand"
                 onClick={onClickUpload}
                 disabled={processing}
-                title="Upload a PDF or Word (DOCX) document"
+                title="Import a PDF or Word (DOCX) document"
               >
-                {processing ? 'Processing…' : 'Upload CV'}
+                {processing ? 'Processing…' : 'Import CV'}
               </button>
             </div>
 
