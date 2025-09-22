@@ -377,42 +377,57 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   }
 
   async function handleFile(f: File) {
-    setSalesErr(null)
-    if (salesDocUrl) URL.revokeObjectURL(salesDocUrl)
+  setSalesErr(null)
+  if (salesDocUrl) URL.revokeObjectURL(salesDocUrl)
 
-    const isPdfFile = f.type?.includes('pdf') || /\.pdf$/i.test(f.name)
-    const isDocx    = f.type?.includes('officedocument.wordprocessingml.document') || /\.docx$/i.test(f.name)
-    const isDoc     = f.type === 'application/msword' || /\.doc$/i.test(f.name)
+  const isPdfFile = f.type?.includes('pdf') || /\.pdf$/i.test(f.name)
+  const isDocx    = f.type?.includes('officedocument.wordprocessingml.document') || /\.docx$/i.test(f.name)
+  const isDoc     = f.type === 'application/msword' || /\.doc$/i.test(f.name)
 
-    try {
-      setProcessing(true)
+  try {
+    setProcessing(true)
 
-      if (isPdfFile) {
-        const url = URL.createObjectURL(f)
-        setSalesDocUrl(url)
-        setSalesDocName(f.name)
-        setSalesDocType('application/pdf')
-      } else if (isDocx) {
-        const fd = new FormData()
-        fd.append('file', f)
-        const res = await fetch('/api/cloudconvert/docx-to-pdf', { method: 'POST', body: fd })
-        if (!res.ok) throw new Error((await res.text()) || 'DOCX→PDF conversion failed')
-        const blob = await res.blob()
-        const url = URL.createObjectURL(blob)
-        setSalesDocUrl(url)
-        setSalesDocName(f.name.replace(/\.docx$/i, '.pdf'))
-        setSalesDocType('application/pdf')
-      } else if (isDoc) {
-        throw new Error('Legacy .doc files are not supported for auto-conversion. Please import a PDF or DOCX.')
-      } else {
-        throw new Error('Unsupported file type. Please import a PDF or DOCX.')
-      }
-    } catch (err: any) {
-      setSalesErr(err?.message || 'Import failed')
-    } finally {
-      setProcessing(false)
+    // helper to brand a PDF Blob via /api/pdf/brand
+    const brandPdfBlob = async (blob: Blob, nameForFile = 'document.pdf') => {
+      const fdB = new FormData()
+      fdB.append('file', new File([blob], nameForFile, { type: 'application/pdf' }))
+      const resB = await fetch('/api/pdf/brand', { method: 'POST', body: fdB })
+      if (!resB.ok) throw new Error((await resB.text()) || 'Branding failed')
+      return await resB.blob()
     }
+
+    if (isPdfFile) {
+      // Brand the uploaded PDF
+      const branded = await brandPdfBlob(f, f.name)
+      const url = URL.createObjectURL(branded)
+      setSalesDocUrl(url)
+      setSalesDocName(f.name.replace(/\.pdf$/i, '') + '-branded.pdf')
+      setSalesDocType('application/pdf')
+    } else if (isDocx) {
+      // 1) Convert DOCX → PDF (CloudConvert)
+      const fd = new FormData()
+      fd.append('file', f)
+      const res = await fetch('/api/cloudconvert/docx-to-pdf', { method: 'POST', body: fd })
+      if (!res.ok) throw new Error((await res.text()) || 'DOCX→PDF conversion failed')
+      const converted = await res.blob()
+
+      // 2) Brand the converted PDF
+      const branded = await brandPdfBlob(converted, f.name.replace(/\.docx$/i, '.pdf'))
+      const url = URL.createObjectURL(branded)
+      setSalesDocUrl(url)
+      setSalesDocName(f.name.replace(/\.docx$/i, '') + '-branded.pdf')
+      setSalesDocType('application/pdf')
+    } else if (isDoc) {
+      throw new Error('Legacy .doc files are not supported. Please upload a PDF or DOCX.')
+    } else {
+      throw new Error('Unsupported file type. Please upload a PDF or DOCX.')
+    }
+  } catch (err: any) {
+    setSalesErr(err?.message || 'Upload failed')
+  } finally {
+    setProcessing(false)
   }
+}
 
   async function onUploadChange(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0]
