@@ -4,11 +4,11 @@ export const revalidate = 0;
 
 import { NextRequest, NextResponse } from 'next/server';
 import chromium from '@sparticuz/chromium';
-import puppeteer from 'puppeteer-core';
+import puppeteer, { Browser } from 'puppeteer-core';  // 👈 add { Browser }
 import * as mammoth from 'mammoth';
 
 export async function POST(req: NextRequest) {
-  let browser: puppeteer.Browser | null = null;
+  let browser: Browser | null = null;
 
   try {
     const form = await req.formData();
