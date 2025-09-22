@@ -74,15 +74,15 @@ ${htmlBody}
     });
 
     const outName = originalName.replace(/\.docx$/i, '.pdf');
-    return new NextResponse(pdf, {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/pdf',
-        'Content-Disposition': `inline; filename="${outName}"`,
-        'Cache-Control': 'no-store',
-        'X-Content-Type-Options': 'nosniff',
-      },
-    });
+    return new NextResponse(new Uint8Array(pdf).buffer, {
+     status: 200,
+     headers: {
+       'Content-Type': 'application/pdf',
+       'Content-Disposition': `inline; filename="${outName}"`,
+       'Cache-Control': 'no-store',
+       'X-Content-Type-Options': 'nosniff',
+     },
+   });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message || 'Conversion failed' }, { status: 500 });
   } finally {
