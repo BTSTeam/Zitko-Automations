@@ -433,7 +433,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     [salesDocType, salesDocName]
   )
 
-  // Branded viewer card (logo header + footer). No upload button here anymore.
+  // Branded viewer card
   function SalesViewerCard() {
     return (
       <div className="border rounded-2xl overflow-hidden bg-white">
@@ -447,7 +447,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         <div className="bg-gray-50">
           {salesDocUrl ? (
             isPdf ? (
-              <iframe className="w-full h-[70vh] bg-white" src={salesDocUrl} title={salesDocName || 'Document'} />
+              <iframe className="w-full h-[75vh] bg-white" src={salesDocUrl} title={salesDocName || 'Document'} />
             ) : (
               <div className="p-4 bg-white">
                 <div className="text-sm mb-2">Preview not available for this file type.</div>
@@ -484,7 +484,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
     // Standard (existing editor preview)
     return (
-      <div className="p-8">
+      <div className="p-8 cv-standard-page">
         <div className="flex items-start justify-between">
           <div />
           <img src="/zitko-full-logo.png" alt="Zitko" className="h-12" />
@@ -517,7 +517,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
             form.employment.map((e, i) => {
               const range = [e.start, e.end].filter(Boolean).join(' to ')
               return (
-                <div key={i} className="flex justify-between">
+                <div key={i} className="flex justify-between break-inside-avoid">
                   <div>
                     <div className="font-medium">{e.title || 'Role'}</div>
                     <div className="text-xs text-gray-500">{e.company}</div>
@@ -539,7 +539,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
               const range = [e.start, e.end].filter(Boolean).join(' to ')
               const showInstitutionLine = !!e.institution && !!e.course && e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
               return (
-                <div key={i} className="flex justify-between">
+                <div key={i} className="flex justify-between break-inside-avoid">
                   <div>
                     <div className="font-medium">{e.course || e.institution || 'Course'}</div>
                     {showInstitutionLine && <div className="text-xs text-gray-500">{e.institution}</div>}
@@ -573,6 +573,17 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   // ========== render ==========
   return (
     <div className="grid gap-4">
+      {/* Minimal print styles to ensure A4, multi-page (Standard) */}
+      <style jsx global>{`
+        @media print {
+          @page { size: A4; margin: 12mm; }
+          .cv-standard-page { width: 100%; }
+          .cv-standard-page h1,
+          .cv-standard-page h2,
+          .cv-standard-page section { break-inside: avoid; }
+        }
+      `}</style>
+
       <div className="card p-4">
         {!templateFromShell && (
           <div className="grid sm:grid-cols-2 gap-2">
@@ -629,7 +640,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
             {/* Faux input + button (same placement/layout as Standard) */}
             <div
-              className={`grid sm:grid-cols-[1fr_auto] gap-2 mt-4`}
+              className="grid sm:grid-cols-[1fr_auto] gap-2 mt-4"
               onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
               onDragLeave={() => setDragOver(false)}
               onDrop={onDrop}
@@ -662,11 +673,13 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         {error && <div className="mt-3 text-sm text-red-600">{String(error).slice(0, 300)}</div>}
       </div>
 
-      {/* When Sales is selected we only show the right column (viewer) */}
-      <div className="grid md:grid-cols-2 gap-4">
+      {/* CONTENT GRID:
+         - Standard: two columns (editor left, preview right)
+         - Sales: single column so preview fills full width */}
+      <div className={`grid gap-4 ${template === 'sales' ? '' : 'md:grid-cols-2'}`}>
         {template === 'standard' && (
           <div className="card p-4 space-y-4">
-            {/* Standard editor (unchanged) */}
+            {/* Standard editor */}
             {/* Core */}
             <section>
               <div className="flex items-center justify-between">
@@ -869,7 +882,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
           </div>
         )}
 
-        {/* RIGHT: viewer always renders here */}
+        {/* RIGHT: preview always renders here; on Sales it's full-width */}
         <div className="card p-0 overflow-hidden">
           <CVTemplatePreview />
         </div>
