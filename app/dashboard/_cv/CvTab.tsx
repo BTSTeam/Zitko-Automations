@@ -372,7 +372,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     setDragOver(false)
   }
 
-  function onClick() {
+  function onClickUpload() {
     fileInputRef.current?.click()
   }
 
