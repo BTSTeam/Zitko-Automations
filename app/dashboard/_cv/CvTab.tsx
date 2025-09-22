@@ -360,6 +360,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   const [salesDocName, setSalesDocName] = useState<string>('')        // filename (final)
   const [salesDocType, setSalesDocType] = useState<string>('')        // mime type
   const [processing, setProcessing] = useState<boolean>(false)
+  const [dragOver, setDragOver] = useState<boolean>(false)
 
   function resetSalesState() {
     setSalesErr(null)
@@ -368,15 +369,14 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     setSalesDocName('')
     setSalesDocType('')
     setProcessing(false)
+    setDragOver(false)
   }
 
   function onClickUpload() {
     fileInputRef.current?.click()
   }
 
-  async function onUploadChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0]
-    if (!f) return
+  async function handleFile(f: File) {
     setSalesErr(null)
     if (salesDocUrl) URL.revokeObjectURL(salesDocUrl)
 
@@ -409,45 +409,29 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       }
     } catch (err: any) {
       setSalesErr(err?.message || 'Upload failed')
-      e.currentTarget.value = ''
     } finally {
       setProcessing(false)
     }
+  }
+
+  async function onUploadChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]
+    if (!f) return
+    await handleFile(f)
+    e.currentTarget.value = ''
+  }
+
+  const onDrop: React.DragEventHandler<HTMLDivElement> = async (ev) => {
+    ev.preventDefault()
+    setDragOver(false)
+    const f = ev.dataTransfer.files?.[0]
+    if (f) await handleFile(f)
   }
 
   const isPdf = useMemo(
     () => (salesDocType?.includes('pdf') || /\.pdf$/i.test(salesDocName)),
     [salesDocType, salesDocName]
   )
-
-  // Top toolbar panel (button on the right, tip on the left)
-  function SalesToolbar() {
-    return (
-      <div className="rounded-full border bg-white shadow-sm px-4 py-2 flex items-center justify-between">
-        <div className="text-xs text-gray-500 truncate">
-          Tip: PDFs preview inline. DOCX files will be converted to PDF automatically.
-        </div>
-        <div className="flex items-center gap-2">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            onChange={onUploadChange}
-            className="hidden"
-          />
-          <button
-            type="button"
-            className="btn btn-brand"
-            onClick={onClickUpload}
-            disabled={processing}
-            title="Upload a PDF or Word (DOCX) document"
-          >
-            {processing ? 'Processing…' : 'Upload CV'}
-          </button>
-        </div>
-      </div>
-    )
-  }
 
   // Branded viewer card (logo header + footer). No upload button here anymore.
   function SalesViewerCard() {
@@ -493,11 +477,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     if (template === 'sales') {
       return (
         <div className="p-4">
-          <SalesToolbar />
-          {salesErr && <div className="mt-2 text-sm text-red-600">{String(salesErr).slice(0, 300)}</div>}
-          <div className="mt-4">
-            <SalesViewerCard />
-          </div>
+          <SalesViewerCard />
         </div>
       )
     }
@@ -615,7 +595,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
           </div>
         )}
 
-        {/* Candidate ID controls only for Standard */}
+        {/* Top controls: Standard vs Sales */}
         {template === 'standard' && (
           <div className="grid sm:grid-cols-[1fr_auto] gap-2 mt-4">
             <input
@@ -636,10 +616,53 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
           </div>
         )}
 
+        {template === 'sales' && (
+          <>
+            {/* Hidden real input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              onChange={onUploadChange}
+              className="hidden"
+            />
+
+            {/* Faux input + button (same placement/layout as Standard) */}
+            <div
+              className={`grid sm:grid-cols-[1fr_auto] gap-2 mt-4`}
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={onDrop}
+            >
+              <div
+                className={`input flex items-center justify-between cursor-pointer ${dragOver ? 'ring-2 ring-[#F7941D]/50' : ''}`}
+                title="Upload or drag a file here"
+                onClick={onClickUpload}
+              >
+                <span className={`text-gray-400 select-none ${salesDocName ? '!text-gray-700 truncate' : ''}`}>
+                  {salesDocName ? salesDocName : 'Upload or drag a file here'}
+                </span>
+              </div>
+
+              <button
+                type="button"
+                className="btn btn-brand"
+                onClick={onClickUpload}
+                disabled={processing}
+                title="Upload a PDF or Word (DOCX) document"
+              >
+                {processing ? 'Processing…' : 'Upload CV'}
+              </button>
+            </div>
+
+            {salesErr && <div className="mt-3 text-sm text-red-600">{String(salesErr).slice(0, 300)}</div>}
+          </>
+        )}
+
         {error && <div className="mt-3 text-sm text-red-600">{String(error).slice(0, 300)}</div>}
       </div>
 
-      {/* When Sales is selected we only show the right column (toolbar + viewer) */}
+      {/* When Sales is selected we only show the right column (viewer) */}
       <div className="grid md:grid-cols-2 gap-4">
         {template === 'standard' && (
           <div className="card p-4 space-y-4">
@@ -846,7 +869,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
           </div>
         )}
 
-        {/* RIGHT: toolbar + viewer always render in one wide column */}
+        {/* RIGHT: viewer always renders here */}
         <div className="card p-0 overflow-hidden">
           <CVTemplatePreview />
         </div>
