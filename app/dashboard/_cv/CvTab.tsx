@@ -433,44 +433,53 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     [salesDocType, salesDocName]
   )
 
-  // Branded viewer card
-  function SalesViewerCard() {
-    return (
-      <div className="border rounded-2xl overflow-hidden bg-white">
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-2 bg-white">
-          <img src="/zitko-full-logo.png" alt="Zitko" className="h-10" />
-          <div className="text-xs text-[#F7941D]">Zitko™ • www.zitkogroup.com • 01480 473245</div>
-        </div>
-
-        {/* Document area */}
-        <div className="bg-gray-50">
-          {salesDocUrl ? (
-            isPdf ? (
-              <iframe className="w-full h-[75vh] bg-white" src={salesDocUrl} title={salesDocName || 'Document'} />
-            ) : (
-              <div className="p-4 bg-white">
-                <div className="text-sm mb-2">Preview not available for this file type.</div>
-                <a className="text-[#F7941D] underline" href={salesDocUrl} download={salesDocName || 'document'}>
-                  Download {salesDocName || 'file'}
-                </a>
-              </div>
-            )
-          ) : (
-            <div className="p-6 text-sm text-gray-600 bg-white">
-              No document uploaded yet. Use “Upload CV” above.
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="px-4 py-2 text-center text-[11px] leading-snug text-[#F7941D] bg-white">
-          <div>Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Consulting Ltd, Zitko Sales Ltd, Zitko Contracting Ltd and Zitko Talent</div>
-          <div>Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL</div>
-        </div>
+  // Branded viewer card (logo right, centred footer)
+function SalesViewerCard() {
+  return (
+    <div className="border rounded-2xl overflow-hidden bg-white">
+      {/* Header: logo aligned RIGHT */}
+      <div className="flex items-center justify-end px-4 py-2 bg-white">
+        <img src="/zitko-full-logo.png" alt="Zitko" className="h-10" />
       </div>
-    )
-  }
+
+      {/* Document area */}
+      <div className="bg-gray-50">
+        {salesDocUrl ? (
+          isPdf ? (
+            <iframe
+              className="w-full h-[75vh] bg-white"
+              src={salesDocUrl}
+              title={salesDocName || 'Document'}
+            />
+          ) : (
+            <div className="p-4 bg-white">
+              <div className="text-sm mb-2">Preview not available for this file type.</div>
+              <a className="text-[#F7941D] underline" href={salesDocUrl} download={salesDocName || 'document'}>
+                Download {salesDocName || 'file'}
+              </a>
+            </div>
+          )
+        ) : (
+          <div className="p-6 text-sm text-gray-600 bg-white">
+            No document uploaded yet. Use “Upload CV” above.
+          </div>
+        )}
+      </div>
+
+      {/* Footer: centred, 3 lines */}
+      <div className="px-4 py-3 text-center text-[11px] leading-snug text-[#F7941D] bg-white">
+        <div>
+          Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Consulting Ltd, Zitko Sales Ltd,
+          Zitko Contracting Ltd and Zitko Talent
+        </div>
+        <div>
+          Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL
+        </div>
+        <div>Zitko™ • www.zitkogroup.com • 01480 473245</div>
+      </div>
+    </div>
+  )
+}
 
   // ========== preview (right) ==========
   function CVTemplatePreview(): JSX.Element {
