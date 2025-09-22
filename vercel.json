@@ -1,7 +1,6 @@
 {
   "functions": {
-    "app/api/docx-to-pdf/route.ts": {
-      "memory": 1024,
+    "app/api/cloudconvert/docx-to-pdf/route.ts": {
       "maxDuration": 60
     }
   }
