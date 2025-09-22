@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
     const inputBytes = new Uint8Array(await file.arrayBuffer());
     const pdf = await PDFDocument.load(inputBytes);
 
-    // Fetch logo from your public/ folder using the current host
+    // fetch logo from /public
     const proto = req.headers.get('x-forwarded-proto') ?? 'https';
     const host = req.headers.get('host') ?? '';
     const logoUrl = `${proto}://${host}/zitko-full-logo.png`;
@@ -28,45 +28,65 @@ export async function POST(req: NextRequest) {
     if (!logoRes.ok) throw new Error(`Failed to fetch logo (${logoRes.status})`);
     const logoBytes = new Uint8Array(await logoRes.arrayBuffer());
 
-    // Try PNG first, fall back to JPEG if necessary
+    // embed resources
+    const font = await pdf.embedFont(StandardFonts.Helvetica);
     let logoImage: any;
     try { logoImage = await pdf.embedPng(logoBytes); }
     catch { logoImage = await pdf.embedJpg(logoBytes); }
 
-    const font = await pdf.embedFont(StandardFonts.Helvetica);
+    // brand constants
     const orange = rgb(0.9686, 0.5804, 0.1137); // #F7941D
-
     const footerLines = [
       'Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Consulting Ltd, Zitko Sales Ltd, Zitko Contracting Ltd and Zitko Talent',
       'Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL',
       'Zitko™ • www.zitkogroup.com • 01480 473245',
     ];
 
-    const margin = 24;
+    const margin = 18;      // page margin in points
+    const pad = 6;          // padding around whiteout blocks
     const maxLogoW = 120;
     const maxLogoH = 32;
-    const fontSize = 8.5;
-    const lineHeight = 11;
+    const fontSize = 9;
+    const lineHeight = 12;
 
     for (const page of pdf.getPages()) {
       const { width, height } = page.getSize();
 
-      // Header logo (top-right)
-      const scale = Math.min(maxLogoW / logoImage.width, maxLogoH / logoImage.height);
-      const lw = logoImage.width * scale;
-      const lh = logoImage.height * scale;
-      page.drawImage(logoImage, {
-        x: width - margin - lw,
-        y: height - margin - lh,
-        width: lw,
-        height: lh,
+      // compute logo size & position (top-right)
+      const s = Math.min(maxLogoW / logoImage.width, maxLogoH / logoImage.height);
+      const lw = logoImage.width * s;
+      const lh = logoImage.height * s;
+      const logoX = width - margin - lw;
+      const logoY = height - margin - lh;
+
+      // ---- HEADER WHITENING (to avoid overlapping existing header) ----
+      page.drawRectangle({
+        x: logoX - pad,
+        y: logoY - pad,
+        width: lw + pad * 2,
+        height: lh + pad * 2,
+        color: rgb(1, 1, 1),
       });
 
-      // Footer (centered, 3 lines)
+      // draw logo
+      page.drawImage(logoImage, { x: logoX, y: logoY, width: lw, height: lh });
+
+      // ---- FOOTER WHITENING (full-width block) ----
+      const footerBlockH = footerLines.length * lineHeight + pad * 2;
+      const footerBaseY = margin;
+      page.drawRectangle({
+        x: 0,
+        y: footerBaseY - pad,
+        width,
+        height: footerBlockH,
+        color: rgb(1, 1, 1),
+      });
+
+      // Footer (centered)
       footerLines.forEach((text, i) => {
         const tw = font.widthOfTextAtSize(text, fontSize);
         const x = Math.max(10, (width - tw) / 2);
-        const y = margin + i * lineHeight;
+        const y = footerBaseY + i * lineHeight;
         page.drawText(text, { x, y, size: fontSize, font, color: orange });
       });
     }
