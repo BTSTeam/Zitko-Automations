@@ -395,7 +395,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       } else if (isDocx) {
         const fd = new FormData()
         fd.append('file', f)
-        const res = await fetch('/api/convert/docx-to-pdf', { method: 'POST', body: fd })
+        const res = await fetch('/api/docx-to-pdf', { method: 'POST', body: fd })
         if (!res.ok) throw new Error((await res.text()) || 'DOCX→PDF conversion failed')
         const blob = await res.blob()
         const url = URL.createObjectURL(blob)
