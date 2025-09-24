@@ -278,25 +278,27 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       const name = [cRaw?.first_name, cRaw?.last_name].filter(Boolean).join(' ').trim()
       const location = cRaw?.candidate_current_address?.town_city ?? ''
 
-      // Optional custom fields mapping
+      // ===== Custom Fields (accurate decoding by key) =====
+      // Your UUIDs:
       const UUID_DRIVING = 'edd971dc2678f05b5757fe31f2c586a8'
       const UUID_AVAIL   = 'a18b8e0d62e27548df904106cfde1584'
       const UUID_HEALTH  = '25bf6829933a29172af40f977e9422bc'
       const UUID_CRIM    = '4a4fa5b084a6efee647f98041ccfbc65'
       const UUID_FIN     = '0a8914a354a50d327453c0342effb2c8'
 
-      const drivingEntry = findByKey(customRaw, UUID_DRIVING)
-      const availabilityEntry = findByKey(customRaw, UUID_AVAIL)
-      const healthEntry = findByKey(customRaw, UUID_HEALTH)
-      const criminalEntry = findByKey(customRaw, UUID_CRIM)
-      const financialEntry = findByKey(customRaw, UUID_FIN)
+      const drivingEntry     = findByKey(customRaw, UUID_DRIVING)
+      const availabilityEntry= findByKey(customRaw, UUID_AVAIL)
+      const healthEntry      = findByKey(customRaw, UUID_HEALTH)
+      const criminalEntry    = findByKey(customRaw, UUID_CRIM)
+      const financialEntry   = findByKey(customRaw, UUID_FIN)
 
-      const drivingCode = firstCode(drivingEntry)
-      const availabilityCode = firstCode(availabilityEntry)
-      const healthCode = firstCode(healthEntry)
-      const criminalCode = firstCode(criminalEntry)
-      const financialCode = firstCode(financialEntry)
+      const drivingCode     = firstCode(drivingEntry)
+      const availabilityCode= firstCode(availabilityEntry)
+      const healthCode      = firstCode(healthEntry)
+      const criminalCode    = firstCode(criminalEntry)
+      const financialCode   = firstCode(financialEntry)
 
+      // Enumerations you specified
       const DRIVING_MAP: Record<number, string> = {
         1: 'Banned', 2: 'Full UK – No Points', 3: 'Full UK - Points', 4: 'Full - Clean',
         5: 'International', 6: 'No Driving License', 7: 'Other',
@@ -306,11 +308,11 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         6: '4 Weeks', 7: '6 Weeks', 8: '8 Weeks', 9: 'Flexible', 10: 'Immediate',
       }
 
-      const drivingLicense = drivingCode ? (DRIVING_MAP[drivingCode] || '') : ''
-      const availability = availabilityCode ? (AVAILABILITY_MAP[availabilityCode] || '') : ''
-      const health = healthCode === 1 ? 'Good' : ''
-      const criminalRecord = criminalCode === 1 ? 'Good' : ''
-      const financialHistory = financialCode === 1 ? 'Good' : ''
+      const drivingLicense     = drivingCode ? (DRIVING_MAP[drivingCode] || '') : ''
+      const availability       = availabilityCode ? (AVAILABILITY_MAP[availabilityCode] || '') : ''
+      const health             = healthCode === 1 ? 'Good' : ''
+      const criminalRecord     = criminalCode === 1 ? 'Good' : ''
+      const financialHistory   = financialCode === 1 ? 'Good' : ''
 
       const nationality =
         cRaw?.nationality ??
@@ -330,8 +332,10 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       }))
 
       // Collapse all panels except Core
-      setOpen({ core: true, profile: false, skills: false, work: false, education: false, extra: false,
-        rawCandidate: false, rawWork: false, rawEdu: false, rawCustom: false })
+      setOpen({
+        core: true, profile: false, skills: false, work: false, education: false, extra: false,
+        rawCandidate: false, rawWork: false, rawEdu: false, rawCustom: false
+      })
     } catch (e: any) {
       setError(e?.message || 'Failed to retrieve data')
     } finally {
@@ -339,6 +343,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     }
   }
 
+  // Custom Fields helpers — your live shape: { field_values: [{ field_key, value: [{ code }] }]}
   function findByKey(customRaw: any, uuid: string) {
     if (!customRaw) return null
     const list = Array.isArray(customRaw?.field_values) ? customRaw.field_values : []
@@ -377,57 +382,57 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   }
 
   async function handleFile(f: File) {
-  setSalesErr(null)
-  if (salesDocUrl) URL.revokeObjectURL(salesDocUrl)
+    setSalesErr(null)
+    if (salesDocUrl) URL.revokeObjectURL(salesDocUrl)
 
-  const isPdfFile = f.type?.includes('pdf') || /\.pdf$/i.test(f.name)
-  const isDocx    = f.type?.includes('officedocument.wordprocessingml.document') || /\.docx$/i.test(f.name)
-  const isDoc     = f.type === 'application/msword' || /\.doc$/i.test(f.name)
+    const isPdfFile = f.type?.includes('pdf') || /\.pdf$/i.test(f.name)
+    const isDocx    = f.type?.includes('officedocument.wordprocessingml.document') || /\.docx$/i.test(f.name)
+    const isDoc     = f.type === 'application/msword' || /\.doc$/i.test(f.name)
 
-  try {
-    setProcessing(true)
+    try {
+      setProcessing(true)
 
-    // helper to brand a PDF Blob via /api/pdf/brand
-    const brandPdfBlob = async (blob: Blob, nameForFile = 'document.pdf') => {
-      const fdB = new FormData()
-      fdB.append('file', new File([blob], nameForFile, { type: 'application/pdf' }))
-      const resB = await fetch('/api/pdf/brand', { method: 'POST', body: fdB })
-      if (!resB.ok) throw new Error((await resB.text()) || 'Branding failed')
-      return await resB.blob()
+      // helper to brand a PDF Blob via /api/pdf/brand
+      const brandPdfBlob = async (blob: Blob, nameForFile = 'document.pdf') => {
+        const fdB = new FormData()
+        fdB.append('file', new File([blob], nameForFile, { type: 'application/pdf' }))
+        const resB = await fetch('/api/pdf/brand', { method: 'POST', body: fdB })
+        if (!resB.ok) throw new Error((await resB.text()) || 'Branding failed')
+        return await resB.blob()
+      }
+
+      if (isPdfFile) {
+        // Brand the uploaded PDF
+        const branded = await brandPdfBlob(f, f.name)
+        const url = URL.createObjectURL(branded)
+        setSalesDocUrl(url)
+        setSalesDocName(f.name.replace(/\.pdf$/i, '') + '-branded.pdf')
+        setSalesDocType('application/pdf')
+      } else if (isDocx) {
+        // 1) Convert DOCX → PDF
+        const fd = new FormData()
+        fd.append('file', f)
+        const res = await fetch('/api/cloudconvert/docx-to-pdf', { method: 'POST', body: fd })
+        if (!res.ok) throw new Error((await res.text()) || 'DOCX→PDF conversion failed')
+        const converted = await res.blob()
+
+        // 2) Brand the converted PDF
+        const branded = await brandPdfBlob(converted, f.name.replace(/\.docx$/i, '.pdf'))
+        const url = URL.createObjectURL(branded)
+        setSalesDocUrl(url)
+        setSalesDocName(f.name.replace(/\.docx$/i, '') + '-branded.pdf')
+        setSalesDocType('application/pdf')
+      } else if (isDoc) {
+        throw new Error('Legacy .doc files are not supported. Please upload a PDF or DOCX.')
+      } else {
+        throw new Error('Unsupported file type. Please upload a PDF or DOCX.')
+      }
+    } catch (err: any) {
+      setSalesErr(err?.message || 'Upload failed')
+    } finally {
+      setProcessing(false)
     }
-
-    if (isPdfFile) {
-      // Brand the uploaded PDF
-      const branded = await brandPdfBlob(f, f.name)
-      const url = URL.createObjectURL(branded)
-      setSalesDocUrl(url)
-      setSalesDocName(f.name.replace(/\.pdf$/i, '') + '-branded.pdf')
-      setSalesDocType('application/pdf')
-    } else if (isDocx) {
-      // 1) Convert DOCX → PDF (CloudConvert)
-      const fd = new FormData()
-      fd.append('file', f)
-      const res = await fetch('/api/cloudconvert/docx-to-pdf', { method: 'POST', body: fd })
-      if (!res.ok) throw new Error((await res.text()) || 'DOCX→PDF conversion failed')
-      const converted = await res.blob()
-
-      // 2) Brand the converted PDF
-      const branded = await brandPdfBlob(converted, f.name.replace(/\.docx$/i, '.pdf'))
-      const url = URL.createObjectURL(branded)
-      setSalesDocUrl(url)
-      setSalesDocName(f.name.replace(/\.docx$/i, '') + '-branded.pdf')
-      setSalesDocType('application/pdf')
-    } else if (isDoc) {
-      throw new Error('Legacy .doc files are not supported. Please upload a PDF or DOCX.')
-    } else {
-      throw new Error('Unsupported file type. Please upload a PDF or DOCX.')
-    }
-  } catch (err: any) {
-    setSalesErr(err?.message || 'Upload failed')
-  } finally {
-    setProcessing(false)
   }
-}
 
   async function onUploadChange(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0]
@@ -449,19 +454,19 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   )
 
   // Branded viewer card (logo right, centred footer)
-function SalesViewerCard() {
-  return (
-    <div className="border rounded-2xl overflow-hidden bg-white">
-      {salesDocUrl ? (
-        <iframe className="w-full h-[75vh] bg-white" src={salesDocUrl} title={salesDocName || 'Document'} />
-      ) : (
-        <div className="p-6 text-sm text-gray-600 bg-white">
-          No document imported yet. Use “Import CV” above.
-        </div>
-      )}
-    </div>
-  );
-}
+  function SalesViewerCard() {
+    return (
+      <div className="border rounded-2xl overflow-hidden bg-white">
+        {salesDocUrl ? (
+          <iframe className="w-full h-[75vh] bg-white" src={salesDocUrl} title={salesDocName || 'Document'} />
+        ) : (
+          <div className="p-6 text-sm text-gray-600 bg-white">
+            No document imported yet. Use “Import CV” above.
+          </div>
+        )}
+      </div>
+    );
+  }
 
   // ========== preview (right) ==========
   function CVTemplatePreview(): JSX.Element {
@@ -870,6 +875,63 @@ function SalesViewerCard() {
                 </div>
               )}
             </section>
+
+            {/* ===== Raw JSON sections (restored) ===== */}
+            <section>
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold">Raw JSON — Candidate</h3>
+                <button type="button" className="text-xs text-gray-500 underline" onClick={() => toggle('rawCandidate')}>
+                  {open.rawCandidate ? 'Hide' : 'Show'}
+                </button>
+              </div>
+              {open.rawCandidate && (
+                <pre className="mt-3 text-[11px] leading-[1.2] bg-gray-900 text-gray-100 p-3 rounded-lg overflow-x-auto max-h-[320px]">
+                  {safeStringify(rawCandidate)}
+                </pre>
+              )}
+            </section>
+
+            <section>
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold">Raw JSON — Work</h3>
+                <button type="button" className="text-xs text-gray-500 underline" onClick={() => toggle('rawWork')}>
+                  {open.rawWork ? 'Hide' : 'Show'}
+                </button>
+              </div>
+              {open.rawWork && (
+                <pre className="mt-3 text-[11px] leading-[1.2] bg-gray-900 text-gray-100 p-3 rounded-lg overflow-x-auto max-h-[320px]">
+                  {safeStringify(rawWork)}
+                </pre>
+              )}
+            </section>
+
+            <section>
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold">Raw JSON — Education</h3>
+                <button type="button" className="text-xs text-gray-500 underline" onClick={() => toggle('rawEdu')}>
+                  {open.rawEdu ? 'Hide' : 'Show'}
+                </button>
+              </div>
+              {open.rawEdu && (
+                <pre className="mt-3 text-[11px] leading-[1.2] bg-gray-900 text-gray-100 p-3 rounded-lg overflow-x-auto max-h-[320px]">
+                  {safeStringify(rawEdu)}
+                </pre>
+              )}
+            </section>
+
+            <section>
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold">Raw JSON — Custom Fields</h3>
+                <button type="button" className="text-xs text-gray-500 underline" onClick={() => toggle('rawCustom')}>
+                  {open.rawCustom ? 'Hide' : 'Show'}
+                </button>
+              </div>
+              {open.rawCustom && (
+                <pre className="mt-3 text-[11px] leading-[1.2] bg-gray-900 text-gray-100 p-3 rounded-lg overflow-x-auto max-h-[320px]">
+                  {safeStringify(rawCustom)}
+                </pre>
+              )}
+            </section>
           </div>
         )}
 
@@ -880,4 +942,9 @@ function SalesViewerCard() {
       </div>
     </div>
   )
+}
+
+/* ===== utils ===== */
+function safeStringify(x: any) {
+  try { return JSON.stringify(x, null, 2) } catch { return String(x ?? '') }
 }
