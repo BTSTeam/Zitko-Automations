@@ -8,15 +8,15 @@ import { getSession } from '@/lib/session';
 import { config, requiredEnv } from '@/lib/config';
 import { refreshIdToken } from '@/lib/vincereRefresh';
 
-// Build the base URL from VINCERE_TENANT_API_BASE
+// ================== Vincere base ==================
 const BASE = config.VINCERE_TENANT_API_BASE.replace(/\/$/, '');
 
+// ================== Token-aware fetch ==================
 async function fetchWithAutoRefresh(
   url: string,
   idToken: string,
   userKey: string,
 ) {
-  // Set headers expected by Vincere
   const headers = new Headers();
   headers.set('id-token', idToken);
   headers.set(
@@ -30,7 +30,6 @@ async function fetchWithAutoRefresh(
 
   let resp = await doFetch(headers);
 
-  // If the token is expired/invalid, refresh once and retry
   if (resp.status === 401 || resp.status === 403) {
     try {
       const refreshed = await refreshIdToken(userKey);
@@ -43,18 +42,179 @@ async function fetchWithAutoRefresh(
         }
       }
     } catch {
-      /* ignore refresh errors and fall through */
+      // ignore; fall through with original resp
     }
   }
 
   return resp;
 }
 
-// Trim long error messages for client
 function safeError(s: string) {
   return s.length > 800 ? s.slice(0, 800) + '…' : s;
 }
 
+// ================== Custom Field key decoding ==================
+// Keys you provided for Additional Information
+const CF_KEYS = {
+  DRIVING_LICENSE: 'edd971dc2678f05b5757fe31f2c586a8',
+  AVAILABILITY:    'a18b8e0d62e27548df904106cfde1584',
+  HEALTH:          '25bf6829933a29172af40f977e9422bc',
+  CRIMINAL:        '4a4fa5b084a6efee647f98041ccfbc65',
+  FINANCIAL:       '0a8914a354a50d327453c0342effb2c8',
+} as const;
+
+// Enumerations you provided
+const DRIVING_LICENSE_MAP: Record<number, string> = {
+  1: 'Banned',
+  2: 'Full UK – No Points',
+  3: 'Full UK - Points',
+  4: 'Full - Clean',
+  5: 'International',
+  6: 'No Driving License',
+  7: 'Other',
+};
+
+const AVAILABILITY_MAP: Record<number, string> = {
+  1: '1 Month',
+  2: '1 Week',
+  3: '12 Weeks',
+  4: '2 Weeks',
+  5: '3 Weeks',
+  6: '4 Weeks',
+  7: '6 Weeks',
+  8: '8 Weeks',
+  9: 'Flexible',
+  10: 'Immediate',
+};
+
+// CHECK_BOX per your spec: 1 => "Good", else blank
+const CHECKBOX_VALUE = (n?: number | null) => (n === 1 ? 'Good' : '');
+
+function toFieldsArray(customfields: any): any[] {
+  if (Array.isArray(customfields?.data)) return customfields.data;
+  if (Array.isArray(customfields?.items)) return customfields.items;
+  if (Array.isArray(customfields)) return customfields;
+  return [];
+}
+
+function firstNumber(arr: any): number | undefined {
+  if (!Array.isArray(arr) || arr.length === 0) return undefined;
+  const n = Number(arr[0]);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function buildAdditionalInfoFromKeys(customfields: any): {
+  drivingLicense?: string;
+  availability?: string;
+  health?: string;
+  criminalRecord?: string;
+  financialHistory?: string;
+} {
+  const fields = toFieldsArray(customfields);
+  if (!fields.length) return {};
+
+  const byKey = new Map<string, any>();
+  for (const f of fields) {
+    const key = (f?.key ?? f?.name ?? f?.id ?? '').toString().trim();
+    if (key) byKey.set(key, f);
+  }
+
+  // DRIVING LICENSE (COMBO_BOX)
+  let drivingLicense = '';
+  const dl = byKey.get(CF_KEYS.DRIVING_LICENSE);
+  if (dl?.type === 'COMBO_BOX') {
+    const code = firstNumber(dl.field_values ?? dl.field_value_ids);
+    drivingLicense = code ? (DRIVING_LICENSE_MAP[code] ?? '') : '';
+  }
+
+  // AVAILABILITY (COMBO_BOX)
+  let availability = '';
+  const av = byKey.get(CF_KEYS.AVAILABILITY);
+  if (av?.type === 'COMBO_BOX') {
+    const code = firstNumber(av.field_values ?? av.field_value_ids);
+    availability = code ? (AVAILABILITY_MAP[code] ?? '') : '';
+  }
+
+  // HEALTH (CHECK_BOX) -> 1 = Good
+  let health = '';
+  const h = byKey.get(CF_KEYS.HEALTH);
+  if (h?.type === 'CHECK_BOX') {
+    const code = firstNumber(h.field_values ?? h.field_value_ids);
+    health = CHECKBOX_VALUE(code);
+  }
+
+  // CRIMINAL RECORD (CHECK_BOX) -> 1 = Good
+  let criminalRecord = '';
+  const cr = byKey.get(CF_KEYS.CRIMINAL);
+  if (cr?.type === 'CHECK_BOX') {
+    const code = firstNumber(cr.field_values ?? cr.field_value_ids);
+    criminalRecord = CHECKBOX_VALUE(code);
+  }
+
+  // FINANCIAL HISTORY (CHECK_BOX) -> 1 = Good
+  let financialHistory = '';
+  const fh = byKey.get(CF_KEYS.FINANCIAL);
+  if (fh?.type === 'CHECK_BOX') {
+    const code = firstNumber(fh.field_values ?? fh.field_value_ids);
+    financialHistory = CHECKBOX_VALUE(code);
+  }
+
+  return {
+    drivingLicense: drivingLicense || undefined,
+    availability: availability || undefined,
+    health: health || undefined,
+    criminalRecord: criminalRecord || undefined,
+    financialHistory: financialHistory || undefined,
+  };
+}
+
+/** Optional: append a free-text CF if you keep one labelled "Additional Information"/"Notes" etc. */
+function extractFreeTextAdditionalInformation(customfields: any): string {
+  const fields: any[] = toFieldsArray(customfields);
+  if (!fields.length) return '';
+
+  const labelMatches = [
+    'Additional Information',
+    'Additional Info',
+    'Notes',
+    'Free Text',
+    'Extra Information',
+  ].map((x) => x.toLowerCase());
+
+  const keyMatches = [
+    'additional_information',
+    'additionalInformation',
+    'additional_info',
+    'notes',
+    'free_text',
+  ].map((x) => x.toLowerCase());
+
+  // Try label match
+  for (const f of fields) {
+    const label = (f?.label ?? f?.name ?? '').toString().trim().toLowerCase();
+    const value = f?.value ?? f?.text ?? f?.stringValue ?? '';
+    if (label && labelMatches.includes(label) && typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+  }
+  // Try key match
+  for (const f of fields) {
+    const key = (f?.name ?? f?.id ?? '').toString().trim().toLowerCase();
+    const value = f?.value ?? f?.text ?? f?.stringValue ?? '';
+    if (key && keyMatches.includes(key) && typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+  }
+  return '';
+}
+
+function joinNonEmpty(lines: (string | undefined)[], sep = '\n'): string {
+  return lines.filter((x) => typeof x === 'string' && x.trim().length > 0) as string[]
+    .join(sep)
+    .trim();
+}
+
+// ================== Handler ==================
 export async function POST(req: NextRequest) {
   try {
     requiredEnv();
@@ -79,7 +239,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ---------- 1) Core candidate ----------
+    // ---- 1) Core candidate ----
     const candUrl = `${BASE}/api/v2/candidate/${encodeURIComponent(idRaw)}`;
     let res = await fetchWithAutoRefresh(candUrl, idToken, userKey);
     if (!res.ok) {
@@ -91,7 +251,7 @@ export async function POST(req: NextRequest) {
     }
     const candidate = await res.json();
 
-    // ---------- 2) Education, Work, CustomFields (parallel) ----------
+    // ---- 2) Education, Work, CustomFields (parallel) ----
     const eduUrl = `${BASE}/api/v2/candidate/${encodeURIComponent(idRaw)}/educationdetails`;
     const workUrl = `${BASE}/api/v2/candidate/${encodeURIComponent(idRaw)}/workexperiences`;
     const customUrl = `${BASE}/api/v2/candidate/${encodeURIComponent(idRaw)}/customfields`;
@@ -130,7 +290,7 @@ export async function POST(req: NextRequest) {
       customRes.json(),
     ]);
 
-    // ---------- Normalise fields so the CV form can rely on consistent keys ----------
+    // ---- Normalised candidate (stable keys for UI) ----
     const normalised = {
       id: candidate?.id ?? idRaw,
       name:
@@ -168,14 +328,31 @@ export async function POST(req: NextRequest) {
             description: w?.description || '',
           }))
         : [],
-      // NOTE: not mapping customfields into Additional Information yet;
-      // returning raw below so you can specify mapping later.
     };
 
+    // ---- Additional Information (key-based decode + optional free-text) ----
+    const decoded = buildAdditionalInfoFromKeys(customfields);
+
+    const structuredLines = [
+      decoded.drivingLicense ? `Driving License: ${decoded.drivingLicense}` : undefined,
+      decoded.availability   ? `Availability: ${decoded.availability}`     : undefined,
+      decoded.health         ? `Health: ${decoded.health}`                 : undefined,
+      decoded.criminalRecord ? `Criminal Record: ${decoded.criminalRecord}`: undefined,
+      decoded.financialHistory ? `Financial History: ${decoded.financialHistory}` : undefined,
+    ];
+
+    const freeText = extractFreeTextAdditionalInformation(customfields); // optional
+    const additionalInfo = joinNonEmpty(
+      [...structuredLines, freeText ? `Notes: ${freeText}` : undefined],
+      '\n'
+    );
+
+    // ---- Response ----
     return NextResponse.json({
       ok: true,
       candidate: normalised,
-      raw: { candidate, education, work, customfields }, // <-- includes customfields
+      additionalInfo,
+      raw: { candidate, education, work, customfields }, // for Raw JSON panels
     });
   } catch (err: any) {
     const code = typeof err?.status === 'number' ? err.status : 500;
