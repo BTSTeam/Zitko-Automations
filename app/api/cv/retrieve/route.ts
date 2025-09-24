@@ -209,9 +209,10 @@ function extractFreeTextAdditionalInformation(customfields: any): string {
 }
 
 function joinNonEmpty(lines: (string | undefined)[], sep = '\n'): string {
-  return lines.filter((x) => typeof x === 'string' && x.trim().length > 0) as string[]
-    .join(sep)
-    .trim();
+  const arr = lines.filter(
+    (x): x is string => typeof x === 'string' && x.trim().length > 0
+  );
+  return arr.join(sep).trim();
 }
 
 // ================== Handler ==================
