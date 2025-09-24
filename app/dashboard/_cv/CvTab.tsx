@@ -1,9 +1,8 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
-type TemplateKey = 'permanent' | 'contract' | 'us'
-type ShellTemplate = TemplateKey | 'standard'
+type TemplateKey = 'standard' | 'sales'
 
 type Employment = {
   title?: string
@@ -33,13 +32,10 @@ type OpenState = {
   rawCustom: boolean
 }
 
-export default function CvTab({ templateFromShell }: { templateFromShell?: ShellTemplate }): JSX.Element {
-  // Normalise shell template ('standard' → 'permanent')
-  const initialTemplate = (templateFromShell === 'standard' ? 'permanent' : templateFromShell) as TemplateKey | null
-
+export default function CvTab({ templateFromShell }: { templateFromShell?: TemplateKey }): JSX.Element {
   // ========== UI state ==========
-  const [template, setTemplate] = useState<TemplateKey | null>(initialTemplate ?? null)
-  const [candidateId, setCandidateId] = useState<string>('')
+  const [template, setTemplate] = useState<TemplateKey | null>(templateFromShell ?? null)
+  const [candidateId, setCandidateId] = useState<string>('') // used by Standard only
   const [loading, setLoading] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -49,10 +45,10 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Shell
   const [rawEdu, setRawEdu] = useState<any[]>([])
   const [rawCustom, setRawCustom] = useState<any>(null)
 
-  // Job Profile helper
+  // Job Profile helper (Standard)
   const [jobId, setJobId] = useState<string>('')
 
-  // Form that drives preview
+  // Form that drives preview (Standard)
   const [form, setForm] = useState<{
     name: string
     location: string
@@ -70,17 +66,10 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Shell
     }
   }>(getEmptyForm())
 
+  // Collapsible sections (Standard)
   const [open, setOpen] = useState<OpenState>({
-    core: true,
-    profile: true,
-    skills: true,
-    work: true,
-    education: true,
-    extra: true,
-    rawCandidate: false,
-    rawWork: false,
-    rawEdu: false,
-    rawCustom: false,
+    core: true, profile: true, skills: true, work: true, education: true, extra: true,
+    rawCandidate: false, rawWork: false, rawEdu: false, rawCustom: false,
   })
 
   function getEmptyForm() {
@@ -110,12 +99,12 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Shell
     setRawEdu([])
     setRawCustom(null)
     setError(null)
+    resetSalesState()
   }
 
   useEffect(() => {
     if (templateFromShell) {
-      const t = (templateFromShell === 'standard' ? 'permanent' : templateFromShell) as TemplateKey
-      resetAllForTemplate(t)
+      resetAllForTemplate(templateFromShell)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [templateFromShell])
@@ -154,13 +143,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Shell
     return list.map(w => {
       const start = formatDate(w?.work_from)
       const end = w?.work_to == null ? 'Present' : formatDate(w?.work_to)
-      return {
-        title: w?.job_title || '',
-        company: w?.company_name || '',
-        start,
-        end,
-        description: w?.description || '',
-      }
+      return { title: w?.job_title || '', company: w?.company_name || '', start, end, description: w?.description || '' }
     })
   }
 
@@ -191,25 +174,85 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Shell
     })
   }
 
+  // ---------- robust custom-field normalizers ----------
+  type CustomEntry = {
+    field_key?: string // Vincere v2 style
+    key?: string       // generic
+    value?: any
+    field_values?: any[] | null
+    field_value_ids?: any[] | null
+    [k: string]: any
+  }
+
+  /** Normalise any of the common Vincere custom field shapes into a flat array of entries */
+  function customArray(custom: any): CustomEntry[] {
+    if (!custom) return []
+
+    // 1) Some endpoints return { field_values: [{ field_key, value }, ...] }
+    if (Array.isArray(custom.field_values)) return custom.field_values as CustomEntry[]
+
+    // 2) Some return { data: [...] }
+    if (Array.isArray(custom.data)) return custom.data as CustomEntry[]
+
+    // 3) Already an array
+    if (Array.isArray(custom)) return custom as CustomEntry[]
+
+    // 4) Fallback: object map -> entries
+    if (typeof custom === 'object') {
+      return Object.entries(custom).map(([k, v]) => {
+        const obj = (typeof v === 'object' && v) ? (v as any) : { value: v }
+        return { key: k, ...obj }
+      })
+    }
+
+    return []
+  }
+
+  /** Find by field UUID across shapes (field_key or key) */
+  function findByUuid(custom: any, uuid: string): CustomEntry | null {
+    const arr = customArray(custom)
+    return arr.find(e => e?.field_key === uuid || e?.key === uuid) ?? null
+  }
+
+  /** Pull the first numeric code from entry.value/field_values across shapes */
+  function firstCodeUniversal(entry: CustomEntry | null): number | null {
+    if (!entry) return null
+
+    // Common shape: value is an array of objects with { code }
+    if (Array.isArray(entry.value) && entry.value.length) {
+      const raw = entry.value[0]
+      const n = Number((raw && (raw.code ?? raw.value ?? raw)) ?? NaN)
+      return Number.isFinite(n) ? n : null
+    }
+
+    // If value is primitive
+    if (typeof entry.value === 'string' || typeof entry.value === 'number') {
+      const n = Number(entry.value)
+      return Number.isFinite(n) ? n : null
+    }
+
+    // field_values (string/number/ids) as fallback
+    if (Array.isArray(entry.field_values) && entry.field_values.length) {
+      const n = Number(entry.field_values[0])
+      return Number.isFinite(n) ? n : null
+    }
+    if (Array.isArray(entry.field_value_ids) && entry.field_value_ids.length) {
+      const n = Number(entry.field_value_ids[0])
+      return Number.isFinite(n) ? n : null
+    }
+
+    return null
+  }
+
   // ---------- state helpers ----------
   function setField(path: string, value: any) {
     setForm(prev => {
-      const next: any = { ...prev }
-      if (path.includes('.')) {
-        const [a, b] = path.split('.', 2)
-        next[a] = { ...next[a], [b]: value }
-      } else {
-        next[path] = value
-      }
-      return next
-    })
-  }
-
-  function setEmployment(index: number, key: keyof Employment, value: string) {
-    setForm(prev => {
-      const list = [...prev.employment]
-      list[index] = { ...list[index], [key]: value }
-      return { ...prev, employment: list }
+      const clone = structuredClone(prev) as any
+      const seg = path.split('.')
+      let cur = clone
+      for (let i = 0; i < seg.length - 1; i++) cur = cur[seg[i]]
+      cur[seg[seg.length - 1]] = value
+      return clone
     })
   }
 
@@ -217,145 +260,18 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Shell
     setForm(prev => ({ ...prev, employment: [...prev.employment, { title: '', company: '', start: '', end: '', description: '' }] }))
   }
 
-  function removeEmployment(index: number) {
-    setForm(prev => ({ ...prev, employment: prev.employment.filter((_, i) => i !== index) }))
-  }
-
-  function setEducation(index: number, key: keyof Education, value: string) {
-    setForm(prev => {
-      const list = [...prev.education]
-      list[index] = { ...list[index], [key]: value }
-      return { ...prev, education: list }
-    })
-  }
-
-  function addEducation() {
-    setForm(prev => ({ ...prev, education: [...prev.education, { course: '', institution: '', start: '', end: '' }] }))
-  }
-
-  function removeEducation(index: number) {
-    setForm(prev => ({ ...prev, education: prev.education.filter((_, i) => i !== index) }))
-  }
-
-  // ---------- Custom fields helpers ----------
-  type CustomEntry = {
-    key?: string
-    type?: 'COMBO_BOX' | 'CHECK_BOX' | string
-    field_values?: any[] | null
-    field_value_ids?: any[] | null
-    value?: any
-    [k: string]: any
-  }
-
-  // Deep flattener: handles {data:[...]}, {sections:[{fields:[...]}]}, arrays, or objects keyed by uuid.
-  function flattenCustomEntries(input: any): CustomEntry[] {
-    const out: Record<string, CustomEntry> = {}
-
-    const visit = (node: any) => {
-      if (!node) return
-      if (Array.isArray(node)) {
-        node.forEach(visit)
-        return
-      }
-      if (typeof node === 'object') {
-        const looksLikeField =
-          ('key' in node) &&
-          (('field_values' in node) || ('field_value_ids' in node) || ('value' in node) || ('type' in node))
-        if (looksLikeField) {
-          const k = String((node as any).key || '')
-          if (k) out[k] = { ...(node as any) }
-        }
-        // recurse common containers
-        const possibleChildren = [
-          (node as any).data,
-          (node as any).fields,
-          (node as any).items,
-          (node as any).values,
-          (node as any).sections,
-        ]
-        possibleChildren.forEach(visit)
-
-        // fallback: object keyed by uuid
-        for (const [k, v] of Object.entries(node)) {
-          if (typeof v === 'object' && v) {
-            const vv: any = { key: k, ...(v as any) }
-            const vlField =
-              ('field_values' in vv) || ('field_value_ids' in vv) || ('value' in vv) || ('type' in vv)
-            if (vlField) out[k] = vv
-            visit(v)
-          }
-        }
-      }
-    }
-
-    visit(input)
-    return Object.values(out)
-  }
-
-  const flattenedCustom = useMemo(() => flattenCustomEntries(rawCustom), [rawCustom])
-
-  function findByKey(uuid: string): CustomEntry | null {
-    return flattenedCustom.find(e => e?.key === uuid) ?? null
-  }
-
-  // returns the first selected numeric code from field_values, or null
-  function firstCode(entry: CustomEntry | null): number | null {
-    if (!entry) return null
-    if (Array.isArray(entry.field_values) && entry.field_values.length > 0) {
-      const raw = entry.field_values[0]
-      const n = parseInt(String(raw), 10)
-      return Number.isFinite(n) ? n : null
-    }
-    if (entry.value != null) {
-      const n = parseInt(String(entry.value), 10)
-      return Number.isFinite(n) ? n : null
-    }
-    return null
-  }
-
-  // Static mappings
-  const DRIVING_MAP: Record<number, string> = {
-    1: 'Banned',
-    2: 'Full UK – No Points',
-    3: 'Full UK - Points',
-    4: 'Full - Clean',
-    5: 'International',
-    6: 'No Driving License',
-    7: 'Other',
-  }
-  const AVAILABILITY_MAP: Record<number, string> = {
-    1: '1 Month',
-    2: '1 Week',
-    3: '12 Weeks',
-    4: '2 Weeks',
-    5: '3 Weeks',
-    6: '4 Weeks',
-    7: '6 Weeks',
-    8: '8 Weeks',
-    9: 'Flexible',
-    10: 'Immediate',
-  }
-
-  // ========== AI profile generation handlers ==========
+  // ========== AI profile (Standard) ==========
   async function generateProfile() {
     try {
-      setLoading(true)
-      setError(null)
-
-      const res = await fetch('/api/cv/profile', {
+      setLoading(true); setError(null)
+      const aiRes = await fetch('/api/cv/profile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          mode: 'profile',
-          candidate: rawCandidate,
-          work: rawWork,
-          education: rawEdu,
-        }),
+        body: JSON.stringify({ mode: 'profile', candidate: rawCandidate, work: rawWork, education: rawEdu }),
       })
-
-      const data = await res.json()
-      if (!res.ok || !data?.ok) throw new Error(data?.error || 'Profile generation failed.')
-      setField('profile', data.profile || '')
+      const aiData = await aiRes.json()
+      if (!aiRes.ok || !aiData?.ok) throw new Error(aiData?.error || 'Profile generation failed.')
+      setField('profile', aiData.profile || '')
     } catch (e: any) {
       setError(e?.message || 'Profile generation failed.')
     } finally {
@@ -364,17 +280,15 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Shell
   }
 
   async function generateJobProfile() {
+    if (!jobId) return
     try {
-      if (!jobId) throw new Error('Please enter a Job ID.')
-      setLoading(true)
-      setError(null)
+      setLoading(true); setError(null)
 
       let jobRes = await fetch('/api/job/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ jobId }),
       })
-
       if (!jobRes.ok) {
         jobRes = await fetch(`/api/job/extract?id=${encodeURIComponent(jobId)}`, { cache: 'no-store' })
       }
@@ -385,13 +299,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Shell
       const aiRes = await fetch('/api/cv/profile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          mode: 'jobprofile',
-          candidate: rawCandidate,
-          work: rawWork,
-          education: rawEdu,
-          job: jobJson,
-        }),
+        body: JSON.stringify({ mode: 'jobprofile', candidate: rawCandidate, work: rawWork, education: rawEdu, job: jobJson }),
       })
 
       const aiData = await aiRes.json()
@@ -404,15 +312,11 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Shell
     }
   }
 
-  // ========== data fetch (single server call) ==========
+  // ========== data fetch (Standard) ==========
   async function fetchData() {
     if (!candidateId) return
-    if (!template) {
-      alert('Please select a template first.')
-      return
-    }
-    setLoading(true)
-    setError(null)
+    if (!template) { alert('Please select a template first.'); return }
+    setLoading(true); setError(null)
     try {
       const res = await fetch('/api/cv/retrieve', {
         method: 'POST',
@@ -444,24 +348,33 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Shell
       const name = [cRaw?.first_name, cRaw?.last_name].filter(Boolean).join(' ').trim()
       const location = cRaw?.candidate_current_address?.town_city ?? ''
 
-      // ---- Map Additional Information using field_values ----
+      // ---- Robust Custom Fields mapping (works across variants) ----
       const UUID_DRIVING = 'edd971dc2678f05b5757fe31f2c586a8'
       const UUID_AVAIL   = 'a18b8e0d62e27548df904106cfde1584'
       const UUID_HEALTH  = '25bf6829933a29172af40f977e9422bc'
       const UUID_CRIM    = '4a4fa5b084a6efee647f98041ccfbc65'
       const UUID_FIN     = '0a8914a354a50d327453c0342effb2c8'
 
-      const drivingEntry      = findByKey(UUID_DRIVING)
-      const availabilityEntry = findByKey(UUID_AVAIL)
-      const healthEntry       = findByKey(UUID_HEALTH)
-      const criminalEntry     = findByKey(UUID_CRIM)
-      const financialEntry    = findByKey(UUID_FIN)
+      const drivingEntry    = findByUuid(customRaw, UUID_DRIVING)
+      const availabilityEnt = findByUuid(customRaw, UUID_AVAIL)
+      const healthEntry     = findByUuid(customRaw, UUID_HEALTH)
+      const criminalEntry   = findByUuid(customRaw, UUID_CRIM)
+      const financialEntry  = findByUuid(customRaw, UUID_FIN)
 
-      const drivingCode      = firstCode(drivingEntry)
-      const availabilityCode = firstCode(availabilityEntry)
-      const healthCode       = firstCode(healthEntry)
-      const criminalCode     = firstCode(criminalEntry)
-      const financialCode    = firstCode(financialEntry)
+      const drivingCode     = firstCodeUniversal(drivingEntry)
+      const availabilityCode= firstCodeUniversal(availabilityEnt)
+      const healthCode      = firstCodeUniversal(healthEntry)
+      const criminalCode    = firstCodeUniversal(criminalEntry)
+      const financialCode   = firstCodeUniversal(financialEntry)
+
+      const DRIVING_MAP: Record<number, string> = {
+        1: 'Banned', 2: 'Full UK – No Points', 3: 'Full UK - Points', 4: 'Full - Clean',
+        5: 'International', 6: 'No Driving License', 7: 'Other',
+      }
+      const AVAILABILITY_MAP: Record<number, string> = {
+        1: '1 Month', 2: '1 Week', 3: '12 Weeks', 4: '2 Weeks', 5: '3 Weeks',
+        6: '4 Weeks', 7: '6 Weeks', 8: '8 Weeks', 9: 'Flexible', 10: 'Immediate',
+      }
 
       const drivingLicense   = drivingCode ? (DRIVING_MAP[drivingCode] || '') : ''
       const availability     = availabilityCode ? (AVAILABILITY_MAP[availabilityCode] || '') : ''
@@ -469,7 +382,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Shell
       const criminalRecord   = criminalCode === 1 ? 'Good' : ''
       const financialHistory = financialCode === 1 ? 'Good' : ''
 
-      // Nationality from candidate JSON (title "nationality")
       const nationality =
         cRaw?.nationality ??
         cRaw?.candidate_nationality ??
@@ -484,28 +396,13 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Shell
         keySkills: Array.isArray(cRaw?.skills) ? cRaw.skills.join(', ') : (cRaw?.skills || prev.keySkills || ''),
         employment: mapWorkExperiences(workArr),
         education: mapEducation(eduArr),
-        additional: {
-          drivingLicense,
-          nationality,
-          availability,
-          health,
-          criminalRecord,
-          financialHistory,
-        },
+        additional: { drivingLicense, nationality, availability, health, criminalRecord, financialHistory },
       }))
 
       // Collapse all panels except Core
       setOpen({
-        core: true,
-        profile: false,
-        skills: false,
-        work: false,
-        education: false,
-        extra: false,
-        rawCandidate: false,
-        rawWork: false,
-        rawEdu: false,
-        rawCustom: false,
+        core: true, profile: false, skills: false, work: false, education: false, extra: false,
+        rawCandidate: false, rawWork: false, rawEdu: false, rawCustom: false
       })
     } catch (e: any) {
       setError(e?.message || 'Failed to retrieve data')
@@ -514,34 +411,128 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Shell
     }
   }
 
-  // ---------- tiny code block for RAW JSON ----------
-  function CodeBlock({ data }: { data: any }) {
+  // ====================== SALES ( + auto DOCX→PDF) ======================
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const [salesErr, setSalesErr] = useState<string | null>(null)
+  const [salesDocUrl, setSalesDocUrl] = useState<string | null>(null) // object URL
+  const [salesDocName, setSalesDocName] = useState<string>('')        // filename (final)
+  const [salesDocType, setSalesDocType] = useState<string>('')        // mime type
+  const [processing, setProcessing] = useState<boolean>(false)
+  const [dragOver, setDragOver] = useState<boolean>(false)
+
+  function resetSalesState() {
+    setSalesErr(null)
+    if (salesDocUrl) URL.revokeObjectURL(salesDocUrl)
+    setSalesDocUrl(null)
+    setSalesDocName('')
+    setSalesDocType('')
+    setProcessing(false)
+    setDragOver(false)
+  }
+
+  function onClickUpload() {
+    fileInputRef.current?.click()
+  }
+
+  async function handleFile(f: File) {
+    setSalesErr(null)
+    if (salesDocUrl) URL.revokeObjectURL(salesDocUrl)
+
+    const isPdfFile = f.type?.includes('pdf') || /\.pdf$/i.test(f.name)
+    const isDocx    = f.type?.includes('officedocument.wordprocessingml.document') || /\.docx$/i.test(f.name)
+    const isDoc     = f.type === 'application/msword' || /\.doc$/i.test(f.name)
+
+    try {
+      setProcessing(true)
+
+      // helper to brand a PDF Blob via /api/pdf/brand
+      const brandPdfBlob = async (blob: Blob, nameForFile = 'document.pdf') => {
+        const fdB = new FormData()
+        fdB.append('file', new File([blob], nameForFile, { type: 'application/pdf' }))
+        const resB = await fetch('/api/pdf/brand', { method: 'POST', body: fdB })
+        if (!resB.ok) throw new Error((await resB.text()) || 'Branding failed')
+        return await resB.blob()
+      }
+
+      if (isPdfFile) {
+        const branded = await brandPdfBlob(f, f.name)
+        const url = URL.createObjectURL(branded)
+        setSalesDocUrl(url)
+        setSalesDocName(f.name.replace(/\.pdf$/i, '') + '-branded.pdf')
+        setSalesDocType('application/pdf')
+      } else if (isDocx) {
+        // 1) Convert DOCX → PDF
+        const fd = new FormData()
+        fd.append('file', f)
+        const res = await fetch('/api/cloudconvert/docx-to-pdf', { method: 'POST', body: fd })
+        if (!res.ok) throw new Error((await res.text()) || 'DOCX→PDF conversion failed')
+        const converted = await res.blob()
+
+        // 2) Brand the converted PDF
+        const branded = await brandPdfBlob(converted, f.name.replace(/\.docx$/i, '.pdf'))
+        const url = URL.createObjectURL(branded)
+        setSalesDocUrl(url)
+        setSalesDocName(f.name.replace(/\.docx$/i, '') + '-branded.pdf')
+        setSalesDocType('application/pdf')
+      } else if (isDoc) {
+        throw new Error('Legacy .doc files are not supported. Please upload a PDF or DOCX.')
+      } else {
+        throw new Error('Unsupported file type. Please upload a PDF or DOCX.')
+      }
+    } catch (err: any) {
+      setSalesErr(err?.message || 'Upload failed')
+    } finally {
+      setProcessing(false)
+    }
+  }
+
+  async function onUploadChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]
+    if (!f) return
+    await handleFile(f)
+    e.currentTarget.value = ''
+  }
+
+  const onDrop: React.DragEventHandler<HTMLDivElement> = async (ev) => {
+    ev.preventDefault()
+    setDragOver(false)
+    const f = ev.dataTransfer.files?.[0]
+    if (f) await handleFile(f)
+  }
+
+  const isPdf = useMemo(
+    () => (salesDocType?.includes('pdf') || /\.pdf$/i.test(salesDocName)),
+    [salesDocType, salesDocName]
+  )
+
+  // Branded viewer card (logo right, centred footer)
+  function SalesViewerCard() {
     return (
-      <pre
-        className="text-[11px] leading-tight text-gray-600 bg-gray-100 border border-gray-200 rounded-lg p-2 max-h-56 overflow-auto font-mono"
-        style={{ tabSize: 2 }}
-      >
-        {JSON.stringify(data, null, 2)}
-      </pre>
-    )
+      <div className="border rounded-2xl overflow-hidden bg-white">
+        {salesDocUrl ? (
+          <iframe className="w-full h-[75vh] bg-white" src={salesDocUrl} title={salesDocName || 'Document'} />
+        ) : (
+          <div className="p-6 text-sm text-gray-600 bg-white">
+            No document imported yet. Use “Import CV” above.
+          </div>
+        )}
+      </div>
+    );
   }
 
   // ========== preview (right) ==========
   function CVTemplatePreview(): JSX.Element {
-    if (template === 'contract' || template === 'us') {
+    if (template === 'sales') {
       return (
-        <div className="p-8 h-full grid place-items-center text-gray-500">
-          <div className="text-center">
-            <img src="/zitko-full-logo.png" alt="Zitko" className="h-10 mx-auto mb-4" />
-            <div className="text-xl font-semibold">Building In Progress…</div>
-            <div className="text-sm mt-1">This template is coming soon.</div>
-          </div>
+        <div className="p-4">
+          <SalesViewerCard />
         </div>
       )
     }
 
+    // Standard (existing editor preview)
     return (
-      <div className="p-8">
+      <div className="p-8 cv-standard-page">
         <div className="flex items-start justify-between">
           <div />
           <img src="/zitko-full-logo.png" alt="Zitko" className="h-12" />
@@ -555,9 +546,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Shell
         </div>
 
         <h2 className="text-base font-semibold text-[#F7941D] mt-6 mb-2">Profile</h2>
-        <div className="whitespace-pre-wrap text-sm">
-          {form.profile?.trim() ? form.profile : 'No Profile yet'}
-        </div>
+        <div className="whitespace-pre-wrap text-sm">{form.profile?.trim() ? form.profile : 'No Profile yet'}</div>
 
         <h2 className="text-base font-semibold text-[#F7941D] mt-6 mb-2">Key Skills</h2>
         <div className="whitespace-pre-wrap text-sm">
@@ -576,13 +565,11 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Shell
             form.employment.map((e, i) => {
               const range = [e.start, e.end].filter(Boolean).join(' to ')
               return (
-                <div key={i} className="flex justify-between">
+                <div key={i} className="flex justify-between break-inside-avoid">
                   <div>
                     <div className="font-medium">{e.title || 'Role'}</div>
                     <div className="text-xs text-gray-500">{e.company}</div>
-                    {e.description?.trim() && (
-                      <div className="text-sm mt-1 whitespace-pre-wrap">{e.description}</div>
-                    )}
+                    {e.description?.trim() && <div className="text-sm mt-1 whitespace-pre-wrap">{e.description}</div>}
                   </div>
                   <div className="text-xs text-gray-500 whitespace-nowrap">{range}</div>
                 </div>
@@ -598,15 +585,12 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Shell
           ) : (
             form.education.map((e, i) => {
               const range = [e.start, e.end].filter(Boolean).join(' to ')
-              const showInstitutionLine =
-                !!e.institution && !!e.course && e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
+              const showInstitutionLine = !!e.institution && !!e.course && e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
               return (
-                <div key={i} className="flex justify-between">
+                <div key={i} className="flex justify-between break-inside-avoid">
                   <div>
                     <div className="font-medium">{e.course || e.institution || 'Course'}</div>
-                    {showInstitutionLine && (
-                      <div className="text-xs text-gray-500">{e.institution}</div>
-                    )}
+                    {showInstitutionLine && <div className="text-xs text-gray-500">{e.institution}</div>}
                   </div>
                   <div className="text-xs text-gray-500 whitespace-nowrap">{range}</div>
                 </div>
@@ -637,303 +621,384 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Shell
   // ========== render ==========
   return (
     <div className="grid gap-4">
+      {/* Minimal print styles to ensure A4, multi-page (Standard) */}
+      <style jsx global>{`
+        @media print {
+          @page { size: A4; margin: 12mm; }
+          .cv-standard-page { width: 100%; }
+          .cv-standard-page h1,
+          .cv-standard-page h2,
+          .cv-standard-page section { break-inside: avoid; }
+        }
+      `}</style>
+
       <div className="card p-4">
         {!templateFromShell && (
-          <div className="grid sm:grid-cols-3 gap-2">
+          <div className="grid sm:grid-cols-2 gap-2">
             <button
               type="button"
-              onClick={() => resetAllForTemplate('permanent')}
-              className={`btn w-full ${template === 'permanent' ? 'btn-brand' : 'btn-grey'}`}
+              onClick={() => resetAllForTemplate('standard')}
+              className={`btn w-full ${template === 'standard' ? 'btn-brand' : 'btn-grey'}`}
             >
-              Permanent
+              Standard
             </button>
-            <div className="btn w-full btn-grey opacity-50 cursor-not-allowed flex items-center justify-center">
-              Contract – Building in progress…
-            </div>
-            <div className="btn w-full btn-grey opacity-50 cursor-not-allowed flex items-center justify-center">
-              US – Building in progress…
-            </div>
+
+            <button
+              type="button"
+              onClick={() => resetAllForTemplate('sales')}
+              className={`btn w-full ${template === 'sales' ? 'btn-brand' : 'btn-grey'}`}
+              title="Sales template: import a CV (PDF/DOCX)"
+            >
+              Sales
+            </button>
           </div>
         )}
 
-        <div className="grid sm:grid-cols-[1fr_auto] gap-2 mt-4">
-          <input
-            className="input"
-            placeholder="Enter Candidate ID"
-            value={candidateId}
-            onChange={e => setCandidateId(e.target.value)}
-            disabled={loading}
-            autoComplete="off"
-          />
-          <button
-            className="btn btn-brand"
-            onClick={fetchData}
-            disabled={loading || !candidateId}
-          >
-            {loading ? 'Fetching…' : 'Retrieve Candidate'}
-          </button>
-        </div>
+        {/* Top controls: Standard vs Sales */}
+        {template === 'standard' && (
+          <div className="grid sm:grid-cols-[1fr_auto] gap-2 mt-4">
+            <input
+              className="input"
+              placeholder="Enter Candidate ID"
+              value={candidateId}
+              onChange={e => setCandidateId(e.target.value)}
+              disabled={loading}
+              autoComplete="off"
+            />
+            <button
+              className="btn btn-brand"
+              onClick={fetchData}
+              disabled={loading || !candidateId}
+            >
+              {loading ? 'Fetching…' : 'Retrieve Candidate'}
+            </button>
+          </div>
+        )}
+
+        {template === 'sales' && (
+          <>
+            {/* Hidden real input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              onChange={onUploadChange}
+              className="hidden"
+            />
+
+            {/* Faux input + button (same placement/layout as Standard) */}
+            <div
+              className="grid sm:grid-cols-[1fr_auto] gap-2 mt-4"
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={onDrop}
+            >
+              <div
+                className={`input flex items-center justify-between cursor-pointer ${dragOver ? 'ring-2 ring-[#F7941D]/50' : ''}`}
+                title="Import or drag a file here"
+                onClick={onClickUpload}
+              >
+                <span className={`text-gray-400 select-none ${salesDocName ? '!text-gray-700 truncate' : ''}`}>
+                  {salesDocName ? salesDocName : 'Import or drag a file here'}
+                </span>
+              </div>
+
+              <button
+                type="button"
+                className="btn btn-brand"
+                onClick={onClickUpload}
+                disabled={processing}
+                title="Import a PDF or Word (DOCX) document"
+              >
+                {processing ? 'Processing…' : 'Import CV'}
+              </button>
+            </div>
+
+            {salesErr && <div className="mt-3 text-sm text-red-600">{String(salesErr).slice(0, 300)}</div>}
+          </>
+        )}
+
         {error && <div className="mt-3 text-sm text-red-600">{String(error).slice(0, 300)}</div>}
       </div>
 
-      <div className="grid md:grid-cols-2 gap-4">
-        {/* LEFT: Editor – all collapsible */}
-        <div className="card p-4 space-y-4">
-          {/* Core */}
-          <section>
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold">Core Details</h3>
-              <div className="flex items-center gap-3">
-                <button type="button" className="text-xs text-gray-500 underline" onClick={() => toggle('core')}>
-                  {open.core ? 'Hide' : 'Show'}
-                </button>
-              </div>
-            </div>
-
-            {open.core && (
-              <div className="grid gap-3 mt-3">
-                <label className="grid gap-1">
-                  <span className="text-xs text-gray-500">Name</span>
-                  <input className="input" value={form.name} onChange={e => setField('name', e.target.value)} disabled={loading} />
-                </label>
-
-                <label className="grid gap-1">
-                  <span className="text-xs text-gray-500">Location</span>
-                  <input className="input" value={form.location} onChange={e => setField('location', e.target.value)} disabled={loading} />
-                </label>
-              </div>
-            )}
-          </section>
-
-          {/* Profile */}
-          <section>
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold">Profile</h3>
-              <button type="button" className="text-xs text-gray-500 underline" onClick={() => toggle('profile')}>
-                {open.profile ? 'Hide' : 'Show'}
-              </button>
-            </div>
-            {open.profile && (
-              <div className="mt-3">
-                <div className="flex flex-col sm:flex-row gap-2 mb-3 items-stretch sm:items-center">
-                  <button
-                    type="button"
-                    className="btn btn-grey text-xs !px-3 !py-1.5 w-36 whitespace-nowrap"
-                    disabled={loading || !rawCandidate}
-                    onClick={generateProfile}
-                    title={!rawCandidate ? 'Retrieve a candidate first' : 'Generate profile from candidate data'}
-                  >
-                    Generate
-                  </button>
-                  <div className="border-t border-gray-200 my-2 sm:my-0 sm:mx-2 sm:border-t-0 sm:border-l sm:h-6" />
-                  <input className="input flex-1 min-w-[160px]" placeholder="Job ID" value={jobId} onChange={e => setJobId(e.target.value)} disabled={loading} />
-                  <button
-                    type="button"
-                    className="btn btn-grey text-xs !px-3 !py-1.5 w-36 whitespace-nowrap"
-                    disabled={loading || !rawCandidate || !jobId}
-                    onClick={generateJobProfile}
-                    title={!jobId ? 'Enter a Job ID' : 'Generate job-tailored profile'}
-                  >
-                    Generate for Job
+      {/* CONTENT GRID:
+         - Standard: two columns (editor left, preview right)
+         - Sales: single column so preview fills full width */}
+      <div className={`grid gap-4 ${template === 'sales' ? '' : 'md:grid-cols-2'}`}>
+        {template === 'standard' && (
+          <div className="card p-4 space-y-4">
+            {/* Standard editor */}
+            {/* Core */}
+            <section>
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold">Core Details</h3>
+                <div className="flex items-center gap-3">
+                  <button type="button" className="text-xs text-gray-500 underline" onClick={() => toggle('core')}>
+                    {open.core ? 'Hide' : 'Show'}
                   </button>
                 </div>
+              </div>
 
-                <label className="grid gap-1">
-                  <span className="text-xs text-gray-500">Profile</span>
-                  <textarea className="input min-h-[120px]" value={form.profile} onChange={e => setField('profile', e.target.value)} disabled={loading} />
+              {open.core && (
+                <div className="grid gap-3 mt-3">
+                  <label className="grid gap-1">
+                    <span className="text-xs text-gray-500">Name</span>
+                    <input className="input" value={form.name} onChange={e => setField('name', e.target.value)} disabled={loading} />
+                  </label>
+                  <label className="grid gap-1">
+                    <span className="text-xs text-gray-500">Location</span>
+                    <input className="input" value={form.location} onChange={e => setField('location', e.target.value)} disabled={loading} />
+                  </label>
+                </div>
+              )}
+            </section>
+
+            {/* Profile */}
+            <section>
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold">Profile</h3>
+                <button type="button" className="text-xs text-gray-500 underline" onClick={() => toggle('profile')}>
+                  {open.profile ? 'Hide' : 'Show'}
+                </button>
+              </div>
+              {open.profile && (
+                <div className="mt-3">
+                  <div className="flex flex-col sm:flex-row gap-2 mb-3 items-stretch sm:items-center">
+                    <button
+                      type="button"
+                      className="btn btn-grey text-xs !px-3 !py-1.5 w-36 whitespace-nowrap"
+                      disabled={loading || !rawCandidate}
+                      onClick={generateProfile}
+                      title={!rawCandidate ? 'Retrieve a candidate first' : 'Generate profile from candidate data'}
+                    >
+                      Generate
+                    </button>
+                    <div className="border-t border-gray-200 my-2 sm:my-0 sm:mx-2 sm:border-t-0 sm:border-l sm:h-6" />
+                    <input className="input flex-1 min-w-[160px]" placeholder="Job ID" value={jobId} onChange={e => setJobId(e.target.value)} disabled={loading} />
+                    <button
+                      type="button"
+                      className="btn btn-grey text-xs !px-3 !py-1.5 w-36 whitespace-nowrap"
+                      disabled={loading || !rawCandidate || !jobId}
+                      onClick={generateJobProfile}
+                      title={!jobId ? 'Enter a Job ID' : 'Generate job-tailored profile'}
+                    >
+                      Generate for Job
+                    </button>
+                  </div>
+
+                  <label className="grid gap-1">
+                    <span className="text-xs text-gray-500">Profile</span>
+                    <textarea className="input min-h-[120px]" value={form.profile} onChange={e => setField('profile', e.target.value)} disabled={loading} />
+                  </label>
+                </div>
+              )}
+            </section>
+
+            {/* Key Skills */}
+            <section>
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold">Key Skills</h3>
+                <button type="button" className="text-xs text-gray-500 underline" onClick={() => toggle('skills')}>
+                  {open.skills ? 'Hide' : 'Show'}
+                </button>
+              </div>
+              {open.skills && (
+                <label className="grid gap-1 mt-3">
+                  <span className="text-xs text-gray-500">Key Skills (comma or newline)</span>
+                  <textarea className="input min-h-[100px]" value={form.keySkills} onChange={e => setField('keySkills', e.target.value)} disabled={loading} />
                 </label>
+              )}
+            </section>
+
+            {/* Employment */}
+            <section>
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold">Employment History</h3>
+                <div className="flex items-center gap-3">
+                  <button type="button" className="text-xs text-gray-500 underline" onClick={addEmployment} disabled={loading}>Add role</button>
+                  <button type="button" className="text-xs text-gray-500 underline" onClick={() => toggle('work')}>
+                    {open.work ? 'Hide' : 'Show'}
+                  </button>
+                </div>
               </div>
-            )}
-          </section>
 
-          {/* Key Skills */}
-          <section>
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold">Key Skills</h3>
-              <button type="button" className="text-xs text-gray-500 underline" onClick={() => toggle('skills')}>
-                {open.skills ? 'Hide' : 'Show'}
-              </button>
-            </div>
-            {open.skills && (
-              <label className="grid gap-1 mt-3">
-                <span className="text-xs text-gray-500">Key Skills (comma or newline)</span>
-                <textarea className="input min-h-[100px]" value={form.keySkills} onChange={e => setField('keySkills', e.target.value)} disabled={loading} />
-              </label>
-            )}
-          </section>
-
-          {/* Employment */}
-          <section>
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold">Employment History</h3>
-              <div className="flex items-center gap-3">
-                <button type="button" className="text-xs text-gray-500 underline" onClick={addEmployment} disabled={loading}>
-                  Add role
-                </button>
-                <button type="button" className="text-xs text-gray-500 underline" onClick={() => toggle('work')}>
-                  {open.work ? 'Hide' : 'Show'}
-                </button>
-              </div>
-            </div>
-
-            {open.work && (
-              <div className="grid gap-3 mt-3">
-                {form.employment.length === 0 ? (
-                  <div className="text-sm text-gray-500">No employment history yet.</div>
-                ) : (
-                  form.employment.map((e, i) => (
-                    <div key={i} className="border rounded-xl p-3 grid gap-2">
-                      <div className="grid sm:grid-cols-2 gap-2">
-                        <input className="input" placeholder="Title" value={e.title || ''} onChange={ev => setEmployment(i, 'title', ev.target.value)} disabled={loading} />
-                        <input className="input" placeholder="Company" value={e.company || ''} onChange={ev => setEmployment(i, 'company', ev.target.value)} disabled={loading} />
-                        <input className="input" placeholder="Start (Month YYYY)" value={e.start || ''} onChange={ev => setEmployment(i, 'start', ev.target.value)} disabled={loading} />
-                        <input className="input" placeholder="End (Month YYYY or Present)" value={e.end || ''} onChange={ev => setEmployment(i, 'end', ev.target.value)} disabled={loading} />
+              {open.work && (
+                <div className="grid gap-3 mt-3">
+                  {form.employment.length === 0 ? (
+                    <div className="text-sm text-gray-500">No employment history yet.</div>
+                  ) : (
+                    form.employment.map((e, i) => (
+                      <div key={i} className="border rounded-xl p-3 grid gap-2">
+                        <label className="grid gap-1">
+                          <span className="text-xs text-gray-500">Title</span>
+                          <input className="input" value={e.title || ''} onChange={ev => {
+                            const v = ev.target.value
+                            setForm(prev => {
+                              const copy = structuredClone(prev); copy.employment[i].title = v; return copy
+                            })
+                          }} />
+                        </label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <label className="grid gap-1">
+                            <span className="text-xs text-gray-500">Company</span>
+                            <input className="input" value={e.company || ''} onChange={ev => {
+                              const v = ev.target.value
+                              setForm(prev => { const copy = structuredClone(prev); copy.employment[i].company = v; return copy })
+                            }} />
+                          </label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <label className="grid gap-1">
+                              <span className="text-xs text-gray-500">Start</span>
+                              <input className="input" value={e.start || ''} onChange={ev => {
+                                const v = ev.target.value
+                                setForm(prev => { const copy = structuredClone(prev); copy.employment[i].start = v; return copy })
+                              }} />
+                            </label>
+                            <label className="grid gap-1">
+                              <span className="text-xs text-gray-500">End</span>
+                              <input className="input" value={e.end || ''} onChange={ev => {
+                                const v = ev.target.value
+                                setForm(prev => { const copy = structuredClone(prev); copy.employment[i].end = v; return copy })
+                              }} />
+                            </label>
+                          </div>
+                        </div>
+                        <label className="grid gap-1">
+                          <span className="text-xs text-gray-500">Description</span>
+                          <textarea className="input min-h-[80px]" value={e.description || ''} onChange={ev => {
+                            const v = ev.target.value
+                            setForm(prev => { const copy = structuredClone(prev); copy.employment[i].description = v; return copy })
+                          }} />
+                        </label>
                       </div>
-                      <textarea className="input min-h-[80px]" placeholder="Description" value={e.description || ''} onChange={ev => setEmployment(i, 'description', ev.target.value)} disabled={loading} />
-                      <div className="text-right">
-                        <button type="button" className="text-xs text-red-600 underline" onClick={() => removeEmployment(i)} disabled={loading}>
-                          Remove
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
-          </section>
+                    ))
+                  )}
+                </div>
+              )}
+            </section>
 
-          {/* Education */}
-          <section>
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold">Education & Qualifications</h3>
-              <div className="flex items-center gap-3">
-                <button type="button" className="text-xs text-gray-500 underline" onClick={addEducation} disabled={loading}>
-                  Add item
-                </button>
+            {/* Education */}
+            <section>
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold">Education & Qualifications</h3>
                 <button type="button" className="text-xs text-gray-500 underline" onClick={() => toggle('education')}>
                   {open.education ? 'Hide' : 'Show'}
                 </button>
               </div>
-            </div>
 
-            {open.education && (
-              <div className="grid gap-3 mt-3">
-                {form.education.length === 0 ? (
-                  <div className="text-sm text-gray-500">No education yet.</div>
-                ) : (
-                  form.education.map((e, i) => (
-                    <div key={i} className="border rounded-xl p-3 grid gap-2">
-                      <div className="grid sm:grid-cols-2 gap-2">
-                        <input className="input" placeholder="Course / Degree" value={e.course || ''} onChange={ev => setEducation(i, 'course', ev.target.value)} disabled={loading} />
-                        <input className="input" placeholder="Institution" value={e.institution || ''} onChange={ev => setEducation(i, 'institution', ev.target.value)} disabled={loading} />
-                        <input className="input" placeholder="Start (Month YYYY)" value={e.start || ''} onChange={ev => setEducation(i, 'start', ev.target.value)} disabled={loading} />
-                        <input className="input" placeholder="End (Month YYYY)" value={e.end || ''} onChange={ev => setEducation(i, 'end', ev.target.value)} disabled={loading} />
+              {open.education && (
+                <div className="grid gap-3 mt-3">
+                  {form.education.length === 0 ? (
+                    <div className="text-sm text-gray-500">No education yet.</div>
+                  ) : (
+                    form.education.map((e, i) => (
+                      <div key={i} className="flex items-start justify-between">
+                        <div className="grid gap-0.5">
+                          <div className="font-medium">{e.course || e.institution || 'Course'}</div>
+                          {!!e.institution && !!e.course && e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase() && (
+                            <div className="text-xs text-gray-500">{e.institution}</div>
+                          )}
+                        </div>
+                        <div className="text-xs text-gray-500 whitespace-nowrap">{[e.start, e.end].filter(Boolean).join(' to ')}</div>
                       </div>
-                      <div className="text-right">
-                        <button type="button" className="text-xs text-red-600 underline" onClick={() => removeEducation(i)} disabled={loading}>
-                          Remove
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
+                    ))
+                  )}
+                </div>
+              )}
+            </section>
+
+            {/* Additional */}
+            <section>
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold">Additional Information</h3>
+                <button type="button" className="text-xs text-gray-500 underline" onClick={() => toggle('extra')}>
+                  {open.extra ? 'Hide' : 'Show'}
+                </button>
               </div>
-            )}
-          </section>
 
-          {/* Additional */}
-          <section>
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold">Additional Information</h3>
-              <button type="button" className="text-xs text-gray-500 underline" onClick={() => toggle('extra')}>
-                {open.extra ? 'Hide' : 'Show'}
-              </button>
-            </div>
+              {open.extra && (
+                <div className="text-sm grid gap-1 mt-3">
+                  <div>Driving License: {form.additional.drivingLicense || '—'}</div>
+                  <div>Nationality: {form.additional.nationality || '—'}</div>
+                  <div>Availability: {form.additional.availability || '—'}</div>
+                  <div>Health: {form.additional.health || '—'}</div>
+                  <div>Criminal Record: {form.additional.criminalRecord || '—'}</div>
+                  <div>Financial History: {form.additional.financialHistory || '—'}</div>
+                </div>
+              )}
+            </section>
 
-            {open.extra && (
-              <div className="grid gap-3 mt-3">
-                <div className="grid sm:grid-cols-2 gap-2">
-                  <input className="input" placeholder="Driving License" value={form.additional.drivingLicense} onChange={e => setField('additional.drivingLicense', e.target.value)} disabled={loading} />
-                  <input className="input" placeholder="Nationality" value={form.additional.nationality} onChange={e => setField('additional.nationality', e.target.value)} disabled={loading} />
-                  <input className="input" placeholder="Availability" value={form.additional.availability} onChange={e => setField('additional.availability', e.target.value)} disabled={loading} />
-                  <input className="input" placeholder="Health" value={form.additional.health} onChange={e => setField('additional.health', e.target.value)} disabled={loading} />
-                  <input className="input" placeholder="Criminal Record" value={form.additional.criminalRecord} onChange={e => setField('additional.criminalRecord', e.target.value)} disabled={loading} />
-                  <input className="input" placeholder="Financial History" value={form.additional.financialHistory} onChange={e => setField('additional.financialHistory', e.target.value)} disabled={loading} />
+            {/* Debug: Raw JSON (below Additional Information) */}
+            <section>
+              <div className="mt-2 border rounded-xl p-2 bg-gray-50">
+                <div className="text-[11px] font-semibold text-gray-600 mb-1">Raw JSON Data (debug)</div>
+
+                {/* Candidate Data */}
+                <div className="border rounded-lg mb-2">
+                  <div className="flex items-center justify-between px-2 py-1">
+                    <div className="text-[11px] font-medium">Candidate Data</div>
+                    <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('rawCandidate')}>
+                      {open.rawCandidate ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
+                  {open.rawCandidate && (
+                    <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
+{JSON.stringify(rawCandidate, null, 2)}
+                    </pre>
+                  )}
+                </div>
+
+                {/* Work Experience */}
+                <div className="border rounded-lg mb-2">
+                  <div className="flex items-center justify-between px-2 py-1">
+                    <div className="text-[11px] font-medium">Work Experience</div>
+                    <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('rawWork')}>
+                      {open.rawWork ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
+                  {open.rawWork && (
+                    <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
+{JSON.stringify(rawWork, null, 2)}
+                    </pre>
+                  )}
+                </div>
+
+                {/* Education Details */}
+                <div className="border rounded-lg mb-2">
+                  <div className="flex items-center justify-between px-2 py-1">
+                    <div className="text-[11px] font-medium">Education Details</div>
+                    <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('rawEdu')}>
+                      {open.rawEdu ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
+                  {open.rawEdu && (
+                    <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
+{JSON.stringify(rawEdu, null, 2)}
+                    </pre>
+                  )}
+                </div>
+
+                {/* Custom Fields */}
+                <div className="border rounded-lg">
+                  <div className="flex items-center justify-between px-2 py-1">
+                    <div className="text-[11px] font-medium">Custom Fields</div>
+                    <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('rawCustom')}>
+                      {open.rawCustom ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
+                  {open.rawCustom && (
+                    <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
+{JSON.stringify(rawCustom, null, 2)}
+                    </pre>
+                  )}
                 </div>
               </div>
-            )}
-          </section>
+            </section>
+          </div>
+        )}
 
-          {/* Debug: Raw JSON (below Additional Information) */}
-          <section>
-            <div className="mt-2 border rounded-xl p-2 bg-gray-50">
-              <div className="text-[11px] font-semibold text-gray-600 mb-1">Raw JSON Data (debug)</div>
-
-              {/* Candidate Data */}
-              <div className="border rounded-lg mb-2 bg-white">
-                <div className="flex items-center justify-between px-2 py-1">
-                  <div className="text-[11px] font-medium text-gray-600">Candidate Data</div>
-                  <button
-                    type="button"
-                    className="text-[11px] text-gray-500 underline"
-                    onClick={() => toggle('rawCandidate')}
-                  >
-                    {open.rawCandidate ? 'Hide' : 'Show'}
-                  </button>
-                </div>
-                {open.rawCandidate && <CodeBlock data={rawCandidate} />}
-              </div>
-
-              {/* Work Experience */}
-              <div className="border rounded-lg mb-2 bg-white">
-                <div className="flex items-center justify-between px-2 py-1">
-                  <div className="text-[11px] font-medium text-gray-600">Work Experience</div>
-                  <button
-                    type="button"
-                    className="text-[11px] text-gray-500 underline"
-                    onClick={() => toggle('rawWork')}
-                  >
-                    {open.rawWork ? 'Hide' : 'Show'}
-                  </button>
-                </div>
-                {open.rawWork && <CodeBlock data={rawWork} />}
-              </div>
-
-              {/* Education Details */}
-              <div className="border rounded-lg mb-2 bg-white">
-                <div className="flex items-center justify-between px-2 py-1">
-                  <div className="text-[11px] font-medium text-gray-600">Education Details</div>
-                  <button
-                    type="button"
-                    className="text-[11px] text-gray-500 underline"
-                    onClick={() => toggle('rawEdu')}
-                  >
-                    {open.rawEdu ? 'Hide' : 'Show'}
-                  </button>
-                </div>
-                {open.rawEdu && <CodeBlock data={rawEdu} />}
-              </div>
-
-              {/* Custom Fields */}
-              <div className="border rounded-lg bg-white">
-                <div className="flex items-center justify-between px-2 py-1">
-                  <div className="text-[11px] font-medium text-gray-600">Custom Fields</div>
-                  <button
-                    type="button"
-                    className="text-[11px] text-gray-500 underline"
-                    onClick={() => toggle('rawCustom')}
-                  >
-                    {open.rawCustom ? 'Hide' : 'Show'}
-                  </button>
-                </div>
-                {open.rawCustom && <CodeBlock data={rawCustom} />}
-              </div>
-            </div>
-          </section>
-        </div>
-
-        {/* RIGHT: Preview */}
-        <div className="rounded-2xl border overflow-hidden bg-white">
+        {/* RIGHT: preview always renders here; on Sales it's full-width */}
+        <div className="card p-0 overflow-hidden">
           <CVTemplatePreview />
         </div>
       </div>
