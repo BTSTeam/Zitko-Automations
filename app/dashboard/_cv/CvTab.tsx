@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
 type TemplateKey = 'permanent' | 'contract' | 'us'
+type ShellTemplate = TemplateKey | 'standard'
 
 type Employment = {
   title?: string
@@ -32,9 +33,12 @@ type OpenState = {
   rawCustom: boolean
 }
 
-export default function CvTab({ templateFromShell }: { templateFromShell?: TemplateKey }): JSX.Element {
+export default function CvTab({ templateFromShell }: { templateFromShell?: ShellTemplate }): JSX.Element {
+  // Normalise shell template ('standard' → 'permanent')
+  const initialTemplate = (templateFromShell === 'standard' ? 'permanent' : templateFromShell) as TemplateKey | null
+
   // ========== UI state ==========
-  const [template, setTemplate] = useState<TemplateKey | null>(templateFromShell ?? null)
+  const [template, setTemplate] = useState<TemplateKey | null>(initialTemplate ?? null)
   const [candidateId, setCandidateId] = useState<string>('')
   const [loading, setLoading] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
@@ -110,7 +114,8 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
   useEffect(() => {
     if (templateFromShell) {
-      resetAllForTemplate(templateFromShell)
+      const t = (templateFromShell === 'standard' ? 'permanent' : templateFromShell) as TemplateKey
+      resetAllForTemplate(t)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [templateFromShell])
@@ -242,7 +247,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     [k: string]: any
   }
 
-  // Robust deep flattener: handles {data:[...]}, {sections:[{fields:[...]}]}, plain arrays, or objects keyed by uuid.
+  // Deep flattener: handles {data:[...]}, {sections:[{fields:[...]}]}, arrays, or objects keyed by uuid.
   function flattenCustomEntries(input: any): CustomEntry[] {
     const out: Record<string, CustomEntry> = {}
 
@@ -253,7 +258,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         return
       }
       if (typeof node === 'object') {
-        // if this object itself looks like a field entry, capture it
         const looksLikeField =
           ('key' in node) &&
           (('field_values' in node) || ('field_value_ids' in node) || ('value' in node) || ('type' in node))
@@ -272,15 +276,13 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         possibleChildren.forEach(visit)
 
         // fallback: object keyed by uuid
-        if (!Array.isArray(node) && !(node instanceof Date)) {
-          for (const [k, v] of Object.entries(node)) {
-            if (typeof v === 'object' && v) {
-              const vv: any = { key: k, ...(v as any) }
-              const vlField =
-                ('field_values' in vv) || ('field_value_ids' in vv) || ('value' in vv) || ('type' in vv)
-              if (vlField) out[k] = vv
-              visit(v)
-            }
+        for (const [k, v] of Object.entries(node)) {
+          if (typeof v === 'object' && v) {
+            const vv: any = { key: k, ...(v as any) }
+            const vlField =
+              ('field_values' in vv) || ('field_value_ids' in vv) || ('value' in vv) || ('type' in vv)
+            if (vlField) out[k] = vv
+            visit(v)
           }
         }
       }
@@ -367,14 +369,12 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       setLoading(true)
       setError(null)
 
-      // Try POST first
       let jobRes = await fetch('/api/job/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ jobId }),
       })
 
-      // Fallback to GET if POST not supported or failed
       if (!jobRes.ok) {
         jobRes = await fetch(`/api/job/extract?id=${encodeURIComponent(jobId)}`, { cache: 'no-store' })
       }
@@ -451,17 +451,17 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       const UUID_CRIM    = '4a4fa5b084a6efee647f98041ccfbc65'
       const UUID_FIN     = '0a8914a354a50d327453c0342effb2c8'
 
-      const drivingEntry     = findByKey(UUID_DRIVING)
-      const availabilityEntry= findByKey(UUID_AVAIL)
-      const healthEntry      = findByKey(UUID_HEALTH)
-      const criminalEntry    = findByKey(UUID_CRIM)
-      const financialEntry   = findByKey(UUID_FIN)
+      const drivingEntry      = findByKey(UUID_DRIVING)
+      const availabilityEntry = findByKey(UUID_AVAIL)
+      const healthEntry       = findByKey(UUID_HEALTH)
+      const criminalEntry     = findByKey(UUID_CRIM)
+      const financialEntry    = findByKey(UUID_FIN)
 
-      const drivingCode      = firstCode(drivingEntry)       // e.g. 4
-      const availabilityCode = firstCode(availabilityEntry)  // e.g. 6
-      const healthCode       = firstCode(healthEntry)        // 1 => Good
-      const criminalCode     = firstCode(criminalEntry)      // 1 => Good
-      const financialCode    = firstCode(financialEntry)     // 1 => Good
+      const drivingCode      = firstCode(drivingEntry)
+      const availabilityCode = firstCode(availabilityEntry)
+      const healthCode       = firstCode(healthEntry)
+      const criminalCode     = firstCode(criminalEntry)
+      const financialCode    = firstCode(financialEntry)
 
       const drivingLicense   = drivingCode ? (DRIVING_MAP[drivingCode] || '') : ''
       const availability     = availabilityCode ? (AVAILABILITY_MAP[availabilityCode] || '') : ''
