@@ -520,111 +520,130 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
   // ===== UPLOAD ACTIONS =====
 
-  // Convert a Blob (or URL to Blob) to base64 (no data: prefix)
-  async function blobUrlToBase64(url: string): Promise<string> {
-    const res = await fetch(url)
-    if (!res.ok) throw new Error(`Failed to read blob (${res.status})`)
-    const ab = await res.arrayBuffer()
-    let binary = ''
-    const bytes = new Uint8Array(ab)
-    const len = bytes.byteLength
-    for (let i = 0; i < len; i++) binary += String.fromCharCode(bytes[i])
-    return btoa(binary)
+  // Upload a Blob Url
+  async function uploadBlobToPublicUrl(file: Blob, desiredName: string): Promise<string> {
+  const fd = new FormData();
+  fd.append('file', new File([file], desiredName, { type: (file as any).type || 'application/pdf' }));
+  fd.append('filename', desiredName);
+
+  const res = await fetch('/api/upload', { method: 'POST', body: fd });
+  const data = await res.json();
+  if (!res.ok || !data?.ok) {
+    throw new Error(data?.error || `Blob upload failed (${res.status})`);
   }
+  return data.url as string;
+}
 
   // Upload helper
-  async function postFileToVincere(fileName: string, base64Content: string) {
-    const payload = {
-      file_name: fileName,
-      document_type_id: 1,       // typical CV doc type
-      base_64_content: base64Content,
-      original_cv: true
-    }
-    const res = await fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}/file`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-    const data = await res.json()
-    if (!res.ok || !data?.ok) throw new Error(data?.error || `Upload failed (${res.status})`)
+  async function postFileUrlToVincere(fileName: string, publicUrl: string) {
+  const payload = {
+    file_name: fileName,
+    document_type_id: 1,
+    url: publicUrl,           // <<— use URL, no base64
+    original_cv: true
+  };
+
+  const res = await fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}/file`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  const raw = await res.text();
+  let data: any = null;
+  try { data = raw ? JSON.parse(raw) : {}; } catch { /* non-JSON */ }
+
+  if (!res.ok || !data?.ok) {
+    const msg = data?.error || raw || `Upload to Vincere failed (${res.status})`;
+    throw new Error(msg);
   }
+}
 
   // STANDARD: export right-panel DOM to PDF and upload
-  async function uploadStandardPreviewToVincere(finalName: string) {
-    // lazy import to avoid SSR/build issues (install: npm i html2canvas jspdf)
-    const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
-      import('html2canvas'),
-      import('jspdf')
-    ])
+  async function uploadStandardPreviewToVincereUrl(finalName: string) {
+  const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+    import('html2canvas'),
+    import('jspdf'),
+  ]);
 
-    const node = standardPreviewRef.current
-    if (!node) throw new Error('Preview not ready')
+  const node = standardPreviewRef.current;
+  if (!node) throw new Error('Preview not ready');
 
-    const canvas = await html2canvas(node, { scale: 2, backgroundColor: '#FFFFFF' })
-    const imgData = canvas.toDataURL('image/png')
+  // Render at modest scale; JPEG keeps size small
+  const canvas = await html2canvas(node, { scale: 1.5, backgroundColor: '#FFFFFF' });
+  const imgData = canvas.toDataURL('image/jpeg', 0.85);
 
-    const pdf = new jsPDF({ unit: 'mm', format: 'a4' })
-    const pageWidth = pdf.internal.pageSize.getWidth()
-    const pageHeight = pdf.internal.pageSize.getHeight()
+  const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
 
-    const imgWidth = pageWidth
-    const imgHeight = (canvas.height * imgWidth) / canvas.width
+  const imgWidth = pageWidth;
+  const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-    if (imgHeight <= pageHeight) {
-      pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight)
-    } else {
-      // split into multiple pages
-      let y = 0
-      const pxPageHeight = Math.floor((canvas.width * pageHeight) / pageWidth)
-      while (y < canvas.height) {
-        const pageCanvas = document.createElement('canvas')
-        pageCanvas.width = canvas.width
-        pageCanvas.height = Math.min(pxPageHeight, canvas.height - y)
-        const ctx = pageCanvas.getContext('2d')!
-        ctx.drawImage(canvas, 0, y, canvas.width, pageCanvas.height, 0, 0, canvas.width, pageCanvas.height)
-        const pageImgData = pageCanvas.toDataURL('image/png')
-        if (y > 0) pdf.addPage()
-        const pageImgHeight = (pageCanvas.height * imgWidth) / pageCanvas.width
-        pdf.addImage(pageImgData, 'PNG', 0, 0, imgWidth, pageImgHeight)
-        y += pxPageHeight
-      }
+  if (imgHeight <= pageHeight) {
+    pdf.addImage(imgData, 'JPEG', 0, 0, imgWidth, imgHeight);
+  } else {
+    let y = 0;
+    const pxPageHeight = Math.floor((canvas.width * pageHeight) / pageWidth);
+    while (y < canvas.height) {
+      const pageCanvas = document.createElement('canvas');
+      pageCanvas.width = canvas.width;
+      pageCanvas.height = Math.min(pxPageHeight, canvas.height - y);
+      const ctx = pageCanvas.getContext('2d')!;
+      ctx.drawImage(canvas, 0, y, canvas.width, pageCanvas.height, 0, 0, canvas.width, pageCanvas.height);
+      const pageImgData = pageCanvas.toDataURL('image/jpeg', 0.85);
+      if (y > 0) pdf.addPage();
+      const pageImgHeight = (pageCanvas.height * imgWidth) / pageCanvas.width;
+      pdf.addImage(pageImgData, 'JPEG', 0, 0, imgWidth, pageImgHeight);
+      y += pxPageHeight;
     }
-
-    const pdfBase64 = pdf.output('datauristring').split(',')[1]
-    await postFileToVincere(finalName, pdfBase64)
   }
+
+  // PDF as Blob (not base64)
+  const pdfBlob = new Blob([pdf.output('arraybuffer')], { type: 'application/pdf' });
+
+  // 1) Upload to Vercel Blob to get public URL
+  const publicUrl = await uploadBlobToPublicUrl(pdfBlob, finalName);
+
+  // 2) Tell Vincere to fetch that URL
+  await postFileUrlToVincere(finalName, publicUrl);
+}
 
   // SALES: take branded PDF shown in viewer and upload
-  async function uploadSalesPdfToVincere(finalName: string) {
-    if (!salesDocUrl) throw new Error('No Sales document to upload')
-    const base64 = await blobUrlToBase64(salesDocUrl)
-    await postFileToVincere(finalName, base64)
-  }
+  async function uploadSalesPdfToVincereUrl(finalName: string) {
+  if (!salesDocUrl) throw new Error('No Sales document to upload');
+  const res = await fetch(salesDocUrl);
+  if (!res.ok) throw new Error(`Failed to read Sales PDF (${res.status})`);
+  const buf = await res.arrayBuffer();
+  const blob = new Blob([buf], { type: 'application/pdf' });
+
+  const publicUrl = await uploadBlobToPublicUrl(blob, finalName);
+  await postFileUrlToVincere(finalName, publicUrl);
+}
 
   async function confirmUpload() {
-    try {
-      setUploadBusy(true)
-      setUploadErr(null)
-      if (!candidateId) throw new Error('No candidate selected')
-      if (!uploadFileName?.trim()) throw new Error('Please enter a file name')
+  try {
+    setUploadBusy(true);
+    setUploadErr(null);
+    if (!candidateId) throw new Error('No candidate selected');
+    if (!uploadFileName?.trim()) throw new Error('Please enter a file name');
 
-      // Ensure sensible extension
-      let finalName = uploadFileName.trim()
-      if (!/\.(pdf|docx?)$/i.test(finalName)) finalName += '.pdf'
+    let finalName = uploadFileName.trim();
+    if (!/\.(pdf|docx?)$/i.test(finalName)) finalName += '.pdf';
 
-      if (uploadContext === 'standard') {
-        await uploadStandardPreviewToVincere(finalName)
-      } else {
-        await uploadSalesPdfToVincere(finalName)
-      }
-
-      setShowUploadModal(false)
-    } catch (e: any) {
-      setUploadErr(e?.message || 'Upload failed')
-    } finally {
-      setUploadBusy(false)
+    if (uploadContext === 'standard') {
+      await uploadStandardPreviewToVincereUrl(finalName);
+    } else {
+      await uploadSalesPdfToVincereUrl(finalName);
     }
+
+    setShowUploadModal(false);
+  } catch (e: any) {
+    setUploadErr(e?.message || 'Upload failed');
+  } finally {
+    setUploadBusy(false);
   }
+}
 
   // ========== preview (right) ==========
   function CVTemplatePreview(): JSX.Element {
