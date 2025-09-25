@@ -187,20 +187,18 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
   // ---------- robust custom-field normalizers ----------
   type CustomEntry = {
-    field_key?: string // Vincere v2 style
-    key?: string       // generic
+    field_key?: string
+    key?: string
     value?: any
     field_values?: any[] | null
     field_value_ids?: any[] | null
     [k: string]: any
   }
 
-  /** Normalise any of the common Vincere custom field shapes into a flat array of entries */
   function customArray(custom: any): CustomEntry[] {
     if (!custom) return []
-
-    if (Array.isArray(custom.field_values)) return custom.field_values as CustomEntry[]
-    if (Array.isArray(custom.data)) return custom.data as CustomEntry[]
+    if (Array.isArray(custom?.field_values)) return custom.field_values as CustomEntry[]
+    if (Array.isArray(custom?.data)) return custom.data as CustomEntry[]
     if (Array.isArray(custom)) return custom as CustomEntry[]
     if (typeof custom === 'object') {
       return Object.entries(custom).map(([k, v]) => {
@@ -210,14 +208,10 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     }
     return []
   }
-
-  /** Find by field UUID across shapes (field_key or key) */
   function findByUuid(custom: any, uuid: string): CustomEntry | null {
     const arr = customArray(custom)
     return arr.find(e => e?.field_key === uuid || e?.key === uuid) ?? null
   }
-
-  /** Pull the first numeric code from entry.value/field_values across shapes */
   function firstCodeUniversal(entry: CustomEntry | null): number | null {
     if (!entry) return null
     if (Array.isArray(entry.value) && entry.value.length) {
@@ -251,7 +245,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       return clone
     })
   }
-
   function addEmployment() {
     setForm(prev => ({ ...prev, employment: [...prev.employment, { title: '', company: '', start: '', end: '', description: '' }] }))
   }
@@ -280,6 +273,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     try {
       setLoading(true); setError(null)
 
+      // Try POST first, fall back to GET with query if needed
       let jobRes = await fetch('/api/job/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -317,6 +311,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       const res = await fetch('/api/cv/retrieve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ candidateId: String(candidateId).trim() }),
       })
       const data = await res.json()
@@ -357,11 +352,11 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       const criminalEntry   = findByUuid(customRaw, UUID_CRIM)
       const financialEntry  = findByUuid(customRaw, UUID_FIN)
 
-      const drivingCode     = firstCodeUniversal(drivingEntry)
-      const availabilityCode= firstCodeUniversal(availabilityEnt)
-      const healthCode      = firstCodeUniversal(healthEntry)
-      const criminalCode    = firstCodeUniversal(criminalEntry)
-      const financialCode   = firstCodeUniversal(financialEntry)
+      const drivingCode      = firstCodeUniversal(drivingEntry)
+      const availabilityCode = firstCodeUniversal(availabilityEnt)
+      const healthCode       = firstCodeUniversal(healthEntry)
+      const criminalCode     = firstCodeUniversal(criminalEntry)
+      const financialCode    = firstCodeUniversal(financialEntry)
 
       const DRIVING_MAP: Record<number, string> = {
         1: 'Banned', 2: 'Full UK – No Points', 3: 'Full UK - Points', 4: 'Full - Clean',
@@ -395,9 +390,8 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         additional: { drivingLicense, nationality, availability, health, criminalRecord, financialHistory },
       }))
 
-      setCandidateName(name) // <-- store for modal / filenames
+      setCandidateName(name)
 
-      // Collapse all panels except Core
       setOpen({
         core: true, profile: false, skills: false, work: false, education: false, extra: false,
         rawCandidate: false, rawWork: false, rawEdu: false, rawCustom: false
@@ -409,12 +403,12 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     }
   }
 
-  // ====================== SALES ( + auto DOCX→PDF) ======================
+  // ====================== SALES ( + PDF/DOCX handling ) ======================
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [salesErr, setSalesErr] = useState<string | null>(null)
-  const [salesDocUrl, setSalesDocUrl] = useState<string | null>(null) // object URL (branded PDF)
-  const [salesDocName, setSalesDocName] = useState<string>('')        // filename (final)
-  const [salesDocType, setSalesDocType] = useState<string>('')        // mime type
+  const [salesDocUrl, setSalesDocUrl] = useState<string | null>(null)  // object URL (preview/use)
+  const [salesDocName, setSalesDocName] = useState<string>('')         // filename (final/derived)
+  const [salesDocType, setSalesDocType] = useState<string>('')         // mime type
   const [processing, setProcessing] = useState<boolean>(false)
   const [dragOver, setDragOver] = useState<boolean>(false)
 
@@ -442,43 +436,16 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
     try {
       setProcessing(true)
+      // Create a local object URL for preview (only PDFs will preview)
+      const url = URL.createObjectURL(f)
+      setSalesDocUrl(url)
+      setSalesDocName(f.name)
+      setSalesDocType(f.type || (isPdfFile ? 'application/pdf' : isDocx ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : isDoc ? 'application/msword' : 'application/octet-stream'))
 
-      // helper to brand a PDF Blob via /api/pdf/brand (adds Zitko header on page 1, footer on last)
-      const brandPdfBlob = async (blob: Blob, nameForFile = 'document.pdf') => {
-        const fdB = new FormData()
-        fdB.append('file', new File([blob], nameForFile, { type: 'application/pdf' }))
-        const resB = await fetch('/api/pdf/brand', { method: 'POST', body: fdB })
-        if (!resB.ok) throw new Error((await resB.text()) || 'Branding failed')
-        return await resB.blob()
-      }
-
-      if (isPdfFile) {
-        const branded = await brandPdfBlob(f, f.name)
-        const url = URL.createObjectURL(branded)
-        setSalesDocUrl(url)
-        setSalesDocName(f.name.replace(/\.pdf$/i, '') + '-branded.pdf')
-        setSalesDocType('application/pdf')
-      } else if (isDocx) {
-        // 1) Convert DOCX → PDF
-        const fd = new FormData()
-        fd.append('file', f)
-        const res = await fetch('/api/cloudconvert/docx-to-pdf', { method: 'POST', body: fd })
-        if (!res.ok) throw new Error((await res.text()) || 'DOCX→PDF conversion failed')
-        const converted = await res.blob()
-
-        // 2) Brand the converted PDF
-        const branded = await brandPdfBlob(converted, f.name.replace(/\.docx$/i, '.pdf'))
-        const url = URL.createObjectURL(branded)
-        setSalesDocUrl(url)
-        setSalesDocName(f.name.replace(/\.docx$/i, '') + '-branded.pdf')
-        setSalesDocType('application/pdf')
-      } else if (isDoc) {
-        throw new Error('Legacy .doc files are not supported. Please upload a PDF or DOCX.')
-      } else {
-        throw new Error('Unsupported file type. Please upload a PDF or DOCX.')
-      }
-    } catch (err: any) {
-      setSalesErr(err?.message || 'Upload failed')
+      // Note: We are NOT converting DOCX → PDF here (preview not supported for DOCX).
+      // Upload flow will still accept DOC/DOCX (Vincere fetches by URL).
+    } catch (e: any) {
+      setSalesErr(e?.message || 'Failed to process file')
     } finally {
       setProcessing(false)
     }
@@ -503,147 +470,151 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     [salesDocType, salesDocName]
   )
 
-  // Branded viewer card (logo right, centred footer)
+  // ===== UPLOAD ACTIONS =====
+
+  // Upload a Blob to /api/upload and get public URL back
+  async function uploadBlobToPublicUrl(file: Blob, desiredName: string): Promise<string> {
+    const fd = new FormData()
+    fd.append('file', new File([file], desiredName, { type: (file as any).type || 'application/octet-stream' }))
+    fd.append('filename', desiredName)
+
+    const res = await fetch('/api/upload', { method: 'POST', body: fd, credentials: 'include' })
+    const data = await res.json()
+    if (!res.ok || !data?.ok) {
+      throw new Error(data?.error || `Blob upload failed (${res.status})`)
+    }
+    return data.url as string
+  }
+
+  // Tell Vincere to fetch file by URL and store it
+  async function postFileUrlToVincere(fileName: string, publicUrl: string) {
+    const payload = {
+      file_name: fileName,
+      document_type_id: 1,
+      url: publicUrl,
+      original_cv: true,
+    }
+
+    const res = await fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}/file`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(payload),
+    })
+
+    const raw = await res.text()
+    let data: any = null
+    try { data = raw ? JSON.parse(raw) : {} } catch { /* ignore */ }
+
+    if (!res.ok || !data?.ok) {
+      const msg = data?.error || raw || `Upload to Vincere failed (${res.status})`
+      throw new Error(msg)
+    }
+  }
+
+  // STANDARD: export right-panel DOM to PDF and upload
+  async function uploadStandardPreviewToVincereUrl(finalName: string) {
+    const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+      import('html2canvas'),
+      import('jspdf'),
+    ])
+
+    const node = standardPreviewRef.current
+    if (!node) throw new Error('Preview not ready')
+
+    const canvas = await html2canvas(node, { scale: 1.5, backgroundColor: '#FFFFFF' })
+    const imgData = canvas.toDataURL('image/jpeg', 0.85)
+
+    const pdf = new jsPDF({ unit: 'mm', format: 'a4' })
+    const pageWidth = pdf.internal.pageSize.getWidth()
+    const pageHeight = pdf.internal.pageSize.getHeight()
+
+    const imgWidth = pageWidth
+    const imgHeight = (canvas.height * imgWidth) / canvas.width
+
+    if (imgHeight <= pageHeight) {
+      pdf.addImage(imgData, 'JPEG', 0, 0, imgWidth, imgHeight)
+    } else {
+      let y = 0
+      const pxPageHeight = Math.floor((canvas.width * pageHeight) / pageWidth)
+      while (y < canvas.height) {
+        const pageCanvas = document.createElement('canvas')
+        pageCanvas.width = canvas.width
+        pageCanvas.height = Math.min(pxPageHeight, canvas.height - y)
+        const ctx = pageCanvas.getContext('2d')!
+        ctx.drawImage(canvas, 0, y, canvas.width, pageCanvas.height, 0, 0, canvas.width, pageCanvas.height)
+        const pageImgData = pageCanvas.toDataURL('image/jpeg', 0.85)
+        if (y > 0) pdf.addPage()
+        const pageImgHeight = (pageCanvas.height * imgWidth) / pageCanvas.width
+        pdf.addImage(pageImgData, 'JPEG', 0, 0, imgWidth, pageImgHeight)
+        y += pxPageHeight
+      }
+    }
+
+    const pdfBlob = new Blob([pdf.output('arraybuffer')], { type: 'application/pdf' })
+    const publicUrl = await uploadBlobToPublicUrl(pdfBlob, finalName)
+    await postFileUrlToVincere(finalName, publicUrl)
+  }
+
+  // SALES: upload whichever was imported (PDF/DOC/DOCX)
+  async function uploadSalesFileToVincereUrl(finalName: string) {
+    if (!salesDocUrl) throw new Error('No Sales document to upload')
+    const res = await fetch(salesDocUrl)
+    if (!res.ok) throw new Error(`Failed to read Sales file (${res.status})`)
+    const buf = await res.arrayBuffer()
+    // Preserve original mime where possible
+    const blob = new Blob([buf], { type: salesDocType || 'application/octet-stream' })
+    const publicUrl = await uploadBlobToPublicUrl(blob, finalName)
+    await postFileUrlToVincere(finalName, publicUrl)
+  }
+
+  async function confirmUpload() {
+    try {
+      setUploadBusy(true)
+      setUploadErr(null)
+      if (!candidateId) throw new Error('No candidate selected')
+      if (!uploadFileName?.trim()) throw new Error('Please enter a file name')
+
+      let finalName = uploadFileName.trim()
+      // Ensure sensible default extension
+      if (!/\.(pdf|docx?|DOCX?)$/.test(finalName)) {
+        finalName += (uploadContext === 'standard' ? '.pdf' : (isPdf ? '.pdf' : '.docx'))
+      }
+
+      if (uploadContext === 'standard') {
+        await uploadStandardPreviewToVincereUrl(finalName)
+      } else {
+        await uploadSalesFileToVincereUrl(finalName)
+      }
+
+      setShowUploadModal(false)
+    } catch (e: any) {
+      setUploadErr(e?.message || 'Upload failed')
+    } finally {
+      setUploadBusy(false)
+    }
+  }
+
+  // Branded viewer card (Sales)
   function SalesViewerCard() {
     return (
       <div className="border rounded-2xl overflow-hidden bg-white">
         {salesDocUrl ? (
-          <iframe className="w-full h-[75vh] bg-white" src={salesDocUrl} title={salesDocName || 'Document'} />
+          isPdf ? (
+            <iframe className="w-full h-[75vh] bg-white" src={salesDocUrl} title={salesDocName || 'Document'} />
+          ) : (
+            <div className="p-6 text-sm text-gray-600 bg-white">
+              Preview not available for this file type. You can still upload it.
+            </div>
+          )
         ) : (
           <div className="p-6 text-sm text-gray-600 bg-white">
             No document imported yet. Use “Import CV” above.
           </div>
         )}
       </div>
-    );
+    )
   }
-
-  // ===== UPLOAD ACTIONS =====
-
-  // Upload a Blob Url
-  async function uploadBlobToPublicUrl(file: Blob, desiredName: string): Promise<string> {
-  const fd = new FormData();
-  fd.append('file', new File([file], desiredName, { type: (file as any).type || 'application/pdf' }));
-  fd.append('filename', desiredName);
-
-  const res = await fetch('/api/upload', { method: 'POST', body: fd });
-  const data = await res.json();
-  if (!res.ok || !data?.ok) {
-    throw new Error(data?.error || `Blob upload failed (${res.status})`);
-  }
-  return data.url as string;
-}
-
-  // Upload helper
-  async function postFileUrlToVincere(fileName: string, publicUrl: string) {
-  const payload = {
-    file_name: fileName,
-    document_type_id: 1,
-    url: publicUrl,           // <<— use URL, no base64
-    original_cv: true
-  };
-
-  const res = await fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}/file`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-
-  const raw = await res.text();
-  let data: any = null;
-  try { data = raw ? JSON.parse(raw) : {}; } catch { /* non-JSON */ }
-
-  if (!res.ok || !data?.ok) {
-    const msg = data?.error || raw || `Upload to Vincere failed (${res.status})`;
-    throw new Error(msg);
-  }
-}
-
-  // STANDARD: export right-panel DOM to PDF and upload
-  async function uploadStandardPreviewToVincereUrl(finalName: string) {
-  const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
-    import('html2canvas'),
-    import('jspdf'),
-  ]);
-
-  const node = standardPreviewRef.current;
-  if (!node) throw new Error('Preview not ready');
-
-  // Render at modest scale; JPEG keeps size small
-  const canvas = await html2canvas(node, { scale: 1.5, backgroundColor: '#FFFFFF' });
-  const imgData = canvas.toDataURL('image/jpeg', 0.85);
-
-  const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
-  const pageWidth = pdf.internal.pageSize.getWidth();
-  const pageHeight = pdf.internal.pageSize.getHeight();
-
-  const imgWidth = pageWidth;
-  const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
-  if (imgHeight <= pageHeight) {
-    pdf.addImage(imgData, 'JPEG', 0, 0, imgWidth, imgHeight);
-  } else {
-    let y = 0;
-    const pxPageHeight = Math.floor((canvas.width * pageHeight) / pageWidth);
-    while (y < canvas.height) {
-      const pageCanvas = document.createElement('canvas');
-      pageCanvas.width = canvas.width;
-      pageCanvas.height = Math.min(pxPageHeight, canvas.height - y);
-      const ctx = pageCanvas.getContext('2d')!;
-      ctx.drawImage(canvas, 0, y, canvas.width, pageCanvas.height, 0, 0, canvas.width, pageCanvas.height);
-      const pageImgData = pageCanvas.toDataURL('image/jpeg', 0.85);
-      if (y > 0) pdf.addPage();
-      const pageImgHeight = (pageCanvas.height * imgWidth) / pageCanvas.width;
-      pdf.addImage(pageImgData, 'JPEG', 0, 0, imgWidth, pageImgHeight);
-      y += pxPageHeight;
-    }
-  }
-
-  // PDF as Blob (not base64)
-  const pdfBlob = new Blob([pdf.output('arraybuffer')], { type: 'application/pdf' });
-
-  // 1) Upload to Vercel Blob to get public URL
-  const publicUrl = await uploadBlobToPublicUrl(pdfBlob, finalName);
-
-  // 2) Tell Vincere to fetch that URL
-  await postFileUrlToVincere(finalName, publicUrl);
-}
-
-  // SALES: take branded PDF shown in viewer and upload
-  async function uploadSalesPdfToVincereUrl(finalName: string) {
-  if (!salesDocUrl) throw new Error('No Sales document to upload');
-  const res = await fetch(salesDocUrl);
-  if (!res.ok) throw new Error(`Failed to read Sales PDF (${res.status})`);
-  const buf = await res.arrayBuffer();
-  const blob = new Blob([buf], { type: 'application/pdf' });
-
-  const publicUrl = await uploadBlobToPublicUrl(blob, finalName);
-  await postFileUrlToVincere(finalName, publicUrl);
-}
-
-  async function confirmUpload() {
-  try {
-    setUploadBusy(true);
-    setUploadErr(null);
-    if (!candidateId) throw new Error('No candidate selected');
-    if (!uploadFileName?.trim()) throw new Error('Please enter a file name');
-
-    let finalName = uploadFileName.trim();
-    if (!/\.(pdf|docx?)$/i.test(finalName)) finalName += '.pdf';
-
-    if (uploadContext === 'standard') {
-      await uploadStandardPreviewToVincereUrl(finalName);
-    } else {
-      await uploadSalesPdfToVincereUrl(finalName);
-    }
-
-    setShowUploadModal(false);
-  } catch (e: any) {
-    setUploadErr(e?.message || 'Upload failed');
-  } finally {
-    setUploadBusy(false);
-  }
-}
 
   // ========== preview (right) ==========
   function CVTemplatePreview(): JSX.Element {
@@ -799,7 +770,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
               {loading ? 'Fetching…' : 'Retrieve Candidate'}
             </button>
 
-            {/* NEW: Upload (Standard) */}
+            {/* Upload (Standard) */}
             <button
               type="button"
               className="btn btn-grey"
@@ -819,11 +790,11 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
         {template === 'sales' && (
           <>
-            {/* Hidden real input */}
+            {/* Hidden input */}
             <input
               ref={fileInputRef}
               type="file"
-              accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
               onChange={onUploadChange}
               className="hidden"
             />
@@ -850,26 +821,26 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                 className="btn btn-brand"
                 onClick={onClickUpload}
                 disabled={processing}
-                title="Import a PDF or Word (DOCX) document"
+                title="Import a PDF or Word (DOC/DOCX) document"
               >
                 {processing ? 'Processing…' : 'Import CV'}
               </button>
 
-              {/* NEW: Upload (Sales) */}
+              {/* Upload (Sales) */}
               <button
                 type="button"
                 className="btn btn-grey"
                 disabled={!candidateId || !salesDocUrl}
                 onClick={() => {
                   const baseName = (candidateName || form.name || 'CV').replace(/\s+/g, '')
-                  const defaultName = (salesDocName?.trim() && /\.pdf$/i.test(salesDocName))
+                  const defaultName = salesDocName?.trim()
                     ? salesDocName
-                    : `${baseName}_Sales.pdf`
+                    : `${baseName}_Sales${isPdf ? '.pdf' : '.docx'}`
                   setUploadFileName(defaultName)
                   setUploadContext('sales')
                   setShowUploadModal(true)
                 }}
-                title="Upload the branded Sales PDF to Vincere"
+                title="Upload the imported file to Vincere"
               >
                 Upload
               </button>
@@ -882,9 +853,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         {error && <div className="mt-3 text-sm text-red-600">{String(error).slice(0, 300)}</div>}
       </div>
 
-      {/* CONTENT GRID:
-         - Standard: two columns (editor left, preview right)
-         - Sales: single column so preview fills full width */}
+      {/* CONTENT GRID */}
       <div className={`grid gap-4 ${template === 'sales' ? '' : 'md:grid-cols-2'}`}>
         {template === 'standard' && (
           <div className="card p-4 space-y-4">
@@ -1097,7 +1066,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
               )}
             </section>
 
-            {/* Debug: Raw JSON (below Additional Information) */}
+            {/* Debug: Raw JSON */}
             <section>
               <div className="mt-2 border rounded-xl p-2 bg-gray-50">
                 <div className="text-[11px] font-semibold text-gray-600 mb-1">Raw JSON Data (debug)</div>
@@ -1179,12 +1148,12 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
             <div className="mb-4">
               <h3 className="text-lg font-semibold">Upload CV to Vincere</h3>
               <p className="text-sm text-gray-600">
-                Candidate: <span className="font-medium">{candidateName || form.name || 'Unknown'}</span> &middot; ID:{' '}
+                Candidate: <span className="font-medium">{candidateName || form.name || 'Unknown'}</span> · ID:{' '}
                 <span className="font-mono">{candidateId || '—'}</span>
               </p>
               <p className="text-xs text-gray-500 mt-1">
                 Source:&nbsp;
-                {uploadContext === 'standard' ? 'Standard (right-panel template → PDF)' : 'Sales (branded PDF from viewer)'}
+                {uploadContext === 'standard' ? 'Standard (right-panel template → PDF)' : 'Sales (imported file)'}
               </p>
             </div>
 
