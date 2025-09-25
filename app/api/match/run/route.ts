@@ -226,12 +226,21 @@ export async function POST(req: NextRequest) {
 
     // ----- prepare skills -----
     const allSkills = uniq(job.skills ?? []);
-    const skillPairs: Array<[string?, string?]> = [];
-    for (let i = 0; i < Math.min(allSkills.length - 1, 3); i++) {
-      skillPairs.push([allSkills[i], allSkills[i + 1]]);
-    }
-    // single-skill list for Tier 3
-    const singleSkills = allSkills.slice(0, 6); // guardrail (you can tune)
+
+   // Use up to the first 4 skills as the "core" set for pair combinations
+   const coreSkills = allSkills.slice(0, 4);
+
+   // Build ALL 2-skill combinations from coreSkills:
+   // A+B, A+C, A+D, B+C, B+D, C+D (orderless, no duplicates)
+   const skillPairs: Array<[string, string]> = [];
+   for (let i = 0; i < coreSkills.length; i++) {
+     for (let j = i + 1; j < coreSkills.length; j++) {
+        skillPairs.push([coreSkills[i], coreSkills[j]]);
+     }
+}
+
+// Single-skill list for Tier 3 (unchanged; can keep it a bit broader)
+const singleSkills = allSkills.slice(0, 6);
 
     // ----- runner -----
     const runOne = async (qRaw: string) => {
