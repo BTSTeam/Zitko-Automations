@@ -17,7 +17,7 @@ type RunReq = {
     qualifications?: string[];
     description?: string;
   };
-  limit?: number;
+  limit?: number; // max unique candidates to return (default 100)
 };
 
 // ---------- helpers ----------
@@ -70,9 +70,14 @@ function buildSkillsClauseAND(skillA?: string, skillB?: string) {
   return '';
 }
 
-// Base clauses shared by all runs
-function buildBaseClauses(job: NonNullable<RunReq['job']>) {
-  const title = (job.title ?? '').trim();
+function buildTitleClause(title?: string) {
+  const t = String(title ?? '').trim();
+  return t ? `current_job_title:${t}#` : '';
+}
+
+// Base clauses shared by all runs (can accept a custom title override)
+function buildBaseClauses(job: NonNullable<RunReq['job']>, titleOverride?: string) {
+  const title = (titleOverride ?? job.title ?? '').trim();
   const city = pickCityFromLocation(job.location);
 
   // CONTAINING match for title (unquoted) instead of exact phrase
@@ -86,9 +91,13 @@ function buildBaseClauses(job: NonNullable<RunReq['job']>) {
   return { titleClause, cityClause };
 }
 
-// Build q with a specific pair of skills (A&B, B&C, C&D)
-function buildQueryWithPair(job: NonNullable<RunReq['job']>, pair: [string?, string?]) {
-  const { titleClause, cityClause } = buildBaseClauses(job);
+// Build q with a specific pair of skills (A&B etc), optional title override
+function buildQueryWithPair(
+  job: NonNullable<RunReq['job']>,
+  pair: [string?, string?],
+  titleOverride?: string
+) {
+  const { titleClause, cityClause } = buildBaseClauses(job, titleOverride);
   const skillsClause = buildSkillsClauseAND(pair[0], pair[1]);
 
   let q = '';
@@ -97,6 +106,60 @@ function buildQueryWithPair(job: NonNullable<RunReq['job']>, pair: [string?, str
   if (skillsClause) q = q ? `${q} AND ${skillsClause}` : skillsClause;
 
   return q || '*:*';
+}
+
+// Single-skill query (Job Title + City + ONE skill)
+function buildQueryOneSkill(job: NonNullable<RunReq['job']>, skill: string, titleOverride?: string) {
+  const { titleClause, cityClause } = buildBaseClauses(job, titleOverride);
+  const skillsClause = buildSkillsClauseAND(skill, undefined);
+
+  let q = '';
+  if (titleClause) q = titleClause;
+  if (cityClause) q = q ? `${q} AND ${cityClause}` : cityClause;
+  if (skillsClause) q = q ? `${q} AND ${skillsClause}` : skillsClause;
+
+  return q || '*:*';
+}
+
+// Title + City only
+function buildQueryTitleCity(job: NonNullable<RunReq['job']>, titleOverride?: string) {
+  const { titleClause, cityClause } = buildBaseClauses(job, titleOverride);
+  let q = '';
+  if (titleClause) q = titleClause;
+  if (cityClause) q = q ? `${q} AND ${cityClause}` : cityClause;
+  return q || '*:*';
+}
+
+// Generate partial title variants (ordered, unique) per your spec
+function buildPartialTitleVariants(fullTitle?: string): string[] {
+  const t = String(fullTitle ?? '').trim();
+  if (!t) return [];
+
+  // Heuristics for your example "Project Resource Coordinator":
+  // - Keep meaningful right-trims & mid-chunks
+  // - De-dupe & keep order
+  const words = t.split(/\s+/).filter(Boolean);
+  const variants: string[] = [];
+
+  // Handful of sensible chunks (you can expand this later if needed)
+  if (words.length >= 3) {
+    variants.push(`${words[0]} ${words[2]}`);                // "Project Coordinator"
+    variants.push(`${words[1]} ${words[2]}`);                // "Resource Coordinator"
+  }
+  if (words.length >= 2) variants.push(words.slice(1).join(' ')); // drop first word
+  if (words.length >= 1) variants.push(words[words.length - 1]);  // last word e.g. "Coordinator"
+
+  // Ensure uniqueness and remove exact full title if it sneaks in
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const v of variants.map(s => s.trim()).filter(Boolean)) {
+    const k = v.toLowerCase();
+    if (!seen.has(k) && k !== t.toLowerCase()) {
+      seen.add(k);
+      out.push(v);
+    }
+  }
+  return out;
 }
 
 // matrix_vars: request fields your tenant returns.
@@ -156,80 +219,124 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing job details.' }, { status: 400 });
     }
 
-    // Build up to three adjacent skill pairs: [A,B], [B,C], [C,D]
-const allSkills = uniq(job.skills ?? []);
-const skillPairs: Array<[string?, string?]> = [];
+    // ----- config & limits -----
+    const hardLimit = Math.max(1, Math.min(100, Number(body.limit ?? 100)));
+    const base = config.VINCERE_TENANT_API_BASE.replace(/\/$/, '');
+    const encodedMatrix = encodeURIComponent(buildMatrixVars());
 
-for (let i = 0; i < Math.min(allSkills.length - 1, 3); i++) {
-  skillPairs.push([allSkills[i], allSkills[i + 1]]);
-}
-// If only one skill exists, we still do a single-skill search
-if (skillPairs.length === 0 && allSkills.length === 1) {
-  skillPairs.push([allSkills[0], undefined]);
-}
-// If no skills at all, we’ll skip directly to the title/location-only fallback later
-
-const limit = Math.max(1, Math.min(100, Number(body.limit ?? 100)));
-const base = config.VINCERE_TENANT_API_BASE.replace(/\/$/, '');
-const encodedMatrix = encodeURIComponent(buildMatrixVars());
-
-// Runner for one query
-const runOne = async (qRaw: string) => {
-  const encodedQ = encodeForVincereQuery(qRaw);
-  const url =
-    `${base}/api/v2/candidate/search/${encodedMatrix}` +
-    `?q=${encodedQ}&limit=${limit}`;
-  const resp = await fetchWithAutoRefresh(url, idToken, userKey);
-  const text = await resp.text();
-  if (!resp.ok) {
-    return { url, qRaw, ok: false as const, status: resp.status, detail: text, items: [] as any[] };
-  }
-  let json: any = {};
-  try { json = JSON.parse(text); } catch {}
-  const result = json?.result;
-  const rawItems = Array.isArray(result?.items)
-    ? result.items
-    : Array.isArray(json?.data)
-      ? json.data
-      : Array.isArray(json?.items)
-        ? json.items
-        : [];
-  return { url, qRaw, ok: true as const, status: 200, items: rawItems };
-};
-
-// 1) Run skill-based queries first (if any)
-const skillQueries = skillPairs.map((pair) => buildQueryWithPair(job, pair));
-let runs = await Promise.all(skillQueries.map(q => runOne(q)));
-
-// Merge & de-dupe results from the skill runs
-const mergeRuns = (runsArr: Array<{items:any[]}>) => {
-  const seen = new Set<string>();
-  const mergedList: any[] = [];
-  for (const r of runsArr) {
-    for (const c of r.items) {
-      const id = String(c?.id ?? '');
-      if (!id || seen.has(id)) continue;
-      seen.add(id);
-      mergedList.push(c);
+    // ----- prepare skills -----
+    const allSkills = uniq(job.skills ?? []);
+    const skillPairs: Array<[string?, string?]> = [];
+    for (let i = 0; i < Math.min(allSkills.length - 1, 3); i++) {
+      skillPairs.push([allSkills[i], allSkills[i + 1]]);
     }
-  }
-  return mergedList;
-};
+    // single-skill list for Tier 3
+    const singleSkills = allSkills.slice(0, 6); // guardrail (you can tune)
 
-let merged = mergeRuns(runs);
+    // ----- runner -----
+    const runOne = async (qRaw: string) => {
+      const encodedQ = encodeForVincereQuery(qRaw);
+      const url = `${base}/api/v2/candidate/search/${encodedMatrix}?q=${encodedQ}&limit=${hardLimit}`;
+      const resp = await fetchWithAutoRefresh(url, idToken, userKey);
+      const text = await resp.text();
+      if (!resp.ok) {
+        return { url, qRaw, ok: false as const, status: resp.status, detail: text, items: [] as any[] };
+      }
+      let json: any = {};
+      try { json = JSON.parse(text); } catch {}
+      const result = json?.result;
+      const rawItems = Array.isArray(result?.items)
+        ? result.items
+        : Array.isArray(json?.data)
+          ? json.data
+          : Array.isArray(json?.items)
+            ? json.items
+            : [];
+      return { url, qRaw, ok: true as const, status: 200, items: rawItems };
+    };
 
-// 2) If zero results from the skill queries OR if there were no skills at all,
-//    run a single fallback query with only title + city.
-if (merged.length === 0) {
-  const fallbackQ = buildQueryWithPair(job, [undefined, undefined]); // title+city only
-  const fallbackRun = await runOne(fallbackQ);
-  runs = [...runs, fallbackRun];
-  merged = mergeRuns(runs);
-}
+    // ----- merge util -----
+    const mergeRuns = (runsArr: Array<{ items: any[] }>) => {
+      const seen = new Set<string>();
+      const mergedList: any[] = [];
+      for (const r of runsArr) {
+        for (const c of r.items) {
+          const id = String(c?.id ?? '');
+          if (!id || seen.has(id)) continue;
+          seen.add(id);
+          mergedList.push(c);
+        }
+      }
+      return mergedList;
+    };
 
-// Keep `runs` in the response so you can see what was executed.
+    const runs: any[] = [];
+    let merged: any[] = [];
 
-    // Map to your existing shape
+    // ===== TIER 1: Job Title + City + (A&B | B&C | C&D) =====
+    if (skillPairs.length > 0) {
+      const tier1Queries = skillPairs.map((pair) => buildQueryWithPair(job, pair /* title as-is */));
+      const tier1Runs = await Promise.all(tier1Queries.map(q => runOne(q)));
+      runs.push(...tier1Runs);
+      merged = mergeRuns(runs);
+    }
+
+    if (merged.length >= hardLimit) {
+      merged = merged.slice(0, hardLimit);
+    } else {
+      // ===== TIER 2: Partial Job Title variants + City + pairs =====
+      const partials = buildPartialTitleVariants(job.title);
+      if (partials.length > 0 && skillPairs.length > 0) {
+        // generate queries for each partial title across the same skill pairs
+        const tier2Queries: string[] = [];
+        for (const pt of partials) {
+          for (const pair of skillPairs) {
+            tier2Queries.push(buildQueryWithPair(job, pair, pt));
+          }
+        }
+        // Run in small batches to be polite
+        for (let i = 0; i < tier2Queries.length && merged.length < hardLimit; i += 5) {
+          const batch = tier2Queries.slice(i, i + 5);
+          const tier2Runs = await Promise.all(batch.map(q => runOne(q)));
+          runs.push(...tier2Runs);
+          merged = mergeRuns(runs).slice(0, hardLimit);
+        }
+      }
+
+      if (merged.length < hardLimit) {
+        // ===== TIER 3: Job Title + City + ONE skill at a time =====
+        if (singleSkills.length > 0) {
+          const tier3Queries = singleSkills.map(s => buildQueryOneSkill(job, s /* title as-is */));
+          for (let i = 0; i < tier3Queries.length && merged.length < hardLimit; i += 5) {
+            const batch = tier3Queries.slice(i, i + 5);
+            const tier3Runs = await Promise.all(batch.map(q => runOne(q)));
+            runs.push(...tier3Runs);
+            merged = mergeRuns(runs).slice(0, hardLimit);
+          }
+        }
+      }
+
+      if (merged.length < hardLimit) {
+        // ===== TIER 4: Job Title + City (contains-match) =====
+        const tier4Query = buildQueryTitleCity(job /* title as-is */);
+        const tier4Run = await runOne(tier4Query);
+        runs.push(tier4Run);
+        merged = mergeRuns(runs).slice(0, hardLimit);
+
+        // Also try partial-title-only variants with city, no skills (same tier)
+        if (merged.length < hardLimit) {
+          const partials = buildPartialTitleVariants(job.title);
+          for (let i = 0; i < partials.length && merged.length < hardLimit; i += 5) {
+            const batch = partials.slice(i, i + 5).map(pt => buildQueryTitleCity(job, pt));
+            const tier4bRuns = await Promise.all(batch.map(q => runOne(q)));
+            runs.push(...tier4bRuns);
+            merged = mergeRuns(runs).slice(0, hardLimit);
+          }
+        }
+      }
+    }
+
+    // ---------- map to existing shape ----------
     const toList = (v: any) => {
       if (Array.isArray(v)) {
         return v
@@ -290,7 +397,17 @@ if (merged.length === 0) {
       ok: true,
       // helpful to inspect what was actually run
       runs: runs.map(r => ({ ok: r.ok, status: r.status, url: r.url, q: r.qRaw })),
-      query: { pairs: skillPairs.map(p => p.filter(Boolean)), limit },
+      query: {
+        tiers: [
+          'Tier1: title+city+pair-skills',
+          'Tier2: partial-title+city+pair-skills',
+          'Tier3: title+city+single-skill',
+          'Tier4: title+city (and partial-title+city)',
+        ],
+        pairs: skillPairs.map(p => p.filter(Boolean)),
+        partial_titles: buildPartialTitleVariants(job.title),
+        limit: hardLimit,
+      },
       count,
       results,
       candidates: results,
