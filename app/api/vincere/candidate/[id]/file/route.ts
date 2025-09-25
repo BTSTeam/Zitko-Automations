@@ -22,13 +22,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   try {
     const session = await getSession()
     let idToken = (session as any)?.idToken as string | undefined
-    const userKey = (session as any)?.userKey as string | undefined
     if (!idToken) {
       return NextResponse.json({ ok: false, error: 'Not connected to Vincere' }, { status: 401 })
     }
 
-    // Refresh token (signature: refreshIdToken(idToken, userKey))
-    const refreshed = await refreshIdToken(idToken, userKey)
+    // refreshIdToken expects a single argument (current token)
+    const refreshed = await refreshIdToken(idToken)
     idToken = (refreshed as string | undefined) || idToken
 
     const id = params.id
@@ -43,11 +42,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     const url = `${BASE}/candidate/${encodeURIComponent(id)}/file`
 
-    let res = await doVincerePost(url, idToken, payload)
+    let res = await doVincerePost(url, idToken!, payload)
 
     if (res.status === 401) {
-      const retried = await refreshIdToken(idToken, userKey)
-      const newToken = (retried as string | undefined) || idToken
+      const retryToken = (await refreshIdToken(idToken!)) as string | undefined
+      const newToken = retryToken || idToken
       if (!newToken) {
         return NextResponse.json({ ok: false, error: 'Unable to refresh Vincere session' }, { status: 401 })
       }
