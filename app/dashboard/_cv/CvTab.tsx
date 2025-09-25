@@ -35,7 +35,8 @@ type OpenState = {
 export default function CvTab({ templateFromShell }: { templateFromShell?: TemplateKey }): JSX.Element {
   // ========== UI state ==========
   const [template, setTemplate] = useState<TemplateKey | null>(templateFromShell ?? null)
-  const [candidateId, setCandidateId] = useState<string>('') // used by Standard only
+  const [candidateId, setCandidateId] = useState<string>('') // used by Standard & Sales (target for upload)
+  const [candidateName, setCandidateName] = useState<string>('') // populated after retrieve (Standard) or manual if needed
   const [loading, setLoading] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -71,6 +72,16 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     core: true, profile: true, skills: true, work: true, education: true, extra: true,
     rawCandidate: false, rawWork: false, rawEdu: false, rawCustom: false,
   })
+
+  // ===== Upload modal (both Standard & Sales) =====
+  const [showUploadModal, setShowUploadModal] = useState(false)
+  const [uploadContext, setUploadContext] = useState<'standard' | 'sales'>('standard')
+  const [uploadFileName, setUploadFileName] = useState<string>('CV.pdf')
+  const [uploadBusy, setUploadBusy] = useState(false)
+  const [uploadErr, setUploadErr] = useState<string | null>(null)
+
+  // Standard preview ref (for DOM→PDF export)
+  const standardPreviewRef = useRef<HTMLDivElement | null>(null)
 
   function getEmptyForm() {
     return {
@@ -188,23 +199,15 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   function customArray(custom: any): CustomEntry[] {
     if (!custom) return []
 
-    // 1) Some endpoints return { field_values: [{ field_key, value }, ...] }
     if (Array.isArray(custom.field_values)) return custom.field_values as CustomEntry[]
-
-    // 2) Some return { data: [...] }
     if (Array.isArray(custom.data)) return custom.data as CustomEntry[]
-
-    // 3) Already an array
     if (Array.isArray(custom)) return custom as CustomEntry[]
-
-    // 4) Fallback: object map -> entries
     if (typeof custom === 'object') {
       return Object.entries(custom).map(([k, v]) => {
         const obj = (typeof v === 'object' && v) ? (v as any) : { value: v }
         return { key: k, ...obj }
       })
     }
-
     return []
   }
 
@@ -217,21 +220,15 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   /** Pull the first numeric code from entry.value/field_values across shapes */
   function firstCodeUniversal(entry: CustomEntry | null): number | null {
     if (!entry) return null
-
-    // Common shape: value is an array of objects with { code }
     if (Array.isArray(entry.value) && entry.value.length) {
       const raw = entry.value[0]
       const n = Number((raw && (raw.code ?? raw.value ?? raw)) ?? NaN)
       return Number.isFinite(n) ? n : null
     }
-
-    // If value is primitive
     if (typeof entry.value === 'string' || typeof entry.value === 'number') {
       const n = Number(entry.value)
       return Number.isFinite(n) ? n : null
     }
-
-    // field_values (string/number/ids) as fallback
     if (Array.isArray(entry.field_values) && entry.field_values.length) {
       const n = Number(entry.field_values[0])
       return Number.isFinite(n) ? n : null
@@ -240,7 +237,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       const n = Number(entry.field_value_ids[0])
       return Number.isFinite(n) ? n : null
     }
-
     return null
   }
 
@@ -348,7 +344,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       const name = [cRaw?.first_name, cRaw?.last_name].filter(Boolean).join(' ').trim()
       const location = cRaw?.candidate_current_address?.town_city ?? ''
 
-      // ---- Robust Custom Fields mapping (works across variants) ----
+      // ---- Robust Custom Fields mapping ----
       const UUID_DRIVING = 'edd971dc2678f05b5757fe31f2c586a8'
       const UUID_AVAIL   = 'a18b8e0d62e27548df904106cfde1584'
       const UUID_HEALTH  = '25bf6829933a29172af40f977e9422bc'
@@ -399,6 +395,8 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         additional: { drivingLicense, nationality, availability, health, criminalRecord, financialHistory },
       }))
 
+      setCandidateName(name) // <-- store for modal / filenames
+
       // Collapse all panels except Core
       setOpen({
         core: true, profile: false, skills: false, work: false, education: false, extra: false,
@@ -414,7 +412,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   // ====================== SALES ( + auto DOCX→PDF) ======================
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [salesErr, setSalesErr] = useState<string | null>(null)
-  const [salesDocUrl, setSalesDocUrl] = useState<string | null>(null) // object URL
+  const [salesDocUrl, setSalesDocUrl] = useState<string | null>(null) // object URL (branded PDF)
   const [salesDocName, setSalesDocName] = useState<string>('')        // filename (final)
   const [salesDocType, setSalesDocType] = useState<string>('')        // mime type
   const [processing, setProcessing] = useState<boolean>(false)
@@ -445,7 +443,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     try {
       setProcessing(true)
 
-      // helper to brand a PDF Blob via /api/pdf/brand
+      // helper to brand a PDF Blob via /api/pdf/brand (adds Zitko header on page 1, footer on last)
       const brandPdfBlob = async (blob: Blob, nameForFile = 'document.pdf') => {
         const fdB = new FormData()
         fdB.append('file', new File([blob], nameForFile, { type: 'application/pdf' }))
@@ -520,6 +518,114 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     );
   }
 
+  // ===== UPLOAD ACTIONS =====
+
+  // Convert a Blob (or URL to Blob) to base64 (no data: prefix)
+  async function blobUrlToBase64(url: string): Promise<string> {
+    const res = await fetch(url)
+    if (!res.ok) throw new Error(`Failed to read blob (${res.status})`)
+    const ab = await res.arrayBuffer()
+    let binary = ''
+    const bytes = new Uint8Array(ab)
+    const len = bytes.byteLength
+    for (let i = 0; i < len; i++) binary += String.fromCharCode(bytes[i])
+    return btoa(binary)
+  }
+
+  // Upload helper
+  async function postFileToVincere(fileName: string, base64Content: string) {
+    const payload = {
+      file_name: fileName,
+      document_type_id: 1,       // typical CV doc type
+      base_64_content: base64Content,
+      original_cv: true
+    }
+    const res = await fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}/file`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const data = await res.json()
+    if (!res.ok || !data?.ok) throw new Error(data?.error || `Upload failed (${res.status})`)
+  }
+
+  // STANDARD: export right-panel DOM to PDF and upload
+  async function uploadStandardPreviewToVincere(finalName: string) {
+    // lazy import to avoid SSR/build issues (install: npm i html2canvas jspdf)
+    const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+      import('html2canvas'),
+      import('jspdf')
+    ])
+
+    const node = standardPreviewRef.current
+    if (!node) throw new Error('Preview not ready')
+
+    const canvas = await html2canvas(node, { scale: 2, backgroundColor: '#FFFFFF' })
+    const imgData = canvas.toDataURL('image/png')
+
+    const pdf = new jsPDF({ unit: 'mm', format: 'a4' })
+    const pageWidth = pdf.internal.pageSize.getWidth()
+    const pageHeight = pdf.internal.pageSize.getHeight()
+
+    const imgWidth = pageWidth
+    const imgHeight = (canvas.height * imgWidth) / canvas.width
+
+    if (imgHeight <= pageHeight) {
+      pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight)
+    } else {
+      // split into multiple pages
+      let y = 0
+      const pxPageHeight = Math.floor((canvas.width * pageHeight) / pageWidth)
+      while (y < canvas.height) {
+        const pageCanvas = document.createElement('canvas')
+        pageCanvas.width = canvas.width
+        pageCanvas.height = Math.min(pxPageHeight, canvas.height - y)
+        const ctx = pageCanvas.getContext('2d')!
+        ctx.drawImage(canvas, 0, y, canvas.width, pageCanvas.height, 0, 0, canvas.width, pageCanvas.height)
+        const pageImgData = pageCanvas.toDataURL('image/png')
+        if (y > 0) pdf.addPage()
+        const pageImgHeight = (pageCanvas.height * imgWidth) / pageCanvas.width
+        pdf.addImage(pageImgData, 'PNG', 0, 0, imgWidth, pageImgHeight)
+        y += pxPageHeight
+      }
+    }
+
+    const pdfBase64 = pdf.output('datauristring').split(',')[1]
+    await postFileToVincere(finalName, pdfBase64)
+  }
+
+  // SALES: take branded PDF shown in viewer and upload
+  async function uploadSalesPdfToVincere(finalName: string) {
+    if (!salesDocUrl) throw new Error('No Sales document to upload')
+    const base64 = await blobUrlToBase64(salesDocUrl)
+    await postFileToVincere(finalName, base64)
+  }
+
+  async function confirmUpload() {
+    try {
+      setUploadBusy(true)
+      setUploadErr(null)
+      if (!candidateId) throw new Error('No candidate selected')
+      if (!uploadFileName?.trim()) throw new Error('Please enter a file name')
+
+      // Ensure sensible extension
+      let finalName = uploadFileName.trim()
+      if (!/\.(pdf|docx?)$/i.test(finalName)) finalName += '.pdf'
+
+      if (uploadContext === 'standard') {
+        await uploadStandardPreviewToVincere(finalName)
+      } else {
+        await uploadSalesPdfToVincere(finalName)
+      }
+
+      setShowUploadModal(false)
+    } catch (e: any) {
+      setUploadErr(e?.message || 'Upload failed')
+    } finally {
+      setUploadBusy(false)
+    }
+  }
+
   // ========== preview (right) ==========
   function CVTemplatePreview(): JSX.Element {
     if (template === 'sales') {
@@ -530,9 +636,9 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       )
     }
 
-    // Standard (existing editor preview)
+    // Standard (existing editor preview) — attach ref for DOM→PDF
     return (
-      <div className="p-8 cv-standard-page">
+      <div ref={standardPreviewRef} className="p-8 cv-standard-page bg-white">
         <div className="flex items-start justify-between">
           <div />
           <img src="/zitko-full-logo.png" alt="Zitko" className="h-12" />
@@ -656,7 +762,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
         {/* Top controls: Standard vs Sales */}
         {template === 'standard' && (
-          <div className="grid sm:grid-cols-[1fr_auto] gap-2 mt-4">
+          <div className="grid sm:grid-cols-[1fr_auto_auto] gap-2 mt-4">
             <input
               className="input"
               placeholder="Enter Candidate ID"
@@ -669,8 +775,25 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
               className="btn btn-brand"
               onClick={fetchData}
               disabled={loading || !candidateId}
+              title="Retrieve Candidate"
             >
               {loading ? 'Fetching…' : 'Retrieve Candidate'}
+            </button>
+
+            {/* NEW: Upload (Standard) */}
+            <button
+              type="button"
+              className="btn btn-grey"
+              disabled={!candidateId}
+              onClick={() => {
+                const defaultName = `${(candidateName || form.name || 'CV').replace(/\s+/g, '')}_Standard.pdf`
+                setUploadFileName(defaultName)
+                setUploadContext('standard')
+                setShowUploadModal(true)
+              }}
+              title="Export the right panel CV to PDF and upload to Vincere"
+            >
+              Upload
             </button>
           </div>
         )}
@@ -686,9 +809,9 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
               className="hidden"
             />
 
-            {/* Faux input + button (same placement/layout as Standard) */}
+            {/* Faux input + buttons */}
             <div
-              className="grid sm:grid-cols-[1fr_auto] gap-2 mt-4"
+              className="grid sm:grid-cols-[1fr_auto_auto] gap-2 mt-4"
               onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
               onDragLeave={() => setDragOver(false)}
               onDrop={onDrop}
@@ -711,6 +834,25 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                 title="Import a PDF or Word (DOCX) document"
               >
                 {processing ? 'Processing…' : 'Import CV'}
+              </button>
+
+              {/* NEW: Upload (Sales) */}
+              <button
+                type="button"
+                className="btn btn-grey"
+                disabled={!candidateId || !salesDocUrl}
+                onClick={() => {
+                  const baseName = (candidateName || form.name || 'CV').replace(/\s+/g, '')
+                  const defaultName = (salesDocName?.trim() && /\.pdf$/i.test(salesDocName))
+                    ? salesDocName
+                    : `${baseName}_Sales.pdf`
+                  setUploadFileName(defaultName)
+                  setUploadContext('sales')
+                  setShowUploadModal(true)
+                }}
+                title="Upload the branded Sales PDF to Vincere"
+              >
+                Upload
               </button>
             </div>
 
@@ -743,7 +885,15 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                 <div className="grid gap-3 mt-3">
                   <label className="grid gap-1">
                     <span className="text-xs text-gray-500">Name</span>
-                    <input className="input" value={form.name} onChange={e => setField('name', e.target.value)} disabled={loading} />
+                    <input
+                      className="input"
+                      value={form.name}
+                      onChange={e => {
+                        setField('name', e.target.value)
+                        setCandidateName(e.target.value)
+                      }}
+                      disabled={loading}
+                    />
                   </label>
                   <label className="grid gap-1">
                     <span className="text-xs text-gray-500">Location</span>
@@ -1002,6 +1152,59 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
           <CVTemplatePreview />
         </div>
       </div>
+
+      {/* ===== Upload modal ===== */}
+      {showUploadModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+            <div className="mb-4">
+              <h3 className="text-lg font-semibold">Upload CV to Vincere</h3>
+              <p className="text-sm text-gray-600">
+                Candidate: <span className="font-medium">{candidateName || form.name || 'Unknown'}</span> &middot; ID:{' '}
+                <span className="font-mono">{candidateId || '—'}</span>
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                Source:&nbsp;
+                {uploadContext === 'standard' ? 'Standard (right-panel template → PDF)' : 'Sales (branded PDF from viewer)'}
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium">File name</label>
+                <input
+                  type="text"
+                  className="mt-1 w-full rounded-md border p-2"
+                  value={uploadFileName}
+                  onChange={(e) => setUploadFileName(e.target.value)}
+                  placeholder="e.g. JohnSmith_CV.pdf"
+                />
+              </div>
+
+              {uploadErr && <div className="text-sm text-red-600">{uploadErr}</div>}
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                className="px-4 py-2 rounded-lg border"
+                onClick={() => setShowUploadModal(false)}
+                disabled={uploadBusy}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="px-4 py-2 rounded-lg bg-zinc-900 text-white disabled:opacity-50"
+                onClick={confirmUpload}
+                disabled={uploadBusy}
+              >
+                {uploadBusy ? 'Uploading…' : 'Confirm & Upload'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
