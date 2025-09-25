@@ -18,6 +18,7 @@
     "pdf-lib": "^1.17.1",
     "html2canvas": "^1.4.1",
     "jspdf": "^2.5.1"
+    "@vercel/blob": "^0.24.0
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
