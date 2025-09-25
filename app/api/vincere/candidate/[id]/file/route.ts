@@ -21,29 +21,36 @@ async function doVincerePost(url: string, idToken: string, body: unknown) {
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const session = await getSession();
-    if (!session?.vincere?.idToken) {
+
+    // Access loosely to avoid TS error (your session type doesn’t include 'vincere')
+    const idToken = (session as any)?.vincere?.idToken as string | undefined;
+    const userKey = (session as any)?.vincere?.userKey as string | undefined; // if you store it
+    if (!idToken) {
       return NextResponse.json({ ok: false, error: 'Not connected to Vincere' }, { status: 401 });
     }
 
     const id = params.id;
     const payload = await req.json();
 
-    // Validate minimal requirements
     if (!payload?.file_name) {
       return NextResponse.json({ ok: false, error: 'file_name is required' }, { status: 400 });
     }
-    // Either url OR base_64_content must be present (we allow both, but at least one)
     if (!payload?.url && !payload?.base_64_content) {
       return NextResponse.json({ ok: false, error: 'Provide url or base_64_content' }, { status: 400 });
     }
 
     const url = `${BASE}/candidate/${encodeURIComponent(id)}/file`;
 
-    // Try once; if unauthorized, refresh id-token and retry once
-    let res = await doVincerePost(url, session.vincere.idToken, payload);
+    let res = await doVincerePost(url, idToken, payload);
+
+    // If unauthorized, try refresh and retry once
     if (res.status === 401) {
-      const { idToken: refreshed } = await refreshIdToken(session);
-      res = await doVincerePost(url, refreshed, payload);
+      const refreshed = await refreshIdToken(session as any);
+      const newToken = (refreshed as any)?.idToken || (session as any)?.vincere?.idToken;
+      if (!newToken) {
+        return NextResponse.json({ ok: false, error: 'Unable to refresh Vincere session' }, { status: 401 });
+      }
+      res = await doVincerePost(url, newToken, payload);
     }
 
     const text = await res.text();
