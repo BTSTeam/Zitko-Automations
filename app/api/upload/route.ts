@@ -24,15 +24,19 @@ export async function POST(req: NextRequest) {
       access: 'public', // gives a public URL
       addRandomSuffix: true,
       contentType: file.type || 'application/octet-stream',
+      token: process.env.BLOB_READ_WRITE_TOKEN, // 👈 required!
     });
 
     return NextResponse.json({
+      ok: true,
       url: blob.url,
       pathname: blob.pathname,
       contentType: blob.contentType,
-      // size: blob.size,  // not available in PutBlobResult
     });
   } catch (err: any) {
-    return NextResponse.json({ ok: false, error: err?.message || 'Upload failed' }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: err?.message || 'Upload failed' },
+      { status: 500 }
+    );
   }
 }
