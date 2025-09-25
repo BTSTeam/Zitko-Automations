@@ -20,6 +20,27 @@ async function postJson(url: string, idToken: string, body: unknown) {
   return fetch(url, { method: 'POST', headers, body: JSON.stringify(body), cache: 'no-store' });
 }
 
+/** Tolerant refresh that works with either signature:
+ *   - refreshIdToken(session)
+ *   - refreshIdToken(userKey, idToken)
+ */
+async function tolerantRefresh(session: any, userKey?: string, idToken?: string) {
+  try {
+    // Prefer the 1-arg form if available by type
+    // (some builds only export the 1-arg variant)
+    const maybeOneArg = (refreshIdToken as unknown as { length: number }).length === 1;
+    if (maybeOneArg) {
+      const fresh: any = await (refreshIdToken as any)(session);
+      return fresh?.idToken ?? fresh ?? undefined;
+    }
+    // Fallback: 2-arg form
+    const fresh: any = await (refreshIdToken as any)(userKey, idToken);
+    return fresh?.idToken ?? fresh ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const session = await getSession();
@@ -53,11 +74,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     const url = `${API_BASE}/candidate/${encodeURIComponent(params.id)}/file`;
 
-    // Attempt + refresh-once (same signature as your working routes)
+    // Attempt
     let res = await postJson(url, idToken, body);
+
+    // On 401, refresh with a tolerant helper (supports 1-arg or 2-arg implementations)
     if (res.status === 401) {
-      const fresh = await refreshIdToken(userKey, idToken).catch(() => null);
-      const newToken = fresh?.idToken ?? idToken;
+      const newToken = await tolerantRefresh(session, userKey, idToken);
       if (!newToken) {
         return NextResponse.json({ ok: false, error: 'Unable to refresh Vincere session' }, { status: 401 });
       }
