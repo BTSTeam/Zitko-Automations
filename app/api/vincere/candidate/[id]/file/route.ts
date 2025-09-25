@@ -21,14 +21,24 @@ async function doVincerePost(url: string, idToken: string, body: unknown) {
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const session = await getSession()
-    let idToken = (session as any)?.idToken as string | undefined
+
+    // Read token (prefer top-level; fall back to nested if present)
+    let idToken: string | undefined =
+      (session as any)?.idToken ||
+      (session as any)?.vincere?.idToken
+
     if (!idToken) {
       return NextResponse.json({ ok: false, error: 'Not connected to Vincere' }, { status: 401 })
     }
 
-    // refreshIdToken expects a single argument (current token)
-    const refreshed = await refreshIdToken(idToken)
-    idToken = (refreshed as string | undefined) || idToken
+    // Refresh token — support either signature by using any + normalizing result
+    try {
+      const refreshed: any = await (refreshIdToken as any)(session as any)
+      const maybe = (refreshed && (refreshed.idToken ?? refreshed)) as unknown
+      if (typeof maybe === 'string' && maybe) idToken = maybe
+    } catch {
+      // ignore refresh errors; use existing token
+    }
 
     const id = params.id
     const payload = await req.json()
@@ -44,13 +54,19 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     let res = await doVincerePost(url, idToken!, payload)
 
+    // On 401, try one more refresh in a tolerant way
     if (res.status === 401) {
-      const retryToken = (await refreshIdToken(idToken!)) as string | undefined
-      const newToken = retryToken || idToken
-      if (!newToken) {
+      try {
+        const retried: any = await (refreshIdToken as any)(session as any)
+        const maybe = (retried && (retried.idToken ?? retried)) as unknown
+        const newToken = (typeof maybe === 'string' && maybe) ? maybe : idToken
+        if (!newToken) {
+          return NextResponse.json({ ok: false, error: 'Unable to refresh Vincere session' }, { status: 401 })
+        }
+        res = await doVincerePost(url, newToken, payload)
+      } catch {
         return NextResponse.json({ ok: false, error: 'Unable to refresh Vincere session' }, { status: 401 })
       }
-      res = await doVincerePost(url, newToken, payload)
     }
 
     const text = await res.text()
