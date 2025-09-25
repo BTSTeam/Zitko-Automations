@@ -1,4 +1,4 @@
-// app/api/candidate/[id]/file/route.ts
+// app/api/vincere/candidate/[id]/file/route.ts
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 export const runtime = 'nodejs';
@@ -9,9 +9,7 @@ import { config } from '@/lib/config';
 import { refreshIdToken } from '@/lib/vincereRefresh';
 
 const BASE = config.VINCERE_TENANT_API_BASE.replace(/\/$/, '');
-// If your BASE already has /public-api, leave it as-is:
-const hasPublic = /\/public-api\/?$/.test(BASE);
-const API_BASE = hasPublic ? BASE : `${BASE}/public-api`;
+const API_BASE = /\/public-api\/?$/.test(BASE) ? BASE : `${BASE}/public-api`;
 
 async function postJson(url: string, idToken: string, body: unknown) {
   const headers = new Headers();
@@ -25,11 +23,9 @@ async function postJson(url: string, idToken: string, body: unknown) {
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const session = await getSession();
-    const id = params.id;
-
-    // Read tokens exactly like your working routes
-    let idToken: string | undefined = session?.vincere?.idToken;
-    const userKey: string | undefined = session?.vincere?.userKey;
+    const s = session as any; // tolerate both shapes
+    let idToken: string | undefined = s?.vincere?.idToken ?? s?.idToken;
+    const userKey: string | undefined = s?.vincere?.userKey ?? s?.userKey;
 
     if (!idToken || !userKey) {
       return NextResponse.json({ ok: false, error: 'Not connected to Vincere' }, { status: 401 });
@@ -37,7 +33,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     const payload = await req.json();
 
-    // Validate per Vincere spec
+    // Vincere’s requirements
     if (!payload?.file_name) {
       return NextResponse.json({ ok: false, error: 'file_name is required' }, { status: 400 });
     }
@@ -45,23 +41,20 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       return NextResponse.json({ ok: false, error: 'Provide url or base_64_content' }, { status: 400 });
     }
 
-    // Optional helpful defaults if you want them:
     const body = {
       document_type_id: payload.document_type_id ?? 1,
       original_cv: payload.original_cv ?? false,
-      expiry_date: payload.expiry_date ?? undefined, // ISO string if you use it
+      expiry_date: payload.expiry_date ?? undefined,
       creator_id: payload.creator_id ?? undefined,
       file_name: payload.file_name,
       url: payload.url ?? '',
       base_64_content: payload.base_64_content ?? '',
     };
 
-    const url = `${API_BASE}/candidate/${encodeURIComponent(id)}/file`;
+    const url = `${API_BASE}/candidate/${encodeURIComponent(params.id)}/file`;
 
-    // First attempt
+    // Attempt + refresh-once (same signature as your working routes)
     let res = await postJson(url, idToken, body);
-
-    // On 401, refresh using the SAME signature as your other routes
     if (res.status === 401) {
       const fresh = await refreshIdToken(userKey, idToken).catch(() => null);
       const newToken = fresh?.idToken ?? idToken;
