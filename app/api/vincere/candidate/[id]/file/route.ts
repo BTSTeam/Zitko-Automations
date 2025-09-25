@@ -21,16 +21,22 @@ async function doVincerePost(url: string, idToken: string, body: unknown) {
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const session = await getSession()
-    const refreshed = await refreshIdToken(session)
-    const idToken = (refreshed as any)?.idToken ?? (session as any)?.idToken
+    let idToken = (session as any)?.idToken as string | undefined
+    const userKey = (session as any)?.userKey as string | undefined
     if (!idToken) {
       return NextResponse.json({ ok: false, error: 'Not connected to Vincere' }, { status: 401 })
     }
 
+    // Refresh token (signature: refreshIdToken(idToken, userKey))
+    const refreshed = await refreshIdToken(idToken, userKey)
+    idToken = (refreshed as string | undefined) || idToken
+
     const id = params.id
     const payload = await req.json()
 
-    if (!payload?.file_name) return NextResponse.json({ ok: false, error: 'file_name is required' }, { status: 400 })
+    if (!payload?.file_name) {
+      return NextResponse.json({ ok: false, error: 'file_name is required' }, { status: 400 })
+    }
     if (!payload?.url && !payload?.base_64_content) {
       return NextResponse.json({ ok: false, error: 'Provide url or base_64_content' }, { status: 400 })
     }
@@ -40,15 +46,20 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     let res = await doVincerePost(url, idToken, payload)
 
     if (res.status === 401) {
-      const retry = await refreshIdToken(session)
-      const newToken = (retry as any)?.idToken ?? (session as any)?.idToken
-      if (!newToken) return NextResponse.json({ ok: false, error: 'Unable to refresh Vincere session' }, { status: 401 })
+      const retried = await refreshIdToken(idToken, userKey)
+      const newToken = (retried as string | undefined) || idToken
+      if (!newToken) {
+        return NextResponse.json({ ok: false, error: 'Unable to refresh Vincere session' }, { status: 401 })
+      }
       res = await doVincerePost(url, newToken, payload)
     }
 
     const text = await res.text()
     if (!res.ok) {
-      return NextResponse.json({ ok: false, status: res.status, error: text || 'Upload failed' }, { status: res.status })
+      return NextResponse.json(
+        { ok: false, status: res.status, error: text || 'Upload failed' },
+        { status: res.status }
+      )
     }
 
     let data: any
