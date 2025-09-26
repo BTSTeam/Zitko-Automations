@@ -756,27 +756,24 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
   // Branded viewer card (Sales)
   function SalesViewerCard() {
-    return (
-      <div className="border rounded-2xl overflow-hidden bg-white">
-        {/* Branded Header (Viewer chrome – the real header is baked in the PDF itself) */}
-        <div className="w-full bg-white px-4 py-3 flex items-center justify-end border-b">
-          <img src="/zitko-full-logo.png" alt="Zitko" className="h-10" />
-        </div>
-
-        {/* Document area */}
-        {salesDocUrl ? (
-          isPdf ? (
-            <iframe className="w-full h-[75vh] bg-white" src={salesDocUrl} title={salesDocName || 'Document'} />
-          ) : (
-            <div className="p-6 text-xs text-gray-600 bg-white">
-              Preview not available for this file type. You can still upload it.
-            </div>
-          )
+  return (
+    <div className="border rounded-2xl overflow-hidden bg-white">
+      {salesDocUrl ? (
+        isPdf ? (
+          <iframe className="w-full h-[75vh] bg-white" src={salesDocUrl} title={salesDocName || 'Document'} />
         ) : (
           <div className="p-6 text-xs text-gray-600 bg-white">
-            No document imported yet. Use “Import CV” above.
+            Preview not available for this file type. You can still upload it.
           </div>
-        )}
+        )
+      ) : (
+        <div className="p-6 text-xs text-gray-600 bg-white">
+          No document imported yet. Use “Import CV” above.
+        </div>
+      )}
+    </div>
+  )
+}
 
         {/* Footer (Viewer chrome – final footer is baked on last page of the PDF) */}
         <div className="w-full bg-white px-4 py-3 border-t text-center text-[10px] leading-snug text-[#F7941D]">
