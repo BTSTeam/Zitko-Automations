@@ -587,7 +587,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   }
 
   // Handle a selected/dropped file for SALES
-  async function handleFile(f: File) {
+async function handleFile(f: File) {
   setSalesErr(null)
   if (salesDocUrl) URL.revokeObjectURL(salesDocUrl)
 
@@ -607,10 +607,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       const res = await fetch('/api/cloudconvert/docx-to-pdf', { method: 'POST', body: fd })
       if (!res.ok) {
         let msg = `DOCX convert failed (${res.status})`
-        try {
-          const j = await res.json()
-          if (j?.error) msg = j.error
-        } catch {}
+        try { const j = await res.json(); if (j?.error) msg = j.error } catch {}
         throw new Error(msg)
       }
 
@@ -640,20 +637,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     setProcessing(false)
   }
 }
-
-      // 🔥 Bake header (p1) + footer (last) for preview as well
-      const baked = await bakeHeaderFooter(pdfBlob)
-
-      const url = URL.createObjectURL(baked)
-      setSalesDocUrl(url)
-      setSalesDocName((isDocx ? f.name.replace(/\.docx$/i, '.pdf') : f.name))
-      setSalesDocType('application/pdf')
-    } catch (e: any) {
-      setSalesErr(e?.message || 'Failed to process file')
-    } finally {
-      setProcessing(false)
-    }
-  }
 
   async function onUploadChange(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0]
@@ -774,16 +757,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     </div>
   )
 }
-
-        {/* Footer (Viewer chrome – final footer is baked on last page of the PDF) */}
-        <div className="w-full bg-white px-4 py-3 border-t text-center text-[10px] leading-snug text-[#F7941D]">
-          <div>Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Consulting Ltd, Zitko Sales Ltd, Zitko Contracting Ltd and Zitko Talent</div>
-          <div>Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL</div>
-          <div>Tel: 01480 473245 Web: www.zitkogroup.com</div>
-        </div>
-      </div>
-    )
-  }
 
   // ========== preview (right) ==========
   function CVTemplatePreview(): JSX.Element {
