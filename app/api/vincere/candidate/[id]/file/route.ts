@@ -27,15 +27,21 @@ export async function POST(req: NextRequest, { params }: Params) {
       return NextResponse.json({ ok: false, error: 'Not connected to Vincere' }, { status: 401 })
     }
 
-    // IMPORTANT: VINCERE_TENANT_API_BASE should be like: https://zitko.vincere.io/api/v2
-    const base = (config.VINCERE_TENANT_API_BASE || '').replace(/\/$/, '')
-    if (!base) {
+    // --- Hardened base/url construction: always ensure /api/v2 is present ---
+    const rawBase = (config.VINCERE_TENANT_API_BASE || '').trim()
+    if (!rawBase) {
       return NextResponse.json({ ok: false, error: 'VINCERE_TENANT_API_BASE not configured' }, { status: 500 })
     }
-
+    let base = rawBase.replace(/\/+$/, '') // strip trailing slashes
+    if (!/\/api\/v2$/i.test(base)) {
+      console.warn('[VINCERE] base missing /api/v2; auto-appending.', { rawBase })
+      base = base + '/api/v2'
+    }
     const url = `${base}/candidate/${encodeURIComponent(candidateId)}/file`
+    // ----------------------------------------------------------------------
+
     const headers = {
-      'accept': 'application/json',
+      accept: 'application/json',
       'content-type': 'application/json',
       'id-token': idToken,
       'x-api-key': (config as any).VINCERE_PUBLIC_API_KEY || config.VINCERE_API_KEY,
@@ -48,20 +54,28 @@ export async function POST(req: NextRequest, { params }: Params) {
     })
 
     const text = await vinRes.text().catch(() => '')
-    // Try to parse JSON; Vincere usually responds JSON
     let body: any = null
     try { body = text ? JSON.parse(text) : {} } catch { body = { raw: text } }
 
-    // Optional: log safe diagnostics
-    console.log('[VINCERE CV FILE]', { url, status: vinRes.status, payload: {
-      file_name: payload?.file_name,
-      document_type_id: payload?.document_type_id,
-      has_url: !!payload?.url,
-      has_base64: !!payload?.base_64_content
-    }})
+    // Diagnostics (visible in Vercel Functions logs)
+    console.log('[VINCERE CV FILE]', {
+      url,
+      status: vinRes.status,
+      base_used: base,
+      rawBase_env: rawBase,
+      payload: {
+        file_name: payload?.file_name,
+        document_type_id: payload?.document_type_id,
+        has_url: !!payload?.url,
+        has_base64: !!payload?.base_64_content,
+      },
+    })
 
     if (!vinRes.ok) {
-      return NextResponse.json({ ok: false, status: vinRes.status, error: body?.error || body || text }, { status: 400 })
+      return NextResponse.json(
+        { ok: false, status: vinRes.status, error: body?.error || body || text },
+        { status: 400 }
+      )
     }
 
     return NextResponse.json({ ok: true, status: vinRes.status, data: body })
