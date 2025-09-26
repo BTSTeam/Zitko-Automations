@@ -646,19 +646,15 @@ async function uploadStandardPreviewToVincereUrl(finalName: string) {
   function SalesViewerCard() {
   return (
     <div className="border rounded-2xl overflow-hidden bg-white">
-      {/* Branded Header (white, full-width) */}
+      {/* Branded Header */}
       <div className="w-full bg-white px-4 py-3 flex items-center justify-end border-b">
         <img src="/zitko-full-logo.png" alt="Zitko" className="h-10" />
       </div>
 
       {/* Document area */}
       {salesDocUrl ? (
-        salesDocType?.includes('pdf') || /\.pdf$/i.test(salesDocName) ? (
-          <iframe
-            className="w-full h-[75vh] bg-white"
-            src={salesDocUrl}
-            title={salesDocName || 'Document'}
-          />
+        isPdf ? (
+          <iframe className="w-full h-[75vh] bg-white" src={salesDocUrl} title={salesDocName || 'Document'} />
         ) : (
           <div className="p-6 text-xs text-gray-600 bg-white">
             Preview not available for this file type. You can still upload it.
@@ -670,7 +666,7 @@ async function uploadStandardPreviewToVincereUrl(finalName: string) {
         </div>
       )}
 
-      {/* Footer (only visually on viewer; upload remains original file) */}
+      {/* Footer */}
       <div className="w-full bg-white px-4 py-3 border-t text-center text-[10px] leading-snug text-[#F7941D]">
         <div>Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Consulting Ltd, Zitko Sales Ltd, Zitko Contracting Ltd and Zitko Talent</div>
         <div>Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL</div>
