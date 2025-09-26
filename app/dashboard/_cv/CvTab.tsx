@@ -431,57 +431,57 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   }
 
   async function handleFile(f: File) {
-  setSalesErr(null)
-  if (salesDocUrl) URL.revokeObjectURL(salesDocUrl)
+    setSalesErr(null)
+    if (salesDocUrl) URL.revokeObjectURL(salesDocUrl)
 
-  const isPdfFile = f.type?.includes('pdf') || /\.pdf$/i.test(f.name)
-  const isDocx    = f.type?.includes('officedocument.wordprocessingml.document') || /\.docx$/i.test(f.name)
+    const isPdfFile = f.type?.includes('pdf') || /\.pdf$/i.test(f.name)
+    const isDocx    = f.type?.includes('officedocument.wordprocessingml.document') || /\.docx$/i.test(f.name)
 
-  try {
-    setProcessing(true)
+    try {
+      setProcessing(true)
 
-    if (isDocx) {
-      // Convert DOCX → PDF for preview
-      const fd = new FormData()
-      fd.append('file', f, f.name)
+      if (isDocx) {
+        // Convert DOCX → PDF for preview
+        const fd = new FormData()
+        fd.append('file', f, f.name)
 
-      const res = await fetch('/api/cloudconvert/docx-to-pdf', { method: 'POST', body: fd })
-      if (!res.ok) {
-        let msg = `DOCX convert failed (${res.status})`
-        try {
-          const j = await res.json()
-          if (j?.error) msg = j.error
-        } catch {}
-        throw new Error(msg)
+        const res = await fetch('/api/cloudconvert/docx-to-pdf', { method: 'POST', body: fd })
+        if (!res.ok) {
+          let msg = `DOCX convert failed (${res.status})`
+          try {
+            const j = await res.json()
+            if (j?.error) msg = j.error
+          } catch {}
+          throw new Error(msg)
+        }
+
+        const pdfBuf = await res.arrayBuffer()
+        const pdfBlob = new Blob([pdfBuf], { type: 'application/pdf' })
+        const url = URL.createObjectURL(pdfBlob)
+
+        setSalesDocUrl(url)
+        setSalesDocName(f.name.replace(/\.docx$/i, '.pdf'))
+        setSalesDocType('application/pdf')
+      } else if (isPdfFile) {
+        // Just preview the PDF directly
+        const url = URL.createObjectURL(f)
+        setSalesDocUrl(url)
+        setSalesDocName(f.name)
+        setSalesDocType('application/pdf')
+      } else {
+        // Not supported for preview (DOC, etc). You can still upload later.
+        const url = URL.createObjectURL(f)
+        setSalesDocUrl(url)
+        setSalesDocName(f.name)
+        setSalesDocType(f.type || 'application/octet-stream')
+        setSalesErr('Preview only supports PDF (DOCX will auto-convert). This file type will not preview.')
       }
-
-      const pdfBuf = await res.arrayBuffer()
-      const pdfBlob = new Blob([pdfBuf], { type: 'application/pdf' })
-      const url = URL.createObjectURL(pdfBlob)
-
-      setSalesDocUrl(url)
-      setSalesDocName(f.name.replace(/\.docx$/i, '.pdf'))
-      setSalesDocType('application/pdf')
-    } else if (isPdfFile) {
-      // Just preview the PDF directly
-      const url = URL.createObjectURL(f)
-      setSalesDocUrl(url)
-      setSalesDocName(f.name)
-      setSalesDocType('application/pdf')
-    } else {
-      // Not supported for preview (DOC, etc). You can still upload later.
-      const url = URL.createObjectURL(f)
-      setSalesDocUrl(url)
-      setSalesDocName(f.name)
-      setSalesDocType(f.type || 'application/octet-stream')
-      setSalesErr('Preview only supports PDF (DOCX will auto-convert). This file type will not preview.')
+    } catch (e: any) {
+      setSalesErr(e?.message || 'Failed to process file')
+    } finally {
+      setProcessing(false)
     }
-  } catch (e: any) {
-    setSalesErr(e?.message || 'Failed to process file')
-  } finally {
-    setProcessing(false)
   }
-}
 
   async function onUploadChange(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0]
@@ -515,85 +515,85 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
   // Upload a Blob to /api/upload and get public URL back (used for large files)
   async function uploadBlobToPublicUrl(file: Blob, desiredName: string): Promise<string> {
-  const fd = new FormData()
-  fd.append('file', new File([file], desiredName, { type: (file as any).type || 'application/octet-stream' }))
-  fd.append('filename', desiredName)
+    const fd = new FormData()
+    fd.append('file', new File([file], desiredName, { type: (file as any).type || 'application/octet-stream' }))
+    fd.append('filename', desiredName)
 
-  console.log('[CLIENT] calling /api/upload', { desiredName, size: file.size })
-  const res = await fetch('/api/upload', { method: 'POST', body: fd, credentials: 'include' })
+    console.log('[CLIENT] calling /api/upload', { desiredName, size: file.size })
+    const res = await fetch('/api/upload', { method: 'POST', body: fd, credentials: 'include' })
 
-  let data: any = null
-  const text = await res.text()
-  try { data = text ? JSON.parse(text) : {} } catch { data = { raw: text } }
-  console.log('[CLIENT] /api/upload response', { status: res.status, data })
+    let data: any = null
+    const text = await res.text()
+    try { data = text ? JSON.parse(text) : {} } catch { data = { raw: text } }
+    console.log('[CLIENT] /api/upload response', { status: res.status, data })
 
-  if (!res.ok || !data?.ok || !data?.url) {
-    throw new Error((data && (data.error || data.raw)) || `Blob upload failed (${res.status})`)
+    if (!res.ok || !data?.ok || !data?.url) {
+      throw new Error((data && (data.error || data.raw)) || `Blob upload failed (${res.status})`)
+    }
+    return data.url as string
   }
-  return data.url as string
-}
 
-async function postBase64ToVincere(fileName: string, base64: string) {
-  const payload = { file_name: fileName, document_type_id: 1, base_64_content: base64, original_cv: true }
-  console.log('[CLIENT] POST base64 to Vincere', { len: base64.length, fileName })
+  async function postBase64ToVincere(fileName: string, base64: string) {
+    const payload = { file_name: fileName, document_type_id: 1, base_64_content: base64, original_cv: true }
+    console.log('[CLIENT] POST base64 to Vincere', { len: base64.length, fileName })
 
-  const res = await fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}/file`, {
-    method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload),
-  })
+    const res = await fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}/file`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload),
+    })
 
-  const raw = await res.text()
-  let data: any = null
-  try { data = raw ? JSON.parse(raw) : {} } catch { data = { raw } }
-  console.log('[CLIENT] Vincere base64 response', { status: res.status, data })
+    const raw = await res.text()
+    let data: any = null
+    try { data = raw ? JSON.parse(raw) : {} } catch { data = { raw } }
+    console.log('[CLIENT] Vincere base64 response', { status: res.status, data })
 
-  if (!res.ok || !data?.ok) throw new Error(data?.error || data?.raw || `Upload to Vincere failed (${res.status})`)
-}
+    if (!res.ok || !data?.ok) throw new Error(data?.error || data?.raw || `Upload to Vincere failed (${res.status})`)
+  }
 
-async function postFileUrlToVincere(fileName: string, publicUrl: string) {
-  const payload = { file_name: fileName, document_type_id: 1, url: publicUrl, original_cv: true }
-  console.log('[CLIENT] POST url to Vincere', { fileName, publicUrl })
+  async function postFileUrlToVincere(fileName: string, publicUrl: string) {
+    const payload = { file_name: fileName, document_type_id: 1, url: publicUrl, original_cv: true }
+    console.log('[CLIENT] POST url to Vincere', { fileName, publicUrl })
 
-  const res = await fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}/file`, {
-    method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload),
-  })
+    const res = await fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}/file`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload),
+    })
 
-  const raw = await res.text()
-  let data: any = null
-  try { data = raw ? JSON.parse(raw) : {} } catch { data = { raw } }
-  console.log('[CLIENT] Vincere URL response', { status: res.status, data })
+    const raw = await res.text()
+    let data: any = null
+    try { data = raw ? JSON.parse(raw) : {} } catch { data = { raw } }
+    console.log('[CLIENT] Vincere URL response', { status: res.status, data })
 
-  if (!res.ok || !data?.ok) throw new Error(data?.error || data?.raw || `Upload to Vincere failed (${res.status})`)
-}
+    if (!res.ok || !data?.ok) throw new Error(data?.error || data?.raw || `Upload to Vincere failed (${res.status})`)
+  }
 
   // STANDARD: export right-panel DOM to PDF and upload (base64 for small; URL for large)
-async function uploadStandardPreviewToVincereUrl(finalName: string) {
-  const mod = await import('html2pdf.js');
-  const html2pdf = (mod as any).default || (mod as any);
+  async function uploadStandardPreviewToVincereUrl(finalName: string) {
+    const mod = await import('html2pdf.js');
+    const html2pdf = (mod as any).default || (mod as any);
 
-  const node = standardPreviewRef.current;
-  if (!node) throw new Error('Preview not ready');
+    const node = standardPreviewRef.current;
+    if (!node) throw new Error('Preview not ready');
 
-  const opt = {
-    margin: 10, // mm
-    filename: finalName,
-    image: { type: 'jpeg', quality: 0.95 },
-    html2canvas: { scale: 2, backgroundColor: '#FFFFFF' },
-    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
-    pagebreak: { mode: ['avoid-all', 'css', 'legacy'] as const },
-  };
+    const opt = {
+      margin: 10, // mm
+      filename: finalName,
+      image: { type: 'jpeg', quality: 0.95 },
+      html2canvas: { scale: 2, backgroundColor: '#FFFFFF' },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
+      pagebreak: { mode: ['avoid-all', 'css', 'legacy'] as const },
+    };
 
-  const worker = html2pdf().set(opt).from(node).toPdf();
-  const pdf = await worker.get('pdf');
-  const pdfBlob = new Blob([pdf.output('arraybuffer')], { type: 'application/pdf' });
+    const worker = html2pdf().set(opt).from(node).toPdf();
+    const pdf = await worker.get('pdf');
+    const pdfBlob = new Blob([pdf.output('arraybuffer')], { type: 'application/pdf' });
 
-  if (pdfBlob.size <= BASE64_THRESHOLD_BYTES) {
-    const base64 = await blobToBase64(pdfBlob);
-    await postBase64ToVincere(finalName, base64);
-  } else {
-    const publicUrl = await uploadBlobToPublicUrl(pdfBlob, finalName);
-    await postFileUrlToVincere(finalName, publicUrl);
+    if (pdfBlob.size <= BASE64_THRESHOLD_BYTES) {
+      const base64 = await blobToBase64(pdfBlob);
+      await postBase64ToVincere(finalName, base64);
+    } else {
+      const publicUrl = await uploadBlobToPublicUrl(pdfBlob, finalName);
+      await postFileUrlToVincere(finalName, publicUrl);
+    }
   }
-}
 
   // SALES: upload whichever was imported (PDF/DOC/DOCX)
   async function uploadSalesFileToVincereUrl(finalName: string) {
@@ -613,70 +613,44 @@ async function uploadStandardPreviewToVincereUrl(finalName: string) {
   }
 
   async function confirmUpload() {
-  try {
-    setUploadBusy(true)
-    setUploadErr(null)
-    if (!candidateId) throw new Error('No candidate selected')
-    if (!uploadFileName?.trim()) throw new Error('Please enter a file name')
+    try {
+      setUploadBusy(true)
+      setUploadErr(null)
+      if (!candidateId) throw new Error('No candidate selected')
+      if (!uploadFileName?.trim()) throw new Error('Please enter a file name')
 
-    let finalName = uploadFileName.trim()
-    // Ensure sensible default extension
-    if (!/\.(pdf|docx?|DOCX?)$/.test(finalName)) {
-      finalName += (uploadContext === 'standard' ? '.pdf' : (isPdf ? '.pdf' : '.docx'))
+      let finalName = uploadFileName.trim()
+      // Ensure sensible default extension
+      if (!/\.(pdf|docx?|DOCX?)$/.test(finalName)) {
+        finalName += (uploadContext === 'standard' ? '.pdf' : (isPdf ? '.pdf' : '.docx'))
+      }
+
+      console.log('[CLIENT] confirmUpload', { uploadContext, finalName, candidateId })
+
+      if (uploadContext === 'standard') {
+        await uploadStandardPreviewToVincereUrl(finalName)
+      } else {
+        await uploadSalesFileToVincereUrl(finalName)
+      }
+
+      setShowUploadModal(false)
+    } catch (e: any) {
+      setUploadErr(e?.message || 'Upload failed')
+    } finally {
+      setUploadBusy(false)
     }
-
-    // 👇 Add the log here
-    console.log('[CLIENT] confirmUpload', { uploadContext, finalName, candidateId })
-
-    if (uploadContext === 'standard') {
-      await uploadStandardPreviewToVincereUrl(finalName)
-    } else {
-      await uploadSalesFileToVincereUrl(finalName)
-    }
-
-    setShowUploadModal(false)
-  } catch (e: any) {
-    setUploadErr(e?.message || 'Upload failed')
-  } finally {
-    setUploadBusy(false)
   }
-}
 
   // Branded viewer card (Sales)
   function SalesViewerCard() {
-  return (
-    <div className="border rounded-2xl overflow-hidden bg-white">
-      {/* Branded Header */}
-      <div className="w-full bg-white px-4 py-3 flex items-center justify-end border-b">
-        <img src="/zitko-full-logo.png" alt="Zitko" className="h-10" />
-      </div>
-
-      {/* Document area */}
-      {salesDocUrl ? (
-        isPdf ? (
-          <iframe className="w-full h-[75vh] bg-white" src={salesDocUrl} title={salesDocName || 'Document'} />
-        ) : (
-          <div className="p-6 text-xs text-gray-600 bg-white">
-            Preview not available for this file type. You can still upload it.
-          </div>
-        )
-      ) : (
-        <div className="p-6 text-xs text-gray-600 bg-white">
-          No document imported yet. Use “Import CV” above.
-        </div>
-      )}
-
-      {/* Footer */}
-      <div className="w-full bg-white px-4 py-3 border-t text-center text-[10px] leading-snug text-[#F7941D]">
-        <div>Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Consulting Ltd, Zitko Sales Ltd, Zitko Contracting Ltd and Zitko Talent</div>
-        <div>Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL</div>
-        <div>Tel: 01480 473245 Web: www.zitkogroup.com</div>
-      </div>
-    </div>
-  )
-}
     return (
       <div className="border rounded-2xl overflow-hidden bg-white">
+        {/* Branded Header */}
+        <div className="w-full bg-white px-4 py-3 flex items-center justify-end border-b">
+          <img src="/zitko-full-logo.png" alt="Zitko" className="h-10" />
+        </div>
+
+        {/* Document area */}
         {salesDocUrl ? (
           isPdf ? (
             <iframe className="w-full h-[75vh] bg-white" src={salesDocUrl} title={salesDocName || 'Document'} />
@@ -690,6 +664,13 @@ async function uploadStandardPreviewToVincereUrl(finalName: string) {
             No document imported yet. Use “Import CV” above.
           </div>
         )}
+
+        {/* Footer */}
+        <div className="w-full bg-white px-4 py-3 border-t text-center text-[10px] leading-snug text-[#F7941D]">
+          <div>Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Consulting Ltd, Zitko Sales Ltd, Zitko Contracting Ltd and Zitko Talent</div>
+          <div>Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL</div>
+          <div>Tel: 01480 473245 Web: www.zitkogroup.com</div>
+        </div>
       </div>
     )
   }
@@ -1235,7 +1216,7 @@ async function uploadStandardPreviewToVincereUrl(finalName: string) {
             <div className="mb-4">
               <h3 className="text-base font-semibold">Upload CV to Vincere</h3>
               <p className="text-[12px] text-gray-600">
-                Candidate: <span className="font-medium">{candidateName || form.name || 'Unknown'}</span> · ID:{' '}
+                Candidate: <span className="font-medium">{candidateName || form.name || 'Unknown'}</span> · ID{' '}
                 <span className="font-mono">{candidateId || '—'}</span>
               </p>
               <p className="text-[11px] text-gray-500 mt-1">
