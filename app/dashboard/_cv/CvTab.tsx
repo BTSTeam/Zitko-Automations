@@ -653,17 +653,17 @@ async function uploadStandardPreviewToVincereUrl(finalName: string) {
           <img src="/zitko-full-logo.png" alt="Zitko" className="h-10" />
         </div>
 
-        <h1 className="text-xl font-bold mt-5">Curriculum Vitae</h1>
+        <h1 className="text-2xl font-bold mt-5">Curriculum Vitae</h1>
 
         <div className="mt-2 text-[12px] text-gray-800 space-y-0.5">
           <div><span className="font-semibold">Name:</span> {form.name ? `${form.name}` : '—'}</div>
           <div><span className="font-semibold">Location:</span> {form.location ? `${form.location}` : '—'}</div>
         </div>
 
-        <h2 className="text-sm font-semibold text-[#F7941D] mt-5 mb-2">Profile</h2>
+        <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">Profile</h2>
         <div className="whitespace-pre-wrap text-[12px]">{form.profile?.trim() ? form.profile : 'No Profile yet'}</div>
 
-        <h2 className="text-sm font-semibold text-[#F7941D] mt-5 mb-2">Key Skills</h2>
+        <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">Key Skills</h2>
         <div className="whitespace-pre-wrap text-[12px]">
           {(() => {
             const items = (form.keySkills || '').split(/\r?\n|,\s*/).map(s => s.trim()).filter(Boolean)
@@ -672,7 +672,7 @@ async function uploadStandardPreviewToVincereUrl(finalName: string) {
           })()}
         </div>
 
-        <h2 className="text-sm font-semibold text-[#F7941D] mt-5 mb-2">Employment History</h2>
+        <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">Employment History</h2>
         <div className="space-y-3">
           {form.employment.length === 0 ? (
             <div className="text-gray-500 text-[12px]">No employment history yet.</div>
@@ -693,7 +693,7 @@ async function uploadStandardPreviewToVincereUrl(finalName: string) {
           )}
         </div>
 
-        <h2 className="text-sm font-semibold text-[#F7941D] mt-5 mb-2">Education & Qualifications</h2>
+        <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">Education & Qualifications</h2>
         <div className="space-y-3">
           {form.education.length === 0 ? (
             <div className="text-gray-500 text-[12px]">No education yet.</div>
@@ -714,7 +714,7 @@ async function uploadStandardPreviewToVincereUrl(finalName: string) {
           )}
         </div>
 
-        <h2 className="text-sm font-semibold text-[#F7941D] mt-5 mb-2">Additional Information</h2>
+        <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">Additional Information</h2>
         <div className="text-[12px] grid gap-1">
           <div>Driving License: {form.additional.drivingLicense || '—'}</div>
           <div>Nationality: {form.additional.nationality || '—'}</div>
@@ -728,7 +728,7 @@ async function uploadStandardPreviewToVincereUrl(finalName: string) {
         <div className="pdf-break-before" />
 
         <div ref={footerRef} className="mt-6 pt-4 border-t text-center text-[10px] leading-snug text-[#F7941D] break-inside-avoid cv-footer">
-          <div>Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Consulting Ltd, Zitko Sales Ltd, Zitko Contracting Ltd and Zitko Talent</div>
+          <div>Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Group Inc</div>
           <div>Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL</div>
           <div>Tel: 01480 473245 Web: www.zitkogroup.com</div>
         </div>
