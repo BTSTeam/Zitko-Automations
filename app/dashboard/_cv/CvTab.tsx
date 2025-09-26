@@ -443,7 +443,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       setSalesDocType(f.type || (isPdfFile ? 'application/pdf' : isDocx ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : isDoc ? 'application/msword' : 'application/octet-stream'))
 
       // Note: We are NOT converting DOCX → PDF here (preview not supported for DOCX).
-      // Upload flow will still accept DOC/DOCX (Vincere fetches by URL).
+      // Upload flow will still accept DOC/DOCX (we now send as base64).
     } catch (e: any) {
       setSalesErr(e?.message || 'Failed to process file')
     } finally {
@@ -471,8 +471,17 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   )
 
   // ===== UPLOAD ACTIONS =====
+  // Convert a Blob to a base64 string (browser-safe)
+  async function blobToBase64(blob: Blob): Promise<string> {
+    const buf = await blob.arrayBuffer();
+    let binary = '';
+    const bytes = new Uint8Array(buf);
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    // btoa is safe here (runs client-side)
+    return btoa(binary);
+  }
 
-  // Upload a Blob to /api/upload and get public URL back
+  // (Kept for reference; no longer used for Vincere upload)
   async function uploadBlobToPublicUrl(file: Blob, desiredName: string): Promise<string> {
     const fd = new FormData()
     fd.append('file', new File([file], desiredName, { type: (file as any).type || 'application/octet-stream' }))
@@ -486,7 +495,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     return data.url as string
   }
 
-  // Tell Vincere to fetch file by URL and store it
+  // (Kept for reference; not used anymore)
   async function postFileUrlToVincere(fileName: string, publicUrl: string) {
     const payload = {
       file_name: fileName,
@@ -512,7 +521,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     }
   }
 
-  // STANDARD: export right-panel DOM to PDF and upload
+  // STANDARD: render DOM → paginated PDF and send as base64 to Vincere
   async function uploadStandardPreviewToVincereUrl(finalName: string) {
     const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
       import('html2canvas'),
@@ -522,50 +531,107 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     const node = standardPreviewRef.current
     if (!node) throw new Error('Preview not ready')
 
+    // Render the preview
     const canvas = await html2canvas(node, { scale: 1.5, backgroundColor: '#FFFFFF' })
-    const imgData = canvas.toDataURL('image/jpeg', 0.85)
 
+    // Build a paginated PDF with margins to avoid clipping the footer
     const pdf = new jsPDF({ unit: 'mm', format: 'a4' })
-    const pageWidth = pdf.internal.pageSize.getWidth()
-    const pageHeight = pdf.internal.pageSize.getHeight()
+    const pageW = pdf.internal.pageSize.getWidth()
+    const pageH = pdf.internal.pageSize.getHeight()
 
-    const imgWidth = pageWidth
-    const imgHeight = (canvas.height * imgWidth) / canvas.width
+    // Reserve a little space top/bottom for cleaner page breaks
+    const topMargin = 10     // mm
+    const bottomMargin = 14  // mm
+    const usableH = pageH - topMargin - bottomMargin
 
-    if (imgHeight <= pageHeight) {
-      pdf.addImage(imgData, 'JPEG', 0, 0, imgWidth, imgHeight)
-    } else {
-      let y = 0
-      const pxPageHeight = Math.floor((canvas.width * pageHeight) / pageWidth)
-      while (y < canvas.height) {
-        const pageCanvas = document.createElement('canvas')
-        pageCanvas.width = canvas.width
-        pageCanvas.height = Math.min(pxPageHeight, canvas.height - y)
-        const ctx = pageCanvas.getContext('2d')!
-        ctx.drawImage(canvas, 0, y, canvas.width, pageCanvas.height, 0, 0, canvas.width, pageCanvas.height)
-        const pageImgData = pageCanvas.toDataURL('image/jpeg', 0.85)
-        if (y > 0) pdf.addPage()
-        const pageImgHeight = (pageCanvas.height * imgWidth) / pageCanvas.width
-        pdf.addImage(pageImgData, 'JPEG', 0, 0, imgWidth, pageImgHeight)
-        y += pxPageHeight
-      }
+    // Work on a copy so we can slice cleanly
+    const full = document.createElement('canvas')
+    full.width = canvas.width
+    full.height = canvas.height
+    full.getContext('2d')!.drawImage(canvas, 0, 0)
+
+    // Canvas pixels per mm at current scale
+    const pxPerMm = canvas.width / pageW
+
+    // Height per page slice in px, with a small overlap to avoid hairline seams
+    const overlapPx = Math.round(2 * pxPerMm) // ~2mm overlap
+    const pxPerPage = Math.floor(usableH * pxPerMm)
+
+    let y = 0
+    let first = true
+
+    while (y < full.height) {
+      const sliceH = Math.min(pxPerPage, full.height - y)
+      const pageCanvas = document.createElement('canvas')
+      pageCanvas.width = full.width
+      pageCanvas.height = sliceH
+      const ctx = pageCanvas.getContext('2d')!
+      ctx.drawImage(full, 0, y, full.width, sliceH, 0, 0, full.width, sliceH)
+
+      const pageImg = pageCanvas.toDataURL('image/jpeg', 0.85)
+      if (!first) pdf.addPage()
+      const mmH = sliceH / pxPerMm
+      pdf.addImage(pageImg, 'JPEG', 0, topMargin, pageW, mmH)
+      first = false
+
+      // Advance with slight overlap so lines aren't split
+      y += sliceH - overlapPx
     }
 
     const pdfBlob = new Blob([pdf.output('arraybuffer')], { type: 'application/pdf' })
-    const publicUrl = await uploadBlobToPublicUrl(pdfBlob, finalName)
-    await postFileUrlToVincere(finalName, publicUrl)
+    const base64 = await blobToBase64(pdfBlob)
+
+    // Send direct to Vincere as base64 (reliable; no external URL fetch)
+    const res = await fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}/file`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        file_name: finalName,
+        document_type_id: 1,
+        base_64_content: base64,
+        original_cv: true
+      }),
+    })
+
+    const raw = await res.text()
+    let data: any = {}
+    try { data = raw ? JSON.parse(raw) : {} } catch { /* ignore */ }
+
+    if (!res.ok || !data?.ok) {
+      throw new Error(data?.error || raw || `Upload to Vincere failed (${res.status})`)
+    }
   }
 
-  // SALES: upload whichever was imported (PDF/DOC/DOCX)
+  // SALES: read imported file and send as base64 to Vincere
   async function uploadSalesFileToVincereUrl(finalName: string) {
     if (!salesDocUrl) throw new Error('No Sales document to upload')
     const res = await fetch(salesDocUrl)
     if (!res.ok) throw new Error(`Failed to read Sales file (${res.status})`)
     const buf = await res.arrayBuffer()
-    // Preserve original mime where possible
-    const blob = new Blob([buf], { type: salesDocType || 'application/octet-stream' })
-    const publicUrl = await uploadBlobToPublicUrl(blob, finalName)
-    await postFileUrlToVincere(finalName, publicUrl)
+
+    // Convert to base64 directly (preserves DOC/DOCX/PDF content)
+    const base64 = btoa(String.fromCharCode(...new Uint8Array(buf)))
+
+    const r = await fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}/file`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        file_name: finalName,
+        document_type_id: 1,
+        base_64_content: base64,
+        original_cv: true
+      }),
+    })
+
+    const raw = await r.text()
+    let data: any = {}
+    try { data = raw ? JSON.parse(raw) : {} } catch { /* ignore */ }
+
+    if (!r.ok || !data?.ok) {
+      throw new Error(data?.error || raw || `Upload to Vincere failed (${r.status})`)
+    }
   }
 
   async function confirmUpload() {
@@ -628,24 +694,24 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
     // Standard (existing editor preview) — attach ref for DOM→PDF
     return (
-      <div ref={standardPreviewRef} className="p-8 cv-standard-page bg-white">
+      <div ref={standardPreviewRef} className="p-7 cv-standard-page bg-white text-[13px] leading-[1.35]">
         <div className="flex items-start justify-between">
           <div />
-          <img src="/zitko-full-logo.png" alt="Zitko" className="h-12" />
+          <img src="/zitko-full-logo.png" alt="Zitko" className="h-11" />
         </div>
 
-        <h1 className="text-2xl font-bold mt-6">Curriculum Vitae</h1>
+        <h1 className="text-xl font-bold mt-5">Curriculum Vitae</h1>
 
-        <div className="mt-2 text-sm text-gray-800 space-y-0.5">
+        <div className="mt-1.5 text-[12px] text-gray-800 space-y-0.5">
           <div><span className="font-semibold">Name:</span> {form.name ? `${form.name}` : '—'}</div>
           <div><span className="font-semibold">Location:</span> {form.location ? `${form.location}` : '—'}</div>
         </div>
 
-        <h2 className="text-base font-semibold text-[#F7941D] mt-6 mb-2">Profile</h2>
-        <div className="whitespace-pre-wrap text-sm">{form.profile?.trim() ? form.profile : 'No Profile yet'}</div>
+        <h2 className="text-[13px] font-semibold text-[#F7941D] mt-5 mb-1.5">Profile</h2>
+        <div className="whitespace-pre-wrap text-[12px]">{form.profile?.trim() ? form.profile : 'No Profile yet'}</div>
 
-        <h2 className="text-base font-semibold text-[#F7941D] mt-6 mb-2">Key Skills</h2>
-        <div className="whitespace-pre-wrap text-sm">
+        <h2 className="text-[13px] font-semibold text-[#F7941D] mt-5 mb-1.5">Key Skills</h2>
+        <div className="whitespace-pre-wrap text-[12px]">
           {(() => {
             const items = (form.keySkills || '').split(/\r?\n|,\s*/).map(s => s.trim()).filter(Boolean)
             if (items.length === 0) return 'No Key Skills yet'
@@ -653,10 +719,10 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
           })()}
         </div>
 
-        <h2 className="text-base font-semibold text-[#F7941D] mt-6 mb-2">Employment History</h2>
-        <div className="space-y-3">
+        <h2 className="text-[13px] font-semibold text-[#F7941D] mt-5 mb-1.5">Employment History</h2>
+        <div className="space-y-2.5">
           {form.employment.length === 0 ? (
-            <div className="text-gray-500 text-sm">No employment history yet.</div>
+            <div className="text-gray-500 text-[12px]">No employment history yet.</div>
           ) : (
             form.employment.map((e, i) => {
               const range = [e.start, e.end].filter(Boolean).join(' to ')
@@ -664,20 +730,20 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                 <div key={i} className="flex justify-between break-inside-avoid">
                   <div>
                     <div className="font-medium">{e.title || 'Role'}</div>
-                    <div className="text-xs text-gray-500">{e.company}</div>
-                    {e.description?.trim() && <div className="text-sm mt-1 whitespace-pre-wrap">{e.description}</div>}
+                    <div className="text-[11px] text-gray-500">{e.company}</div>
+                    {e.description?.trim() && <div className="text-[12px] mt-1 whitespace-pre-wrap">{e.description}</div>}
                   </div>
-                  <div className="text-xs text-gray-500 whitespace-nowrap">{range}</div>
+                  <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
                 </div>
               )
             })
           )}
         </div>
 
-        <h2 className="text-base font-semibold text-[#F7941D] mt-6 mb-2">Education & Qualifications</h2>
-        <div className="space-y-3">
+        <h2 className="text-[13px] font-semibold text-[#F7941D] mt-5 mb-1.5">Education & Qualifications</h2>
+        <div className="space-y-2.5">
           {form.education.length === 0 ? (
-            <div className="text-gray-500 text-sm">No education yet.</div>
+            <div className="text-gray-500 text-[12px]">No education yet.</div>
           ) : (
             form.education.map((e, i) => {
               const range = [e.start, e.end].filter(Boolean).join(' to ')
@@ -686,17 +752,17 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                 <div key={i} className="flex justify-between break-inside-avoid">
                   <div>
                     <div className="font-medium">{e.course || e.institution || 'Course'}</div>
-                    {showInstitutionLine && <div className="text-xs text-gray-500">{e.institution}</div>}
+                    {showInstitutionLine && <div className="text-[11px] text-gray-500">{e.institution}</div>}
                   </div>
-                  <div className="text-xs text-gray-500 whitespace-nowrap">{range}</div>
+                  <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
                 </div>
               )
             })
           )}
         </div>
 
-        <h2 className="text-base font-semibold text-[#F7941D] mt-6 mb-2">Additional Information</h2>
-        <div className="text-sm grid gap-1">
+        <h2 className="text-[13px] font-semibold text-[#F7941D] mt-5 mb-1.5">Additional Information</h2>
+        <div className="text-[12px] grid gap-1">
           <div>Driving License: {form.additional.drivingLicense || '—'}</div>
           <div>Nationality: {form.additional.nationality || '—'}</div>
           <div>Availability: {form.additional.availability || '—'}</div>
@@ -705,7 +771,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
           <div>Financial History: {form.additional.financialHistory || '—'}</div>
         </div>
 
-        <div className="mt-8 pt-4 border-t text-center text-[11px] leading-snug text-[#F7941D]">
+        <div className="mt-7 pt-3 border-t text-center text-[10px] leading-snug text-[#F7941D] break-inside-avoid">
           <div>Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Consulting Ltd, Zitko Sales Ltd, Zitko Contracting Ltd and Zitko Talent</div>
           <div>Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL</div>
           <div>Tel: 01480 473245 Web: www.zitkogroup.com</div>
@@ -724,7 +790,8 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
           .cv-standard-page { width: 100%; }
           .cv-standard-page h1,
           .cv-standard-page h2,
-          .cv-standard-page section { break-inside: avoid; }
+          .cv-standard-page section,
+          .cv-standard-page .break-inside-avoid { break-inside: avoid; }
         }
       `}</style>
 
