@@ -34,12 +34,12 @@ type OpenState = {
 }
 
 // === Size threshold for choosing base64 vs URL ===
-const BASE64_THRESHOLD_BYTES = 3 * 1024 * 1024 // ~3 MB (safe for serverless body limits)
+const BASE64_THRESHOLD_BYTES = 3 * 1024 * 1024 // ~3 MB
 
 // ---- brand assets (served from /public) ----
 const LOGO_PATH = '/zitko-full-logo.png'
 
-// ===================== PDF BAKING =====================
+// ===================== PDF BAKING (Sales only) =====================
 async function fetchBytes(url: string): Promise<Uint8Array> {
   const absolute = new URL(url, window.location.origin).toString()
   const res = await fetch(absolute)
@@ -51,11 +51,9 @@ async function fetchBytes(url: string): Promise<Uint8Array> {
 /**
  * Paints a white strip + Zitko logo at the top of the FIRST page,
  * and a white strip + 3 lines of footer text at the bottom of the LAST page.
- *
- * Does not modify content flow — just overlays (non-destructive).
+ * (Used for Sales uploads & preview)
  */
 async function bakeHeaderFooter(input: Blob): Promise<Blob> {
-  // Only attempt baking on PDFs
   if (input.type && !/pdf/i.test(input.type)) return input
 
   try {
@@ -76,22 +74,18 @@ async function bakeHeaderFooter(input: Blob): Promise<Blob> {
     {
       const w = first.getWidth()
       const h = first.getHeight()
-      const margin = 18 // pts
-      const stripHeight = 70 // pts – enough to cover any existing header
-      // Paint a white strip to "cover" any original header
-      first.drawRectangle({
-        x: 0, y: h - stripHeight, width: w, height: stripHeight, color: rgb(1, 1, 1)
-      })
-      // Logo on the right
+      const margin = 18
+      const stripHeight = 70
+      first.drawRectangle({ x: 0, y: h - stripHeight, width: w, height: stripHeight, color: rgb(1, 1, 1) })
       const maxLogoW = Math.min(170, w * 0.28)
       const scale = maxLogoW / logo.width
       const logoW = maxLogoW
       const logoH = logo.height * scale
       first.drawImage(logo, {
         x: w - logoW - margin,
-        y: h - logoH - (stripHeight - logoH) / 2, // vertically within strip
+        y: h - logoH - (stripHeight - logoH) / 2,
         width: logoW,
-        height: logoH
+        height: logoH,
       })
     }
 
@@ -99,8 +93,7 @@ async function bakeHeaderFooter(input: Blob): Promise<Blob> {
     {
       const w = last.getWidth()
       const marginX = 28
-      const stripHeight = 54 // slim to avoid overlapping body text
-      // White strip across the bottom
+      const stripHeight = 54
       last.drawRectangle({ x: 0, y: 0, width: w, height: stripHeight, color: rgb(1, 1, 1) })
 
       const footerLines = [
@@ -111,23 +104,22 @@ async function bakeHeaderFooter(input: Blob): Promise<Blob> {
 
       const fontSize = 8.5
       const lineGap = 2
-      let y = 10 // start a little above the bottom
+      let y = 10
 
       footerLines.forEach((line) => {
         const textWidth = font.widthOfTextAtSize(line, fontSize)
-        const x = Math.max(marginX, (w - textWidth) / 2) // center, but never hug the edge
-        last.drawText(line, { x, y, size: fontSize, font, color: rgb(0.97, 0.58, 0.11) }) // Zitko orange-ish
+        const x = Math.max(marginX, (w - textWidth) / 2)
+        last.drawText(line, { x, y, size: fontSize, font, color: rgb(0.97, 0.58, 0.11) })
         y += fontSize + lineGap
       })
     }
 
-    // Save -> Blob (handle TS/DOM typing differences safely)
-    const out = await pdfDoc.save() // Uint8Array
+    const out = await pdfDoc.save()
     const outBuf = out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength) as ArrayBuffer
     return new Blob([outBuf], { type: 'application/pdf' })
   } catch (err) {
     console.warn('Baking header/footer failed, using original PDF', err)
-    return input // fail-safe
+    return input
   }
 }
 
@@ -230,7 +222,8 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     const s = String(dateStr).trim()
 
     const ymd = s.match(/^(\d{4})-(\d{1,2})(?:-\d{1,2})?$/)
-    const mmyyyy = s.match(/^(\d{1,2})[\/\-](\d{4})$/)
+    const mmyyyy = s.match(/^(\d{1,2})[\/\-](\d{4})$/
+)
     const yyyy = s.match(/^(\d{4})$/)
 
     let y: number | undefined
@@ -373,7 +366,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     try {
       setLoading(true); setError(null)
 
-      // Try POST first, fall back to GET with query if needed
       let jobRes = await fetch('/api/job/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -439,7 +431,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       const name = [cRaw?.first_name, cRaw?.last_name].filter(Boolean).join(' ').trim()
       const location = cRaw?.candidate_current_address?.town_city ?? ''
 
-      // ---- Robust Custom Fields mapping ----
       const UUID_DRIVING = 'edd971dc2678f05b5757fe31f2c586a8'
       const UUID_AVAIL   = 'a18b8e0d62e27548df904106cfde1584'
       const UUID_HEALTH  = '25bf6829933a29172af40f977e9422bc'
@@ -506,12 +497,12 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   // ====================== SALES ( + PDF/DOCX handling ) ======================
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [salesErr, setSalesErr] = useState<string | null>(null)
-  const [salesDocUrl, setSalesDocUrl] = useState<string | null>(null)  // object URL (preview/use)
+  const [salesDocUrl, setSalesDocUrl] = useState<string | null>(null)  // preview URL (baked)
   const [salesDocName, setSalesDocName] = useState<string>('')         // filename (final/derived)
   const [salesDocType, setSalesDocType] = useState<string>('')         // mime type
   const [processing, setProcessing] = useState<boolean>(false)
   const [dragOver, setDragOver] = useState<boolean>(false)
-  const [salesDocBlob, setSalesDocBlob] = useState<Blob | null>(null)
+  const [salesDocBlob, setSalesDocBlob] = useState<Blob | null>(null)  // ⬅️ baked PDF blob (for upload+preview)
 
   function resetSalesState() {
     setSalesErr(null)
@@ -519,11 +510,10 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     setSalesDocUrl(null)
     setSalesDocName('')
     setSalesDocType('')
-    setSalesDocBlob(null)        // ⬅️ add
+    setSalesDocBlob(null)
     setProcessing(false)
     setDragOver(false)
   }
-
 
   function onClickUpload() {
     fileInputRef.current?.click()
@@ -544,13 +534,11 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     fd.append('file', new File([file], desiredName, { type: (file as any).type || 'application/octet-stream' }))
     fd.append('filename', desiredName)
 
-    console.log('[CLIENT] calling /api/upload', { desiredName, size: file.size })
     const res = await fetch('/api/upload', { method: 'POST', body: fd, credentials: 'include' })
 
     let data: any = null
     const text = await res.text()
     try { data = text ? JSON.parse(text) : {} } catch { data = { raw: text } }
-    console.log('[CLIENT] /api/upload response', { status: res.status, data })
 
     if (!res.ok || !data?.ok || !data?.url) {
       throw new Error((data && (data.error || data.raw)) || `Blob upload failed (${res.status})`)
@@ -560,8 +548,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
   async function postBase64ToVincere(fileName: string, base64: string) {
     const payload = { file_name: fileName, document_type_id: 1, base_64_content: base64, original_cv: true }
-    console.log('[CLIENT] POST base64 to Vincere', { len: base64.length, fileName })
-
     const res = await fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}/file`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload),
     })
@@ -569,15 +555,12 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     const raw = await res.text()
     let data: any = null
     try { data = raw ? JSON.parse(raw) : {} } catch { data = { raw } }
-    console.log('[CLIENT] Vincere base64 response', { status: res.status, data })
 
     if (!res.ok || !data?.ok) throw new Error(data?.error || data?.raw || `Upload to Vincere failed (${res.status})`)
   }
 
   async function postFileUrlToVincere(fileName: string, publicUrl: string) {
     const payload = { file_name: fileName, document_type_id: 1, url: publicUrl, original_cv: true }
-    console.log('[CLIENT] POST url to Vincere', { fileName, publicUrl })
-
     const res = await fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}/file`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload),
     })
@@ -585,58 +568,62 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     const raw = await res.text()
     let data: any = null
     try { data = raw ? JSON.parse(raw) : {} } catch { data = { raw } }
-    console.log('[CLIENT] Vincere URL response', { status: res.status, data })
 
     if (!res.ok || !data?.ok) throw new Error(data?.error || data?.raw || `Upload to Vincere failed (${res.status})`)
   }
 
-  // Handle a selected/dropped file for SALES
-async function handleFile(f: File) {
-  setSalesErr(null)
-  if (salesDocUrl) URL.revokeObjectURL(salesDocUrl)
+  // Handle a selected/dropped file for SALES — bake immediately so preview shows branding
+  async function handleFile(f: File) {
+    setSalesErr(null)
+    if (salesDocUrl) URL.revokeObjectURL(salesDocUrl)
 
-  const isPdfFile = f.type?.includes('pdf') || /\.pdf$/i.test(f.name)
-  const isDocx    = f.type?.includes('officedocument.wordprocessingml.document') || /\.docx$/i.test(f.name)
+    const isPdfFile = f.type?.includes('pdf') || /\.pdf$/i.test(f.name)
+    const isDocx    = f.type?.includes('officedocument.wordprocessingml.document') || /\.docx$/i.test(f.name)
 
-  try {
-    setProcessing(true)
-    let pdfBlob: Blob | null = null
+    try {
+      setProcessing(true)
+      let sourcePdf: Blob | null = null
 
-    if (isDocx) {
-      const fd = new FormData()
-      fd.append('file', f, f.name)
-      const res = await fetch('/api/cloudconvert/docx-to-pdf', { method: 'POST', body: fd })
-      if (!res.ok) {
-        let msg = `DOCX convert failed (${res.status})`
-        try { const j = await res.json(); if (j?.error) msg = j.error } catch {}
-        throw new Error(msg)
+      if (isDocx) {
+        const fd = new FormData()
+        fd.append('file', f, f.name)
+        const res = await fetch('/api/cloudconvert/docx-to-pdf', { method: 'POST', body: fd })
+        if (!res.ok) {
+          let msg = `DOCX convert failed (${res.status})`
+          try { const j = await res.json(); if (j?.error) msg = j.error } catch {}
+          throw new Error(msg)
+        }
+        const pdfBuf = await res.arrayBuffer()
+        sourcePdf = new Blob([pdfBuf], { type: 'application/pdf' })
+      } else if (isPdfFile) {
+        sourcePdf = f
+      } else {
+        const url = URL.createObjectURL(f)
+        setSalesDocUrl(url)
+        setSalesDocName(f.name)
+        setSalesDocType(f.type || 'application/octet-stream')
+        setSalesDocBlob(null)
+        setSalesErr('Preview only supports PDF (DOCX will auto-convert). This file type will not preview.')
+        return
       }
-      const pdfBuf = await res.arrayBuffer()
-      pdfBlob = new Blob([pdfBuf], { type: 'application/pdf' })
-    } else if (isPdfFile) {
-      pdfBlob = f
-    } else {
-      const url = URL.createObjectURL(f)
-      setSalesDocUrl(url)
-      setSalesDocName(f.name)
-      setSalesDocType(f.type || 'application/octet-stream')
-      setSalesDocBlob(null)
-      setSalesErr('Preview only supports PDF (DOCX will auto-convert). This file type will not preview.')
-      return
-    }
 
-    // store blob + clean preview
-    const url = URL.createObjectURL(pdfBlob)
-    setSalesDocUrl(url)
-    setSalesDocName(isDocx ? f.name.replace(/\.docx$/i, '.pdf') : f.name)
-    setSalesDocType('application/pdf')
-    setSalesDocBlob(pdfBlob)   // ⬅️ important
-  } catch (e: any) {
-    setSalesErr(e?.message || 'Failed to process file')
-  } finally {
-    setProcessing(false)
+      // 🔥 Bake header/footer for preview AND upload
+      const baked = await bakeHeaderFooter(sourcePdf)
+
+      // preview baked file
+      const url = URL.createObjectURL(baked)
+      setSalesDocUrl(url)
+      setSalesDocName(isDocx ? f.name.replace(/\.docx$/i, '.pdf') : f.name)
+      setSalesDocType('application/pdf')
+
+      // store baked blob for upload
+      setSalesDocBlob(baked)
+    } catch (e: any) {
+      setSalesErr(e?.message || 'Failed to process file')
+    } finally {
+      setProcessing(false)
+    }
   }
-}
 
   async function onUploadChange(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0]
@@ -657,7 +644,7 @@ async function handleFile(f: File) {
     [salesDocType, salesDocName]
   )
 
-  // STANDARD: export right-panel DOM to PDF and upload (base64 for small; URL for large)
+  // STANDARD: export right-panel DOM to PDF and upload (NO baking here)
   async function uploadStandardPreviewToVincereUrl(finalName: string) {
     const mod = await import('html2pdf.js')
     const html2pdf = (mod as any).default || (mod as any)
@@ -678,8 +665,21 @@ async function handleFile(f: File) {
     const pdf = await worker.get('pdf')
     const pdfBlob = new Blob([pdf.output('arraybuffer')], { type: 'application/pdf' })
 
-    // 🔥 Bake first/last pages
-    const baked = await bakeHeaderFooter(pdfBlob)
+    // upload as-is (no baked branding for Standard)
+    if (pdfBlob.size <= BASE64_THRESHOLD_BYTES) {
+      const base64 = await blobToBase64(pdfBlob)
+      await postBase64ToVincere(finalName, base64)
+    } else {
+      const publicUrl = await uploadBlobToPublicUrl(pdfBlob, finalName)
+      await postFileUrlToVincere(finalName, publicUrl)
+    }
+  }
+
+  // SALES: upload the already-baked file shown in preview
+  async function uploadSalesFileToVincereUrl(finalName: string) {
+    if (!salesDocBlob) throw new Error('No Sales document to upload')
+
+    const baked = salesDocBlob // already baked in handleFile()
 
     if (baked.size <= BASE64_THRESHOLD_BYTES) {
       const base64 = await blobToBase64(baked)
@@ -690,22 +690,6 @@ async function handleFile(f: File) {
     }
   }
 
-  // SALES: upload whichever was imported (always a baked PDF in this flow)
-  async function uploadSalesFileToVincereUrl(finalName: string) {
-  if (!salesDocBlob) throw new Error('No Sales document to upload')
-
-  // bake header (page 1) + footer (last page)
-  const baked = await bakeHeaderFooter(salesDocBlob)
-
-  if (baked.size <= BASE64_THRESHOLD_BYTES) {
-    const base64 = await blobToBase64(baked)
-    await postBase64ToVincere(finalName, base64)
-  } else {
-    const publicUrl = await uploadBlobToPublicUrl(baked, finalName)
-    await postFileUrlToVincere(finalName, publicUrl)
-  }
-}
-
   async function confirmUpload() {
     try {
       setUploadBusy(true)
@@ -714,10 +698,7 @@ async function handleFile(f: File) {
       if (!uploadFileName?.trim()) throw new Error('Please enter a file name')
 
       let finalName = uploadFileName.trim()
-      // Ensure sensible default extension (we always upload PDF after baking)
       if (!/\.pdf$/i.test(finalName)) finalName += '.pdf'
-
-      console.log('[CLIENT] confirmUpload', { uploadContext, finalName, candidateId })
 
       if (uploadContext === 'standard') {
         await uploadStandardPreviewToVincereUrl(finalName)
@@ -733,26 +714,26 @@ async function handleFile(f: File) {
     }
   }
 
-  // Branded viewer card (Sales)
+  // Sales viewer — shows baked preview so you can verify branding
   function SalesViewerCard() {
-  return (
-    <div className="border rounded-2xl overflow-hidden bg-white">
-      {salesDocUrl ? (
-        isPdf ? (
-          <iframe className="w-full h-[75vh] bg-white" src={salesDocUrl} title={salesDocName || 'Document'} />
+    return (
+      <div className="border rounded-2xl overflow-hidden bg-white">
+        {salesDocUrl ? (
+          isPdf ? (
+            <iframe className="w-full h-[75vh] bg-white" src={salesDocUrl} title={salesDocName || 'Document'} />
+          ) : (
+            <div className="p-6 text-xs text-gray-600 bg-white">
+              Preview not available for this file type. You can still upload it.
+            </div>
+          )
         ) : (
           <div className="p-6 text-xs text-gray-600 bg-white">
-            Preview not available for this file type. You can still upload it.
+            No document imported yet. Use “Import CV” above.
           </div>
-        )
-      ) : (
-        <div className="p-6 text-xs text-gray-600 bg-white">
-          No document imported yet. Use “Import CV” above.
-        </div>
-      )}
-    </div>
-  )
-}
+        )}
+      </div>
+    )
+  }
 
   // ========== preview (right) ==========
   function CVTemplatePreview(): JSX.Element {
@@ -760,6 +741,7 @@ async function handleFile(f: File) {
       return (
         <div className="p-4">
           <SalesViewerCard />
+          <div className="px-1 pt-2 text-[11px] text-gray-500">Preview shows branding; uploaded file will match this exactly.</div>
         </div>
       )
     }
@@ -860,7 +842,6 @@ async function handleFile(f: File) {
     <div className="grid gap-4">
       {/* Minimal print + PDF styles */}
       <style jsx global>{`
-        /* Printing */
         @media print {
           @page { size: A4; margin: 12mm; }
           .cv-standard-page { width: 100%; }
@@ -870,7 +851,6 @@ async function handleFile(f: File) {
           .pdf-break-before { break-before: page; page-break-before: always; }
           .cv-footer { break-inside: avoid; page-break-inside: avoid; }
         }
-        /* Screen/html2pdf hints (respected by html2pdf pagebreak: 'css') */
         .pdf-break-before { break-before: page; page-break-before: always; height: 1px; }
         .cv-standard-page .break-inside-avoid { break-inside: avoid; page-break-inside: avoid; }
       `}</style>
