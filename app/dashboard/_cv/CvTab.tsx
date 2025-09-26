@@ -32,6 +32,9 @@ type OpenState = {
   rawCustom: boolean
 }
 
+// === Size threshold for choosing base64 vs URL ===
+const BASE64_THRESHOLD_BYTES = 3 * 1024 * 1024; // ~3 MB (safe for serverless body limits)
+
 export default function CvTab({ templateFromShell }: { templateFromShell?: TemplateKey }): JSX.Element {
   // ========== UI state ==========
   const [template, setTemplate] = useState<TemplateKey | null>(templateFromShell ?? null)
@@ -82,6 +85,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
   // Standard preview ref (for DOM→PDF export)
   const standardPreviewRef = useRef<HTMLDivElement | null>(null)
+  const footerRef = useRef<HTMLDivElement | null>(null)
 
   function getEmptyForm() {
     return {
@@ -443,7 +447,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       setSalesDocType(f.type || (isPdfFile ? 'application/pdf' : isDocx ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : isDoc ? 'application/msword' : 'application/octet-stream'))
 
       // Note: We are NOT converting DOCX → PDF here (preview not supported for DOCX).
-      // Upload flow will still accept DOC/DOCX (we now send as base64).
+      // Upload flow will still accept DOC/DOCX (Vincere fetches by URL).
     } catch (e: any) {
       setSalesErr(e?.message || 'Failed to process file')
     } finally {
@@ -471,17 +475,17 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   )
 
   // ===== UPLOAD ACTIONS =====
+
   // Convert a Blob to a base64 string (browser-safe)
   async function blobToBase64(blob: Blob): Promise<string> {
     const buf = await blob.arrayBuffer();
     let binary = '';
     const bytes = new Uint8Array(buf);
     for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-    // btoa is safe here (runs client-side)
     return btoa(binary);
   }
 
-  // (Kept for reference; no longer used for Vincere upload)
+  // Upload a Blob to /api/upload and get public URL back (used for large files)
   async function uploadBlobToPublicUrl(file: Blob, desiredName: string): Promise<string> {
     const fd = new FormData()
     fd.append('file', new File([file], desiredName, { type: (file as any).type || 'application/octet-stream' }))
@@ -495,7 +499,32 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     return data.url as string
   }
 
-  // (Kept for reference; not used anymore)
+  async function postBase64ToVincere(fileName: string, base64: string) {
+    const payload = {
+      file_name: fileName,
+      document_type_id: 1,
+      base_64_content: base64,
+      original_cv: true,
+    }
+
+    const res = await fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}/file`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(payload),
+    })
+
+    const raw = await res.text()
+    let data: any = null
+    try { data = raw ? JSON.parse(raw) : {} } catch { /* ignore */ }
+
+    if (!res.ok || !data?.ok) {
+      const msg = data?.error || raw || `Upload to Vincere failed (${res.status})`
+      throw new Error(msg)
+    }
+  }
+
+  // Tell Vincere to fetch file by URL and store it (used for large files)
   async function postFileUrlToVincere(fileName: string, publicUrl: string) {
     const payload = {
       file_name: fileName,
@@ -521,116 +550,55 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     }
   }
 
-  // STANDARD: render DOM → paginated PDF and send as base64 to Vincere
+  // STANDARD: export right-panel DOM to PDF and upload (base64 for small; URL for large)
   async function uploadStandardPreviewToVincereUrl(finalName: string) {
-    const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
-      import('html2canvas'),
-      import('jspdf'),
+    const [{ default: html2pdf }] = await Promise.all([
+      import('html2pdf.js') as any,
     ])
 
     const node = standardPreviewRef.current
     if (!node) throw new Error('Preview not ready')
 
-    // Render the preview
-    const canvas = await html2canvas(node, { scale: 1.5, backgroundColor: '#FFFFFF' })
+    // Force a page break before the footer for cleaner endings
+    // (Handled by CSS class below + html2pdf pagebreak option)
 
-    // Build a paginated PDF with margins to avoid clipping the footer
-    const pdf = new jsPDF({ unit: 'mm', format: 'a4' })
-    const pageW = pdf.internal.pageSize.getWidth()
-    const pageH = pdf.internal.pageSize.getHeight()
-
-    // Reserve a little space top/bottom for cleaner page breaks
-    const topMargin = 10     // mm
-    const bottomMargin = 14  // mm
-    const usableH = pageH - topMargin - bottomMargin
-
-    // Work on a copy so we can slice cleanly
-    const full = document.createElement('canvas')
-    full.width = canvas.width
-    full.height = canvas.height
-    full.getContext('2d')!.drawImage(canvas, 0, 0)
-
-    // Canvas pixels per mm at current scale
-    const pxPerMm = canvas.width / pageW
-
-    // Height per page slice in px, with a small overlap to avoid hairline seams
-    const overlapPx = Math.round(2 * pxPerMm) // ~2mm overlap
-    const pxPerPage = Math.floor(usableH * pxPerMm)
-
-    let y = 0
-    let first = true
-
-    while (y < full.height) {
-      const sliceH = Math.min(pxPerPage, full.height - y)
-      const pageCanvas = document.createElement('canvas')
-      pageCanvas.width = full.width
-      pageCanvas.height = sliceH
-      const ctx = pageCanvas.getContext('2d')!
-      ctx.drawImage(full, 0, y, full.width, sliceH, 0, 0, full.width, sliceH)
-
-      const pageImg = pageCanvas.toDataURL('image/jpeg', 0.85)
-      if (!first) pdf.addPage()
-      const mmH = sliceH / pxPerMm
-      pdf.addImage(pageImg, 'JPEG', 0, topMargin, pageW, mmH)
-      first = false
-
-      // Advance with slight overlap so lines aren't split
-      y += sliceH - overlapPx
+    const opt = {
+      margin:       10, // mm
+      filename:     finalName,
+      image:        { type: 'jpeg', quality: 0.95 },
+      html2canvas:  { scale: 2, backgroundColor: '#FFFFFF' },
+      jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
+      pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] as const },
     }
 
+    // Generate PDF via html2pdf and obtain a Blob
+    const worker = (html2pdf as any)().set(opt).from(node).toPdf()
+    const pdf = await worker.get('pdf')
     const pdfBlob = new Blob([pdf.output('arraybuffer')], { type: 'application/pdf' })
-    const base64 = await blobToBase64(pdfBlob)
 
-    // Send direct to Vincere as base64 (reliable; no external URL fetch)
-    const res = await fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}/file`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({
-        file_name: finalName,
-        document_type_id: 1,
-        base_64_content: base64,
-        original_cv: true
-      }),
-    })
-
-    const raw = await res.text()
-    let data: any = {}
-    try { data = raw ? JSON.parse(raw) : {} } catch { /* ignore */ }
-
-    if (!res.ok || !data?.ok) {
-      throw new Error(data?.error || raw || `Upload to Vincere failed (${res.status})`)
+    if (pdfBlob.size <= BASE64_THRESHOLD_BYTES) {
+      const base64 = await blobToBase64(pdfBlob)
+      await postBase64ToVincere(finalName, base64)
+    } else {
+      const publicUrl = await uploadBlobToPublicUrl(pdfBlob, finalName)
+      await postFileUrlToVincere(finalName, publicUrl)
     }
   }
 
-  // SALES: read imported file and send as base64 to Vincere
+  // SALES: upload whichever was imported (PDF/DOC/DOCX)
   async function uploadSalesFileToVincereUrl(finalName: string) {
     if (!salesDocUrl) throw new Error('No Sales document to upload')
     const res = await fetch(salesDocUrl)
     if (!res.ok) throw new Error(`Failed to read Sales file (${res.status})`)
     const buf = await res.arrayBuffer()
+    const blob = new Blob([buf], { type: salesDocType || 'application/octet-stream' })
 
-    // Convert to base64 directly (preserves DOC/DOCX/PDF content)
-    const base64 = btoa(String.fromCharCode(...new Uint8Array(buf)))
-
-    const r = await fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}/file`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({
-        file_name: finalName,
-        document_type_id: 1,
-        base_64_content: base64,
-        original_cv: true
-      }),
-    })
-
-    const raw = await r.text()
-    let data: any = {}
-    try { data = raw ? JSON.parse(raw) : {} } catch { /* ignore */ }
-
-    if (!r.ok || !data?.ok) {
-      throw new Error(data?.error || raw || `Upload to Vincere failed (${r.status})`)
+    if (blob.size <= BASE64_THRESHOLD_BYTES) {
+      const base64 = await blobToBase64(blob)
+      await postBase64ToVincere(finalName, base64)
+    } else {
+      const publicUrl = await uploadBlobToPublicUrl(blob, finalName)
+      await postFileUrlToVincere(finalName, publicUrl)
     }
   }
 
@@ -669,12 +637,12 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
           isPdf ? (
             <iframe className="w-full h-[75vh] bg-white" src={salesDocUrl} title={salesDocName || 'Document'} />
           ) : (
-            <div className="p-6 text-sm text-gray-600 bg-white">
+            <div className="p-6 text-xs text-gray-600 bg-white">
               Preview not available for this file type. You can still upload it.
             </div>
           )
         ) : (
-          <div className="p-6 text-sm text-gray-600 bg-white">
+          <div className="p-6 text-xs text-gray-600 bg-white">
             No document imported yet. Use “Import CV” above.
           </div>
         )}
@@ -692,25 +660,25 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       )
     }
 
-    // Standard (existing editor preview) — attach ref for DOM→PDF
+    // Standard (editor preview) — attach ref for DOM→PDF
     return (
-      <div ref={standardPreviewRef} className="p-7 cv-standard-page bg-white text-[13px] leading-[1.35]">
+      <div ref={standardPreviewRef} className="p-6 cv-standard-page bg-white text-[13px] leading-[1.35]">
         <div className="flex items-start justify-between">
           <div />
-          <img src="/zitko-full-logo.png" alt="Zitko" className="h-11" />
+          <img src="/zitko-full-logo.png" alt="Zitko" className="h-10" />
         </div>
 
         <h1 className="text-xl font-bold mt-5">Curriculum Vitae</h1>
 
-        <div className="mt-1.5 text-[12px] text-gray-800 space-y-0.5">
+        <div className="mt-2 text-[12px] text-gray-800 space-y-0.5">
           <div><span className="font-semibold">Name:</span> {form.name ? `${form.name}` : '—'}</div>
           <div><span className="font-semibold">Location:</span> {form.location ? `${form.location}` : '—'}</div>
         </div>
 
-        <h2 className="text-[13px] font-semibold text-[#F7941D] mt-5 mb-1.5">Profile</h2>
+        <h2 className="text-sm font-semibold text-[#F7941D] mt-5 mb-2">Profile</h2>
         <div className="whitespace-pre-wrap text-[12px]">{form.profile?.trim() ? form.profile : 'No Profile yet'}</div>
 
-        <h2 className="text-[13px] font-semibold text-[#F7941D] mt-5 mb-1.5">Key Skills</h2>
+        <h2 className="text-sm font-semibold text-[#F7941D] mt-5 mb-2">Key Skills</h2>
         <div className="whitespace-pre-wrap text-[12px]">
           {(() => {
             const items = (form.keySkills || '').split(/\r?\n|,\s*/).map(s => s.trim()).filter(Boolean)
@@ -719,8 +687,8 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
           })()}
         </div>
 
-        <h2 className="text-[13px] font-semibold text-[#F7941D] mt-5 mb-1.5">Employment History</h2>
-        <div className="space-y-2.5">
+        <h2 className="text-sm font-semibold text-[#F7941D] mt-5 mb-2">Employment History</h2>
+        <div className="space-y-3">
           {form.employment.length === 0 ? (
             <div className="text-gray-500 text-[12px]">No employment history yet.</div>
           ) : (
@@ -740,8 +708,8 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
           )}
         </div>
 
-        <h2 className="text-[13px] font-semibold text-[#F7941D] mt-5 mb-1.5">Education & Qualifications</h2>
-        <div className="space-y-2.5">
+        <h2 className="text-sm font-semibold text-[#F7941D] mt-5 mb-2">Education & Qualifications</h2>
+        <div className="space-y-3">
           {form.education.length === 0 ? (
             <div className="text-gray-500 text-[12px]">No education yet.</div>
           ) : (
@@ -761,7 +729,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
           )}
         </div>
 
-        <h2 className="text-[13px] font-semibold text-[#F7941D] mt-5 mb-1.5">Additional Information</h2>
+        <h2 className="text-sm font-semibold text-[#F7941D] mt-5 mb-2">Additional Information</h2>
         <div className="text-[12px] grid gap-1">
           <div>Driving License: {form.additional.drivingLicense || '—'}</div>
           <div>Nationality: {form.additional.nationality || '—'}</div>
@@ -771,7 +739,10 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
           <div>Financial History: {form.additional.financialHistory || '—'}</div>
         </div>
 
-        <div className="mt-7 pt-3 border-t text-center text-[10px] leading-snug text-[#F7941D] break-inside-avoid">
+        {/* Force the footer onto a clean page */}
+        <div className="pdf-break-before" />
+
+        <div ref={footerRef} className="mt-6 pt-4 border-t text-center text-[10px] leading-snug text-[#F7941D] break-inside-avoid cv-footer">
           <div>Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Consulting Ltd, Zitko Sales Ltd, Zitko Contracting Ltd and Zitko Talent</div>
           <div>Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL</div>
           <div>Tel: 01480 473245 Web: www.zitkogroup.com</div>
@@ -783,16 +754,21 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   // ========== render ==========
   return (
     <div className="grid gap-4">
-      {/* Minimal print styles to ensure A4, multi-page (Standard) */}
+      {/* Minimal print + PDF styles */}
       <style jsx global>{`
+        /* Printing */
         @media print {
           @page { size: A4; margin: 12mm; }
           .cv-standard-page { width: 100%; }
           .cv-standard-page h1,
           .cv-standard-page h2,
-          .cv-standard-page section,
-          .cv-standard-page .break-inside-avoid { break-inside: avoid; }
+          .cv-standard-page section { break-inside: avoid; page-break-inside: avoid; }
+          .pdf-break-before { break-before: page; page-break-before: always; }
+          .cv-footer { break-inside: avoid; page-break-inside: avoid; }
         }
+        /* Screen/html2pdf hints (respected by html2pdf pagebreak: 'css') */
+        .pdf-break-before { break-before: page; page-break-before: always; height: 1px; }
+        .cv-standard-page .break-inside-avoid { break-inside: avoid; page-break-inside: avoid; }
       `}</style>
 
       <div className="card p-4">
@@ -913,11 +889,11 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
               </button>
             </div>
 
-            {salesErr && <div className="mt-3 text-sm text-red-600">{String(salesErr).slice(0, 300)}</div>}
+            {salesErr && <div className="mt-3 text-xs text-red-600">{String(salesErr).slice(0, 300)}</div>}
           </>
         )}
 
-        {error && <div className="mt-3 text-sm text-red-600">{String(error).slice(0, 300)}</div>}
+        {error && <div className="mt-3 text-xs text-red-600">{String(error).slice(0, 300)}</div>}
       </div>
 
       {/* CONTENT GRID */}
@@ -928,9 +904,9 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
             {/* Core */}
             <section>
               <div className="flex items-center justify-between">
-                <h3 className="font-semibold">Core Details</h3>
+                <h3 className="font-semibold text-sm">Core Details</h3>
                 <div className="flex items-center gap-3">
-                  <button type="button" className="text-xs text-gray-500 underline" onClick={() => toggle('core')}>
+                  <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('core')}>
                     {open.core ? 'Hide' : 'Show'}
                   </button>
                 </div>
@@ -939,7 +915,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
               {open.core && (
                 <div className="grid gap-3 mt-3">
                   <label className="grid gap-1">
-                    <span className="text-xs text-gray-500">Name</span>
+                    <span className="text-[11px] text-gray-500">Name</span>
                     <input
                       className="input"
                       value={form.name}
@@ -951,7 +927,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                     />
                   </label>
                   <label className="grid gap-1">
-                    <span className="text-xs text-gray-500">Location</span>
+                    <span className="text-[11px] text-gray-500">Location</span>
                     <input className="input" value={form.location} onChange={e => setField('location', e.target.value)} disabled={loading} />
                   </label>
                 </div>
@@ -961,8 +937,8 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
             {/* Profile */}
             <section>
               <div className="flex items-center justify-between">
-                <h3 className="font-semibold">Profile</h3>
-                <button type="button" className="text-xs text-gray-500 underline" onClick={() => toggle('profile')}>
+                <h3 className="font-semibold text-sm">Profile</h3>
+                <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('profile')}>
                   {open.profile ? 'Hide' : 'Show'}
                 </button>
               </div>
@@ -971,7 +947,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                   <div className="flex flex-col sm:flex-row gap-2 mb-3 items-stretch sm:items-center">
                     <button
                       type="button"
-                      className="btn btn-grey text-xs !px-3 !py-1.5 w-36 whitespace-nowrap"
+                      className="btn btn-grey text-[11px] !px-3 !py-1.5 w-36 whitespace-nowrap"
                       disabled={loading || !rawCandidate}
                       onClick={generateProfile}
                       title={!rawCandidate ? 'Retrieve a candidate first' : 'Generate profile from candidate data'}
@@ -982,7 +958,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                     <input className="input flex-1 min-w-[160px]" placeholder="Job ID" value={jobId} onChange={e => setJobId(e.target.value)} disabled={loading} />
                     <button
                       type="button"
-                      className="btn btn-grey text-xs !px-3 !py-1.5 w-36 whitespace-nowrap"
+                      className="btn btn-grey text-[11px] !px-3 !py-1.5 w-36 whitespace-nowrap"
                       disabled={loading || !rawCandidate || !jobId}
                       onClick={generateJobProfile}
                       title={!jobId ? 'Enter a Job ID' : 'Generate job-tailored profile'}
@@ -992,7 +968,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                   </div>
 
                   <label className="grid gap-1">
-                    <span className="text-xs text-gray-500">Profile</span>
+                    <span className="text-[11px] text-gray-500">Profile</span>
                     <textarea className="input min-h-[120px]" value={form.profile} onChange={e => setField('profile', e.target.value)} disabled={loading} />
                   </label>
                 </div>
@@ -1002,14 +978,14 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
             {/* Key Skills */}
             <section>
               <div className="flex items-center justify-between">
-                <h3 className="font-semibold">Key Skills</h3>
-                <button type="button" className="text-xs text-gray-500 underline" onClick={() => toggle('skills')}>
+                <h3 className="font-semibold text-sm">Key Skills</h3>
+                <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('skills')}>
                   {open.skills ? 'Hide' : 'Show'}
                 </button>
               </div>
               {open.skills && (
                 <label className="grid gap-1 mt-3">
-                  <span className="text-xs text-gray-500">Key Skills (comma or newline)</span>
+                  <span className="text-[11px] text-gray-500">Key Skills (comma or newline)</span>
                   <textarea className="input min-h-[100px]" value={form.keySkills} onChange={e => setField('keySkills', e.target.value)} disabled={loading} />
                 </label>
               )}
@@ -1018,10 +994,10 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
             {/* Employment */}
             <section>
               <div className="flex items-center justify-between">
-                <h3 className="font-semibold">Employment History</h3>
+                <h3 className="font-semibold text-sm">Employment History</h3>
                 <div className="flex items-center gap-3">
-                  <button type="button" className="text-xs text-gray-500 underline" onClick={addEmployment} disabled={loading}>Add role</button>
-                  <button type="button" className="text-xs text-gray-500 underline" onClick={() => toggle('work')}>
+                  <button type="button" className="text-[11px] text-gray-500 underline" onClick={addEmployment} disabled={loading}>Add role</button>
+                  <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('work')}>
                     {open.work ? 'Hide' : 'Show'}
                   </button>
                 </div>
@@ -1030,12 +1006,12 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
               {open.work && (
                 <div className="grid gap-3 mt-3">
                   {form.employment.length === 0 ? (
-                    <div className="text-sm text-gray-500">No employment history yet.</div>
+                    <div className="text-[12px] text-gray-500">No employment history yet.</div>
                   ) : (
                     form.employment.map((e, i) => (
                       <div key={i} className="border rounded-xl p-3 grid gap-2">
                         <label className="grid gap-1">
-                          <span className="text-xs text-gray-500">Title</span>
+                          <span className="text-[11px] text-gray-500">Title</span>
                           <input className="input" value={e.title || ''} onChange={ev => {
                             const v = ev.target.value
                             setForm(prev => {
@@ -1045,7 +1021,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                         </label>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <label className="grid gap-1">
-                            <span className="text-xs text-gray-500">Company</span>
+                            <span className="text-[11px] text-gray-500">Company</span>
                             <input className="input" value={e.company || ''} onChange={ev => {
                               const v = ev.target.value
                               setForm(prev => { const copy = structuredClone(prev); copy.employment[i].company = v; return copy })
@@ -1053,14 +1029,14 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                           </label>
                           <div className="grid grid-cols-2 gap-2">
                             <label className="grid gap-1">
-                              <span className="text-xs text-gray-500">Start</span>
+                              <span className="text-[11px] text-gray-500">Start</span>
                               <input className="input" value={e.start || ''} onChange={ev => {
                                 const v = ev.target.value
                                 setForm(prev => { const copy = structuredClone(prev); copy.employment[i].start = v; return copy })
                               }} />
                             </label>
                             <label className="grid gap-1">
-                              <span className="text-xs text-gray-500">End</span>
+                              <span className="text-[11px] text-gray-500">End</span>
                               <input className="input" value={e.end || ''} onChange={ev => {
                                 const v = ev.target.value
                                 setForm(prev => { const copy = structuredClone(prev); copy.employment[i].end = v; return copy })
@@ -1069,7 +1045,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                           </div>
                         </div>
                         <label className="grid gap-1">
-                          <span className="text-xs text-gray-500">Description</span>
+                          <span className="text-[11px] text-gray-500">Description</span>
                           <textarea className="input min-h-[80px]" value={e.description || ''} onChange={ev => {
                             const v = ev.target.value
                             setForm(prev => { const copy = structuredClone(prev); copy.employment[i].description = v; return copy })
@@ -1085,8 +1061,8 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
             {/* Education */}
             <section>
               <div className="flex items-center justify-between">
-                <h3 className="font-semibold">Education & Qualifications</h3>
-                <button type="button" className="text-xs text-gray-500 underline" onClick={() => toggle('education')}>
+                <h3 className="font-semibold text-sm">Education & Qualifications</h3>
+                <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('education')}>
                   {open.education ? 'Hide' : 'Show'}
                 </button>
               </div>
@@ -1094,17 +1070,17 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
               {open.education && (
                 <div className="grid gap-3 mt-3">
                   {form.education.length === 0 ? (
-                    <div className="text-sm text-gray-500">No education yet.</div>
+                    <div className="text-[12px] text-gray-500">No education yet.</div>
                   ) : (
                     form.education.map((e, i) => (
                       <div key={i} className="flex items-start justify-between">
                         <div className="grid gap-0.5">
                           <div className="font-medium">{e.course || e.institution || 'Course'}</div>
                           {!!e.institution && !!e.course && e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase() && (
-                            <div className="text-xs text-gray-500">{e.institution}</div>
+                            <div className="text-[11px] text-gray-500">{e.institution}</div>
                           )}
                         </div>
-                        <div className="text-xs text-gray-500 whitespace-nowrap">{[e.start, e.end].filter(Boolean).join(' to ')}</div>
+                        <div className="text-[11px] text-gray-500 whitespace-nowrap">{[e.start, e.end].filter(Boolean).join(' to ')}</div>
                       </div>
                     ))
                   )}
@@ -1115,14 +1091,14 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
             {/* Additional */}
             <section>
               <div className="flex items-center justify-between">
-                <h3 className="font-semibold">Additional Information</h3>
-                <button type="button" className="text-xs text-gray-500 underline" onClick={() => toggle('extra')}>
+                <h3 className="font-semibold text-sm">Additional Information</h3>
+                <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('extra')}>
                   {open.extra ? 'Hide' : 'Show'}
                 </button>
               </div>
 
               {open.extra && (
-                <div className="text-sm grid gap-1 mt-3">
+                <div className="text-[12px] grid gap-1 mt-3">
                   <div>Driving License: {form.additional.drivingLicense || '—'}</div>
                   <div>Nationality: {form.additional.nationality || '—'}</div>
                   <div>Availability: {form.additional.availability || '—'}</div>
@@ -1136,13 +1112,13 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
             {/* Debug: Raw JSON */}
             <section>
               <div className="mt-2 border rounded-xl p-2 bg-gray-50">
-                <div className="text-[11px] font-semibold text-gray-600 mb-1">Raw JSON Data (debug)</div>
+                <div className="text-[10px] font-semibold text-gray-600 mb-1">Raw JSON Data (debug)</div>
 
                 {/* Candidate Data */}
                 <div className="border rounded-lg mb-2">
                   <div className="flex items-center justify-between px-2 py-1">
-                    <div className="text-[11px] font-medium">Candidate Data</div>
-                    <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('rawCandidate')}>
+                    <div className="text-[10px] font-medium">Candidate Data</div>
+                    <button type="button" className="text-[10px] text-gray-500 underline" onClick={() => toggle('rawCandidate')}>
                       {open.rawCandidate ? 'Hide' : 'Show'}
                     </button>
                   </div>
@@ -1156,8 +1132,8 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                 {/* Work Experience */}
                 <div className="border rounded-lg mb-2">
                   <div className="flex items-center justify-between px-2 py-1">
-                    <div className="text-[11px] font-medium">Work Experience</div>
-                    <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('rawWork')}>
+                    <div className="text-[10px] font-medium">Work Experience</div>
+                    <button type="button" className="text-[10px] text-gray-500 underline" onClick={() => toggle('rawWork')}>
                       {open.rawWork ? 'Hide' : 'Show'}
                     </button>
                   </div>
@@ -1171,8 +1147,8 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                 {/* Education Details */}
                 <div className="border rounded-lg mb-2">
                   <div className="flex items-center justify-between px-2 py-1">
-                    <div className="text-[11px] font-medium">Education Details</div>
-                    <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('rawEdu')}>
+                    <div className="text-[10px] font-medium">Education Details</div>
+                    <button type="button" className="text-[10px] text-gray-500 underline" onClick={() => toggle('rawEdu')}>
                       {open.rawEdu ? 'Hide' : 'Show'}
                     </button>
                   </div>
@@ -1186,8 +1162,8 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                 {/* Custom Fields */}
                 <div className="border rounded-lg">
                   <div className="flex items-center justify-between px-2 py-1">
-                    <div className="text-[11px] font-medium">Custom Fields</div>
-                    <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('rawCustom')}>
+                    <div className="text-[10px] font-medium">Custom Fields</div>
+                    <button type="button" className="text-[10px] text-gray-500 underline" onClick={() => toggle('rawCustom')}>
                       {open.rawCustom ? 'Hide' : 'Show'}
                     </button>
                   </div>
@@ -1213,12 +1189,12 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
             <div className="mb-4">
-              <h3 className="text-lg font-semibold">Upload CV to Vincere</h3>
-              <p className="text-sm text-gray-600">
+              <h3 className="text-base font-semibold">Upload CV to Vincere</h3>
+              <p className="text-[12px] text-gray-600">
                 Candidate: <span className="font-medium">{candidateName || form.name || 'Unknown'}</span> · ID:{' '}
                 <span className="font-mono">{candidateId || '—'}</span>
               </p>
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-[11px] text-gray-500 mt-1">
                 Source:&nbsp;
                 {uploadContext === 'standard' ? 'Standard (right-panel template → PDF)' : 'Sales (imported file)'}
               </p>
@@ -1226,17 +1202,17 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium">File name</label>
+                <label className="block text-[12px] font-medium">File name</label>
                 <input
                   type="text"
-                  className="mt-1 w-full rounded-md border p-2"
+                  className="mt-1 w-full rounded-md border p-2 text-[13px]"
                   value={uploadFileName}
                   onChange={(e) => setUploadFileName(e.target.value)}
                   placeholder="e.g. JohnSmith_CV.pdf"
                 />
               </div>
 
-              {uploadErr && <div className="text-sm text-red-600">{uploadErr}</div>}
+              {uploadErr && <div className="text-[12px] text-red-600">{uploadErr}</div>}
             </div>
 
             <div className="mt-6 flex justify-end gap-3">
