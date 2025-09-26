@@ -588,45 +588,58 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
   // Handle a selected/dropped file for SALES
   async function handleFile(f: File) {
-    setSalesErr(null)
-    if (salesDocUrl) URL.revokeObjectURL(salesDocUrl)
+  setSalesErr(null)
+  if (salesDocUrl) URL.revokeObjectURL(salesDocUrl)
 
-    const isPdfFile = f.type?.includes('pdf') || /\.pdf$/i.test(f.name)
-    const isDocx    = f.type?.includes('officedocument.wordprocessingml.document') || /\.docx$/i.test(f.name)
+  const isPdfFile = f.type?.includes('pdf') || /\.pdf$/i.test(f.name)
+  const isDocx    = f.type?.includes('officedocument.wordprocessingml.document') || /\.docx$/i.test(f.name)
 
-    try {
-      setProcessing(true)
+  try {
+    setProcessing(true)
 
-      let pdfBlob: Blob | null = null
+    let pdfBlob: Blob | null = null
 
-      if (isDocx) {
-        // Convert DOCX → PDF for preview
-        const fd = new FormData()
-        fd.append('file', f, f.name)
+    if (isDocx) {
+      // Convert DOCX → PDF for preview only (no baking here)
+      const fd = new FormData()
+      fd.append('file', f, f.name)
 
-        const res = await fetch('/api/cloudconvert/docx-to-pdf', { method: 'POST', body: fd })
-        if (!res.ok) {
-          let msg = `DOCX convert failed (${res.status})`
-          try {
-            const j = await res.json()
-            if (j?.error) msg = j.error
-          } catch {}
-          throw new Error(msg)
-        }
-
-        const pdfBuf = await res.arrayBuffer()
-        pdfBlob = new Blob([pdfBuf], { type: 'application/pdf' })
-      } else if (isPdfFile) {
-        pdfBlob = f
-      } else {
-        // Unsupported for baking/preview — just show a warning
-        const url = URL.createObjectURL(f)
-        setSalesDocUrl(url)
-        setSalesDocName(f.name)
-        setSalesDocType(f.type || 'application/octet-stream')
-        setSalesErr('Preview only supports PDF (DOCX will auto-convert). This file type will not preview.')
-        return
+      const res = await fetch('/api/cloudconvert/docx-to-pdf', { method: 'POST', body: fd })
+      if (!res.ok) {
+        let msg = `DOCX convert failed (${res.status})`
+        try {
+          const j = await res.json()
+          if (j?.error) msg = j.error
+        } catch {}
+        throw new Error(msg)
       }
+
+      const pdfBuf = await res.arrayBuffer()
+      pdfBlob = new Blob([pdfBuf], { type: 'application/pdf' })
+    } else if (isPdfFile) {
+      // Use the raw PDF as-is for preview
+      pdfBlob = f
+    } else {
+      // Unsupported for preview
+      const url = URL.createObjectURL(f)
+      setSalesDocUrl(url)
+      setSalesDocName(f.name)
+      setSalesDocType(f.type || 'application/octet-stream')
+      setSalesErr('Preview only supports PDF (DOCX will auto-convert). This file type will not preview.')
+      return
+    }
+
+    // 👉 No baking for preview
+    const url = URL.createObjectURL(pdfBlob)
+    setSalesDocUrl(url)
+    setSalesDocName(isDocx ? f.name.replace(/\.docx$/i, '.pdf') : f.name)
+    setSalesDocType('application/pdf')
+  } catch (e: any) {
+    setSalesErr(e?.message || 'Failed to process file')
+  } finally {
+    setProcessing(false)
+  }
+}
 
       // 🔥 Bake header (p1) + footer (last) for preview as well
       const baked = await bakeHeaderFooter(pdfBlob)
