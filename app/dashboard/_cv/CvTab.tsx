@@ -667,7 +667,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
         {/* Footer */}
         <div className="w-full bg-white px-4 py-3 border-t text-center text-[10px] leading-snug text-[#F7941D]">
-          <div>Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Consulting Ltd, Zitko Sales Ltd, Zitko Contracting Ltd and Zitko Talent</div>
+          <div>Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Group Inc</div>
           <div>Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL</div>
           <div>Tel: 01480 473245 Web: www.zitkogroup.com</div>
         </div>
