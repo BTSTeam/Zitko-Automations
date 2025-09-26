@@ -923,7 +923,7 @@ async function handleFile(f: File) {
               className="btn btn-grey"
               disabled={!candidateId}
               onClick={() => {
-                const defaultName = (salesDocName?.trim() || `${baseName}_Sales.pdf`).replace(/\.(doc|docx)$/i, '.pdf')
+                const defaultName = `${(candidateName || form.name || 'CV').replace(/\s+/g, '')}_Standard.pdf`
                 setUploadFileName(defaultName)
                 setUploadContext('standard')
                 setShowUploadModal(true)
