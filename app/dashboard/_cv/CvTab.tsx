@@ -551,39 +551,35 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   }
 
   // STANDARD: export right-panel DOM to PDF and upload (base64 for small; URL for large)
-  async function uploadStandardPreviewToVincereUrl(finalName: string) {
-    const [{ default: html2pdf }] = await Promise.all([
-      import('html2pdf.js') as any,
-    ])
+  // STANDARD: export right-panel DOM to PDF and upload (base64 for small; URL for large)
+async function uploadStandardPreviewToVincereUrl(finalName: string) {
+  const mod = await import('html2pdf.js');
+  const html2pdf = (mod as any).default || (mod as any);
 
-    const node = standardPreviewRef.current
-    if (!node) throw new Error('Preview not ready')
+  const node = standardPreviewRef.current;
+  if (!node) throw new Error('Preview not ready');
 
-    // Force a page break before the footer for cleaner endings
-    // (Handled by CSS class below + html2pdf pagebreak option)
+  const opt = {
+    margin: 10, // mm
+    filename: finalName,
+    image: { type: 'jpeg', quality: 0.95 },
+    html2canvas: { scale: 2, backgroundColor: '#FFFFFF' },
+    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
+    pagebreak: { mode: ['avoid-all', 'css', 'legacy'] as const },
+  };
 
-    const opt = {
-      margin:       10, // mm
-      filename:     finalName,
-      image:        { type: 'jpeg', quality: 0.95 },
-      html2canvas:  { scale: 2, backgroundColor: '#FFFFFF' },
-      jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
-      pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] as const },
-    }
+  const worker = html2pdf().set(opt).from(node).toPdf();
+  const pdf = await worker.get('pdf');
+  const pdfBlob = new Blob([pdf.output('arraybuffer')], { type: 'application/pdf' });
 
-    // Generate PDF via html2pdf and obtain a Blob
-    const worker = (html2pdf as any)().set(opt).from(node).toPdf()
-    const pdf = await worker.get('pdf')
-    const pdfBlob = new Blob([pdf.output('arraybuffer')], { type: 'application/pdf' })
-
-    if (pdfBlob.size <= BASE64_THRESHOLD_BYTES) {
-      const base64 = await blobToBase64(pdfBlob)
-      await postBase64ToVincere(finalName, base64)
-    } else {
-      const publicUrl = await uploadBlobToPublicUrl(pdfBlob, finalName)
-      await postFileUrlToVincere(finalName, publicUrl)
-    }
+  if (pdfBlob.size <= BASE64_THRESHOLD_BYTES) {
+    const base64 = await blobToBase64(pdfBlob);
+    await postBase64ToVincere(finalName, base64);
+  } else {
+    const publicUrl = await uploadBlobToPublicUrl(pdfBlob, finalName);
+    await postFileUrlToVincere(finalName, publicUrl);
   }
+}
 
   // SALES: upload whichever was imported (PDF/DOC/DOCX)
   async function uploadSalesFileToVincereUrl(finalName: string) {
