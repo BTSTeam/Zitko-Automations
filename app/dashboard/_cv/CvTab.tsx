@@ -33,7 +33,7 @@ type OpenState = {
 }
 
 // === Size threshold for choosing base64 vs URL ===
-const BASE64_THRESHOLD_BYTES = 3 * 1024 * 1024; // ~3 MB (safe for serverless body limits)
+const BASE64_THRESHOLD_BYTES = 3 * 1024 * 1024 // ~3 MB
 
 export default function CvTab({ templateFromShell }: { templateFromShell?: TemplateKey }): JSX.Element {
   // ========== UI state ==========
@@ -503,94 +503,14 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   )
 
   // ===== UPLOAD ACTIONS =====
-// --- Bake header (p1) + footer (last) into a PDF Blob using pdf-lib ---
-async function bakeHeaderFooterIntoPdf(input: Blob): Promise<Blob> {
-  try {
-    const { PDFDocument, rgb, StandardFonts } = await import('pdf-lib')
-
-    const bytes = new Uint8Array(await input.arrayBuffer())
-    const pdfDoc = await PDFDocument.load(bytes)
-
-    const pages = pdfDoc.getPages()
-    if (pages.length === 0) return input
-
-    // Embed logo
-    let logoImg: any = null
-    try {
-      const res = await fetch('/zitko-full-logo.png')
-      const logoBytes = await res.arrayBuffer()
-      logoImg = await pdfDoc.embedPng(logoBytes)
-    } catch {
-      // If logo fetch fails, continue without it
-    }
-
-    const orange = rgb(0.9686, 0.5804, 0.1137) // #F7941D
-    const greyLine = rgb(0.85, 0.85, 0.85)
-    const white = rgb(1, 1, 1)
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
-
-    // -------- Header on first page --------
-    {
-      const page = pages[0]
-      const pw = page.getWidth()
-      const ph = page.getHeight()
-
-      const headerH = Math.min(80, ph * 0.1) // pts
-      // White cover band (doesn't shift content; just covers)
-      page.drawRectangle({ x: 0, y: ph - headerH, width: pw, height: headerH, color: white })
-      page.drawLine({ start: { x: 0, y: ph - headerH }, end: { x: pw, y: ph - headerH }, thickness: 1, color: greyLine })
-
-      if (logoImg) {
-        const pad = 16
-        const targetH = Math.min(36, headerH - pad) // keep logo tidy in band
-        const scale = targetH / logoImg.height
-        const w = logoImg.width * scale
-        const h = logoImg.height * scale
-        page.drawImage(logoImg, { x: pw - w - pad, y: ph - headerH + (headerH - h) / 2, width: w, height: h })
-      }
-    }
-
-    // -------- Footer on last page --------
-    {
-      const page = pages[pages.length - 1]
-      const pw = page.getWidth()
-      const ph = page.getHeight()
-
-      const footerH = Math.min(90, ph * 0.12)
-      page.drawRectangle({ x: 0, y: 0, width: pw, height: footerH, color: white })
-      page.drawLine({ start: { x: 0, y: footerH }, end: { x: pw, y: footerH }, thickness: 1, color: greyLine })
-
-      const lines = [
-        'Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Consulting Ltd, Zitko Sales Ltd, Zitko Contracting Ltd and Zitko Talent',
-        'Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL',
-        'Tel: 01480 473245 Web: www.zitkogroup.com',
-      ]
-
-      const size = 8.5
-      let y = footerH - 20 // start a little below top of footer band
-      for (const line of lines) {
-        const tw = font.widthOfTextAtSize(line, size)
-        const x = (pw - tw) / 2
-        page.drawText(line, { x, y, size, font, color: orange })
-        y -= size + 3
-      }
-    }
-
-    const out = await pdfDoc.save()
-    return new Blob([out], { type: 'application/pdf' })
-  } catch (err) {
-    console.warn('Baking header/footer failed, using original PDF', err)
-    return input // fail-safe
-  }
-}
 
   // Convert a Blob to a base64 string (browser-safe)
   async function blobToBase64(blob: Blob): Promise<string> {
-    const buf = await blob.arrayBuffer();
-    let binary = '';
-    const bytes = new Uint8Array(buf);
-    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-    return btoa(binary);
+    const buf = await blob.arrayBuffer()
+    let binary = ''
+    const bytes = new Uint8Array(buf)
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+    return btoa(binary)
   }
 
   // Upload a Blob to /api/upload and get public URL back (used for large files)
@@ -599,13 +519,11 @@ async function bakeHeaderFooterIntoPdf(input: Blob): Promise<Blob> {
     fd.append('file', new File([file], desiredName, { type: (file as any).type || 'application/octet-stream' }))
     fd.append('filename', desiredName)
 
-    console.log('[CLIENT] calling /api/upload', { desiredName, size: file.size })
     const res = await fetch('/api/upload', { method: 'POST', body: fd, credentials: 'include' })
 
     let data: any = null
     const text = await res.text()
     try { data = text ? JSON.parse(text) : {} } catch { data = { raw: text } }
-    console.log('[CLIENT] /api/upload response', { status: res.status, data })
 
     if (!res.ok || !data?.ok || !data?.url) {
       throw new Error((data && (data.error || data.raw)) || `Blob upload failed (${res.status})`)
@@ -615,7 +533,6 @@ async function bakeHeaderFooterIntoPdf(input: Blob): Promise<Blob> {
 
   async function postBase64ToVincere(fileName: string, base64: string) {
     const payload = { file_name: fileName, document_type_id: 1, base_64_content: base64, original_cv: true }
-    console.log('[CLIENT] POST base64 to Vincere', { len: base64.length, fileName })
 
     const res = await fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}/file`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload),
@@ -624,14 +541,12 @@ async function bakeHeaderFooterIntoPdf(input: Blob): Promise<Blob> {
     const raw = await res.text()
     let data: any = null
     try { data = raw ? JSON.parse(raw) : {} } catch { data = { raw } }
-    console.log('[CLIENT] Vincere base64 response', { status: res.status, data })
 
     if (!res.ok || !data?.ok) throw new Error(data?.error || data?.raw || `Upload to Vincere failed (${res.status})`)
   }
 
   async function postFileUrlToVincere(fileName: string, publicUrl: string) {
     const payload = { file_name: fileName, document_type_id: 1, url: publicUrl, original_cv: true }
-    console.log('[CLIENT] POST url to Vincere', { fileName, publicUrl })
 
     const res = await fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}/file`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload),
@@ -640,18 +555,97 @@ async function bakeHeaderFooterIntoPdf(input: Blob): Promise<Blob> {
     const raw = await res.text()
     let data: any = null
     try { data = raw ? JSON.parse(raw) : {} } catch { data = { raw } }
-    console.log('[CLIENT] Vincere URL response', { status: res.status, data })
 
     if (!res.ok || !data?.ok) throw new Error(data?.error || data?.raw || `Upload to Vincere failed (${res.status})`)
   }
 
+  // --- Bake header (p1) + footer (last) into a PDF Blob using pdf-lib ---
+  async function bakeHeaderFooterIntoPdf(input: Blob): Promise<Blob> {
+    try {
+      const { PDFDocument, rgb, StandardFonts } = await import('pdf-lib')
+
+      const bytes = new Uint8Array(await input.arrayBuffer())
+      const pdfDoc = await PDFDocument.load(bytes)
+
+      const pages = pdfDoc.getPages()
+      if (pages.length === 0) return input
+
+      // Embed logo
+      let logoImg: any = null
+      try {
+        const res = await fetch('/zitko-full-logo.png')
+        const logoBytes = await res.arrayBuffer()
+        logoImg = await pdfDoc.embedPng(logoBytes)
+      } catch {
+        // continue without logo
+      }
+
+      const orange = rgb(0.9686, 0.5804, 0.1137) // #F7941D
+      const greyLine = rgb(0.85, 0.85, 0.85)
+      const white = rgb(1, 1, 1)
+      const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
+
+      // -------- Header on first page (covers whatever is there) --------
+      {
+        const page = pages[0]
+        const pw = page.getWidth()
+        const ph = page.getHeight()
+
+        const headerH = Math.min(80, ph * 0.1)
+        page.drawRectangle({ x: 0, y: ph - headerH, width: pw, height: headerH, color: white })
+        page.drawLine({ start: { x: 0, y: ph - headerH }, end: { x: pw, y: ph - headerH }, thickness: 1, color: greyLine })
+
+        if (logoImg) {
+          const pad = 16
+          const targetH = Math.min(36, headerH - pad)
+          const scale = targetH / logoImg.height
+          const w = logoImg.width * scale
+          const h = logoImg.height * scale
+          page.drawImage(logoImg, { x: pw - w - pad, y: ph - headerH + (headerH - h) / 2, width: w, height: h })
+        }
+      }
+
+      // -------- Footer on last page (covers whatever is there) --------
+      {
+        const page = pages[pages.length - 1]
+        const pw = page.getWidth()
+        const ph = page.getHeight()
+
+        const footerH = Math.min(90, ph * 0.12)
+        page.drawRectangle({ x: 0, y: 0, width: pw, height: footerH, color: white })
+        page.drawLine({ start: { x: 0, y: footerH }, end: { x: pw, y: footerH }, thickness: 1, color: greyLine })
+
+        const lines = [
+          'Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Consulting Ltd, Zitko Sales Ltd, Zitko Contracting Ltd and Zitko Talent',
+          'Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL',
+          'Tel: 01480 473245 Web: www.zitkogroup.com',
+        ]
+
+        const size = 8.5
+        let y = footerH - 20
+        for (const line of lines) {
+          const tw = font.widthOfTextAtSize(line, size)
+          const x = (pw - tw) / 2
+          page.drawText(line, { x, y, size, font, color: orange })
+          y -= size + 3
+        }
+      }
+
+      const out = await pdfDoc.save()
+      return new Blob([out], { type: 'application/pdf' })
+    } catch (err) {
+      console.warn('Baking header/footer failed, using original PDF', err)
+      return input // fail-safe
+    }
+  }
+
   // STANDARD: export right-panel DOM to PDF and upload (base64 for small; URL for large)
   async function uploadStandardPreviewToVincereUrl(finalName: string) {
-    const mod = await import('html2pdf.js');
-    const html2pdf = (mod as any).default || (mod as any);
+    const mod = await import('html2pdf.js')
+    const html2pdf = (mod as any).default || (mod as any)
 
-    const node = standardPreviewRef.current;
-    if (!node) throw new Error('Preview not ready');
+    const node = standardPreviewRef.current
+    if (!node) throw new Error('Preview not ready')
 
     const opt = {
       margin: 10, // mm
@@ -660,42 +654,43 @@ async function bakeHeaderFooterIntoPdf(input: Blob): Promise<Blob> {
       html2canvas: { scale: 2, backgroundColor: '#FFFFFF' },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
       pagebreak: { mode: ['avoid-all', 'css', 'legacy'] as const },
-    };
+    }
 
-    const worker = html2pdf().set(opt).from(node).toPdf();
-    const pdf = await worker.get('pdf');
-    const pdfBlob = new Blob([pdf.output('arraybuffer')], { type: 'application/pdf' });
+    const worker = html2pdf().set(opt).from(node).toPdf()
+    const pdf = await worker.get('pdf')
+    const pdfBlob = new Blob([pdf.output('arraybuffer')], { type: 'application/pdf' })
 
     if (pdfBlob.size <= BASE64_THRESHOLD_BYTES) {
-      const base64 = await blobToBase64(pdfBlob);
-      await postBase64ToVincere(finalName, base64);
+      const base64 = await blobToBase64(pdfBlob)
+      await postBase64ToVincere(finalName, base64)
     } else {
-      const publicUrl = await uploadBlobToPublicUrl(pdfBlob, finalName);
-      await postFileUrlToVincere(finalName, publicUrl);
+      const publicUrl = await uploadBlobToPublicUrl(pdfBlob, finalName)
+      await postFileUrlToVincere(finalName, publicUrl)
     }
   }
 
-  // SALES: upload whichever was imported (PDF/DOC/DOCX)
+  // SALES: upload whichever was imported (PDF/DOC/DOCX) with baked header/footer for PDFs
   async function uploadSalesFileToVincereUrl(finalName: string) {
-  if (!salesDocUrl) throw new Error('No Sales document to upload')
-  const res = await fetch(salesDocUrl)
-  if (!res.ok) throw new Error(`Failed to read Sales file (${res.status})`)
-  const buf = await res.arrayBuffer()
-  let blob = new Blob([buf], { type: salesDocType || 'application/octet-stream' })
+    if (!salesDocUrl) throw new Error('No Sales document to upload')
+    const res = await fetch(salesDocUrl)
+    if (!res.ok) throw new Error(`Failed to read Sales file (${res.status})`)
+    const buf = await res.arrayBuffer()
+    let blob = new Blob([buf], { type: salesDocType || 'application/octet-stream' })
 
-  // If it's a PDF, bake the header/footer into the file itself
-  if (salesDocType?.includes('pdf') || /\.pdf$/i.test(salesDocName)) {
-    blob = await bakeHeaderFooterIntoPdf(blob)
+    // If it's a PDF, bake the header/footer into the file itself
+    if (salesDocType?.includes('pdf') || /\.pdf$/i.test(salesDocName)) {
+      blob = await bakeHeaderFooterIntoPdf(blob)
+    }
+
+    if (blob.size <= BASE64_THRESHOLD_BYTES) {
+      const base64 = await blobToBase64(blob)
+      await postBase64ToVincere(finalName, base64)
+    } else {
+      const publicUrl = await uploadBlobToPublicUrl(blob, finalName)
+      await postFileUrlToVincere(finalName, publicUrl)
+    }
   }
 
-  if (blob.size <= BASE64_THRESHOLD_BYTES) {
-    const base64 = await blobToBase64(blob)
-    await postBase64ToVincere(finalName, base64)
-  } else {
-    const publicUrl = await uploadBlobToPublicUrl(blob, finalName)
-    await postFileUrlToVincere(finalName, publicUrl)
-  }
-}
   async function confirmUpload() {
     try {
       setUploadBusy(true)
@@ -708,8 +703,6 @@ async function bakeHeaderFooterIntoPdf(input: Blob): Promise<Blob> {
       if (!/\.(pdf|docx?|DOCX?)$/.test(finalName)) {
         finalName += (uploadContext === 'standard' ? '.pdf' : (isPdf ? '.pdf' : '.docx'))
       }
-
-      console.log('[CLIENT] confirmUpload', { uploadContext, finalName, candidateId })
 
       if (uploadContext === 'standard') {
         await uploadStandardPreviewToVincereUrl(finalName)
@@ -725,154 +718,19 @@ async function bakeHeaderFooterIntoPdf(input: Blob): Promise<Blob> {
     }
   }
 
-  // -------- PDF.js-based Sales viewer with first/last-page overlays --------
-  function SalesPdfPreview({ url }: { url: string }) {
-    const containerRef = useRef<HTMLDivElement | null>(null)
-    const [fail, setFail] = useState<string | null>(null)
-
-    useEffect(() => {
-      if (!url) return
-      let cancelled = false
-
-      ;(async () => {
-        try {
-          setFail(null)
-          const pdfjs: any = await import('pdfjs-dist/legacy/build/pdf')
-          // Use CDN worker to avoid bundler config hassles
-          pdfjs.GlobalWorkerOptions.workerSrc =
-            `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version || '4.0.379'}/pdf.worker.min.js`
-
-          const loadingTask = pdfjs.getDocument({ url })
-          const pdf = await loadingTask.promise
-          if (cancelled) return
-
-          const container = containerRef.current
-          if (!container) return
-
-          // Clear previous render
-          container.innerHTML = ''
-
-          // Measure width to scale pages
-          const targetWidth = container.clientWidth || 900
-
-          // Preload page 1 for initial scale
-          const firstPage = await pdf.getPage(1)
-          const vp1 = firstPage.getViewport({ scale: 1 })
-          const scale = Math.max(0.1, targetWidth / vp1.width)
-
-          async function renderPage(pageNumber: number) {
-            const page = await pdf.getPage(pageNumber)
-            const viewport = page.getViewport({ scale })
-            const canvas = document.createElement('canvas')
-            const ctx = canvas.getContext('2d')!
-
-            canvas.width = Math.ceil(viewport.width)
-            canvas.height = Math.ceil(viewport.height)
-
-            // wrapper to position overlays without shifting content
-            const wrapper = document.createElement('div')
-            wrapper.style.position = 'relative'
-            wrapper.style.margin = '0 auto 12px auto'
-            wrapper.style.width = `${canvas.width}px`
-            wrapper.style.height = `${canvas.height}px`
-
-            wrapper.appendChild(canvas)
-            container.appendChild(wrapper)
-
-            await page.render({ canvasContext: ctx, viewport }).promise
-
-            // ----- overlays -----
-            const headerH = Math.round(80 * scale) // px
-            const footerH = Math.round(90 * scale)
-
-            if (pageNumber === 1) {
-              const header = document.createElement('div')
-              header.style.position = 'absolute'
-              header.style.left = '0'
-              header.style.top = '0'
-              header.style.right = '0'
-              header.style.height = `${headerH}px`
-              header.style.background = '#fff'
-              header.style.display = 'flex'
-              header.style.alignItems = 'center'
-              header.style.justifyContent = 'flex-end'
-              header.style.padding = `${8 * scale}px ${16 * scale}px`
-              header.style.boxSizing = 'border-box'
-              header.style.pointerEvents = 'none' // do not interfere
-              header.style.borderBottom = `${Math.max(1, Math.round(scale))}px solid rgba(0,0,0,0.06)`
-
-              const img = document.createElement('img')
-              img.src = '/zitko-full-logo.png'
-              img.style.height = `${32 * scale}px`
-              img.style.pointerEvents = 'none'
-              header.appendChild(img)
-
-              wrapper.appendChild(header)
-            }
-
-            if (pageNumber === pdf.numPages) {
-              const footer = document.createElement('div')
-              footer.style.position = 'absolute'
-              footer.style.left = '0'
-              footer.style.right = '0'
-              footer.style.bottom = '0'
-              footer.style.height = `${footerH}px`
-              footer.style.background = '#fff'
-              footer.style.display = 'flex'
-              footer.style.flexDirection = 'column'
-              footer.style.alignItems = 'center'
-              footer.style.justifyContent = 'center'
-              footer.style.textAlign = 'center'
-              footer.style.color = '#F7941D'
-              footer.style.fontSize = `${10 * scale}px`
-              footer.style.lineHeight = `${12 * scale}px`
-              footer.style.padding = `${8 * scale}px`
-              footer.style.boxSizing = 'border-box'
-              footer.style.pointerEvents = 'none'
-              footer.style.borderTop = `${Math.max(1, Math.round(scale))}px solid rgba(0,0,0,0.06)`
-
-              footer.innerHTML = `
-                <div>Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Consulting Ltd, Zitko Sales Ltd, Zitko Contracting Ltd and Zitko Talent</div>
-                <div>Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL</div>
-                <div>Tel: 01480 473245 Web: www.zitkogroup.com</div>
-              `
-              wrapper.appendChild(footer)
-            }
-          }
-
-          for (let i = 1; i <= pdf.numPages; i++) {
-            if (cancelled) break
-            // eslint-disable-next-line no-await-in-loop
-            await renderPage(i)
-          }
-        } catch (err: any) {
-          console.error('PDF preview failed', err)
-          setFail('Preview failed. Falling back to simple viewer.')
-        }
-      })()
-
-      return () => { cancelled = true }
-    }, [url])
-
-    return (
-      <div className="w-full bg-white">
-        {fail ? (
-          <iframe className="w-full h-[75vh] bg-white" src={url} title="Document" />
-        ) : (
-          <div ref={containerRef} className="w-full h-[75vh] overflow-auto bg-white" />
-        )}
-      </div>
-    )
-  }
-
   // Branded viewer card (Sales)
   function SalesViewerCard() {
     return (
       <div className="border rounded-2xl overflow-hidden bg-white">
-        {/* Header/footers are drawn as overlays inside the canvases (page 1 / last page) */}
+        {/* Branded Header */}
+        <div className="w-full bg-white px-4 py-3 flex items-center justify-end border-b">
+          <img src="/zitko-full-logo.png" alt="Zitko" className="h-10" />
+        </div>
+
+        {/* Document area */}
         {salesDocUrl ? (
           isPdf ? (
-            <SalesPdfPreview url={salesDocUrl} />
+            <iframe className="w-full h-[75vh] bg-white" src={salesDocUrl} title={salesDocName || 'Document'} />
           ) : (
             <div className="p-6 text-xs text-gray-600 bg-white">
               Preview not available for this file type. You can still upload it.
@@ -883,6 +741,13 @@ async function bakeHeaderFooterIntoPdf(input: Blob): Promise<Blob> {
             No document imported yet. Use “Import CV” above.
           </div>
         )}
+
+        {/* Footer */}
+        <div className="w-full bg-white px-4 py-3 border-t text-center text-[10px] leading-snug text-[#F7941D]">
+          <div>Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Consulting Ltd, Zitko Sales Ltd, Zitko Contracting Ltd and Zitko Talent</div>
+          <div>Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL</div>
+          <div>Tel: 01480 473245 Web: www.zitkogroup.com</div>
+        </div>
       </div>
     )
   }
@@ -1428,7 +1293,7 @@ async function bakeHeaderFooterIntoPdf(input: Blob): Promise<Blob> {
             <div className="mb-4">
               <h3 className="text-base font-semibold">Upload CV to Vincere</h3>
               <p className="text-[12px] text-gray-600">
-                Candidate: <span className="font-medium">{candidateName || form.name || 'Unknown'}</span> · ID:{' '}
+                Candidate: <span className="font-medium">{candidateName || form.name || 'Unknown'}</span> · ID{' '}
                 <span className="font-mono">{candidateId || '—'}</span>
               </p>
               <p className="text-[11px] text-gray-500 mt-1">
