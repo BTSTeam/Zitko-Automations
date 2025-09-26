@@ -126,8 +126,8 @@ async function bakeHeaderFooter(input: Blob): Promise<Blob> {
 export default function CvTab({ templateFromShell }: { templateFromShell?: TemplateKey }): JSX.Element {
   // ========== UI state ==========
   const [template, setTemplate] = useState<TemplateKey | null>(templateFromShell ?? null)
-  const [candidateId, setCandidateId] = useState<string>('') // used by Standard & Sales (target for upload)
-  const [candidateName, setCandidateName] = useState<string>('') // populated after retrieve (Standard) or manual if needed
+  const [candidateId, setCandidateId] = useState<string>('') // Standard flow target
+  const [candidateName, setCandidateName] = useState<string>('') // populated after retrieve (Standard)
   const [loading, setLoading] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -170,6 +170,8 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   const [uploadFileName, setUploadFileName] = useState<string>('CV.pdf')
   const [uploadBusy, setUploadBusy] = useState(false)
   const [uploadErr, setUploadErr] = useState<string | null>(null)
+  const [uploadSuccess, setUploadSuccess] = useState<string | null>(null)
+  const [uploadCandidateId, setUploadCandidateId] = useState<string>('') // Manual ID for Sales modal
 
   // Standard preview ref (for DOM→PDF export)
   const standardPreviewRef = useRef<HTMLDivElement | null>(null)
@@ -222,8 +224,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     const s = String(dateStr).trim()
 
     const ymd = s.match(/^(\d{4})-(\d{1,2})(?:-\d{1,2})?$/)
-    const mmyyyy = s.match(/^(\d{1,2})[\/\-](\d{4})$/
-)
+    const mmyyyy = s.match(/^(\d{1,2})[\/\-](\d{4})$/)
     const yyyy = s.match(/^(\d{4})$/)
 
     let y: number | undefined
@@ -483,8 +484,9 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
       setCandidateName(name)
 
+      // Keep Profile section open after retrieve
       setOpen({
-        core: true, profile: false, skills: false, work: false, education: false, extra: false,
+        core: true, profile: true, skills: false, work: false, education: false, extra: false,
         rawCandidate: false, rawWork: false, rawEdu: false, rawCustom: false
       })
     } catch (e: any) {
@@ -502,7 +504,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   const [salesDocType, setSalesDocType] = useState<string>('')         // mime type
   const [processing, setProcessing] = useState<boolean>(false)
   const [dragOver, setDragOver] = useState<boolean>(false)
-  const [salesDocBlob, setSalesDocBlob] = useState<Blob | null>(null)  // ⬅️ baked PDF blob (for upload+preview)
+  const [salesDocBlob, setSalesDocBlob] = useState<Blob | null>(null)  // baked PDF blob (for upload+preview)
 
   function resetSalesState() {
     setSalesErr(null)
@@ -546,29 +548,26 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     return data.url as string
   }
 
-  async function postBase64ToVincere(fileName: string, base64: string) {
+  // --- Vincere POST helpers (now accept candidate ID explicitly) ---
+  async function postBase64ToVincere(fileName: string, base64: string, cid: string) {
     const payload = { file_name: fileName, document_type_id: 1, base_64_content: base64, original_cv: true }
-    const res = await fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}/file`, {
+    const res = await fetch(`/api/vincere/candidate/${encodeURIComponent(cid)}/file`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload),
     })
-
     const raw = await res.text()
     let data: any = null
     try { data = raw ? JSON.parse(raw) : {} } catch { data = { raw } }
-
     if (!res.ok || !data?.ok) throw new Error(data?.error || data?.raw || `Upload to Vincere failed (${res.status})`)
   }
 
-  async function postFileUrlToVincere(fileName: string, publicUrl: string) {
+  async function postFileUrlToVincere(fileName: string, publicUrl: string, cid: string) {
     const payload = { file_name: fileName, document_type_id: 1, url: publicUrl, original_cv: true }
-    const res = await fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}/file`, {
+    const res = await fetch(`/api/vincere/candidate/${encodeURIComponent(cid)}/file`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload),
     })
-
     const raw = await res.text()
     let data: any = null
     try { data = raw ? JSON.parse(raw) : {} } catch { data = { raw } }
-
     if (!res.ok || !data?.ok) throw new Error(data?.error || data?.raw || `Upload to Vincere failed (${res.status})`)
   }
 
@@ -645,7 +644,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   )
 
   // STANDARD: export right-panel DOM to PDF and upload (NO baking here)
-  async function uploadStandardPreviewToVincereUrl(finalName: string) {
+  async function uploadStandardPreviewToVincereUrl(finalName: string, cid: string) {
     const mod = await import('html2pdf.js')
     const html2pdf = (mod as any).default || (mod as any)
 
@@ -665,28 +664,26 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     const pdf = await worker.get('pdf')
     const pdfBlob = new Blob([pdf.output('arraybuffer')], { type: 'application/pdf' })
 
-    // upload as-is (no baked branding for Standard)
     if (pdfBlob.size <= BASE64_THRESHOLD_BYTES) {
       const base64 = await blobToBase64(pdfBlob)
-      await postBase64ToVincere(finalName, base64)
+      await postBase64ToVincere(finalName, base64, cid)
     } else {
       const publicUrl = await uploadBlobToPublicUrl(pdfBlob, finalName)
-      await postFileUrlToVincere(finalName, publicUrl)
+      await postFileUrlToVincere(finalName, publicUrl, cid)
     }
   }
 
   // SALES: upload the already-baked file shown in preview
-  async function uploadSalesFileToVincereUrl(finalName: string) {
+  async function uploadSalesFileToVincereUrl(finalName: string, cid: string) {
     if (!salesDocBlob) throw new Error('No Sales document to upload')
-
     const baked = salesDocBlob // already baked in handleFile()
 
     if (baked.size <= BASE64_THRESHOLD_BYTES) {
       const base64 = await blobToBase64(baked)
-      await postBase64ToVincere(finalName, base64)
+      await postBase64ToVincere(finalName, base64, cid)
     } else {
       const publicUrl = await uploadBlobToPublicUrl(baked, finalName)
-      await postFileUrlToVincere(finalName, publicUrl)
+      await postFileUrlToVincere(finalName, publicUrl, cid)
     }
   }
 
@@ -694,19 +691,23 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     try {
       setUploadBusy(true)
       setUploadErr(null)
-      if (!candidateId) throw new Error('No candidate selected')
+      setUploadSuccess(null)
+
+      const cid = (uploadContext === 'sales' ? uploadCandidateId : candidateId).trim()
+      if (!cid) throw new Error('Please enter a Candidate ID')
       if (!uploadFileName?.trim()) throw new Error('Please enter a file name')
 
       let finalName = uploadFileName.trim()
       if (!/\.pdf$/i.test(finalName)) finalName += '.pdf'
 
       if (uploadContext === 'standard') {
-        await uploadStandardPreviewToVincereUrl(finalName)
+        await uploadStandardPreviewToVincereUrl(finalName, cid)
       } else {
-        await uploadSalesFileToVincereUrl(finalName)
+        await uploadSalesFileToVincereUrl(finalName, cid)
       }
 
-      setShowUploadModal(false)
+      // Success state (keep modal open so user sees it)
+      setUploadSuccess('Upload Successful')
     } catch (e: any) {
       setUploadErr(e?.message || 'Upload failed')
     } finally {
@@ -906,6 +907,8 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                 const defaultName = `${(candidateName || form.name || 'CV').replace(/\s+/g, '')}_Standard.pdf`
                 setUploadFileName(defaultName)
                 setUploadContext('standard')
+                setUploadErr(null)
+                setUploadSuccess(null)
                 setShowUploadModal(true)
               }}
               title="Export the right panel CV to PDF and upload to Vincere"
@@ -957,7 +960,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
               <button
                 type="button"
                 className="btn btn-grey"
-                disabled={!candidateId || !salesDocUrl}
+                disabled={!salesDocUrl}  // no longer requires top-level candidateId
                 onClick={() => {
                   const baseName = (candidateName || form.name || 'CV').replace(/\s+/g, '')
                   const defaultName = salesDocName?.trim()
@@ -965,6 +968,9 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                     : `${baseName}_Sales.pdf`
                   setUploadFileName(defaultName)
                   setUploadContext('sales')
+                  setUploadCandidateId(candidateId || '') // prefill if available, editable in modal
+                  setUploadErr(null)
+                  setUploadSuccess(null)
                   setShowUploadModal(true)
                 }}
                 title="Upload the imported file to Vincere"
@@ -1272,10 +1278,15 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
           <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
             <div className="mb-4">
               <h3 className="text-base font-semibold">Upload CV to Vincere</h3>
-              <p className="text-[12px] text-gray-600">
-                Candidate: <span className="font-medium">{candidateName || form.name || 'Unknown'}</span> · ID:{' '}
-                <span className="font-mono">{candidateId || '—'}</span>
-              </p>
+
+              {/* Header summary only for Standard; Sales shows manual ID field below */}
+              {uploadContext === 'standard' && (
+                <p className="text-[12px] text-gray-600">
+                  Candidate: <span className="font-medium">{candidateName || form.name || 'Unknown'}</span> · ID:{' '}
+                  <span className="font-mono">{candidateId || '—'}</span>
+                </p>
+              )}
+
               <p className="text-[11px] text-gray-500 mt-1">
                 Source:&nbsp;
                 {uploadContext === 'standard' ? 'Standard (right-panel template → PDF)' : 'Sales (imported file)'}
@@ -1283,6 +1294,20 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
             </div>
 
             <div className="space-y-4">
+              {/* Manual Candidate ID entry for Sales */}
+              {uploadContext === 'sales' && (
+                <div>
+                  <label className="block text-[12px] font-medium">Candidate ID</label>
+                  <input
+                    type="text"
+                    className="mt-1 w-full rounded-md border p-2 text-[13px]"
+                    value={uploadCandidateId}
+                    onChange={(e) => setUploadCandidateId(e.target.value)}
+                    placeholder="Type Candidate ID used in Vincere"
+                  />
+                </div>
+              )}
+
               <div>
                 <label className="block text-[12px] font-medium">File name</label>
                 <input
@@ -1295,6 +1320,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
               </div>
 
               {uploadErr && <div className="text-[12px] text-red-600">{uploadErr}</div>}
+              {uploadSuccess && <div className="text-[12px] text-green-700 font-medium">{uploadSuccess}</div>}
             </div>
 
             <div className="mt-6 flex justify-end gap-3">
@@ -1304,13 +1330,17 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                 onClick={() => setShowUploadModal(false)}
                 disabled={uploadBusy}
               >
-                Cancel
+                {uploadSuccess ? 'Close' : 'Cancel'}
               </button>
               <button
                 type="button"
                 className="px-4 py-2 rounded-lg bg-zinc-900 text-white disabled:opacity-50"
                 onClick={confirmUpload}
-                disabled={uploadBusy}
+                disabled={
+                  uploadBusy ||
+                  !uploadFileName.trim() ||
+                  (uploadContext === 'sales' && !uploadCandidateId.trim())
+                }
               >
                 {uploadBusy ? 'Uploading…' : 'Confirm & Upload'}
               </button>
