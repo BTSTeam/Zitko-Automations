@@ -431,29 +431,57 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   }
 
   async function handleFile(f: File) {
-    setSalesErr(null)
-    if (salesDocUrl) URL.revokeObjectURL(salesDocUrl)
+  setSalesErr(null)
+  if (salesDocUrl) URL.revokeObjectURL(salesDocUrl)
 
-    const isPdfFile = f.type?.includes('pdf') || /\.pdf$/i.test(f.name)
-    const isDocx    = f.type?.includes('officedocument.wordprocessingml.document') || /\.docx$/i.test(f.name)
-    const isDoc     = f.type === 'application/msword' || /\.doc$/i.test(f.name)
+  const isPdfFile = f.type?.includes('pdf') || /\.pdf$/i.test(f.name)
+  const isDocx    = f.type?.includes('officedocument.wordprocessingml.document') || /\.docx$/i.test(f.name)
 
-    try {
-      setProcessing(true)
-      // Create a local object URL for preview (only PDFs will preview)
+  try {
+    setProcessing(true)
+
+    if (isDocx) {
+      // Convert DOCX → PDF for preview
+      const fd = new FormData()
+      fd.append('file', f, f.name)
+
+      const res = await fetch('/api/cloudconvert/docx-to-pdf', { method: 'POST', body: fd })
+      if (!res.ok) {
+        let msg = `DOCX convert failed (${res.status})`
+        try {
+          const j = await res.json()
+          if (j?.error) msg = j.error
+        } catch {}
+        throw new Error(msg)
+      }
+
+      const pdfBuf = await res.arrayBuffer()
+      const pdfBlob = new Blob([pdfBuf], { type: 'application/pdf' })
+      const url = URL.createObjectURL(pdfBlob)
+
+      setSalesDocUrl(url)
+      setSalesDocName(f.name.replace(/\.docx$/i, '.pdf'))
+      setSalesDocType('application/pdf')
+    } else if (isPdfFile) {
+      // Just preview the PDF directly
       const url = URL.createObjectURL(f)
       setSalesDocUrl(url)
       setSalesDocName(f.name)
-      setSalesDocType(f.type || (isPdfFile ? 'application/pdf' : isDocx ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : isDoc ? 'application/msword' : 'application/octet-stream'))
-
-      // Note: We are NOT converting DOCX → PDF here (preview not supported for DOCX).
-      // Upload flow will still accept DOC/DOCX (Vincere fetches by URL).
-    } catch (e: any) {
-      setSalesErr(e?.message || 'Failed to process file')
-    } finally {
-      setProcessing(false)
+      setSalesDocType('application/pdf')
+    } else {
+      // Not supported for preview (DOC, etc). You can still upload later.
+      const url = URL.createObjectURL(f)
+      setSalesDocUrl(url)
+      setSalesDocName(f.name)
+      setSalesDocType(f.type || 'application/octet-stream')
+      setSalesErr('Preview only supports PDF (DOCX will auto-convert). This file type will not preview.')
     }
+  } catch (e: any) {
+    setSalesErr(e?.message || 'Failed to process file')
+  } finally {
+    setProcessing(false)
   }
+}
 
   async function onUploadChange(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0]
@@ -616,6 +644,41 @@ async function uploadStandardPreviewToVincereUrl(finalName: string) {
 
   // Branded viewer card (Sales)
   function SalesViewerCard() {
+  return (
+    <div className="border rounded-2xl overflow-hidden bg-white">
+      {/* Branded Header (white, full-width) */}
+      <div className="w-full bg-white px-4 py-3 flex items-center justify-end border-b">
+        <img src="/zitko-full-logo.png" alt="Zitko" className="h-10" />
+      </div>
+
+      {/* Document area */}
+      {salesDocUrl ? (
+        salesDocType?.includes('pdf') || /\.pdf$/i.test(salesDocName) ? (
+          <iframe
+            className="w-full h-[75vh] bg-white"
+            src={salesDocUrl}
+            title={salesDocName || 'Document'}
+          />
+        ) : (
+          <div className="p-6 text-xs text-gray-600 bg-white">
+            Preview not available for this file type. You can still upload it.
+          </div>
+        )
+      ) : (
+        <div className="p-6 text-xs text-gray-600 bg-white">
+          No document imported yet. Use “Import CV” above.
+        </div>
+      )}
+
+      {/* Footer (only visually on viewer; upload remains original file) */}
+      <div className="w-full bg-white px-4 py-3 border-t text-center text-[10px] leading-snug text-[#F7941D]">
+        <div>Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Consulting Ltd, Zitko Sales Ltd, Zitko Contracting Ltd and Zitko Talent</div>
+        <div>Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL</div>
+        <div>Tel: 01480 473245 Web: www.zitkogroup.com</div>
+      </div>
+    </div>
+  )
+}
     return (
       <div className="border rounded-2xl overflow-hidden bg-white">
         {salesDocUrl ? (
