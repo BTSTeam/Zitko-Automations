@@ -487,70 +487,56 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
   // Upload a Blob to /api/upload and get public URL back (used for large files)
   async function uploadBlobToPublicUrl(file: Blob, desiredName: string): Promise<string> {
-    const fd = new FormData()
-    fd.append('file', new File([file], desiredName, { type: (file as any).type || 'application/octet-stream' }))
-    fd.append('filename', desiredName)
+  const fd = new FormData()
+  fd.append('file', new File([file], desiredName, { type: (file as any).type || 'application/octet-stream' }))
+  fd.append('filename', desiredName)
 
-    const res = await fetch('/api/upload', { method: 'POST', body: fd, credentials: 'include' })
-    const data = await res.json()
-    if (!res.ok || !data?.ok) {
-      throw new Error(data?.error || `Blob upload failed (${res.status})`)
-    }
-    return data.url as string
+  console.log('[CLIENT] calling /api/upload', { desiredName, size: file.size })
+  const res = await fetch('/api/upload', { method: 'POST', body: fd, credentials: 'include' })
+
+  let data: any = null
+  const text = await res.text()
+  try { data = text ? JSON.parse(text) : {} } catch { data = { raw: text } }
+  console.log('[CLIENT] /api/upload response', { status: res.status, data })
+
+  if (!res.ok || !data?.ok || !data?.url) {
+    throw new Error((data && (data.error || data.raw)) || `Blob upload failed (${res.status})`)
   }
+  return data.url as string
+}
 
-  async function postBase64ToVincere(fileName: string, base64: string) {
-    const payload = {
-      file_name: fileName,
-      document_type_id: 1,
-      base_64_content: base64,
-      original_cv: true,
-    }
+async function postBase64ToVincere(fileName: string, base64: string) {
+  const payload = { file_name: fileName, document_type_id: 1, base_64_content: base64, original_cv: true }
+  console.log('[CLIENT] POST base64 to Vincere', { len: base64.length, fileName })
 
-    const res = await fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}/file`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify(payload),
-    })
+  const res = await fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}/file`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload),
+  })
 
-    const raw = await res.text()
-    let data: any = null
-    try { data = raw ? JSON.parse(raw) : {} } catch { /* ignore */ }
+  const raw = await res.text()
+  let data: any = null
+  try { data = raw ? JSON.parse(raw) : {} } catch { data = { raw } }
+  console.log('[CLIENT] Vincere base64 response', { status: res.status, data })
 
-    if (!res.ok || !data?.ok) {
-      const msg = data?.error || raw || `Upload to Vincere failed (${res.status})`
-      throw new Error(msg)
-    }
-  }
+  if (!res.ok || !data?.ok) throw new Error(data?.error || data?.raw || `Upload to Vincere failed (${res.status})`)
+}
 
-  // Tell Vincere to fetch file by URL and store it (used for large files)
-  async function postFileUrlToVincere(fileName: string, publicUrl: string) {
-    const payload = {
-      file_name: fileName,
-      document_type_id: 1,
-      url: publicUrl,
-      original_cv: true,
-    }
+async function postFileUrlToVincere(fileName: string, publicUrl: string) {
+  const payload = { file_name: fileName, document_type_id: 1, url: publicUrl, original_cv: true }
+  console.log('[CLIENT] POST url to Vincere', { fileName, publicUrl })
 
-    const res = await fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}/file`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify(payload),
-    })
+  const res = await fetch(`/api/vincere/candidate/${encodeURIComponent(candidateId)}/file`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload),
+  })
 
-    const raw = await res.text()
-    let data: any = null
-    try { data = raw ? JSON.parse(raw) : {} } catch { /* ignore */ }
+  const raw = await res.text()
+  let data: any = null
+  try { data = raw ? JSON.parse(raw) : {} } catch { data = { raw } }
+  console.log('[CLIENT] Vincere URL response', { status: res.status, data })
 
-    if (!res.ok || !data?.ok) {
-      const msg = data?.error || raw || `Upload to Vincere failed (${res.status})`
-      throw new Error(msg)
-    }
-  }
+  if (!res.ok || !data?.ok) throw new Error(data?.error || data?.raw || `Upload to Vincere failed (${res.status})`)
+}
 
-  // STANDARD: export right-panel DOM to PDF and upload (base64 for small; URL for large)
   // STANDARD: export right-panel DOM to PDF and upload (base64 for small; URL for large)
 async function uploadStandardPreviewToVincereUrl(finalName: string) {
   const mod = await import('html2pdf.js');
@@ -599,31 +585,34 @@ async function uploadStandardPreviewToVincereUrl(finalName: string) {
   }
 
   async function confirmUpload() {
-    try {
-      setUploadBusy(true)
-      setUploadErr(null)
-      if (!candidateId) throw new Error('No candidate selected')
-      if (!uploadFileName?.trim()) throw new Error('Please enter a file name')
+  try {
+    setUploadBusy(true)
+    setUploadErr(null)
+    if (!candidateId) throw new Error('No candidate selected')
+    if (!uploadFileName?.trim()) throw new Error('Please enter a file name')
 
-      let finalName = uploadFileName.trim()
-      // Ensure sensible default extension
-      if (!/\.(pdf|docx?|DOCX?)$/.test(finalName)) {
-        finalName += (uploadContext === 'standard' ? '.pdf' : (isPdf ? '.pdf' : '.docx'))
-      }
-
-      if (uploadContext === 'standard') {
-        await uploadStandardPreviewToVincereUrl(finalName)
-      } else {
-        await uploadSalesFileToVincereUrl(finalName)
-      }
-
-      setShowUploadModal(false)
-    } catch (e: any) {
-      setUploadErr(e?.message || 'Upload failed')
-    } finally {
-      setUploadBusy(false)
+    let finalName = uploadFileName.trim()
+    // Ensure sensible default extension
+    if (!/\.(pdf|docx?|DOCX?)$/.test(finalName)) {
+      finalName += (uploadContext === 'standard' ? '.pdf' : (isPdf ? '.pdf' : '.docx'))
     }
+
+    // 👇 Add the log here
+    console.log('[CLIENT] confirmUpload', { uploadContext, finalName, candidateId })
+
+    if (uploadContext === 'standard') {
+      await uploadStandardPreviewToVincereUrl(finalName)
+    } else {
+      await uploadSalesFileToVincereUrl(finalName)
+    }
+
+    setShowUploadModal(false)
+  } catch (e: any) {
+    setUploadErr(e?.message || 'Upload failed')
+  } finally {
+    setUploadBusy(false)
   }
+}
 
   // Branded viewer card (Sales)
   function SalesViewerCard() {
