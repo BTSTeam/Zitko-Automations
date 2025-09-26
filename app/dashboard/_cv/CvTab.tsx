@@ -631,8 +631,14 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         }
       }
 
-      const out = await pdfDoc.save()
-      return new Blob([out], { type: 'application/pdf' })
+      const outBytes = await pdfDoc.save()
+      // Create an ArrayBuffer slice matching the view range (avoids SAB typing issues)
+      const outBuf = outBytes.buffer.slice(
+        outBytes.byteOffset,
+        outBytes.byteOffset + outBytes.byteLength
+     ) as ArrayBuffer
+
+    return new Blob([outBuf], { type: 'application/pdf' })
     } catch (err) {
       console.warn('Baking header/footer failed, using original PDF', err)
       return input // fail-safe
