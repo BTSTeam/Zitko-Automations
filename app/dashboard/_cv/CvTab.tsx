@@ -41,8 +41,9 @@ const LOGO_PATH = '/zitko-full-logo.png'
 
 // ===================== PDF BAKING =====================
 async function fetchBytes(url: string): Promise<Uint8Array> {
-  const res = await fetch(url)
-  if (!res.ok) throw new Error(`Failed to fetch asset: ${url}`)
+  const absolute = new URL(url, window.location.origin).toString()
+  const res = await fetch(absolute)
+  if (!res.ok) throw new Error(`Failed to fetch asset: ${absolute}`)
   const buf = await res.arrayBuffer()
   return new Uint8Array(buf)
 }
@@ -510,6 +511,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   const [salesDocType, setSalesDocType] = useState<string>('')         // mime type
   const [processing, setProcessing] = useState<boolean>(false)
   const [dragOver, setDragOver] = useState<boolean>(false)
+  const [salesDocBlob, setSalesDocBlob] = useState<Blob | null>(null)
 
   function resetSalesState() {
     setSalesErr(null)
@@ -517,9 +519,11 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     setSalesDocUrl(null)
     setSalesDocName('')
     setSalesDocType('')
+    setSalesDocBlob(null)        // ⬅️ add
     setProcessing(false)
     setDragOver(false)
   }
+
 
   function onClickUpload() {
     fileInputRef.current?.click()
@@ -596,41 +600,37 @@ async function handleFile(f: File) {
 
   try {
     setProcessing(true)
-
     let pdfBlob: Blob | null = null
 
     if (isDocx) {
-      // Convert DOCX → PDF for preview only (no baking here)
       const fd = new FormData()
       fd.append('file', f, f.name)
-
       const res = await fetch('/api/cloudconvert/docx-to-pdf', { method: 'POST', body: fd })
       if (!res.ok) {
         let msg = `DOCX convert failed (${res.status})`
         try { const j = await res.json(); if (j?.error) msg = j.error } catch {}
         throw new Error(msg)
       }
-
       const pdfBuf = await res.arrayBuffer()
       pdfBlob = new Blob([pdfBuf], { type: 'application/pdf' })
     } else if (isPdfFile) {
-      // Use the raw PDF as-is for preview
       pdfBlob = f
     } else {
-      // Unsupported for preview
       const url = URL.createObjectURL(f)
       setSalesDocUrl(url)
       setSalesDocName(f.name)
       setSalesDocType(f.type || 'application/octet-stream')
+      setSalesDocBlob(null)
       setSalesErr('Preview only supports PDF (DOCX will auto-convert). This file type will not preview.')
       return
     }
 
-    // 👉 No baking for preview
+    // store blob + clean preview
     const url = URL.createObjectURL(pdfBlob)
     setSalesDocUrl(url)
     setSalesDocName(isDocx ? f.name.replace(/\.docx$/i, '.pdf') : f.name)
     setSalesDocType('application/pdf')
+    setSalesDocBlob(pdfBlob)   // ⬅️ important
   } catch (e: any) {
     setSalesErr(e?.message || 'Failed to process file')
   } finally {
@@ -692,23 +692,19 @@ async function handleFile(f: File) {
 
   // SALES: upload whichever was imported (always a baked PDF in this flow)
   async function uploadSalesFileToVincereUrl(finalName: string) {
-    if (!salesDocUrl) throw new Error('No Sales document to upload')
-    const res = await fetch(salesDocUrl)
-    if (!res.ok) throw new Error(`Failed to read Sales file (${res.status})`)
-    const buf = await res.arrayBuffer()
-    const blob = new Blob([buf], { type: salesDocType || 'application/pdf' })
+  if (!salesDocBlob) throw new Error('No Sales document to upload')
 
-    // 🔥 Ensure baked (in case a different code path set salesDocUrl)
-    const baked = await bakeHeaderFooter(blob)
+  // bake header (page 1) + footer (last page)
+  const baked = await bakeHeaderFooter(salesDocBlob)
 
-    if (baked.size <= BASE64_THRESHOLD_BYTES) {
-      const base64 = await blobToBase64(baked)
-      await postBase64ToVincere(finalName, base64)
-    } else {
-      const publicUrl = await uploadBlobToPublicUrl(baked, finalName)
-      await postFileUrlToVincere(finalName, publicUrl)
-    }
+  if (baked.size <= BASE64_THRESHOLD_BYTES) {
+    const base64 = await blobToBase64(baked)
+    await postBase64ToVincere(finalName, base64)
+  } else {
+    const publicUrl = await uploadBlobToPublicUrl(baked, finalName)
+    await postFileUrlToVincere(finalName, publicUrl)
   }
+}
 
   async function confirmUpload() {
     try {
@@ -927,7 +923,7 @@ async function handleFile(f: File) {
               className="btn btn-grey"
               disabled={!candidateId}
               onClick={() => {
-                const defaultName = `${(candidateName || form.name || 'CV').replace(/\s+/g, '')}_Standard.pdf`
+                const defaultName = (salesDocName?.trim() || `${baseName}_Sales.pdf`).replace(/\.(doc|docx)$/i, '.pdf')
                 setUploadFileName(defaultName)
                 setUploadContext('standard')
                 setShowUploadModal(true)
