@@ -737,125 +737,137 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   }
 
   // ========== preview (right) ==========
-  function CVTemplatePreview(): JSX.Element {
-    if (template === 'sales') {
-      return (
-        <div className="p-4">
-          <SalesViewerCard />
-          <div className="px-1 pt-2 text-[11px] text-gray-500">Preview shows branding; uploaded file will match this exactly.</div>
-        </div>
-      )
-    }
-
-    // Standard (editor preview) — attach ref for DOM→PDF
+function CVTemplatePreview(): JSX.Element {
+  if (template === 'sales') {
     return (
-      <div ref={standardPreviewRef} className="p-6 cv-standard-page bg-white text-[13px] leading-[1.35]">
-        <div className="flex items-start justify-between">
-          <div />
-          <img src="/zitko-full-logo.png" alt="Zitko" className="h-10" />
-        </div>
-
-        <h1 className="text-2xl font-bold mt-5">Curriculum Vitae</h1>
-
-        <div className="mt-2 text-[12px] text-gray-800 space-y-0.5">
-          <div><span className="font-semibold">Name:</span> {form.name ? `${form.name}` : '—'}</div>
-          <div><span className="font-semibold">Location:</span> {form.location ? `${form.location}` : '—'}</div>
-        </div>
-
-        <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">Profile</h2>
-        <div className="whitespace-pre-wrap text-[12px]">{form.profile?.trim() ? form.profile : 'No Profile yet'}</div>
-
-        <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
-          Key Skills
-        </h2>
-        <div className="text-[12px]">
-          {(() => {
-            const items = (form.keySkills || '')
-              .split(/\r?\n|,\s*/).map(s => s.trim()).filter(Boolean);
-        
-            if (items.length === 0) return 'No Key Skills yet';
-        
-            const mid = Math.ceil(items.length / 2);
-            const col1 = items.slice(0, mid);
-            const col2 = items.slice(mid);
-        
-            return (
-              <div className="grid grid-cols-2 gap-x-6">
-                <div className="space-y-1">
-                  {col1.map((s, i) => <div key={`ks1-${i}`}>• {s}</div>)}
-                </div>
-                <div className="space-y-1">
-                  {col2.map((s, i) => <div key={`ks2-${i}`}>• {s}</div>)}
-                </div>
-              </div>
-            );
-          })()}
-        </div>
-
-        <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">Employment History</h2>
-        <div className="space-y-3">
-          {form.employment.length === 0 ? (
-            <div className="text-gray-500 text-[12px]">No employment history yet.</div>
-          ) : (
-            form.employment.map((e, i) => {
-              const range = [e.start, e.end].filter(Boolean).join(' to ')
-              return (
-                <div key={i} className="flex justify-between break-inside-avoid">
-                  <div>
-                    <div className="font-medium">{e.title || 'Role'}</div>
-                    <div className="text-[11px] text-gray-500">{e.company}</div>
-                    {e.description?.trim() && <div className="text-[12px] mt-1 whitespace-pre-wrap">{e.description}</div>}
-                  </div>
-                  <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
-                </div>
-              )
-            })
-          )}
-        </div>
-
-        <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">Education & Qualifications</h2>
-        <div className="space-y-3">
-          {form.education.length === 0 ? (
-            <div className="text-gray-500 text-[12px]">No education yet.</div>
-          ) : (
-            form.education.map((e, i) => {
-              const range = [e.start, e.end].filter(Boolean).join(' to ')
-              const showInstitutionLine = !!e.institution && !!e.course && e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
-              return (
-                <div key={i} className="flex justify-between break-inside-avoid">
-                  <div>
-                    <div className="font-medium">{e.course || e.institution || 'Course'}</div>
-                    {showInstitutionLine && <div className="text-[11px] text-gray-500">{e.institution}</div>}
-                  </div>
-                  <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
-                </div>
-              )
-            })
-          )}
-        </div>
-
-        <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">Additional Information</h2>
-        <div className="text-[12px] grid gap-1">
-          <div>Driving License: {form.additional.drivingLicense || '—'}</div>
-          <div>Nationality: {form.additional.nationality || '—'}</div>
-          <div>Availability: {form.additional.availability || '—'}</div>
-          <div>Health: {form.additional.health || '—'}</div>
-          <div>Criminal Record: {form.additional.criminalRecord || '—'}</div>
-          <div>Financial History: {form.additional.financialHistory || '—'}</div>
-        </div>
-
-        {/* Force the footer onto a clean page */}
-        <div className="pdf-break-before" />
-
-        <div ref={footerRef} className="mt-6 pt-4 border-t text-center text-[10px] leading-snug text-[#F7941D] break-inside-avoid cv-footer">
-          <div>Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Inc</div>
-          <div>Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL</div>
-          <div>Tel: 01480 473245 Web: www.zitkogroup.com</div>
-        </div>
+      <div className="p-4">
+        <SalesViewerCard />
+        <div className="px-1 pt-2 text-[11px] text-gray-500">Preview shows branding; uploaded file will match this exactly.</div>
       </div>
     )
   }
 
+  // Standard (editor preview) — attach ref for DOM→PDF
+  return (
+    <div ref={standardPreviewRef} className="p-6 cv-standard-page bg-white text-[13px] leading-[1.35]">
+      <div className="flex items-start justify-between">
+        <div />
+        <img src="/zitko-full-logo.png" alt="Zitko" className="h-10" />
+      </div>
+
+      <h1 className="text-2xl font-bold mt-5">Curriculum Vitae</h1>
+
+      <div className="mt-2 text-[12px] text-gray-800 space-y-0.5">
+        <div><span className="font-semibold">Name:</span> {form.name ? `${form.name}` : '—'}</div>
+        <div><span className="font-semibold">Location:</span> {form.location ? `${form.location}` : '—'}</div>
+      </div>
+
+      <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">Profile</h2>
+      <div className="whitespace-pre-wrap text-[12px]">{form.profile?.trim() ? form.profile : 'No Profile yet'}</div>
+
+      <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+        Key Skills
+      </h2>
+      <div className="text-[12px]">
+        {(() => {
+          const items = (form.keySkills || '')
+            .split(/\r?\n|,\s*/).map(s => s.trim()).filter(Boolean);
+
+          if (items.length === 0) return 'No Key Skills yet';
+
+          const mid = Math.ceil(items.length / 2);
+          const col1 = items.slice(0, mid);
+          const col2 = items.slice(mid);
+
+          return (
+            <div className="grid grid-cols-2 gap-x-6">
+              <div className="space-y-1">
+                {col1.map((s, i) => <div key={`ks1-${i}`}>• {s}</div>)}
+              </div>
+              <div className="space-y-1">
+                {col2.map((s, i) => <div key={`ks2-${i}`}>• {s}</div>)}
+              </div>
+            </div>
+          );
+        })()}
+      </div>
+
+      <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">Employment History</h2>
+      <div className="space-y-3">
+        {form.employment.length === 0 ? (
+          <div className="text-gray-500 text-[12px]">No employment history yet.</div>
+        ) : (
+          form.employment.map((e, i) => {
+            const range = [e.start, e.end].filter(Boolean).join(' to ')
+            const expText = (rawWork?.[i]?.experience_in_company ?? '')?.toString()?.trim() || ''
+            return (
+              <div key={i} className="flex justify-between break-inside-avoid">
+                <div>
+                  <div className="font-medium">{e.title || 'Role'}</div>
+                  <div className="text-[11px] text-gray-500">{e.company}</div>
+
+                  {/* NEW: Experience in company text (shown under company name) */}
+                  {expText && (
+                    <div className="text-[12px] mt-1 whitespace-pre-wrap">
+                      {expText}
+                    </div>
+                  )}
+
+                  {/* Existing free-form description */}
+                  {e.description?.trim() && (
+                    <div className="text-[12px] mt-1 whitespace-pre-wrap">{e.description}</div>
+                  )}
+                </div>
+                <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
+              </div>
+            )
+          })
+        )}
+      </div>
+
+      <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">Education & Qualifications</h2>
+      <div className="space-y-3">
+        {form.education.length === 0 ? (
+          <div className="text-gray-500 text-[12px]">No education yet.</div>
+        ) : (
+          form.education.map((e, i) => {
+            const range = [e.start, e.end].filter(Boolean).join(' to ')
+            const showInstitutionLine = !!e.institution && !!e.course && e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
+            return (
+              <div key={i} className="flex justify-between break-inside-avoid">
+                <div>
+                  <div className="font-medium">{e.course || e.institution || 'Course'}</div>
+                  {showInstitutionLine && <div className="text-[11px] text-gray-500">{e.institution}</div>}
+                </div>
+                <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
+              </div>
+            )
+          })
+        )}
+      </div>
+
+      <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">Additional Information</h2>
+      <div className="text-[12px] grid gap-1">
+        <div>Driving License: {form.additional.drivingLicense || '—'}</div>
+        <div>Nationality: {form.additional.nationality || '—'}</div>
+        <div>Availability: {form.additional.availability || '—'}</div>
+        <div>Health: {form.additional.health || '—'}</div>
+        <div>Criminal Record: {form.additional.criminalRecord || '—'}</div>
+        <div>Financial History: {form.additional.financialHistory || '—'}</div>
+      </div>
+
+      {/* Force the footer onto a clean page */}
+      <div className="pdf-break-before" />
+
+      <div ref={footerRef} className="mt-6 pt-4 border-t text-center text-[10px] leading-snug text-[#F7941D] break-inside-avoid cv-footer">
+        <div>Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Inc</div>
+        <div>Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL</div>
+        <div>Tel: 01480 473245 Web: www.zitkogroup.com</div>
+      </div>
+    </div>
+  )
+}
+  
   // ========== render ==========
   return (
     <div className="grid gap-4">
@@ -1291,81 +1303,98 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       </div>
 
       {/* ===== Upload modal ===== */}
-      {showUploadModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
-            <div className="mb-4">
-              <h3 className="text-base font-semibold">Upload CV to Vincere</h3>
-
-              {/* Header summary only for Standard; Sales shows manual ID field below */}
-              {uploadContext === 'standard' && (
-                <p className="text-[12px] text-gray-600">
-                  Candidate: <span className="font-medium">{candidateName || form.name || 'Unknown'}</span> · ID:{' '}
-                  <span className="font-mono">{candidateId || '—'}</span>
-                </p>
-              )}
-
-              <p className="text-[11px] text-gray-500 mt-1">
-                Source:&nbsp;
-                {uploadContext === 'standard' ? 'Standard (right-panel template → PDF)' : 'Sales (imported file)'}
-              </p>
-            </div>
-
-            <div className="space-y-4">
-              {/* Manual Candidate ID entry for Sales */}
-              {uploadContext === 'sales' && (
-                <div>
-                  <label className="block text-[12px] font-medium">Candidate ID</label>
-                  <input
-                    type="text"
-                    className="mt-1 w-full rounded-md border p-2 text-[13px]"
-                    value={uploadCandidateId}
-                    onChange={(e) => setUploadCandidateId(e.target.value)}
-                    placeholder="Type Candidate ID used in Vincere"
-                  />
-                </div>
-              )}
-
-              <div>
-                <label className="block text-[12px] font-medium">File name</label>
-                <input
-                  type="text"
-                  className="mt-1 w-full rounded-md border p-2 text-[13px]"
-                  value={uploadFileName}
-                  onChange={(e) => setUploadFileName(e.target.value)}
-                  placeholder="e.g. JohnSmith_CV.pdf"
-                />
-              </div>
-
-              {uploadErr && <div className="text-[12px] text-red-600">{uploadErr}</div>}
-              {uploadSuccess && <div className="text-[12px] text-green-700 font-medium">{uploadSuccess}</div>}
-            </div>
-
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                type="button"
-                className="px-4 py-2 rounded-lg border"
-                onClick={() => setShowUploadModal(false)}
-                disabled={uploadBusy}
-              >
-                {uploadSuccess ? 'Close' : 'Cancel'}
-              </button>
-              <button
-                type="button"
-                className="px-4 py-2 rounded-lg bg-zinc-900 text-white disabled:opacity-50"
-                onClick={confirmUpload}
-                disabled={
-                  uploadBusy ||
-                  !uploadFileName.trim() ||
-                  (uploadContext === 'sales' && !uploadCandidateId.trim())
-                }
-              >
-                {uploadBusy ? 'Uploading…' : 'Confirm & Upload'}
-              </button>
-            </div>
-          </div>
+{showUploadModal && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    {/* If we have success, show a separate success popup that replaces the previous window */}
+    {uploadSuccess ? (
+      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl text-center">
+        <div className="text-2xl mb-2">✅ Upload Successful</div>
+        <p className="text-[12px] text-gray-600">
+          {uploadContext === 'standard'
+            ? `File uploaded for Candidate ID ${candidateId || '—'}.`
+            : `File uploaded for Candidate ID ${uploadCandidateId || '—'}.`}
+        </p>
+        <div className="mt-6">
+          <button
+            type="button"
+            className="px-4 py-2 rounded-lg bg-zinc-900 text-white"
+            onClick={() => { setShowUploadModal(false); setUploadSuccess(null) }}
+          >
+            Close
+          </button>
         </div>
-      )}
-    </div>
-  )
-}
+      </div>
+    ) : (
+      <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+        <div className="mb-4">
+          <h3 className="text-base font-semibold">Upload CV to Vincere</h3>
+
+          {/* Header summary only for Standard; Sales shows manual ID field below */}
+          {uploadContext === 'standard' && (
+            <p className="text-[12px] text-gray-600">
+              Candidate: <span className="font-medium">{candidateName || form.name || 'Unknown'}</span> · ID:{' '}
+              <span className="font-mono">{candidateId || '—'}</span>
+            </p>
+          )}
+
+          <p className="text-[11px] text-gray-500 mt-1">
+            Source:&nbsp;
+            {uploadContext === 'standard' ? 'Standard (right-panel template → PDF)' : 'Sales (imported file)'}
+          </p>
+        </div>
+
+        <div className="space-y-4">
+          {/* Manual Candidate ID entry for Sales */}
+          {uploadContext === 'sales' && (
+            <div>
+              <label className="block text-[12px] font-medium">Candidate ID</label>
+              <input
+                type="text"
+                className="mt-1 w-full rounded-md border p-2 text-[13px]"
+                value={uploadCandidateId}
+                onChange={(e) => setUploadCandidateId(e.target.value)}
+                placeholder="Type Candidate ID used in Vincere"
+              />
+            </div>
+          )}
+
+          <div>
+            <label className="block text-[12px] font-medium">File name</label>
+            <input
+              type="text"
+              className="mt-1 w-full rounded-md border p-2 text-[13px]"
+              value={uploadFileName}
+              onChange={(e) => setUploadFileName(e.target.value)}
+              placeholder="e.g. JohnSmith_CV.pdf"
+            />
+          </div>
+
+            {uploadErr && <div className="text-[12px] text-red-600">{uploadErr}</div>}
+        </div>
+
+        <div className="mt-6 flex justify-end gap-3">
+          <button
+            type="button"
+            className="px-4 py-2 rounded-lg border"
+            onClick={() => setShowUploadModal(false)}
+            disabled={uploadBusy}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="px-4 py-2 rounded-lg bg-zinc-900 text-white disabled:opacity-50"
+            onClick={confirmUpload}
+            disabled={
+              uploadBusy ||
+              !uploadFileName.trim() ||
+              (uploadContext === 'sales' && !uploadCandidateId.trim())
+            }
+          >
+            {uploadBusy ? 'Uploading…' : 'Confirm & Upload'}
+          </button>
+        </div>
+      </div>
+    )}
+  </div>
+)}
