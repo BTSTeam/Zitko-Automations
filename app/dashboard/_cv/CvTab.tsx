@@ -797,124 +797,193 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
   // ========== preview (right) ==========
   function CVTemplatePreview(): JSX.Element {
-    if (template === 'sales') {
-      return (
-        <div className="p-4">
-          <SalesViewerCard />
-          <div className="px-1 pt-2 text-[11px] text-gray-500">Preview shows branding; uploaded file will match this exactly.</div>
-        </div>
-      )
-    }
-
-    // Standard (editor preview) — attach ref for DOM→PDF
+  if (template === 'sales') {
     return (
-      <div ref={standardPreviewRef} className="p-6 cv-standard-page bg-white text-[13px] leading-[1.35]">
-        <div className="flex items-start justify-between">
-          <div />
-          <img src="/zitko-full-logo.png" alt="Zitko" className="h-10" />
+      <div className="p-4">
+        <SalesViewerCard />
+        <div className="px-1 pt-2 text-[11px] text-gray-500">
+          Preview shows branding; uploaded file will match this exactly.
         </div>
+      </div>
+    )
+  }
 
-        <h1 className="text-2xl font-bold mt-5">Curriculum Vitae</h1>
+  // Standard (editor preview) — attach ref for DOM→PDF
+  return (
+    <div
+      ref={standardPreviewRef}
+      className="p-6 cv-standard-page bg-white text-[13px] leading-[1.35]"
+    >
+      <div className="flex items-start justify-between">
+        <div />
+        <img src="/zitko-full-logo.png" alt="Zitko" className="h-10" />
+      </div>
 
-        <div className="mt-2 text-[12px] text-gray-800 space-y-0.5">
-          <div><span className="font-semibold">Name:</span> {form.name ? `${form.name}` : '—'}</div>
-          <div><span className="font-semibold">Location:</span> {form.location ? `${form.location}` : '—'}</div>
+      <h1 className="text-2xl font-bold mt-5">Curriculum Vitae</h1>
+
+      <div className="mt-2 text-[12px] text-gray-800 space-y-0.5">
+        <div>
+          <span className="font-semibold">Name:</span>{' '}
+          {form.name ? `${form.name}` : '—'}
         </div>
+        <div>
+          <span className="font-semibold">Location:</span>{' '}
+          {form.location ? `${form.location}` : '—'}
+        </div>
+      </div>
 
-        <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">Profile</h2>
-        <div className="whitespace-pre-wrap text-[12px]">{form.profile?.trim() ? form.profile : 'No Profile yet'}</div>
+      <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+        Profile
+      </h2>
+      <div className="whitespace-pre-wrap text-[12px]">
+        {form.profile?.trim() ? form.profile : 'No Profile yet'}
+      </div>
 
-        <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">Key Skills</h2>
-        <div className="text-[12px]">
-          {(() => {
-            const items = (form.keySkills || '')
-              .split(/\r?\n|,\s*/).map(s => s.trim()).filter(Boolean)
+      <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+        Key Skills
+      </h2>
+      <div className="text-[12px]">
+        {(() => {
+          const items = (form.keySkills || '')
+            .split(/\r?\n|,\s*/).map(s => s.trim())
+            .filter(Boolean)
 
-            if (items.length === 0) return 'No Key Skills yet'
+          if (items.length === 0) return 'No Key Skills yet'
 
-            const mid = Math.ceil(items.length / 2)
-            const col1 = items.slice(0, mid)
-            const col2 = items.slice(mid)
+          const mid = Math.ceil(items.length / 2)
+          const col1 = items.slice(0, mid)
+          const col2 = items.slice(mid)
 
-            return (
-              <div className="grid grid-cols-2 gap-x-6">
-                <div className="space-y-1">
-                  {col1.map((s, i) => <div key={`ks1-${i}`}>• {s}</div>)}
-                </div>
-                <div className="space-y-1">
-                  {col2.map((s, i) => <div key={`ks2-${i}`}>• {s}</div>)}
-                </div>
+          return (
+            <div className="grid grid-cols-2 gap-x-6">
+              <div className="space-y-1">
+                {col1.map((s, i) => (
+                  <div key={`ks1-${i}`}>• {s}</div>
+                ))}
               </div>
-            )
-          })()}
-        </div>
+              <div className="space-y-1">
+                {col2.map((s, i) => (
+                  <div key={`ks2-${i}`}>• {s}</div>
+                ))}
+              </div>
+            </div>
+          )
+        })()}
+      </div>
 
-        <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">Employment History</h2>
+      {/* Employment History */}
+      <div className="cv-section">
+        <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+          Employment History
+        </h2>
         <div className="space-y-3">
           {form.employment.length === 0 ? (
-            <div className="text-gray-500 text-[12px]">No employment history yet.</div>
+            <div className="text-gray-500 text-[12px]">
+              No employment history yet.
+            </div>
           ) : (
             form.employment.map((e, i) => {
               const range = [e.start, e.end].filter(Boolean).join(' to ')
               return (
-                <div key={i} className="flex justify-between break-inside-avoid">
-                  <div>
-                    <div className="font-medium">{e.title || 'Role'}</div>
-                    <div className="text-[11px] text-gray-500">{e.company}</div>
-
-                    {e.description?.trim() && (
-                      <div className="text-[12px] mt-1 whitespace-pre-wrap">{e.description}</div>
-                    )}
+                <div key={i} className="cv-entry">
+                  <div className="flex justify-between">
+                    <div>
+                      <div className="font-medium">{e.title || 'Role'}</div>
+                      <div className="text-[11px] text-gray-500">
+                        {e.company}
+                      </div>
+                      {e.description?.trim() && (
+                        <div className="text-[12px] mt-1 whitespace-pre-wrap">
+                          {e.description}
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-[11px] text-gray-500 whitespace-nowrap">
+                      {range}
+                    </div>
                   </div>
-                  <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
                 </div>
               )
             })
           )}
         </div>
+      </div>
 
-        <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">Education & Qualifications</h2>
+      {/* Education */}
+      <div className="cv-section">
+        <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+          Education & Qualifications
+        </h2>
         <div className="space-y-3">
           {form.education.length === 0 ? (
             <div className="text-gray-500 text-[12px]">No education yet.</div>
           ) : (
             form.education.map((e, i) => {
               const range = [e.start, e.end].filter(Boolean).join(' to ')
-              const showInstitutionLine = !!e.institution && !!e.course && e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
+              const showInstitutionLine =
+                !!e.institution &&
+                !!e.course &&
+                e.course.trim().toLowerCase() !==
+                  e.institution.trim().toLowerCase()
               return (
-                <div key={i} className="flex items-start justify-between break-inside-avoid">
-                  <div>
-                    <div className="font-medium">{e.course || e.institution || 'Course'}</div>
-                    {showInstitutionLine && <div className="text-[11px] text-gray-500">{e.institution}</div>}
+                <div key={i} className="cv-entry">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="font-medium">
+                        {e.course || e.institution || 'Course'}
+                      </div>
+                      {showInstitutionLine && (
+                        <div className="text-[11px] text-gray-500">
+                          {e.institution}
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-[11px] text-gray-500 whitespace-nowrap">
+                      {range}
+                    </div>
                   </div>
-                  <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
                 </div>
               )
             })
           )}
         </div>
+      </div>
 
-        <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">Additional Information</h2>
-        <div className="text-[12px] grid gap-1">
-          <div>Driving License: {form.additional.drivingLicense || '—'}</div>
-          <div>Nationality: {form.additional.nationality || '—'}</div>
-          <div>Availability: {form.additional.availability || '—'}</div>
-          <div>Health: {form.additional.health || '—'}</div>
-          <div>Criminal Record: {form.additional.criminalRecord || '—'}</div>
-          <div>Financial History: {form.additional.financialHistory || '—'}</div>
+      <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+        Additional Information
+      </h2>
+      <div className="text-[12px] grid gap-1">
+        <div>
+          Driving License: {form.additional.drivingLicense || '—'}
         </div>
-
-        {/* Force the footer onto a clean page */}
-        <div className="pdf-break-before" />
-
-        <div ref={footerRef} className="mt-6 pt-4 border-t text-center text-[10px] leading-snug text-[#F7941D] break-inside-avoid cv-footer">
-          <div>Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Inc</div>
-          <div>Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL</div>
-          <div>Tel: 01480 473245 Web: www.zitkogroup.com</div>
+        <div>Nationality: {form.additional.nationality || '—'}</div>
+        <div>Availability: {form.additional.availability || '—'}</div>
+        <div>Health: {form.additional.health || '—'}</div>
+        <div>
+          Criminal Record: {form.additional.criminalRecord || '—'}
+        </div>
+        <div>
+          Financial History: {form.additional.financialHistory || '—'}
         </div>
       </div>
-    )
-  }
+
+      <div
+        ref={footerRef}
+        className="mt-6 pt-4 border-t text-center text-[10px] leading-snug text-[#F7941D] break-inside-avoid cv-footer"
+      >
+        <div>
+          Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko
+          Inc
+        </div>
+        <div>
+          Registered office – Suite 2, 17a Huntingdon Street, St Neots,
+          Cambridgeshire, PE19 1BL
+        </div>
+        <div>Tel: 01480 473245 Web: www.zitkogroup.com</div>
+      </div>
+    </div>
+  )
+}
 
   // ========== render ==========
   return (
@@ -923,15 +992,46 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       <style jsx global>{`
         @media print {
           @page { size: A4; margin: 12mm; }
+      
           .cv-standard-page { width: 100%; }
+      
+          /* Keep each entry (job/education) together */
+          .cv-entry {
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+      
+          /* Keep section header with at least the first entry */
+          .cv-section {
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+      
+          /* Headings themselves shouldn’t split */
           .cv-standard-page h1,
-          .cv-standard-page h2,
-          .cv-standard-page section { break-inside: avoid; page-break-inside: avoid; }
-          .pdf-break-before { break-before: page; page-break-before: always; }
-          .cv-footer { break-inside: avoid; page-break-inside: avoid; }
+          .cv-standard-page h2 {
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+      
+          /* Footer stays with content; never on a blank page */
+          .cv-footer {
+            break-inside: avoid;
+            page-break-inside: avoid;
+            page-break-before: auto;
+            page-break-after: auto;
+          }
         }
-        .pdf-break-before { break-before: page; page-break-before: always; height: 1px; }
-        .cv-standard-page .break-inside-avoid { break-inside: avoid; page-break-inside: avoid; }
+      
+        /* Non-print (browser preview) helpers too */
+        .cv-entry {
+          break-inside: avoid;
+          page-break-inside: avoid;
+        }
+        .cv-section {
+          break-inside: avoid;
+          page-break-inside: avoid;
+        }
       `}</style>
 
       <div className="card p-4">
