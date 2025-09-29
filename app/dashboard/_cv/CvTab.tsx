@@ -1356,7 +1356,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
           {/* If we have success, show a separate success popup that replaces the previous window */}
           {uploadSuccess ? (
             <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl text-center">
-              <div className="text-2xl mb-2">✅ Upload Successful</div>
+              <div className="text-2xl mb-2 text-green-600">Upload Successful</div>
               <p className="text-[12px] text-gray-600">
                 {uploadContext === 'standard'
                   ? `File uploaded for Candidate ID ${candidateId || '—'}.`
