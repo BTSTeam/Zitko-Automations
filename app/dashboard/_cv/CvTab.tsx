@@ -5,8 +5,9 @@ import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
 
 /**
  * CvTab.tsx — drop-in replacement
- * - Fixes JSX parse error by ensuring all blocks/functions close correctly
- * - Sales upload modal now accepts manual Candidate ID (used in POST endpoint)
+ * - Adds experience_in_company into editable Description (and strips HTML tags)
+ * - Removes separate expText block; preview now reads from editable Description only
+ * - Sales upload modal accepts manual Candidate ID (used in POST endpoint)
  * - After "Confirm & Upload" shows a success state in the modal
  * - Standard template: footer forced to last page; header only on first for Sales (baked)
  * - Robust handling of custom fields; flexible mapping for work/education
@@ -158,12 +159,47 @@ function formatDate(dateStr?: string | null): string {
   return `${month} ${y}`
 }
 
+/** Convert Vincere rich text (e.g., <p>…<br>…) to clean multiline plain text */
+function cleanRichTextToPlain(input: unknown): string {
+  if (!input) return ''
+  let s = String(input)
+
+  // Normalize line breaks first
+  s = s.replace(/<\s*br\s*\/?>/gi, '\n')
+  s = s.replace(/<\/\s*p\s*>\s*<\s*p[^>]*>/gi, '\n') // paragraph boundaries → newline
+
+  // Drop remaining tags
+  s = s.replace(/<\/?[^>]+>/g, '')
+
+  // Decode HTML entities using the DOM (browser only)
+  if (typeof window !== 'undefined') {
+    const ta = document.createElement('textarea')
+    ta.innerHTML = s
+    s = ta.value
+  }
+
+  // Tidy whitespace/newlines
+  s = s.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
+  return s
+}
+
 function mapWorkExperiences(list: any[]): Employment[] {
   if (!Array.isArray(list)) return []
-  return list.map(w => {
+  return list.map((w) => {
     const start = formatDate(w?.work_from)
     const end = w?.work_to == null ? 'Present' : formatDate(w?.work_to)
-    return { title: w?.job_title || '', company: w?.company_name || '', start, end, description: w?.description || '' }
+
+    // Prefer experience_in_company; fall back to description. Strip HTML to plain text
+    const rawDesc = w?.experience_in_company ?? w?.description ?? ''
+    const description = cleanRichTextToPlain(rawDesc)
+
+    return {
+      title: w?.job_title || '',
+      company: w?.company_name || '',
+      start,
+      end,
+      description,
+    }
   })
 }
 
@@ -188,7 +224,7 @@ function mapEducation(list: any[]): Education[] {
     if (!course) course = institution
 
     const start = formatDate(e?.start_date || e?.from_date || e?.start) || ''
-       const end = formatDate(e?.end_date || e?.to_date || e?.end) || ''
+    const end = formatDate(e?.end_date || e?.to_date || e?.end) || ''
 
     return { course: course || '', institution, start, end }
   })
@@ -820,18 +856,11 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
           ) : (
             form.employment.map((e, i) => {
               const range = [e.start, e.end].filter(Boolean).join(' to ')
-              const expText = (rawWork?.[i]?.experience_in_company ?? '')?.toString()?.trim() || ''
               return (
                 <div key={i} className="flex justify-between break-inside-avoid">
                   <div>
                     <div className="font-medium">{e.title || 'Role'}</div>
                     <div className="text-[11px] text-gray-500">{e.company}</div>
-
-                    {expText && (
-                      <div className="text-[12px] mt-1 whitespace-pre-wrap">
-                        {expText}
-                      </div>
-                    )}
 
                     {e.description?.trim() && (
                       <div className="text-[12px] mt-1 whitespace-pre-wrap">{e.description}</div>
