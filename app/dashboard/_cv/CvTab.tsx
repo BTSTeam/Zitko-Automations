@@ -97,7 +97,7 @@ async function bakeHeaderFooter(input: Blob): Promise<Blob> {
       last.drawRectangle({ x: 0, y: 0, width: w, height: stripHeight, color: rgb(1, 1, 1) })
 
       const footerLines = [
-        'Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Group Inc',
+        'Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Inc',
         'Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL',
         'Tel: 01480 473245  Web: www.zitkogroup.com',
       ]
@@ -765,12 +765,30 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">Profile</h2>
         <div className="whitespace-pre-wrap text-[12px]">{form.profile?.trim() ? form.profile : 'No Profile yet'}</div>
 
-        <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">Key Skills</h2>
-        <div className="whitespace-pre-wrap text-[12px]">
+        <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+          Key Skills
+        </h2>
+        <div className="text-[12px]">
           {(() => {
-            const items = (form.keySkills || '').split(/\r?\n|,\s*/).map(s => s.trim()).filter(Boolean)
-            if (items.length === 0) return 'No Key Skills yet'
-            return items.map((s, i) => <div key={i}>• {s}</div>)
+            const items = (form.keySkills || '')
+              .split(/\r?\n|,\s*/).map(s => s.trim()).filter(Boolean);
+        
+            if (items.length === 0) return 'No Key Skills yet';
+        
+            const mid = Math.ceil(items.length / 2);
+            const col1 = items.slice(0, mid);
+            const col2 = items.slice(mid);
+        
+            return (
+              <div className="grid grid-cols-2 gap-x-6">
+                <div className="space-y-1">
+                  {col1.map((s, i) => <div key={`ks1-${i}`}>• {s}</div>)}
+                </div>
+                <div className="space-y-1">
+                  {col2.map((s, i) => <div key={`ks2-${i}`}>• {s}</div>)}
+                </div>
+              </div>
+            );
           })()}
         </div>
 
@@ -830,7 +848,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         <div className="pdf-break-before" />
 
         <div ref={footerRef} className="mt-6 pt-4 border-t text-center text-[10px] leading-snug text-[#F7941D] break-inside-avoid cv-footer">
-          <div>Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Group Inc</div>
+          <div>Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Inc</div>
           <div>Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL</div>
           <div>Tel: 01480 473245 Web: www.zitkogroup.com</div>
         </div>
