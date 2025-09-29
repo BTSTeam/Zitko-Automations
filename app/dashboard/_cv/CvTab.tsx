@@ -871,114 +871,150 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         })()}
       </div>
 
-      {/* Employment History */}
-      <div className="cv-section">
-        <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
-          Employment History
-        </h2>
-        <div className="space-y-3">
-          {form.employment.length === 0 ? (
-            <div className="text-gray-500 text-[12px]">
-              No employment history yet.
-            </div>
-          ) : (
-            form.employment.map((e, i) => {
+      {/* Employment History (header + first entry stay together) */}
+      {form.employment.length === 0 ? (
+        <div className="cv-headpair">
+          <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+            Employment History
+          </h2>
+          <div className="text-gray-500 text-[12px]">No employment history yet.</div>
+        </div>
+      ) : (
+        <>
+          <div className="cv-headpair">
+            <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+              Employment History
+            </h2>
+            {(() => {
+              const e = form.employment[0]
               const range = [e.start, e.end].filter(Boolean).join(' to ')
               return (
-                <div key={i} className="cv-entry">
+                <div className="cv-entry">
                   <div className="flex justify-between">
                     <div>
                       <div className="font-medium">{e.title || 'Role'}</div>
-                      <div className="text-[11px] text-gray-500">
-                        {e.company}
-                      </div>
+                      <div className="text-[11px] text-gray-500">{e.company}</div>
                       {e.description?.trim() && (
                         <div className="text-[12px] mt-1 whitespace-pre-wrap">
                           {e.description}
                         </div>
                       )}
                     </div>
-                    <div className="text-[11px] text-gray-500 whitespace-nowrap">
-                      {range}
-                    </div>
+                    <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
                   </div>
                 </div>
               )
-            })
-          )}
-        </div>
-      </div>
+            })()}
+          </div>
 
-      {/* Education */}
-      <div className="cv-section">
-        <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
-          Education & Qualifications
-        </h2>
-        <div className="space-y-3">
-          {form.education.length === 0 ? (
-            <div className="text-gray-500 text-[12px]">No education yet.</div>
-          ) : (
-            form.education.map((e, i) => {
+          <div className="space-y-3">
+            {form.employment.slice(1).map((e, i) => {
+              const range = [e.start, e.end].filter(Boolean).join(' to ')
+              return (
+                <div key={i} className="cv-entry">
+                  <div className="flex justify-between">
+                    <div>
+                      <div className="font-medium">{e.title || 'Role'}</div>
+                      <div className="text-[11px] text-gray-500">{e.company}</div>
+                      {e.description?.trim() && (
+                        <div className="text-[12px] mt-1 whitespace-pre-wrap">
+                          {e.description}
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
+
+      {/* Education & Qualifications (header + first entry stay together) */}
+      {form.education.length === 0 ? (
+        <div className="cv-headpair">
+          <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+            Education & Qualifications
+          </h2>
+          <div className="text-gray-500 text-[12px]">No education yet.</div>
+        </div>
+      ) : (
+        <>
+          <div className="cv-headpair">
+            <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+              Education & Qualifications
+            </h2>
+            {(() => {
+              const e = form.education[0]
               const range = [e.start, e.end].filter(Boolean).join(' to ')
               const showInstitutionLine =
                 !!e.institution &&
                 !!e.course &&
-                e.course.trim().toLowerCase() !==
-                  e.institution.trim().toLowerCase()
+                e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
+              return (
+                <div className="cv-entry">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="font-medium">{e.course || e.institution || 'Course'}</div>
+                      {showInstitutionLine && (
+                        <div className="text-[11px] text-gray-500">{e.institution}</div>
+                      )}
+                    </div>
+                    <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
+                  </div>
+                </div>
+              )
+            })()}
+          </div>
+
+          <div className="space-y-3">
+            {form.education.slice(1).map((e, i) => {
+              const range = [e.start, e.end].filter(Boolean).join(' to ')
+              const showInstitutionLine =
+                !!e.institution &&
+                !!e.course &&
+                e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
               return (
                 <div key={i} className="cv-entry">
                   <div className="flex items-start justify-between">
                     <div>
-                      <div className="font-medium">
-                        {e.course || e.institution || 'Course'}
-                      </div>
+                      <div className="font-medium">{e.course || e.institution || 'Course'}</div>
                       {showInstitutionLine && (
-                        <div className="text-[11px] text-gray-500">
-                          {e.institution}
-                        </div>
+                        <div className="text-[11px] text-gray-500">{e.institution}</div>
                       )}
                     </div>
-                    <div className="text-[11px] text-gray-500 whitespace-nowrap">
-                      {range}
-                    </div>
+                    <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
                   </div>
                 </div>
               )
-            })
-          )}
+            })}
+          </div>
+        </>
+      )}
+
+      {/* Additional Information (keep header with content) */}
+      <div className="cv-headpair">
+        <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+          Additional Information
+        </h2>
+        <div className="text-[12px] grid gap-1">
+          <div>Driving License: {form.additional.drivingLicense || '—'}</div>
+          <div>Nationality: {form.additional.nationality || '—'}</div>
+          <div>Availability: {form.additional.availability || '—'}</div>
+          <div>Health: {form.additional.health || '—'}</div>
+          <div>Criminal Record: {form.additional.criminalRecord || '—'}</div>
+          <div>Financial History: {form.additional.financialHistory || '—'}</div>
         </div>
       </div>
 
-      <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
-        Additional Information
-      </h2>
-      <div className="text-[12px] grid gap-1">
-        <div>
-          Driving License: {form.additional.drivingLicense || '—'}
-        </div>
-        <div>Nationality: {form.additional.nationality || '—'}</div>
-        <div>Availability: {form.additional.availability || '—'}</div>
-        <div>Health: {form.additional.health || '—'}</div>
-        <div>
-          Criminal Record: {form.additional.criminalRecord || '—'}
-        </div>
-        <div>
-          Financial History: {form.additional.financialHistory || '—'}
-        </div>
-      </div>
-
+      {/* Footer (will be pushed to bottom by CSS: .cv-standard-page {display:flex} + .cv-footer {margin-top:auto}) */}
       <div
         ref={footerRef}
         className="mt-6 pt-4 border-t text-center text-[10px] leading-snug text-[#F7941D] break-inside-avoid cv-footer"
       >
-        <div>
-          Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko
-          Inc
-        </div>
-        <div>
-          Registered office – Suite 2, 17a Huntingdon Street, St Neots,
-          Cambridgeshire, PE19 1BL
-        </div>
+        <div>Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Inc</div>
+        <div>Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL</div>
         <div>Tel: 01480 473245 Web: www.zitkogroup.com</div>
       </div>
     </div>
@@ -987,52 +1023,46 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
   // ========== render ==========
   return (
-    <div className="grid gap-4">
-      {/* Minimal print + PDF styles */}
-      <style jsx global>{`
-        @media print {
-          @page { size: A4; margin: 12mm; }
-      
-          .cv-standard-page { width: 100%; }
-      
-          /* Keep each entry (job/education) together */
-          .cv-entry {
-            break-inside: avoid;
-            page-break-inside: avoid;
-          }
-      
-          /* Keep section header with at least the first entry */
-          .cv-section {
-            break-inside: avoid;
-            page-break-inside: avoid;
-          }
-      
-          /* Headings themselves shouldn’t split */
-          .cv-standard-page h1,
-          .cv-standard-page h2 {
-            break-inside: avoid;
-            page-break-inside: avoid;
-          }
-      
-          /* Footer stays with content; never on a blank page */
-          .cv-footer {
-            break-inside: avoid;
-            page-break-inside: avoid;
-            page-break-before: auto;
-            page-break-after: auto;
-          }
+  <div className="grid gap-4">
+    {/* Minimal print + PDF styles */}
+    <style jsx global>{`
+      @media print {
+        @page { size: A4; margin: 12mm; }
+
+        /* A4 content container; makes footer stick to bottom of last page */
+        .cv-standard-page {
+          width: 100%;
+          display: flex;
+          flex-direction: column;
+          min-height: calc(297mm - 24mm); /* page height minus top+bottom margins */
         }
-      
-        /* Non-print (browser preview) helpers too */
-        .cv-entry {
+
+        /* keep each job/education entry intact (no splitting across pages) */
+        .cv-entry { break-inside: avoid; page-break-inside: avoid; }
+
+        /* keep section header with the FIRST entry only */
+        .cv-headpair { break-inside: avoid; page-break-inside: avoid; }
+
+        /* prevent headings from being orphaned/split */
+        .cv-standard-page h1,
+        .cv-standard-page h2 { break-inside: avoid; page-break-inside: avoid; }
+
+        /* footer pinned to bottom; never creates a blank page */
+        .cv-footer {
+          margin-top: auto;
           break-inside: avoid;
           page-break-inside: avoid;
+          page-break-before: auto;
+          page-break-after: auto;
         }
-        .cv-section {
-          break-inside: avoid;
-          page-break-inside: avoid;
-        }
-      `}</style>
+      }
+
+      /* Also help in on-screen preview */
+      .cv-entry,
+      .cv-headpair { break-inside: avoid; page-break-inside: avoid; }
+    `}</style>
+
+    {/* ...the rest of your JSX (cards, editor, preview, etc.) ... */}
 
       <div className="card p-4">
         {!templateFromShell && (
