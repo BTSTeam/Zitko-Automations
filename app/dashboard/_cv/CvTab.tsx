@@ -1,7 +1,17 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
+
+/**
+ * CvTab.tsx — drop-in replacement
+ * - Fixes JSX parse error by ensuring all blocks/functions close correctly
+ * - Sales upload modal now accepts manual Candidate ID (used in POST endpoint)
+ * - After "Confirm & Upload" shows a success state in the modal
+ * - Standard template: footer forced to last page; header only on first for Sales (baked)
+ * - Robust handling of custom fields; flexible mapping for work/education
+ * - Uses base64 for <= 3MB; otherwise uploads to /api/upload for a public URL
+ */
 
 type TemplateKey = 'standard' | 'sales'
 
@@ -123,6 +133,116 @@ async function bakeHeaderFooter(input: Blob): Promise<Blob> {
   }
 }
 
+// ---------- helpers for education/work mapping ----------
+function formatDate(dateStr?: string | null): string {
+  if (!dateStr) return ''
+  const s = String(dateStr).trim()
+
+  const ymd = s.match(/^(\d{4})-(\d{1,2})(?:-\d{1,2})?$/)
+  const mmyyyy = s.match(/^(\d{1,2})[\/\-](\d{4})$/)
+  const yyyy = s.match(/^(\d{4})$/)
+
+  let y: number | undefined
+  let m: number | undefined
+
+  if (ymd) { y = Number(ymd[1]); m = Number(ymd[2]) }
+  else if (mmyyyy) { y = Number(mmyyyy[2]); m = Number(mmyyyy[1]) }
+  else if (yyyy) { y = Number(yyyy[1]); m = 1 }
+  else {
+    const d = new Date(s)
+    if (!isNaN(d.getTime())) { y = d.getFullYear(); m = d.getMonth() + 1 }
+  }
+
+  if (!y || !m) return ''
+  const month = new Date(y, m - 1, 1).toLocaleString('en-GB', { month: 'long' })
+  return `${month} ${y}`
+}
+
+function mapWorkExperiences(list: any[]): Employment[] {
+  if (!Array.isArray(list)) return []
+  return list.map(w => {
+    const start = formatDate(w?.work_from)
+    const end = w?.work_to == null ? 'Present' : formatDate(w?.work_to)
+    return { title: w?.job_title || '', company: w?.company_name || '', start, end, description: w?.description || '' }
+  })
+}
+
+function mapEducation(list: any[]): Education[] {
+  if (!Array.isArray(list)) return []
+  return list.map(e => {
+    const qualsRaw = e?.qualificications ?? e?.qualifications ?? e?.qualification
+    const toArr = (v: any) =>
+      Array.isArray(v) ? v.filter(Boolean).map(String)
+        : typeof v === 'string' ? v.split(/[,;]\s*/).filter(Boolean)
+          : []
+
+    const quals = toArr(qualsRaw)
+    const training = toArr(e?.training)
+    const honors = toArr(e?.honors)
+
+    const mainTitle = (e?.degree_name && String(e.degree_name)) || (quals[0] || '')
+    const extras = [...quals.slice(1), ...training, ...honors]
+    let course = extras.length ? `${mainTitle}`.trim() + ` (${extras.join(' • ')})` : `${mainTitle}`.trim()
+
+    const institution = e?.school_name || e?.institution || e?.school || ''
+    if (!course) course = institution
+
+    const start = formatDate(e?.start_date || e?.from_date || e?.start) || ''
+       const end = formatDate(e?.end_date || e?.to_date || e?.end) || ''
+
+    return { course: course || '', institution, start, end }
+  })
+}
+
+// ---------- robust custom-field normalizers ----------
+type CustomEntry = {
+  field_key?: string
+  key?: string
+  value?: any
+  field_values?: any[] | null
+  field_value_ids?: any[] | null
+  [k: string]: any
+}
+
+function customArray(custom: any): CustomEntry[] {
+  if (!custom) return []
+  if (Array.isArray(custom?.field_values)) return custom.field_values as CustomEntry[]
+  if (Array.isArray(custom?.data)) return custom.data as CustomEntry[]
+  if (Array.isArray(custom)) return custom as CustomEntry[]
+  if (typeof custom === 'object') {
+    return Object.entries(custom).map(([k, v]) => {
+      const obj = (typeof v === 'object' && v) ? (v as any) : { value: v }
+      return { key: k, ...obj }
+    })
+  }
+  return []
+}
+function findByUuid(custom: any, uuid: string): CustomEntry | null {
+  const arr = customArray(custom)
+  return arr.find(e => e?.field_key === uuid || e?.key === uuid) ?? null
+}
+function firstCodeUniversal(entry: CustomEntry | null): number | null {
+  if (!entry) return null
+  if (Array.isArray(entry.value) && entry.value.length) {
+    const raw = entry.value[0]
+    const n = Number((raw && (raw.code ?? raw.value ?? raw)) ?? NaN)
+    return Number.isFinite(n) ? n : null
+  }
+  if (typeof entry.value === 'string' || typeof entry.value === 'number') {
+    const n = Number(entry.value)
+    return Number.isFinite(n) ? n : null
+  }
+  if (Array.isArray(entry.field_values) && entry.field_values.length) {
+    const n = Number(entry.field_values[0])
+    return Number.isFinite(n) ? n : null
+  }
+  if (Array.isArray(entry.field_value_ids) && entry.field_value_ids.length) {
+    const n = Number(entry.field_value_ids[0])
+    return Number.isFinite(n) ? n : null
+  }
+  return null
+}
+
 export default function CvTab({ templateFromShell }: { templateFromShell?: TemplateKey }): JSX.Element {
   // ========== UI state ==========
   const [template, setTemplate] = useState<TemplateKey | null>(templateFromShell ?? null)
@@ -156,7 +276,22 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       criminalRecord: string
       financialHistory: string
     }
-  }>(getEmptyForm())
+  }>(() => ({
+    name: '',
+    location: '',
+    profile: '',
+    keySkills: '',
+    employment: [],
+    education: [],
+    additional: {
+      drivingLicense: '',
+      nationality: '',
+      availability: '',
+      health: '',
+      criminalRecord: '',
+      financialHistory: '',
+    },
+  }))
 
   // Collapsible sections (Standard)
   const [open, setOpen] = useState<OpenState>({
@@ -177,8 +312,30 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   const standardPreviewRef = useRef<HTMLDivElement | null>(null)
   const footerRef = useRef<HTMLDivElement | null>(null)
 
-  function getEmptyForm() {
-    return {
+  // ================== local helpers ==================
+  const [salesErr, setSalesErr] = useState<string | null>(null)
+  const [salesDocUrl, setSalesDocUrl] = useState<string | null>(null)  // preview URL (baked)
+  const [salesDocName, setSalesDocName] = useState<string>('')         // filename (final/derived)
+  const [salesDocType, setSalesDocType] = useState<string>('')         // mime type
+  const [processing, setProcessing] = useState<boolean>(false)
+  const [dragOver, setDragOver] = useState<boolean>(false)
+  const [salesDocBlob, setSalesDocBlob] = useState<Blob | null>(null)  // baked PDF blob (for upload+preview)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+
+  function resetSalesState() {
+    setSalesErr(null)
+    if (salesDocUrl) URL.revokeObjectURL(salesDocUrl)
+    setSalesDocUrl(null)
+    setSalesDocName('')
+    setSalesDocType('')
+    setSalesDocBlob(null)
+    setProcessing(false)
+    setDragOver(false)
+  }
+
+  function resetAllForTemplate(t: TemplateKey | null) {
+    setTemplate(t)
+    setForm({
       name: '',
       location: '',
       profile: '',
@@ -193,12 +350,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         criminalRecord: '',
         financialHistory: '',
       },
-    }
-  }
-
-  function resetAllForTemplate(t: TemplateKey | null) {
-    setTemplate(t)
-    setForm(getEmptyForm())
+    })
     setRawCandidate(null)
     setRawWork([])
     setRawEdu([])
@@ -218,117 +370,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     setOpen(s => ({ ...s, [k]: !s[k] }))
   }
 
-  // ========== helpers ==========
-  function formatDate(dateStr?: string | null): string {
-    if (!dateStr) return ''
-    const s = String(dateStr).trim()
-
-    const ymd = s.match(/^(\d{4})-(\d{1,2})(?:-\d{1,2})?$/)
-    const mmyyyy = s.match(/^(\d{1,2})[\/\-](\d{4})$/)
-    const yyyy = s.match(/^(\d{4})$/)
-
-    let y: number | undefined
-    let m: number | undefined
-
-    if (ymd) { y = Number(ymd[1]); m = Number(ymd[2]) }
-    else if (mmyyyy) { y = Number(mmyyyy[2]); m = Number(mmyyyy[1]) }
-    else if (yyyy) { y = Number(yyyy[1]); m = 1 }
-    else {
-      const d = new Date(s)
-      if (!isNaN(d.getTime())) { y = d.getFullYear(); m = d.getMonth() + 1 }
-    }
-
-    if (!y || !m) return ''
-    const month = new Date(y, m - 1, 1).toLocaleString('en-GB', { month: 'long' })
-    return `${month} ${y}`
-  }
-
-  function mapWorkExperiences(list: any[]): Employment[] {
-    if (!Array.isArray(list)) return []
-    return list.map(w => {
-      const start = formatDate(w?.work_from)
-      const end = w?.work_to == null ? 'Present' : formatDate(w?.work_to)
-      return { title: w?.job_title || '', company: w?.company_name || '', start, end, description: w?.description || '' }
-    })
-  }
-
-  function mapEducation(list: any[]): Education[] {
-    if (!Array.isArray(list)) return []
-    return list.map(e => {
-      const qualsRaw = e?.qualificications ?? e?.qualifications ?? e?.qualification
-      const toArr = (v: any) =>
-        Array.isArray(v) ? v.filter(Boolean).map(String)
-        : typeof v === 'string' ? v.split(/[,;]\s*/).filter(Boolean)
-        : []
-
-      const quals = toArr(qualsRaw)
-      const training = toArr(e?.training)
-      const honors = toArr(e?.honors)
-
-      const mainTitle = (e?.degree_name && String(e.degree_name)) || (quals[0] || '')
-      const extras = [...quals.slice(1), ...training, ...honors]
-      let course = extras.length ? `${mainTitle}`.trim() + ` (${extras.join(' • ')})` : `${mainTitle}`.trim()
-
-      const institution = e?.school_name || e?.institution || e?.school || ''
-      if (!course) course = institution
-
-      const start = formatDate(e?.start_date || e?.from_date || e?.start) || ''
-      const end = formatDate(e?.end_date || e?.to_date || e?.end) || ''
-
-      return { course: course || '', institution, start, end }
-    })
-  }
-
-  // ---------- robust custom-field normalizers ----------
-  type CustomEntry = {
-    field_key?: string
-    key?: string
-    value?: any
-    field_values?: any[] | null
-    field_value_ids?: any[] | null
-    [k: string]: any
-  }
-
-  function customArray(custom: any): CustomEntry[] {
-    if (!custom) return []
-    if (Array.isArray(custom?.field_values)) return custom.field_values as CustomEntry[]
-    if (Array.isArray(custom?.data)) return custom.data as CustomEntry[]
-    if (Array.isArray(custom)) return custom as CustomEntry[]
-    if (typeof custom === 'object') {
-      return Object.entries(custom).map(([k, v]) => {
-        const obj = (typeof v === 'object' && v) ? (v as any) : { value: v }
-        return { key: k, ...obj }
-      })
-    }
-    return []
-  }
-  function findByUuid(custom: any, uuid: string): CustomEntry | null {
-    const arr = customArray(custom)
-    return arr.find(e => e?.field_key === uuid || e?.key === uuid) ?? null
-  }
-  function firstCodeUniversal(entry: CustomEntry | null): number | null {
-    if (!entry) return null
-    if (Array.isArray(entry.value) && entry.value.length) {
-      const raw = entry.value[0]
-      const n = Number((raw && (raw.code ?? raw.value ?? raw)) ?? NaN)
-      return Number.isFinite(n) ? n : null
-    }
-    if (typeof entry.value === 'string' || typeof entry.value === 'number') {
-      const n = Number(entry.value)
-      return Number.isFinite(n) ? n : null
-    }
-    if (Array.isArray(entry.field_values) && entry.field_values.length) {
-      const n = Number(entry.field_values[0])
-      return Number.isFinite(n) ? n : null
-    }
-    if (Array.isArray(entry.field_value_ids) && entry.field_value_ids.length) {
-      const n = Number(entry.field_value_ids[0])
-      return Number.isFinite(n) ? n : null
-    }
-    return null
-  }
-
-  // ---------- state helpers ----------
   function setField(path: string, value: any) {
     setForm(prev => {
       const clone = structuredClone(prev) as any
@@ -339,6 +380,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       return clone
     })
   }
+
   function addEmployment() {
     setForm(prev => ({ ...prev, employment: [...prev.employment, { title: '', company: '', start: '', end: '', description: '' }] }))
   }
@@ -432,6 +474,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       const name = [cRaw?.first_name, cRaw?.last_name].filter(Boolean).join(' ').trim()
       const location = cRaw?.candidate_current_address?.town_city ?? ''
 
+      // Custom field UUIDs
       const UUID_DRIVING = 'edd971dc2678f05b5757fe31f2c586a8'
       const UUID_AVAIL   = 'a18b8e0d62e27548df904106cfde1584'
       const UUID_HEALTH  = '25bf6829933a29172af40f977e9422bc'
@@ -497,26 +540,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   }
 
   // ====================== SALES ( + PDF/DOCX handling ) ======================
-  const fileInputRef = useRef<HTMLInputElement | null>(null)
-  const [salesErr, setSalesErr] = useState<string | null>(null)
-  const [salesDocUrl, setSalesDocUrl] = useState<string | null>(null)  // preview URL (baked)
-  const [salesDocName, setSalesDocName] = useState<string>('')         // filename (final/derived)
-  const [salesDocType, setSalesDocType] = useState<string>('')         // mime type
-  const [processing, setProcessing] = useState<boolean>(false)
-  const [dragOver, setDragOver] = useState<boolean>(false)
-  const [salesDocBlob, setSalesDocBlob] = useState<Blob | null>(null)  // baked PDF blob (for upload+preview)
-
-  function resetSalesState() {
-    setSalesErr(null)
-    if (salesDocUrl) URL.revokeObjectURL(salesDocUrl)
-    setSalesDocUrl(null)
-    setSalesDocName('')
-    setSalesDocType('')
-    setSalesDocBlob(null)
-    setProcessing(false)
-    setDragOver(false)
-  }
-
   function onClickUpload() {
     fileInputRef.current?.click()
   }
@@ -737,137 +760,133 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   }
 
   // ========== preview (right) ==========
-function CVTemplatePreview(): JSX.Element {
-  if (template === 'sales') {
+  function CVTemplatePreview(): JSX.Element {
+    if (template === 'sales') {
+      return (
+        <div className="p-4">
+          <SalesViewerCard />
+          <div className="px-1 pt-2 text-[11px] text-gray-500">Preview shows branding; uploaded file will match this exactly.</div>
+        </div>
+      )
+    }
+
+    // Standard (editor preview) — attach ref for DOM→PDF
     return (
-      <div className="p-4">
-        <SalesViewerCard />
-        <div className="px-1 pt-2 text-[11px] text-gray-500">Preview shows branding; uploaded file will match this exactly.</div>
+      <div ref={standardPreviewRef} className="p-6 cv-standard-page bg-white text-[13px] leading-[1.35]">
+        <div className="flex items-start justify-between">
+          <div />
+          <img src="/zitko-full-logo.png" alt="Zitko" className="h-10" />
+        </div>
+
+        <h1 className="text-2xl font-bold mt-5">Curriculum Vitae</h1>
+
+        <div className="mt-2 text-[12px] text-gray-800 space-y-0.5">
+          <div><span className="font-semibold">Name:</span> {form.name ? `${form.name}` : '—'}</div>
+          <div><span className="font-semibold">Location:</span> {form.location ? `${form.location}` : '—'}</div>
+        </div>
+
+        <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">Profile</h2>
+        <div className="whitespace-pre-wrap text-[12px]">{form.profile?.trim() ? form.profile : 'No Profile yet'}</div>
+
+        <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">Key Skills</h2>
+        <div className="text-[12px]">
+          {(() => {
+            const items = (form.keySkills || '')
+              .split(/\r?\n|,\s*/).map(s => s.trim()).filter(Boolean)
+
+            if (items.length === 0) return 'No Key Skills yet'
+
+            const mid = Math.ceil(items.length / 2)
+            const col1 = items.slice(0, mid)
+            const col2 = items.slice(mid)
+
+            return (
+              <div className="grid grid-cols-2 gap-x-6">
+                <div className="space-y-1">
+                  {col1.map((s, i) => <div key={`ks1-${i}`}>• {s}</div>)}
+                </div>
+                <div className="space-y-1">
+                  {col2.map((s, i) => <div key={`ks2-${i}`}>• {s}</div>)}
+                </div>
+              </div>
+            )
+          })()}
+        </div>
+
+        <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">Employment History</h2>
+        <div className="space-y-3">
+          {form.employment.length === 0 ? (
+            <div className="text-gray-500 text-[12px]">No employment history yet.</div>
+          ) : (
+            form.employment.map((e, i) => {
+              const range = [e.start, e.end].filter(Boolean).join(' to ')
+              const expText = (rawWork?.[i]?.experience_in_company ?? '')?.toString()?.trim() || ''
+              return (
+                <div key={i} className="flex justify-between break-inside-avoid">
+                  <div>
+                    <div className="font-medium">{e.title || 'Role'}</div>
+                    <div className="text-[11px] text-gray-500">{e.company}</div>
+
+                    {expText && (
+                      <div className="text-[12px] mt-1 whitespace-pre-wrap">
+                        {expText}
+                      </div>
+                    )}
+
+                    {e.description?.trim() && (
+                      <div className="text-[12px] mt-1 whitespace-pre-wrap">{e.description}</div>
+                    )}
+                  </div>
+                  <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
+                </div>
+              )
+            })
+          )}
+        </div>
+
+        <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">Education & Qualifications</h2>
+        <div className="space-y-3">
+          {form.education.length === 0 ? (
+            <div className="text-gray-500 text-[12px]">No education yet.</div>
+          ) : (
+            form.education.map((e, i) => {
+              const range = [e.start, e.end].filter(Boolean).join(' to ')
+              const showInstitutionLine = !!e.institution && !!e.course && e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
+              return (
+                <div key={i} className="flex items-start justify-between break-inside-avoid">
+                  <div>
+                    <div className="font-medium">{e.course || e.institution || 'Course'}</div>
+                    {showInstitutionLine && <div className="text-[11px] text-gray-500">{e.institution}</div>}
+                  </div>
+                  <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
+                </div>
+              )
+            })
+          )}
+        </div>
+
+        <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">Additional Information</h2>
+        <div className="text-[12px] grid gap-1">
+          <div>Driving License: {form.additional.drivingLicense || '—'}</div>
+          <div>Nationality: {form.additional.nationality || '—'}</div>
+          <div>Availability: {form.additional.availability || '—'}</div>
+          <div>Health: {form.additional.health || '—'}</div>
+          <div>Criminal Record: {form.additional.criminalRecord || '—'}</div>
+          <div>Financial History: {form.additional.financialHistory || '—'}</div>
+        </div>
+
+        {/* Force the footer onto a clean page */}
+        <div className="pdf-break-before" />
+
+        <div ref={footerRef} className="mt-6 pt-4 border-t text-center text-[10px] leading-snug text-[#F7941D] break-inside-avoid cv-footer">
+          <div>Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Inc</div>
+          <div>Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL</div>
+          <div>Tel: 01480 473245 Web: www.zitkogroup.com</div>
+        </div>
       </div>
     )
   }
 
-  // Standard (editor preview) — attach ref for DOM→PDF
-  return (
-    <div ref={standardPreviewRef} className="p-6 cv-standard-page bg-white text-[13px] leading-[1.35]">
-      <div className="flex items-start justify-between">
-        <div />
-        <img src="/zitko-full-logo.png" alt="Zitko" className="h-10" />
-      </div>
-
-      <h1 className="text-2xl font-bold mt-5">Curriculum Vitae</h1>
-
-      <div className="mt-2 text-[12px] text-gray-800 space-y-0.5">
-        <div><span className="font-semibold">Name:</span> {form.name ? `${form.name}` : '—'}</div>
-        <div><span className="font-semibold">Location:</span> {form.location ? `${form.location}` : '—'}</div>
-      </div>
-
-      <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">Profile</h2>
-      <div className="whitespace-pre-wrap text-[12px]">{form.profile?.trim() ? form.profile : 'No Profile yet'}</div>
-
-      <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
-        Key Skills
-      </h2>
-      <div className="text-[12px]">
-        {(() => {
-          const items = (form.keySkills || '')
-            .split(/\r?\n|,\s*/).map(s => s.trim()).filter(Boolean);
-
-          if (items.length === 0) return 'No Key Skills yet';
-
-          const mid = Math.ceil(items.length / 2);
-          const col1 = items.slice(0, mid);
-          const col2 = items.slice(mid);
-
-          return (
-            <div className="grid grid-cols-2 gap-x-6">
-              <div className="space-y-1">
-                {col1.map((s, i) => <div key={`ks1-${i}`}>• {s}</div>)}
-              </div>
-              <div className="space-y-1">
-                {col2.map((s, i) => <div key={`ks2-${i}`}>• {s}</div>)}
-              </div>
-            </div>
-          );
-        })()}
-      </div>
-
-      <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">Employment History</h2>
-      <div className="space-y-3">
-        {form.employment.length === 0 ? (
-          <div className="text-gray-500 text-[12px]">No employment history yet.</div>
-        ) : (
-          form.employment.map((e, i) => {
-            const range = [e.start, e.end].filter(Boolean).join(' to ')
-            const expText = (rawWork?.[i]?.experience_in_company ?? '')?.toString()?.trim() || ''
-            return (
-              <div key={i} className="flex justify-between break-inside-avoid">
-                <div>
-                  <div className="font-medium">{e.title || 'Role'}</div>
-                  <div className="text-[11px] text-gray-500">{e.company}</div>
-
-                  {/* NEW: Experience in company text (shown under company name) */}
-                  {expText && (
-                    <div className="text-[12px] mt-1 whitespace-pre-wrap">
-                      {expText}
-                    </div>
-                  )}
-
-                  {/* Existing free-form description */}
-                  {e.description?.trim() && (
-                    <div className="text-[12px] mt-1 whitespace-pre-wrap">{e.description}</div>
-                  )}
-                </div>
-                <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
-              </div>
-            )
-          })
-        )}
-      </div>
-
-      <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">Education & Qualifications</h2>
-      <div className="space-y-3">
-        {form.education.length === 0 ? (
-          <div className="text-gray-500 text-[12px]">No education yet.</div>
-        ) : (
-          form.education.map((e, i) => {
-            const range = [e.start, e.end].filter(Boolean).join(' to ')
-            const showInstitutionLine = !!e.institution && !!e.course && e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
-            return (
-              <div key={i} className="flex justify-between break-inside-avoid">
-                <div>
-                  <div className="font-medium">{e.course || e.institution || 'Course'}</div>
-                  {showInstitutionLine && <div className="text-[11px] text-gray-500">{e.institution}</div>}
-                </div>
-                <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
-              </div>
-            )
-          })
-        )}
-      </div>
-
-      <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">Additional Information</h2>
-      <div className="text-[12px] grid gap-1">
-        <div>Driving License: {form.additional.drivingLicense || '—'}</div>
-        <div>Nationality: {form.additional.nationality || '—'}</div>
-        <div>Availability: {form.additional.availability || '—'}</div>
-        <div>Health: {form.additional.health || '—'}</div>
-        <div>Criminal Record: {form.additional.criminalRecord || '—'}</div>
-        <div>Financial History: {form.additional.financialHistory || '—'}</div>
-      </div>
-
-      {/* Force the footer onto a clean page */}
-      <div className="pdf-break-before" />
-
-      <div ref={footerRef} className="mt-6 pt-4 border-t text-center text-[10px] leading-snug text-[#F7941D] break-inside-avoid cv-footer">
-        <div>Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Inc</div>
-        <div>Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL</div>
-        <div>Tel: 01480 473245 Web: www.zitkogroup.com</div>
-      </div>
-    </div>
-  )
-}
-  
   // ========== render ==========
   return (
     <div className="grid gap-4">
@@ -990,7 +1009,7 @@ function CVTemplatePreview(): JSX.Element {
               <button
                 type="button"
                 className="btn btn-grey"
-                disabled={!salesDocUrl}  // no longer requires top-level candidateId
+                disabled={!salesDocUrl}
                 onClick={() => {
                   const baseName = (candidateName || form.name || 'CV').replace(/\s+/g, '')
                   const defaultName = salesDocName?.trim()
@@ -1303,98 +1322,101 @@ function CVTemplatePreview(): JSX.Element {
       </div>
 
       {/* ===== Upload modal ===== */}
-{showUploadModal && (
-  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-    {/* If we have success, show a separate success popup that replaces the previous window */}
-    {uploadSuccess ? (
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl text-center">
-        <div className="text-2xl mb-2">✅ Upload Successful</div>
-        <p className="text-[12px] text-gray-600">
-          {uploadContext === 'standard'
-            ? `File uploaded for Candidate ID ${candidateId || '—'}.`
-            : `File uploaded for Candidate ID ${uploadCandidateId || '—'}.`}
-        </p>
-        <div className="mt-6">
-          <button
-            type="button"
-            className="px-4 py-2 rounded-lg bg-zinc-900 text-white"
-            onClick={() => { setShowUploadModal(false); setUploadSuccess(null) }}
-          >
-            Close
-          </button>
-        </div>
-      </div>
-    ) : (
-      <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
-        <div className="mb-4">
-          <h3 className="text-base font-semibold">Upload CV to Vincere</h3>
+      {showUploadModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          {/* If we have success, show a separate success popup that replaces the previous window */}
+          {uploadSuccess ? (
+            <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl text-center">
+              <div className="text-2xl mb-2">✅ Upload Successful</div>
+              <p className="text-[12px] text-gray-600">
+                {uploadContext === 'standard'
+                  ? `File uploaded for Candidate ID ${candidateId || '—'}.`
+                  : `File uploaded for Candidate ID ${uploadCandidateId || '—'}.`}
+              </p>
+              <div className="mt-6">
+                <button
+                  type="button"
+                  className="px-4 py-2 rounded-lg bg-zinc-900 text-white"
+                  onClick={() => { setShowUploadModal(false); setUploadSuccess(null) }}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+              <div className="mb-4">
+                <h3 className="text-base font-semibold">Upload CV to Vincere</h3>
 
-          {/* Header summary only for Standard; Sales shows manual ID field below */}
-          {uploadContext === 'standard' && (
-            <p className="text-[12px] text-gray-600">
-              Candidate: <span className="font-medium">{candidateName || form.name || 'Unknown'}</span> · ID:{' '}
-              <span className="font-mono">{candidateId || '—'}</span>
-            </p>
-          )}
+                {/* Header summary only for Standard; Sales shows manual ID field below */}
+                {uploadContext === 'standard' && (
+                  <p className="text-[12px] text-gray-600">
+                    Candidate: <span className="font-medium">{candidateName || form.name || 'Unknown'}</span> · ID:{' '}
+                    <span className="font-mono">{candidateId || '—'}</span>
+                  </p>
+                )}
 
-          <p className="text-[11px] text-gray-500 mt-1">
-            Source:&nbsp;
-            {uploadContext === 'standard' ? 'Standard (right-panel template → PDF)' : 'Sales (imported file)'}
-          </p>
-        </div>
+                <p className="text-[11px] text-gray-500 mt-1">
+                  Source:&nbsp;
+                  {uploadContext === 'standard' ? 'Standard (right-panel template → PDF)' : 'Sales (imported file)'}
+                </p>
+              </div>
 
-        <div className="space-y-4">
-          {/* Manual Candidate ID entry for Sales */}
-          {uploadContext === 'sales' && (
-            <div>
-              <label className="block text-[12px] font-medium">Candidate ID</label>
-              <input
-                type="text"
-                className="mt-1 w-full rounded-md border p-2 text-[13px]"
-                value={uploadCandidateId}
-                onChange={(e) => setUploadCandidateId(e.target.value)}
-                placeholder="Type Candidate ID used in Vincere"
-              />
+              <div className="space-y-4">
+                {/* Manual Candidate ID entry for Sales */}
+                {uploadContext === 'sales' && (
+                  <div>
+                    <label className="block text-[12px] font-medium">Candidate ID</label>
+                    <input
+                      type="text"
+                      className="mt-1 w-full rounded-md border p-2 text-[13px]"
+                      value={uploadCandidateId}
+                      onChange={(e) => setUploadCandidateId(e.target.value)}
+                      placeholder="Type Candidate ID used in Vincere"
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-[12px] font-medium">File name</label>
+                  <input
+                    type="text"
+                    className="mt-1 w-full rounded-md border p-2 text-[13px]"
+                    value={uploadFileName}
+                    onChange={(e) => setUploadFileName(e.target.value)}
+                    placeholder="e.g. JohnSmith_CV.pdf"
+                  />
+                </div>
+
+                {uploadErr && <div className="text-[12px] text-red-600">{uploadErr}</div>}
+              </div>
+
+              <div className="mt-6 flex justify-end gap-3">
+                <button
+                  type="button"
+                  className="px-4 py-2 rounded-lg border"
+                  onClick={() => setShowUploadModal(false)}
+                  disabled={uploadBusy}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="px-4 py-2 rounded-lg bg-zinc-900 text-white disabled:opacity-50"
+                  onClick={confirmUpload}
+                  disabled={
+                    uploadBusy ||
+                    !uploadFileName.trim() ||
+                    (uploadContext === 'sales' && !uploadCandidateId.trim())
+                  }
+                >
+                  {uploadBusy ? 'Uploading…' : 'Confirm & Upload'}
+                </button>
+              </div>
             </div>
           )}
-
-          <div>
-            <label className="block text-[12px] font-medium">File name</label>
-            <input
-              type="text"
-              className="mt-1 w-full rounded-md border p-2 text-[13px]"
-              value={uploadFileName}
-              onChange={(e) => setUploadFileName(e.target.value)}
-              placeholder="e.g. JohnSmith_CV.pdf"
-            />
-          </div>
-
-            {uploadErr && <div className="text-[12px] text-red-600">{uploadErr}</div>}
         </div>
-
-        <div className="mt-6 flex justify-end gap-3">
-          <button
-            type="button"
-            className="px-4 py-2 rounded-lg border"
-            onClick={() => setShowUploadModal(false)}
-            disabled={uploadBusy}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="px-4 py-2 rounded-lg bg-zinc-900 text-white disabled:opacity-50"
-            onClick={confirmUpload}
-            disabled={
-              uploadBusy ||
-              !uploadFileName.trim() ||
-              (uploadContext === 'sales' && !uploadCandidateId.trim())
-            }
-          >
-            {uploadBusy ? 'Uploading…' : 'Confirm & Upload'}
-          </button>
-        </div>
-      </div>
-    )}
-  </div>
-)}
+      )}
+    </div>
+  )
+}
