@@ -6,8 +6,10 @@ import dynamic from 'next/dynamic'
 const MatchTab  = dynamic(() => import('./_match/MatchTab'),   { ssr: false })
 const SourceTab = dynamic(() => import('./_source/SourceTab'), { ssr: false })
 const CvTab     = dynamic(() => import('./_cv/CvTab'),         { ssr: false })
+// NEW: Admin-only ActiveCampaign tab
+const ActiveCampaignTab = dynamic(() => import('./_ac/ActiveCampaignTab'), { ssr: false })
 
-type TabKey = 'match' | 'source' | 'cv'
+type TabKey = 'match' | 'source' | 'cv' | 'ac'
 type SourceMode = 'candidates' | 'companies'
 type CvTemplate = 'standard' | 'sales'
 
@@ -22,6 +24,9 @@ export default function ClientShell(): JSX.Element {
   const [cvOpen, setCvOpen] = useState(false)
   const [cvTemplate, setCvTemplate] = useState<CvTemplate>('standard')
 
+  // NEW: role for admin-only AC tab
+  const [role, setRole] = useState<string>('user')
+
   useEffect(() => {
     function onClick(e: MouseEvent) {
       const t = e.target as HTMLElement
@@ -32,9 +37,17 @@ export default function ClientShell(): JSX.Element {
     return () => document.removeEventListener('click', onClick)
   }, [])
 
+  // NEW: fetch role so we can show the AC tab to admins only
+  useEffect(() => {
+    fetch('/api/auth/me', { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(me => setRole(me?.user?.role ?? 'user'))
+      .catch(() => setRole('user'))
+  }, [])
+
   return (
     <div className="grid gap-6">
-      {/* Top Tabs: Match | Sourcing (dropdown) | CV Formatting (dropdown) */}
+      {/* Top Tabs: Match | Sourcing (dropdown) | CV Formatting (dropdown) | ActiveCampaign (admin) */}
       <div className="flex gap-2 mb-6 justify-center">
         {/* Match (simple button) */}
         <button
@@ -99,6 +112,17 @@ export default function ClientShell(): JSX.Element {
             </div>
           )}
         </div>
+
+        {/* NEW: ActiveCampaign tab (admin only) */}
+        {role === 'admin' && (
+          <button
+            onClick={() => setTab('ac')}
+            className={`tab ${tab === 'ac' ? 'tab-active' : ''}`}
+            title="ActiveCampaign"
+          >
+            ActiveCampaign
+          </button>
+        )}
       </div>
 
       {/* Active tab content */}
@@ -110,6 +134,9 @@ export default function ClientShell(): JSX.Element {
         // Pass the chosen template down; CvTab will render *without* its own picker when controlled
         <CvTab templateFromShell={cvTemplate} />
       )}
+
+      {/* NEW: AC content (admin only) */}
+      {tab === 'ac' && role === 'admin' && <ActiveCampaignTab />}
     </div>
   )
 }
