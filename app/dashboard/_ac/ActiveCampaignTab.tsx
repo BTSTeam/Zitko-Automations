@@ -7,8 +7,6 @@ type Candidate = { first_name: string; last_name: string; email: string }
 type Tag = { id: number; tag: string }
 
 export default function ActiveCampaignTab() {
-  const [role, setRole] = useState('user')
-
   // Talent pools
   const [pools, setPools] = useState<Pool[]>([])
   const [poolId, setPoolId] = useState<string>('')
@@ -25,23 +23,12 @@ export default function ActiveCampaignTab() {
   // Optional list IDs (CSV)
   const [listIds, setListIds] = useState('')
 
+  // Load pools and tags when tab mounts
   useEffect(() => {
-    // role
-    fetch('/api/auth/me', { cache: 'no-store' })
-      .then(r => r.ok ? r.json() : Promise.reject())
-      .then(me => setRole(me?.user?.role ?? 'user'))
-      .catch(() => setRole('user'))
-  }, [])
-
-  // Load pools and AC tags on entering the tab
-  useEffect(() => {
-    if (role !== 'Admin') return
-
     // Talent Pools for current user
     fetch('/api/vincere/talentpools/user', { cache: 'no-store' })
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(data => {
-        // Normalize unknown shapes -> Pool[]
         const raw = Array.isArray(data?.docs) ? data.docs
           : Array.isArray(data?.items) ? data.items
           : Array.isArray(data) ? data
@@ -61,7 +48,7 @@ export default function ActiveCampaignTab() {
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(data => setTags(Array.isArray(data?.tags) ? data.tags : []))
       .catch(() => setTags([]))
-  }, [role])
+  }, [])
 
   async function retrievePoolCandidates() {
     setMessage('')
@@ -87,7 +74,6 @@ export default function ActiveCampaignTab() {
 
   async function sendToActiveCampaign() {
     setMessage('')
-    if (role !== 'Admin') return
     if (!tagName.trim()) { setMessage('Enter or select a Tag'); return }
 
     const prepared = candidates
@@ -127,10 +113,6 @@ export default function ActiveCampaignTab() {
     }
   }
 
-  if (role !== 'Admin') {
-    return <div className="text-sm text-red-600">Admin only.</div>
-  }
-
   const col = 'px-4 py-2'
 
   return (
@@ -151,7 +133,7 @@ export default function ActiveCampaignTab() {
         </label>
 
         <label className="grid gap-1">
-          <span className="text-sm font-medium">ActiveCampaign Tag</span>
+          <span className="text-sm font-medium">Active Campaign Tag</span>
           <div className="flex gap-2">
             <input
               value={tagName}
@@ -191,7 +173,7 @@ export default function ActiveCampaignTab() {
           disabled={!tagName.trim() || candidates.length === 0}
           className="rounded-2xl border px-4 py-2 hover:bg-gray-50 disabled:opacity-50"
         >
-          Send to ActiveCampaign
+          Send to Active Campaign
         </button>
       </div>
 
