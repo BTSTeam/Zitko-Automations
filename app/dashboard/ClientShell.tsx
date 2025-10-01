@@ -14,14 +14,28 @@ type CvTemplate = 'standard' | 'sales'
 
 export default function ClientShell(): JSX.Element {
   const [tab, setTab] = useState<TabKey>('match')
+
+  // sourcing dropdown
   const [sourceOpen, setSourceOpen] = useState(false)
   const [sourceMode, setSourceMode] = useState<SourceMode>('candidates')
+
+  // cv dropdown
   const [cvOpen, setCvOpen] = useState(false)
   const [cvTemplate, setCvTemplate] = useState<CvTemplate>('standard')
 
-  // fetch role
-  const [role, setRole] = useState<string>('user')
-  const isAdmin = (role ?? '').toString().toLowerCase() === 'admin'   // ✅ case-insensitive
+  // (Optional) Inspect what /api/auth/me returns for debugging.
+  useEffect(() => {
+    fetch('/api/auth/me', { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(me => {
+        // eslint-disable-next-line no-console
+        console.debug('auth/me -> role:', me?.user?.role)
+      })
+      .catch(() => {
+        // eslint-disable-next-line no-console
+        console.debug('auth/me failed')
+      })
+  }, [])
 
   useEffect(() => {
     function onClick(e: MouseEvent) {
@@ -33,18 +47,9 @@ export default function ClientShell(): JSX.Element {
     return () => document.removeEventListener('click', onClick)
   }, [])
 
-  useEffect(() => {
-    fetch('/api/auth/me', { cache: 'no-store' })
-      .then(r => r.ok ? r.json() : Promise.reject())
-      .then(me => {
-        const r = me?.user?.role ?? 'user'
-        setRole(String(r))
-      })
-      .catch(() => setRole('user'))
-  }, [])
-
   return (
     <div className="grid gap-6">
+      {/* Top Tabs */}
       <div className="flex gap-2 mb-6 justify-center">
         <button
           onClick={() => setTab('match')}
@@ -61,6 +66,7 @@ export default function ClientShell(): JSX.Element {
           >
             Sourcing
           </button>
+
           {sourceOpen && (
             <div className="absolute left-1/2 -translate-x-1/2 mt-2 w-44 rounded-xl border bg-white shadow-lg overflow-hidden z-10">
               <button
@@ -87,6 +93,7 @@ export default function ClientShell(): JSX.Element {
           >
             CV Formatting
           </button>
+
           {cvOpen && (
             <div className="absolute left-1/2 -translate-x-1/2 mt-2 w-44 rounded-xl border bg-white shadow-lg overflow-hidden z-10">
               <button
@@ -105,22 +112,21 @@ export default function ClientShell(): JSX.Element {
           )}
         </div>
 
-        {/* ✅ Admin-only AC tab with case-insensitive role check */}
-        {isAdmin && (
-          <button
-            onClick={() => setTab('ac')}
-            className={`tab ${tab === 'ac' ? 'tab-active' : ''}`}
-            title="ActiveCampaign"
-          >
-            ActiveCampaign
-          </button>
-        )}
+        {/* Always show the AC tab button; the component itself enforces Admin access */}
+        <button
+          onClick={() => setTab('ac')}
+          className={`tab ${tab === 'ac' ? 'tab-active' : ''}`}
+          title="ActiveCampaign"
+        >
+          ActiveCampaign
+        </button>
       </div>
 
+      {/* Content */}
       {tab === 'match' && <MatchTab />}
       {tab === 'source' && <SourceTab mode={sourceMode} />}
       {tab === 'cv' && <CvTab templateFromShell={cvTemplate} />}
-      {tab === 'ac' && isAdmin && <ActiveCampaignTab />}
+      {tab === 'ac' && <ActiveCampaignTab />}
     </div>
   )
 }
