@@ -6,7 +6,6 @@ import dynamic from 'next/dynamic'
 const MatchTab  = dynamic(() => import('./_match/MatchTab'),   { ssr: false })
 const SourceTab = dynamic(() => import('./_source/SourceTab'), { ssr: false })
 const CvTab     = dynamic(() => import('./_cv/CvTab'),         { ssr: false })
-// NEW: Admin-only ActiveCampaign tab
 const ActiveCampaignTab = dynamic(() => import('./_ac/ActiveCampaignTab'), { ssr: false })
 
 type TabKey = 'match' | 'source' | 'cv' | 'ac'
@@ -15,17 +14,14 @@ type CvTemplate = 'standard' | 'sales'
 
 export default function ClientShell(): JSX.Element {
   const [tab, setTab] = useState<TabKey>('match')
-
-  // sourcing dropdown
   const [sourceOpen, setSourceOpen] = useState(false)
   const [sourceMode, setSourceMode] = useState<SourceMode>('candidates')
-
-  // cv dropdown
   const [cvOpen, setCvOpen] = useState(false)
   const [cvTemplate, setCvTemplate] = useState<CvTemplate>('standard')
 
-  // NEW: role for admin-only AC tab
+  // fetch role
   const [role, setRole] = useState<string>('user')
+  const isAdmin = (role ?? '').toString().toLowerCase() === 'admin'   // ✅ case-insensitive
 
   useEffect(() => {
     function onClick(e: MouseEvent) {
@@ -37,19 +33,19 @@ export default function ClientShell(): JSX.Element {
     return () => document.removeEventListener('click', onClick)
   }, [])
 
-  // NEW: fetch role so we can show the AC tab to admins only
   useEffect(() => {
     fetch('/api/auth/me', { cache: 'no-store' })
       .then(r => r.ok ? r.json() : Promise.reject())
-      .then(me => setRole(me?.user?.role ?? 'user'))
+      .then(me => {
+        const r = me?.user?.role ?? 'user'
+        setRole(String(r))
+      })
       .catch(() => setRole('user'))
   }, [])
 
   return (
     <div className="grid gap-6">
-      {/* Top Tabs: Match | Sourcing (dropdown) | CV Formatting (dropdown) | ActiveCampaign (admin) */}
       <div className="flex gap-2 mb-6 justify-center">
-        {/* Match (simple button) */}
         <button
           onClick={() => setTab('match')}
           className={`tab ${tab === 'match' ? 'tab-active' : ''}`}
@@ -57,7 +53,6 @@ export default function ClientShell(): JSX.Element {
           Candidate Matching
         </button>
 
-        {/* Sourcing dropdown (no arrow, no tab switch until item chosen) */}
         <div className="relative" data-sourcing-root>
           <button
             onClick={() => setSourceOpen(v => !v)}
@@ -66,7 +61,6 @@ export default function ClientShell(): JSX.Element {
           >
             Sourcing
           </button>
-
           {sourceOpen && (
             <div className="absolute left-1/2 -translate-x-1/2 mt-2 w-44 rounded-xl border bg-white shadow-lg overflow-hidden z-10">
               <button
@@ -85,7 +79,6 @@ export default function ClientShell(): JSX.Element {
           )}
         </div>
 
-        {/* CV Formatting dropdown */}
         <div className="relative" data-cv-root>
           <button
             onClick={() => setCvOpen(v => !v)}
@@ -94,7 +87,6 @@ export default function ClientShell(): JSX.Element {
           >
             CV Formatting
           </button>
-
           {cvOpen && (
             <div className="absolute left-1/2 -translate-x-1/2 mt-2 w-44 rounded-xl border bg-white shadow-lg overflow-hidden z-10">
               <button
@@ -113,8 +105,8 @@ export default function ClientShell(): JSX.Element {
           )}
         </div>
 
-        {/* NEW: ActiveCampaign tab (admin only) */}
-        {role === 'admin' && (
+        {/* ✅ Admin-only AC tab with case-insensitive role check */}
+        {isAdmin && (
           <button
             onClick={() => setTab('ac')}
             className={`tab ${tab === 'ac' ? 'tab-active' : ''}`}
@@ -125,18 +117,10 @@ export default function ClientShell(): JSX.Element {
         )}
       </div>
 
-      {/* Active tab content */}
       {tab === 'match' && <MatchTab />}
-
       {tab === 'source' && <SourceTab mode={sourceMode} />}
-
-      {tab === 'cv' && (
-        // Pass the chosen template down; CvTab will render *without* its own picker when controlled
-        <CvTab templateFromShell={cvTemplate} />
-      )}
-
-      {/* NEW: AC content (admin only) */}
-      {tab === 'ac' && role === 'admin' && <ActiveCampaignTab />}
+      {tab === 'cv' && <CvTab templateFromShell={cvTemplate} />}
+      {tab === 'ac' && isAdmin && <ActiveCampaignTab />}
     </div>
   )
 }
