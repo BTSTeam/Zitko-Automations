@@ -3,8 +3,7 @@ export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
 import { NextRequest, NextResponse } from 'next/server'
-import { AC } from '@/lib/config'
-import { getSession } from '@/lib/session' // to enforce admin
+import { AC, requiredActiveCampaignEnv } from '@/lib/config'
 
 type Candidate = {
   first_name?: string
@@ -14,41 +13,25 @@ type Candidate = {
   city?: string
 }
 
-function ensureAdminOrThrow(session: any) {
-  const role = session.user?.role ?? 'user'
-  if (role !== 'admin') {
-    throw new Response('Forbidden', { status: 403 })
-  }
-}
-
 function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = []
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size))
   return out
 }
 
-// crude estimator to stay under ~350KB JSON per chunk (safety margin from 400KB)
 function bytes(str: string) {
   return Buffer.byteLength(str, 'utf8')
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await getSession()
-    ensureAdminOrThrow(session)
-
-    if (!AC.BASE_URL || !AC.API_TOKEN) {
-      return NextResponse.json(
-        { error: 'ActiveCampaign is not configured (BASE_URL/API_TOKEN).' },
-        { status: 500 }
-      )
-    }
+    requiredActiveCampaignEnv()
 
     const body = await req.json()
     const { candidates, tagName, listIds = [], excludeAutomations = true } = body as {
       candidates: Candidate[]
-      tagName?: string // optional; can be empty if you don’t want tags
-      listIds?: number[] // optional AC list IDs to subscribe
+      tagName?: string
+      listIds?: number[]
       excludeAutomations?: boolean
     }
 
@@ -56,7 +39,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No candidates provided.' }, { status: 400 })
     }
 
-    // map Vincere candidates -> AC contacts
     const mapped = candidates
       .filter(c => c.email && /\S+@\S+\.\S+/.test(c.email))
       .map(c => {
@@ -67,10 +49,7 @@ export async function POST(req: NextRequest) {
         if (c.last_name) contact.last_name = c.last_name
         if (c.phone) contact.phone = c.phone
 
-        // Optional list subscriptions
         const subscribe = (listIds || []).map((listid: number) => ({ listid }))
-
-        // Tags by name (lets AC create if missing)
         const tags = tagName ? [tagName] : []
 
         return {
@@ -84,16 +63,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No candidates with valid emails.' }, { status: 400 })
     }
 
-    // AC supports up to 250 contacts per request; also keep payload < 400KB
     const CONTACTS_MAX = 250
     const chunks = chunk(mapped, CONTACTS_MAX)
 
     const results: any[] = []
     for (const group of chunks) {
-      // shrink group until under ~350KB
+      // ensure payload stays under ~350KB
       let payload = {
         contacts: group,
-        callback: undefined, // optional: you can add a callback here if you want
+        callback: undefined as any, // optional; omitted
         exclude_automations: !!excludeAutomations,
       }
       let json = JSON.stringify(payload)
@@ -115,22 +93,16 @@ export async function POST(req: NextRequest) {
 
       const text = await res.text()
       let data: any = text
-      try { data = JSON.parse(text) } catch { /* keep raw text */ }
+      try { data = JSON.parse(text) } catch {}
 
-      if (!res.ok) {
-        results.push({ ok: false, status: res.status, data })
-        // you could break here or continue importing later chunks
-      } else {
-        results.push({ ok: true, status: res.status, data })
-      }
+      results.push({ ok: res.ok, status: res.status, data })
 
-      // Respect AC rate limits (multi-contact ≤ 100 req/min); a tiny delay is polite
+      // polite delay; AC bulk ≤ 100 req/min
       await new Promise(r => setTimeout(r, 250))
     }
 
     return NextResponse.json({ results }, { status: 200 })
   } catch (e: any) {
-    if (e instanceof Response) return e
     return NextResponse.json({ error: e?.message ?? 'Unknown error' }, { status: 500 })
   }
 }
