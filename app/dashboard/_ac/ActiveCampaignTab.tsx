@@ -35,7 +35,7 @@ export default function ActiveCampaignTab() {
 
   // Load pools and AC tags on entering the tab
   useEffect(() => {
-    if (role !== 'admin') return
+    if (role !== 'Admin') return
 
     // Talent Pools for current user
     fetch('/api/vincere/talentpools/user', { cache: 'no-store' })
@@ -87,7 +87,7 @@ export default function ActiveCampaignTab() {
 
   async function sendToActiveCampaign() {
     setMessage('')
-    if (role !== 'admin') return
+    if (role !== 'Admin') return
     if (!tagName.trim()) { setMessage('Enter or select a Tag'); return }
 
     const prepared = candidates
@@ -127,7 +127,7 @@ export default function ActiveCampaignTab() {
     }
   }
 
-  if (role !== 'admin') {
+  if (role !== 'Admin') {
     return <div className="text-sm text-red-600">Admin only.</div>
   }
 
