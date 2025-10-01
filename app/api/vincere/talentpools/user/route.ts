@@ -25,8 +25,8 @@ function makeUserId(u: any): string {
 
 export async function GET(_req: NextRequest) {
   try {
-    const session = await getSession()
-    const idToken = session.tokens?.idToken        // ✅ camelCase
+    let session = await getSession()
+    let idToken = session.tokens?.idToken
     const userKey = session.user?.email ?? 'unknown'
     if (!idToken) {
       return NextResponse.json({ error: 'Not connected to Vincere' }, { status: 401 })
@@ -37,7 +37,7 @@ export async function GET(_req: NextRequest) {
     const url = `${BASE}/talentpools/user/${encodeURIComponent(userId)}`
 
     const headers = new Headers()
-    headers.set('id-token', idToken)                                     // ✅ keep header as 'id-token'
+    headers.set('id-token', idToken)
     headers.set('x-api-key', (config as any).VINCERE_PUBLIC_API_KEY || config.VINCERE_API_KEY)
     headers.set('accept', 'application/json')
 
@@ -45,9 +45,15 @@ export async function GET(_req: NextRequest) {
 
     let res = await doFetch()
     if (res.status === 401 || res.status === 403) {
-      const fresh = await refreshIdToken(userKey)
-      if (!fresh) return NextResponse.json({ error: 'Auth refresh failed' }, { status: 401 })
-      headers.set('id-token', fresh)
+      const ok = await refreshIdToken(userKey)   // boolean
+      if (!ok) return NextResponse.json({ error: 'Auth refresh failed' }, { status: 401 })
+
+      // 🔁 re-read session to get the updated token
+      session = await getSession()
+      idToken = session.tokens?.idToken
+      if (!idToken) return NextResponse.json({ error: 'No idToken after refresh' }, { status: 401 })
+      headers.set('id-token', idToken)
+
       res = await doFetch()
     }
 
