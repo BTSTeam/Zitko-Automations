@@ -15,7 +15,6 @@ function makeUserId(u: any): string {
   const l = clean(last)
   if (f || l) return [f, l].filter(Boolean).join('_')
 
-  // fallback from email local-part
   const email = (u?.email || '').toLowerCase()
   if (email.includes('@')) {
     const local = email.split('@')[0]
@@ -27,7 +26,7 @@ function makeUserId(u: any): string {
 export async function GET(_req: NextRequest) {
   try {
     const session = await getSession()
-    const idToken = session.tokens?.id_token
+    const idToken = session.tokens?.idToken        // ✅ camelCase
     const userKey = session.user?.email ?? 'unknown'
     if (!idToken) {
       return NextResponse.json({ error: 'Not connected to Vincere' }, { status: 401 })
@@ -35,11 +34,10 @@ export async function GET(_req: NextRequest) {
 
     const userId = makeUserId(session.user)
     const BASE = config.VINCERE_TENANT_API_BASE.replace(/\/$/, '')
-    // Required Vincere endpoint per your spec:
     const url = `${BASE}/talentpools/user/${encodeURIComponent(userId)}`
 
     const headers = new Headers()
-    headers.set('id-token', idToken)
+    headers.set('id-token', idToken)                                     // ✅ keep header as 'id-token'
     headers.set('x-api-key', (config as any).VINCERE_PUBLIC_API_KEY || config.VINCERE_API_KEY)
     headers.set('accept', 'application/json')
 
