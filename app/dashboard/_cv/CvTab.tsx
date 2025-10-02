@@ -106,22 +106,25 @@ async function bakeHeaderFooter(input: Blob): Promise<Blob> {
       const marginX = 28
       const stripHeight = 54
       last.drawRectangle({ x: 0, y: 0, width: w, height: stripHeight, color: rgb(1, 1, 1) })
-
+    
       const footerLines = [
         'Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Inc',
         'Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL',
         'Tel: 01480 473245  Web: www.zitkogroup.com',
       ]
-
+    
       const fontSize = 8.5
       const lineGap = 2
-      let y = 10
-
-      footerLines.forEach((line) => {
+      const step = fontSize + lineGap
+    
+      // draw TOP -> DOWN so visual order matches the array order
+      const yTop = stripHeight - (fontSize + 10)  // 10px top padding within strip
+    
+      footerLines.forEach((line, i) => {
         const textWidth = font.widthOfTextAtSize(line, fontSize)
         const x = Math.max(marginX, (w - textWidth) / 2)
+        const y = yTop - i * step
         last.drawText(line, { x, y, size: fontSize, font, color: rgb(0.97, 0.58, 0.11) })
-        y += fontSize + lineGap
       })
     }
 
