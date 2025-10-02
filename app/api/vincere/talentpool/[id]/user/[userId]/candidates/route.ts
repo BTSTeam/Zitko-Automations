@@ -56,22 +56,22 @@ function normalizeCandidates(data: any): Norm[] {
     .filter((x: any) => x && typeof x === 'object')
     .map((r: any) => {
       let first = r.first_name ?? r.firstName ?? ''
-      let last = r.last_name ?? r.lastName ?? ''
+      let last  = r.last_name  ?? r.lastName  ?? ''
       if ((!first || !last) && typeof r.name === 'string') {
         const parts = r.name.trim().split(/\s+/)
         first = first || parts[0] || ''
-        last = last || parts.slice(1).join(' ') || ''
+        last  = last  || parts.slice(1).join(' ') || ''
       }
       const email = extractEmail(r) || ''
       return {
         first_name: String(first || '').trim(),
-        last_name: String(last || '').trim(),
-        email: String(email || '').trim(),
+        last_name:  String(last || '').trim(),
+        email:      String(email || '').trim(),
       }
     })
 }
 
-/** Try to parse a "total results" field from various Vincere/ES styles */
+/** Parse a total count from various Vincere/ES payload shapes */
 function parseTotal(d: any): number | null {
   const n =
     (typeof d?.numFound === 'number' && d.numFound) ||
@@ -84,7 +84,6 @@ function parseTotal(d: any): number | null {
   return typeof n === 'number' ? n : null
 }
 
-/** Append rows= to a URL (harmless if upstream ignores it) */
 function withRows(url: string, rows: number): string {
   return url.includes('?') ? `${url}&rows=${rows}` : `${url}?rows=${rows}`
 }
@@ -94,7 +93,6 @@ export async function GET(
   { params }: { params: { id: string; userId: string } }
 ) {
   try {
-    // allow ?rows= to control preview size; default 500
     const rows = Math.max(1, Number(req.nextUrl.searchParams.get('rows') ?? 500))
 
     let session = await getSession()
@@ -104,20 +102,12 @@ export async function GET(
 
     const BASE = withApiV2(config.VINCERE_TENANT_API_BASE)
 
-    // Try a few likely upstreams, requesting rows where possible
     const upstreams: string[] = [
-      // exact spec (singular)
-      `${BASE}/talentpool/${encodeURIComponent(params.id)}/user/${encodeURIComponent(
-        params.userId
-      )}/candidates`,
-      // plural variant (some tenants use plural)
-      `${BASE}/talentpools/${encodeURIComponent(params.id)}/user/${encodeURIComponent(
-        params.userId
-      )}/candidates`,
-      // without /user/
+      `${BASE}/talentpool/${encodeURIComponent(params.id)}/user/${encodeURIComponent(params.userId)}/candidates`,
+      `${BASE}/talentpools/${encodeURIComponent(params.id)}/user/${encodeURIComponent(params.userId)}/candidates`,
       `${BASE}/talentpool/${encodeURIComponent(params.id)}/candidates`,
       `${BASE}/talentpools/${encodeURIComponent(params.id)}/candidates`,
-    ].map((u) => withRows(u, rows))
+    ].map(u => withRows(u, rows))
 
     const headers = new Headers({
       'id-token': idToken,
@@ -126,15 +116,14 @@ export async function GET(
       Authorization: `Bearer ${idToken}`,
     })
 
-    const doFetch = (url: string) =>
-      fetch(url, { method: 'GET', headers, cache: 'no-store' })
+    const doFetch = (url: string) => fetch(url, { method: 'GET', headers, cache: 'no-store' })
     const tried: Array<{ url: string; status?: number; count?: number }> = []
 
     let finalCandidates: Norm[] = []
     let finalUrl = upstreams[0]
     let poolTotal: number | null = null
 
-    // 1) Try each upstream endpoint until we get rows
+    // 1) Try direct endpoints
     for (const url of upstreams) {
       finalUrl = url
       let res = await doFetch(url)
@@ -149,9 +138,7 @@ export async function GET(
         res = await doFetch(url)
       }
       const data = await res.json().catch(() => ({}))
-      // attempt to pick up a total if this payload includes one
-      poolTotal = poolTotal ?? parseTotal(data)
-
+      poolTotal = poolTotal ?? parseTotal(data) // some tenants include total here
       const norm = normalizeCandidates(data)
       tried.push({ url, status: res.status, count: norm.length })
       if (norm.length) {
@@ -160,7 +147,7 @@ export async function GET(
       }
     }
 
-    // 2) If still no rows, use search fallbacks (explicit rows=)
+    // 2) Fallback to search (and get totals) if no rows from direct
     if (!finalCandidates.length) {
       const fl = encodeURIComponent('first_name,last_name,email')
       const searches = [
@@ -173,12 +160,28 @@ export async function GET(
         let res = await doFetch(s)
         const data = await res.json().catch(() => ({}))
         poolTotal = poolTotal ?? parseTotal(data)
-
         const norm = normalizeCandidates(data)
         tried.push({ url: s, status: res.status, count: norm.length })
         if (norm.length) {
           finalCandidates = norm
           finalUrl = s
+          break
+        }
+      }
+    }
+
+    // 3) If we still don't have a total, do a quick "count probe" via search
+    if (poolTotal == null) {
+      const keys = ['talent_pool_id', 'talentpool_id', 'talentPoolId', 'pool_id'] as const
+      const flCount = encodeURIComponent('id') // minimal
+      for (const key of keys) {
+        const probe = `${BASE}/candidate/search?${key}=${encodeURIComponent(params.id)}&fl=${flCount}&rows=1&start=0`
+        const res = await doFetch(probe)
+        const data = await res.json().catch(() => ({}))
+        tried.push({ url: probe, status: res.status, count: 1 })
+        const t = parseTotal(data)
+        if (typeof t === 'number') {
+          poolTotal = t
           break
         }
       }
@@ -190,7 +193,7 @@ export async function GET(
         meta: {
           upstream: finalUrl,
           count: finalCandidates.length,
-          total: poolTotal, // ← true pool size when the API exposes it
+          total: poolTotal,       // ← always try to provide this
           tried,
           rowsRequested: rows,
         },
