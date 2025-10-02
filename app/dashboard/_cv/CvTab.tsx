@@ -597,15 +597,21 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     const fd = new FormData()
     fd.append('file', new File([file], desiredName, { type: (file as any).type || 'application/octet-stream' }))
     fd.append('filename', desiredName)
-
+  
     const res = await fetch('/api/upload', { method: 'POST', body: fd, credentials: 'include' })
-
+  
     let data: any = null
     const text = await res.text()
     try { data = text ? JSON.parse(text) : {} } catch { data = { raw: text } }
-
+  
     if (!res.ok || !data?.ok || !data?.url) {
-      throw new Error((data && (data.error || data.raw)) || `Blob upload failed (${res.status})`)
+      const errMsg =
+        (typeof data?.error === 'string' && data.error) ||
+        (typeof data?.message === 'string' && data.message) ||
+        (data?.error && typeof data.error?.message === 'string' && data.error.message) ||
+        (typeof data?.raw === 'string' && data.raw) ||
+        `Blob upload failed (${res.status})`
+      throw new Error(errMsg)
     }
     return data.url as string
   }
@@ -614,23 +620,47 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   async function postBase64ToVincere(fileName: string, base64: string, cid: string) {
     const payload = { file_name: fileName, document_type_id: 1, base_64_content: base64, original_cv: true }
     const res = await fetch(`/api/vincere/candidate/${encodeURIComponent(cid)}/file`, {
-      method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload),
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(payload),
     })
     const raw = await res.text()
     let data: any = null
     try { data = raw ? JSON.parse(raw) : {} } catch { data = { raw } }
-    if (!res.ok || !data?.ok) throw new Error(data?.error || data?.raw || `Upload to Vincere failed (${res.status})`)
+  
+    if (!res.ok || !data?.ok) {
+      const errMsg =
+        (typeof data?.error === 'string' && data.error) ||
+        (typeof data?.message === 'string' && data.message) ||
+        (data?.error && typeof data.error?.message === 'string' && data.error.message) ||
+        (typeof data?.raw === 'string' && data.raw) ||
+        `Upload to Vincere failed (${res.status})`
+      throw new Error(errMsg)
+    }
   }
 
   async function postFileUrlToVincere(fileName: string, publicUrl: string, cid: string) {
     const payload = { file_name: fileName, document_type_id: 1, url: publicUrl, original_cv: true }
     const res = await fetch(`/api/vincere/candidate/${encodeURIComponent(cid)}/file`, {
-      method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload),
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(payload),
     })
     const raw = await res.text()
     let data: any = null
     try { data = raw ? JSON.parse(raw) : {} } catch { data = { raw } }
-    if (!res.ok || !data?.ok) throw new Error(data?.error || data?.raw || `Upload to Vincere failed (${res.status})`)
+  
+    if (!res.ok || !data?.ok) {
+      const errMsg =
+        (typeof data?.error === 'string' && data.error) ||
+        (typeof data?.message === 'string' && data.message) ||
+        (data?.error && typeof data.error?.message === 'string' && data.error.message) ||
+        (typeof data?.raw === 'string' && data.raw) ||
+        `Upload to Vincere failed (${res.status})`
+      throw new Error(errMsg)
+    }
   }
 
   // Handle a selected/dropped file for SALES — bake immediately so preview shows branding
@@ -739,7 +769,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   async function uploadSalesFileToVincereUrl(finalName: string, cid: string) {
     if (!salesDocBlob) throw new Error('No Sales document to upload')
     const baked = salesDocBlob // already baked in handleFile()
-
+  
     if (baked.size <= BASE64_THRESHOLD_BYTES) {
       const base64 = await blobToBase64(baked)
       await postBase64ToVincere(finalName, base64, cid)
@@ -747,31 +777,38 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       const publicUrl = await uploadBlobToPublicUrl(baked, finalName)
       await postFileUrlToVincere(finalName, publicUrl, cid)
     }
-  }
+}
 
   async function confirmUpload() {
     try {
       setUploadBusy(true)
       setUploadErr(null)
       setUploadSuccess(null)
-
+  
       const cid = (uploadContext === 'sales' ? uploadCandidateId : candidateId).trim()
       if (!cid) throw new Error('Please enter a Candidate ID')
       if (!uploadFileName?.trim()) throw new Error('Please enter a file name')
-
+  
       let finalName = uploadFileName.trim()
       if (!/\.pdf$/i.test(finalName)) finalName += '.pdf'
-
+  
       if (uploadContext === 'standard') {
         await uploadStandardPreviewToVincereUrl(finalName, cid)
       } else {
         await uploadSalesFileToVincereUrl(finalName, cid)
       }
-
-      // Success state (keep modal open so user sees it)
+  
+      // success message stays the same
       setUploadSuccess('Upload Successful')
     } catch (e: any) {
-      setUploadErr(e?.message || 'Upload failed')
+      const msg =
+        (e && typeof e.message === 'string' && e.message) ||
+        (typeof e === 'string' && e) ||
+        (e?.response && typeof e.response?.data === 'string' && e.response.data) ||
+        (e?.response && typeof e.response?.data?.message === 'string' && e.response.data.message) ||
+        (e?.error && typeof e.error?.message === 'string' && e.error.message) ||
+        JSON.stringify(e)
+      setUploadErr(msg)
     } finally {
       setUploadBusy(false)
     }
