@@ -71,8 +71,8 @@ function normalizeCandidates(data: any): Norm[] {
     })
 }
 
-/** GET helper w/ auth + no-store */
-const do = (headers: Headers) => ({
+/** HTTP helpers (GET/POST) with auth + no-store */
+const http = (headers: Headers) => ({
   get: (url: string) => fetch(url, { method: 'GET', headers, cache: 'no-store' }),
   postJson: (url: string, body: any) =>
     fetch(url, {
@@ -128,33 +128,29 @@ async function fetchGetCandidatesPaged(args: {
   pageSize: number
 }) {
   const { base, poolId, headers, refresh, rowsTarget, pageSize } = args
-  const http = do(headers)
+  const req = http(headers)
   const url = `${base}/talentpools/${encodeURIComponent(poolId)}/getCandidates`
 
   type Strategy = (page0: number, size: number) => Promise<{ ok: boolean; status: number; data: any; used: string }>
   const strategies: Strategy[] = [
-    // JSON body: { page, size } (page is 0-based)
     async (page0, size) => {
-      const res = await http.postJson(url, { page: page0, size })
+      const res = await req.postJson(url, { page: page0, size })
       const data = await res.json().catch(() => ({}))
       return { ok: res.ok, status: res.status, data, used: `${url} (POST JSON {page,size})` }
     },
-    // JSON body: { pageNumber, pageSize }
     async (page0, size) => {
-      const res = await http.postJson(url, { pageNumber: page0, pageSize: size })
+      const res = await req.postJson(url, { pageNumber: page0, pageSize: size })
       const data = await res.json().catch(() => ({}))
       return { ok: res.ok, status: res.status, data, used: `${url} (POST JSON {pageNumber,pageSize})` }
     },
-    // JSON body: { pageable: { pageNumber, pageSize } }
     async (page0, size) => {
-      const res = await http.postJson(url, { pageable: { pageNumber: page0, pageSize: size } })
+      const res = await req.postJson(url, { pageable: { pageNumber: page0, pageSize: size } })
       const data = await res.json().catch(() => ({}))
       return { ok: res.ok, status: res.status, data, used: `${url} (POST JSON {pageable})` }
     },
-    // POST with querystring: ?page=0&size=…
     async (page0, size) => {
       const qs = `${url}?page=${page0}&size=${size}`
-      const res = await http.postNoBody(qs)
+      const res = await req.postNoBody(qs)
       const data = await res.json().catch(() => ({}))
       return { ok: res.ok, status: res.status, data, used: `${qs} (POST no body)` }
     },
@@ -202,7 +198,6 @@ async function fetchGetCandidatesPaged(args: {
     if (ids.length === 0) break
     collectedIds.push(...ids)
     pagesFetched++
-    // stop if server says we've reached last page
     if (resp.data?.last === true) break
   }
 
@@ -217,7 +212,7 @@ async function fetchCandidateDetails(args: {
   ids: number[]
 }) {
   const { base, headers, refresh, ids } = args
-  const http = do(headers)
+  const req = http(headers)
   const fl = encodeURIComponent('first_name,last_name,email')
 
   const tried: Array<{ url: string; status?: number; count?: number }> = []
@@ -230,9 +225,9 @@ async function fetchCandidateDetails(args: {
   const paramKeys = ['ids', 'id', 'candidate_ids']
   for (const key of paramKeys) {
     const url = `${base}/candidate/search?${key}=${encodeURIComponent(ids.join(','))}&fl=${fl}&rows=${ids.length}`
-    let res = await http.get(url)
+    let res = await req.get(url)
     if ((res.status === 401 || res.status === 403) && (await refresh())) {
-      res = await http.get(url)
+      res = await req.get(url)
     }
     const data = await res.json().catch(() => ({}))
     const norm = normalizeCandidates(data)
@@ -250,9 +245,9 @@ async function fetchCandidateDetails(args: {
   ]
   for (const body of postBodies) {
     const url = `${base}/candidate/search`
-    let res = await http.postJson(url, { ...body, fl: 'first_name,last_name,email', rows: ids.length })
+    let res = await req.postJson(url, { ...body, fl: 'first_name,last_name,email', rows: ids.length })
     if ((res.status === 401 || res.status === 403) && (await refresh())) {
-      res = await http.postJson(url, { ...body, fl: 'first_name,last_name,email', rows: ids.length })
+      res = await req.postJson(url, { ...body, fl: 'first_name,last_name,email', rows: ids.length })
     }
     const data = await res.json().catch(() => ({}))
     const norm = normalizeCandidates(data)
@@ -266,9 +261,9 @@ async function fetchCandidateDetails(args: {
   for (let i = 0; i < perIdLimit; i++) {
     const id = ids[i]
     const url = `${base}/candidate/${encodeURIComponent(String(id))}`
-    let res = await http.get(url)
+    let res = await req.get(url)
     if ((res.status === 401 || res.status === 403) && (await refresh())) {
-      res = await http.get(url)
+      res = await req.get(url)
     }
     const data = await res.json().catch(() => ({}))
     const norm = normalizeCandidates(data)
@@ -285,7 +280,7 @@ export async function GET(
 ) {
   try {
     const rowsTarget = Math.max(1, Number(req.nextUrl.searchParams.get('rows') ?? 500))
-    const pageSize = Math.min(rowsTarget, 500) // safe page size
+    const pageSize = Math.min(rowsTarget, 500)
 
     // session/auth
     let session = await getSession()
