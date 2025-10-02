@@ -264,9 +264,15 @@ export default function ActiveCampaignTab() {
         {message && <div className="mt-2 text-sm text-gray-700">{message}</div>}
       </div>
 
-      {/* RESULTS PANEL: white card, no title, auto-expanding height */}
+      {/* RESULTS PANEL: white card, scroller + count */}
       <div className="rounded-2xl border bg-white">
-        <div className="overflow-x-auto text-sm">
+        {/* Count only (no title) */}
+        <div className="flex items-center justify-end px-4 py-2">
+          <div className="text-xs text-gray-500">{candidates.length} loaded</div>
+        </div>
+
+        {/* Scrollable list */}
+        <div className="max-h-96 overflow-auto text-sm">
           {candidates.length === 0 ? (
             <div className="px-4 py-6 text-gray-500">No candidates loaded.</div>
           ) : (
