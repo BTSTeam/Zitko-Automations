@@ -2,99 +2,132 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { config } from '@/lib/config'
 import { getSession } from '@/lib/session'
 import { refreshIdToken } from '@/lib/vincereRefresh'
 
-// Hardcoded per your instruction (can make env-driven later)
-const VINCERE_TALENTPOOL_USER_ID =
-  process.env.VINCERE_TALENTPOOL_USER_ID?.trim() || '29018'
-
-// Ensure base includes /api/v2
 function withApiV2(base: string): string {
   let b = (base || '').trim().replace(/\/+$/, '')
   if (!/\/api\/v\d+$/i.test(b)) b = `${b}/api/v2`
   return b
 }
 
-type Pool = { id?: string | number; name?: string; [k: string]: any }
-
-function normalizePools(data: any): Pool[] {
-  const raw =
-    (Array.isArray(data?.pools) && data.pools) ||
-    (Array.isArray(data?.talentPools) && data.talentPools) ||
-    (Array.isArray(data?.talent_pools) && data.talent_pools) ||
-    (Array.isArray(data?.docs) && data.docs) ||
-    (Array.isArray(data?.items) && data.items) ||
-    (Array.isArray(data?.results) && data.results) ||
-    (Array.isArray(data) ? data : [])
-
-  return raw
-    .map((p: any) => {
-      const id =
-        p?.id ??
-        p?.pool_id ??
-        p?.talent_pool_id ??
-        p?.talentPoolId ??
-        p?.uid ??
-        p?.value ??
-        p?.key
-      const name =
-        p?.name ??
-        p?.pool_name ??
-        p?.poolName ??
-        p?.title ??
-        p?.label ??
-        p?.displayName
-      return { id, name, ...p }
-    })
-    .filter((p: Pool) => p.id)
+function unwrapToArray(json: any): any[] {
+  if (Array.isArray(json)) return json
+  if (Array.isArray(json?.items)) return json.items
+  if (Array.isArray(json?.data?.items)) return json.data.items
+  if (Array.isArray(json?.data)) return json.data
+  if (Array.isArray(json?.docs)) return json.docs
+  if (Array.isArray(json?.results)) return json.results
+  if (Array.isArray(json?.pools)) return json.pools
+  if (Array.isArray(json?.content)) return json.content // Vincere paging shape
+  return []
 }
 
-export async function GET(_req: NextRequest) {
+// Safe session token reader (supports both shapes used in your app)
+function getIdTokenFromSession(session: any): string | null {
+  return session?.vincere?.id_token ?? session?.tokens?.idToken ?? null
+}
+
+// Try to find a sensible userId to query pools for
+function getUserId(session: any): string | null {
+  // Highest priority: explicit env
+  const envUser = process.env.NEXT_PUBLIC_VINCERE_TALENTPOOL_USER_ID
+  if (envUser) return String(envUser)
+
+  // Session-derived fallbacks (adapt if you store it elsewhere)
+  return (
+    session?.vincere?.user_id ??
+    session?.user?.id ??
+    session?.user?.userId ??
+    null
+  )
+}
+
+export async function GET() {
   try {
-    let session = await getSession()
-    let idToken = session.tokens?.idToken
-    const userKey = session.user?.email ?? 'unknown'
-    if (!idToken) return NextResponse.json({ error: 'Not connected to Vincere' }, { status: 401 })
+    let session: any = await getSession()
+    let idToken = getIdTokenFromSession(session)
+    if (!idToken) {
+      return NextResponse.json({ error: 'Not connected to Vincere' }, { status: 401 })
+    }
 
-    const RAW_BASE = config.VINCERE_TENANT_API_BASE
-    const BASE = withApiV2(RAW_BASE) // ✅ guarantees /api/v2 is present
+    const userId = getUserId(session)
+    if (!userId) {
+      return NextResponse.json({ error: 'No Vincere userId available' }, { status: 400 })
+    }
 
-    const url = `${BASE}/talentpools/user/${encodeURIComponent(VINCERE_TALENTPOOL_USER_ID)}`
+    const BASE = withApiV2(config.VINCERE_TENANT_API_BASE)
+    // Vincere endpoint pattern for pools by user
+    const upstreamUrl = `${BASE}/talentpools/user/${encodeURIComponent(String(userId))}`
 
     const headers = new Headers({
+      accept: 'application/json',
       'id-token': idToken,
       'x-api-key': (config as any).VINCERE_PUBLIC_API_KEY || config.VINCERE_API_KEY,
-      accept: 'application/json',
       Authorization: `Bearer ${idToken}`,
     })
 
-    const doFetch = () => fetch(url, { method: 'GET', headers, cache: 'no-store' })
-
+    const doFetch = () => fetch(upstreamUrl, { method: 'GET', headers, cache: 'no-store' })
     let res = await doFetch()
+
     if (res.status === 401 || res.status === 403) {
-      const ok = await refreshIdToken(userKey)
-      if (!ok) return NextResponse.json({ error: 'Auth refresh failed' }, { status: 401 })
+      // Support both refresh signatures used elsewhere in your app
+      const maybeUserKey = session?.user?.email ?? 'unknown'
+      let refreshedOk = false
+      try {
+        const refreshed = await (refreshIdToken as any)(session)
+        refreshedOk = !!refreshed
+      } catch {
+        try {
+          const refreshed = await (refreshIdToken as any)(maybeUserKey)
+          refreshedOk = !!refreshed
+        } catch {
+          refreshedOk = false
+        }
+      }
+      if (!refreshedOk) {
+        return NextResponse.json({ error: 'Auth refresh failed' }, { status: 401 })
+      }
       session = await getSession()
-      idToken = session.tokens?.idToken
-      if (!idToken) return NextResponse.json({ error: 'No idToken after refresh' }, { status: 401 })
+      idToken = getIdTokenFromSession(session)
+      if (!idToken) {
+        return NextResponse.json({ error: 'No idToken after refresh' }, { status: 401 })
+      }
       headers.set('id-token', idToken)
       headers.set('Authorization', `Bearer ${idToken}`)
       res = await doFetch()
     }
 
-    const data = await res.json().catch(() => ({}))
-    const pools = normalizePools(data)
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      return NextResponse.json(
+        { error: 'Upstream error', status: res.status, text },
+        { status: 502, headers: { 'x-vincere-upstream': upstreamUrl } }
+      )
+    }
+
+    const raw = await res.json().catch(() => ({}))
+    const arr = unwrapToArray(raw)
+
+    // Map to the UI shape your tab expects
+    const items = arr
+      .filter((x: any) => x && typeof x === 'object')
+      .map((p: any) => ({
+        id: p.id ?? p.pool_id ?? p.talent_pool_id ?? String(p?.uid ?? ''),
+        name: p.name ?? p.title ?? p.pool_name ?? '(unnamed pool)',
+      }))
+      .filter((p) => p.id)
 
     return NextResponse.json(
-      { pools },
+      { items, meta: { upstream: upstreamUrl, count: items.length } },
       {
         status: 200,
         headers: {
-          'x-vincere-userid': VINCERE_TALENTPOOL_USER_ID,
-          'x-vincere-base': BASE, // ✅ for quick verification in DevTools
+          'x-vincere-base': BASE,
+          'x-vincere-userid': String(userId),
+          'x-vincere-upstream': upstreamUrl,
         },
       }
     )
