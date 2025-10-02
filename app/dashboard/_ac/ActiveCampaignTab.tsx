@@ -20,9 +20,8 @@ export default function ActiveCampaignTab() {
   const [tags, setTags] = useState<Tag[]>([])
   const [tagName, setTagName] = useState('')
 
-  // On tab mount: fetch Talent Pools (auto) and AC tags (optional UX)
+  // On tab mount: fetch Talent Pools (auto) and AC tags
   useEffect(() => {
-    // Talent Pools for current user (hardcoded user_id handled server-side)
     fetch('/api/vincere/talentpools/user', { cache: 'no-store' })
       .then(async (r) => {
         const used = r.headers.get('x-vincere-userid') || ''
@@ -31,38 +30,50 @@ export default function ActiveCampaignTab() {
           throw new Error(`Pools fetch ${r.status}. userId=${used}. ${errText}`)
         }
         const data = await r.json()
-        const raw = Array.isArray(data?.docs) ? data.docs
-          : Array.isArray(data?.items) ? data.items
-          : Array.isArray(data) ? data
+        const arr: any[] = Array.isArray(data?.pools)
+          ? data.pools
+          : Array.isArray(data?.docs)
+          ? data.docs
+          : Array.isArray(data?.items)
+          ? data.items
+          : Array.isArray(data)
+          ? data
           : []
 
-        const mapped: Pool[] = raw.map((p: any) => ({
-          id: p.id ?? p.pool_id ?? p.talent_pool_id ?? String(p?.uid ?? ''),
-          name: p.name ?? p.title ?? p.pool_name ?? '(unnamed pool)',
-        })).filter(p => p.id)
+        const mapped: Pool[] = arr
+          .map((p: any) => ({
+            id: p.id ?? p.pool_id ?? p.talent_pool_id ?? String(p?.uid ?? ''),
+            name: p.name ?? p.title ?? p.pool_name ?? '(unnamed pool)',
+          }))
+          .filter((p) => p.id)
 
         setPools(mapped)
         if (mapped.length && !poolId) setPoolId(String(mapped[0].id))
-        if (!mapped.length) setMessage(`No Talent Pools returned for user.`)
+        if (!mapped.length) setMessage('No Talent Pools returned for user.')
       })
       .catch((e) => {
         setPools([])
         setMessage(e?.message ?? 'Failed to load Talent Pools')
       })
 
-    // AC tags (optional)
     fetch('/api/activecampaign/tags', { cache: 'no-store' })
-      .then(r => r.ok ? r.json() : Promise.reject())
-      .then(data => setTags(Array.isArray(data?.tags) ? data.tags : []))
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((data) => setTags(Array.isArray(data?.tags) ? data.tags : []))
       .catch(() => setTags([]))
   }, [])
 
   async function retrievePoolCandidates() {
     setMessage('')
-    if (!poolId) { setMessage('Select a Talent Pool'); return }
+    if (!poolId) {
+      setMessage('Select a Talent Pool')
+      return
+    }
     setLoading(true)
     try {
-      const res = await fetch(`/api/vincere/talentpool/${encodeURIComponent(poolId)}/candidates`, { cache: 'no-store' })
+      const res = await fetch(
+        `/api/vincere/talentpool/${encodeURIComponent(poolId)}/candidates`,
+        { cache: 'no-store' },
+      )
       if (!res.ok) {
         const t = await res.text()
         throw new Error(`Failed to fetch pool candidates (${res.status}): ${t}`)
@@ -81,17 +92,23 @@ export default function ActiveCampaignTab() {
 
   async function sendToActiveCampaign() {
     setMessage('')
-    if (!tagName.trim()) { setMessage('Enter or select a Tag'); return }
+    if (!tagName.trim()) {
+      setMessage('Enter or select a Tag')
+      return
+    }
 
     const prepared = candidates
-      .filter(c => c?.email && /\S+@\S+\.\S+/.test(c.email))
-      .map(c => ({
+      .filter((c) => c?.email && /\S+@\S+\.\S+/.test(c.email))
+      .map((c) => ({
         first_name: c.first_name ?? '',
-        last_name:  c.last_name ?? '',
-        email:      c.email,
+        last_name: c.last_name ?? '',
+        email: c.email,
       }))
 
-    if (!prepared.length) { setMessage('No candidates with valid emails.'); return }
+    if (!prepared.length) {
+      setMessage('No candidates with valid emails.')
+      return
+    }
 
     try {
       const res = await fetch('/api/activecampaign/import', {
@@ -100,13 +117,16 @@ export default function ActiveCampaignTab() {
         body: JSON.stringify({
           candidates: prepared,
           tagName: tagName.trim(),
-          // listIds removed as requested
           excludeAutomations: true,
         }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
-        setMessage(`Import failed (${res.status}). ${typeof data === 'string' ? data : JSON.stringify(data)}`)
+        setMessage(
+          `Import failed (${res.status}). ${
+            typeof data === 'string' ? data : JSON.stringify(data)
+          }`,
+        )
       } else {
         setMessage('Import requested. Check console for detailed results.')
         console.log('AC Import results:', data)
@@ -119,19 +139,27 @@ export default function ActiveCampaignTab() {
   const col = 'px-4 py-2'
 
   return (
-    <div className="grid gap-4">
-      {/* Pool + Tag selectors */}
-      <div className="grid gap-2 sm:grid-cols-2">
+    <div className="grid gap-6">
+      {/* Top controls (styled to mirror your other pages) */}
+      <div className="grid gap-4 md:grid-cols-2">
         <label className="grid gap-1">
           <span className="text-sm font-medium">Talent Pool</span>
           <select
             value={poolId}
-            onChange={e => setPoolId(e.target.value)}
+            onChange={(e) => setPoolId(e.target.value)}
             className="rounded-xl border px-3 py-2"
           >
-            {pools.map(p => (
-              <option key={`${p.id}`} value={`${p.id}`}>{p.name}</option>
-            ))}
+            {pools.length === 0 ? (
+              <option value="" disabled>
+                No Talent Pools
+              </option>
+            ) : (
+              pools.map((p) => (
+                <option key={`${p.id}`} value={`${p.id}`}>
+                  {p.name}
+                </option>
+              ))
+            )}
           </select>
         </label>
 
@@ -140,23 +168,26 @@ export default function ActiveCampaignTab() {
           <div className="flex gap-2">
             <input
               value={tagName}
-              onChange={e => setTagName(e.target.value)}
+              onChange={(e) => setTagName(e.target.value)}
               placeholder="Type a tag or pick below"
               className="flex-1 rounded-xl border px-3 py-2"
               list="ac-tags"
             />
             <datalist id="ac-tags">
-              {tags.map(t => <option key={t.id} value={t.tag} />)}
+              {tags.map((t) => (
+                <option key={t.id} value={t.tag} />
+              ))}
             </datalist>
           </div>
         </label>
       </div>
 
-      <div className="flex gap-2">
+      {/* Primary actions */}
+      <div className="flex items-center gap-3">
         <button
           onClick={retrievePoolCandidates}
           disabled={loading || !poolId}
-          className="rounded-2xl border px-4 py-2 hover:bg-gray-50 disabled:opacity-50"
+          className="rounded-full px-6 py-3 bg-[#f7931e] text-white font-medium shadow-sm hover:opacity-95 disabled:opacity-50"
         >
           {loading ? 'Retrieving…' : 'Retrieve TP Candidates'}
         </button>
@@ -164,7 +195,7 @@ export default function ActiveCampaignTab() {
         <button
           onClick={sendToActiveCampaign}
           disabled={!tagName.trim() || candidates.length === 0}
-          className="rounded-2xl border px-4 py-2 hover:bg-gray-50 disabled:opacity-50"
+          className="rounded-full px-5 py-3 border font-medium hover:bg-gray-50 disabled:opacity-50"
         >
           Send to Active Campaign
         </button>
