@@ -8,6 +8,9 @@ type Tag = { id: number; tag: string }
 
 const TP_USER_ID = process.env.NEXT_PUBLIC_VINCERE_TALENTPOOL_USER_ID || '29018'
 
+// ==== Preview / pagination tuning ====
+const SAMPLE_PREVIEW_LIMIT = 50 // show 50 in UI; import job still processes all
+
 type JobStatus = 'running' | 'done' | 'error' | 'not-found'
 type JobProgress = {
   id?: string
@@ -119,10 +122,18 @@ export default function ActiveCampaignTab() {
     }
     setLoading(true)
     try {
+      // Request a small preview sample and (where supported) have the server return total
+      const qs = new URLSearchParams({
+        // prefer new param
+        limit: String(SAMPLE_PREVIEW_LIMIT),
+        // keep legacy param for backward-compat with existing route handlers
+        rows: String(SAMPLE_PREVIEW_LIMIT),
+      }).toString()
+
       const res = await fetch(
         `/api/vincere/talentpool/${encodeURIComponent(poolId)}/user/${encodeURIComponent(
           TP_USER_ID
-        )}/candidates?rows=500`,
+        )}/candidates?${qs}`,
         { cache: 'no-store' }
       )
       if (!res.ok) {
@@ -194,7 +205,7 @@ export default function ActiveCampaignTab() {
     }
 
     try {
-      // start background job
+      // Start background job (server will paginate whole pool; these numbers are safe defaults)
       const res = await fetch('/api/activecampaign/import-pool/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -202,10 +213,11 @@ export default function ActiveCampaignTab() {
           poolId,
           userId: TP_USER_ID,
           tagName: effectiveTag,
-          rows: 500,
-          max: 50000,
-          chunk: 500,
-          pauseMs: 300,
+          // optional knobs; server can ignore if it now self-tunes
+          rows: 200,
+          max: 100000,
+          chunk: 250,
+          pauseMs: 250,
         }),
       })
       const data = await res.json()
@@ -272,9 +284,9 @@ export default function ActiveCampaignTab() {
   const fmt = (n: number | null | undefined) =>
     typeof n === 'number' ? new Intl.NumberFormat().format(n) : '—'
 
-  // scroller only when >25 rows (so all 25 show without scrolling)
+  // scroller only when > sample (so all preview rows show without scrolling)
   const tableWrapClass =
-    candidates.length > 25 ? 'max-h-96 overflow-auto text-sm' : 'text-sm'
+    candidates.length > SAMPLE_PREVIEW_LIMIT ? 'max-h-96 overflow-auto text-sm' : 'text-sm'
 
   return (
     <div className="grid gap-6">
@@ -339,7 +351,7 @@ export default function ActiveCampaignTab() {
                 ? '!bg-[#001961] !text-white hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#001961]'
                 : 'bg-gray-100 text-gray-500 cursor-not-allowed'}`}
           >
-            {loading ? 'Retrieving…' : 'Retrieve TP Candidates'}
+            {loading ? 'Retrieving…' : `Retrieve TP Candidates (first ${SAMPLE_PREVIEW_LIMIT})`}
           </button>
 
           <button
