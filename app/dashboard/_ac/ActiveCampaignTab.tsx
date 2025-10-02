@@ -36,6 +36,9 @@ export default function ActiveCampaignTab() {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
 
+  // Pool total (true size reported by the API)
+  const [poolTotal, setPoolTotal] = useState<number | null>(null)
+
   // Tags
   const [tags, setTags] = useState<Tag[]>([])
   const [tagName, setTagName] = useState('')
@@ -48,10 +51,11 @@ export default function ActiveCampaignTab() {
   const [progress, setProgress] = useState<JobProgress | null>(null)
   const esRef = useRef<EventSource | null>(null)
 
-  // Reset the tick when inputs change
+  // Reset when inputs change
   useEffect(() => {
     setSendState('idle')
     setProgress(null)
+    setPoolTotal(null)
     if (esRef.current) {
       esRef.current.close()
       esRef.current = null
@@ -118,7 +122,7 @@ export default function ActiveCampaignTab() {
       const res = await fetch(
         `/api/vincere/talentpool/${encodeURIComponent(poolId)}/user/${encodeURIComponent(
           TP_USER_ID
-        )}/candidates?rows=500`, // preview up to 500 in UI
+        )}/candidates?rows=500`,
         { cache: 'no-store' }
       )
       if (!res.ok) {
@@ -128,10 +132,17 @@ export default function ActiveCampaignTab() {
       const data = await res.json()
       const rows: Candidate[] = Array.isArray(data?.candidates) ? data.candidates : []
       setCandidates(rows)
+
+      // NEW: capture the true pool size for the counter
+      const total =
+        typeof data?.meta?.total === 'number' ? data.meta.total : null
+      setPoolTotal(total)
+
       if (!rows.length) setMessage('No candidates found in this pool.')
     } catch (e: any) {
       setMessage(e?.message ?? 'Failed to load candidates')
       setCandidates([])
+      setPoolTotal(null)
     } finally {
       setLoading(false)
     }
@@ -198,7 +209,6 @@ export default function ActiveCampaignTab() {
 
       es.onerror = () => {
         // network hiccup; keep UI safe
-        // we won't flip to success/error here; server will finalize on next tick
       }
     } catch (e: any) {
       setSendState('error')
@@ -223,13 +233,18 @@ export default function ActiveCampaignTab() {
     </svg>
   )
 
-  const totalInPool = progress?.totals?.poolTotal ?? null
+  // Prefer the progress total (when sending). Otherwise use the preview's poolTotal.
+  const totalInPool = (progress?.totals?.poolTotal ?? poolTotal) ?? null
   const sent = progress?.totals?.sent ?? 0
   const percent =
     totalInPool && totalInPool > 0 ? Math.min(100, Math.round((sent / totalInPool) * 100)) : 0
 
   const fmt = (n: number | null | undefined) =>
     typeof n === 'number' ? new Intl.NumberFormat().format(n) : '—'
+
+  // Show a scroller only when there are many rows (>25)
+  const tableWrapClass =
+    candidates.length > 25 ? 'max-h-96 overflow-auto text-sm' : 'text-sm'
 
   return (
     <div className="grid gap-6">
@@ -310,7 +325,7 @@ export default function ActiveCampaignTab() {
           </button>
         </div>
 
-        {/* Progress bar + numbers (only when sending or done/error) */}
+        {/* Progress bar + numbers */}
         {(progress && progress.status !== 'not-found') && (
           <div className="mt-3">
             <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
@@ -337,15 +352,16 @@ export default function ActiveCampaignTab() {
         {message && <div className="mt-2 text-sm text-gray-700">{message}</div>}
       </div>
 
-      {/* RESULTS PANEL: white card, scroller + counts */}
+      {/* RESULTS PANEL: white card, conditional scroller + counts */}
       <div className="rounded-2xl border bg-white">
         <div className="flex items-center justify-end px-4 py-2">
           <div className="text-xs text-gray-500">
-            {candidates.length} loaded{totalInPool != null ? ` · ${fmt(totalInPool)} in pool` : ''}
+            {candidates.length} loaded
+            {totalInPool != null ? ` · ${fmt(totalInPool)} in pool` : ''}
           </div>
         </div>
 
-        <div className="max-h-96 overflow-auto text-sm">
+        <div className={tableWrapClass}>
           {candidates.length === 0 ? (
             <div className="px-4 py-6 text-gray-500">No candidates loaded.</div>
           ) : (
@@ -369,8 +385,7 @@ export default function ActiveCampaignTab() {
                             {c.email}
                           </a>
                         ) : (
-                          ''
-                        )}
+                          ''}
                       </td>
                       <td className={cell}>{(tagName || '').trim()}</td>
                     </tr>
