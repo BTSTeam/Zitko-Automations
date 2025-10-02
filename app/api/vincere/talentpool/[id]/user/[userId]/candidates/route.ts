@@ -7,18 +7,13 @@ import { config } from '@/lib/config'
 import { getSession } from '@/lib/session'
 import { refreshIdToken } from '@/lib/vincereRefresh'
 
-// Ensure base includes /api/v2
 function withApiV2(base: string): string {
   let b = (base || '').trim().replace(/\/+$/, '')
   if (!/\/api\/v\d+$/i.test(b)) b = `${b}/api/v2`
   return b
 }
 
-type NormalizedCandidate = {
-  first_name: string
-  last_name: string
-  email: string
-}
+type NormalizedCandidate = { first_name: string; last_name: string; email: string }
 
 function extractEmail(c: any): string {
   return (
@@ -73,8 +68,11 @@ export async function GET(
     if (!idToken) return NextResponse.json({ error: 'Not connected to Vincere' }, { status: 401 })
 
     const BASE = withApiV2(config.VINCERE_TENANT_API_BASE)
-    // Upstream: /talentpool/{id}/user/{user_id}/candidates
-    const url = `${BASE}/talentpool/${encodeURIComponent(params.id)}/user/${encodeURIComponent(params.userId)}/candidates`
+
+    // 🔎 Build and expose the exact upstream Vincere URL
+    const upstreamUrl =
+      `${BASE}/talentpool/${encodeURIComponent(params.id)}` +
+      `/user/${encodeURIComponent(params.userId)}/candidates`
 
     const headers = new Headers({
       'id-token': idToken,
@@ -83,7 +81,7 @@ export async function GET(
       Authorization: `Bearer ${idToken}`,
     })
 
-    const doFetch = () => fetch(url, { method: 'GET', headers, cache: 'no-store' })
+    const doFetch = () => fetch(upstreamUrl, { method: 'GET', headers, cache: 'no-store' })
 
     let res = await doFetch()
     if (res.status === 401 || res.status === 403) {
@@ -101,12 +99,13 @@ export async function GET(
     const candidates = normalizeCandidates(data)
 
     return NextResponse.json(
-      { candidates },
+      { candidates, meta: { upstream: upstreamUrl, count: candidates.length } },
       {
         status: 200,
         headers: {
           'x-vincere-base': BASE,
           'x-vincere-userid': params.userId,
+          'x-vincere-upstream': upstreamUrl, // 👈 visible in DevTools → Headers
         },
       }
     )
