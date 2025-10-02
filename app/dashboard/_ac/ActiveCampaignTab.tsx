@@ -36,7 +36,7 @@ export default function ActiveCampaignTab() {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
 
-  // True pool size from API
+  // True pool size
   const [poolTotal, setPoolTotal] = useState<number | null>(null)
 
   // Tags
@@ -134,7 +134,7 @@ export default function ActiveCampaignTab() {
       const rows: Candidate[] = Array.isArray(data?.candidates) ? data.candidates : []
       setCandidates(rows)
 
-      // pool total from meta OR header fallback
+      // Try meta/header first…
       const headerTotalStr = res.headers.get('x-vincere-total')
       const headerTotal =
         headerTotalStr && headerTotalStr.trim() !== '' ? Number(headerTotalStr) : NaN
@@ -144,33 +144,29 @@ export default function ActiveCampaignTab() {
           : !Number.isNaN(headerTotal)
           ? headerTotal
           : null
+
       setPoolTotal(total)
 
-      // FINAL FALLBACK: call count endpoint if still null
-      if (total == null) {
-        try {
-          const cRes = await fetch(
-            `/api/vincere/talentpool/${encodeURIComponent(poolId)}/count`,
-            { cache: 'no-store' }
-          )
-          if (cRes.ok) {
-            const cData = await cRes.json().catch(() => ({}))
-            const h2 = cRes.headers.get('x-vincere-total')
-            const n2 = h2 && h2.trim() !== '' ? Number(h2) : NaN
-            const t2 =
-              typeof cData?.total === 'number'
-                ? cData.total
-                : !Number.isNaN(n2)
-                ? n2
-                : null
-            if (t2 != null) {
-              total = t2
-              setPoolTotal(t2)
-            }
-          }
-        } catch {
-          // ignore; leave as null
+      // …then ALWAYS call the count endpoint to guarantee a total
+      try {
+        const cRes = await fetch(
+          `/api/vincere/talentpool/${encodeURIComponent(poolId)}/count`,
+          { cache: 'no-store' }
+        )
+        if (cRes.ok) {
+          const cData = await cRes.json().catch(() => ({}))
+          const h2 = cRes.headers.get('x-vincere-total')
+          const n2 = h2 && h2.trim() !== '' ? Number(h2) : NaN
+          const t2 =
+            typeof cData?.total === 'number'
+              ? cData.total
+              : !Number.isNaN(n2)
+              ? n2
+              : null
+          if (t2 != null) setPoolTotal(t2)
         }
+      } catch {
+        // ignore; leave poolTotal as-is
       }
 
       if (!rows.length) setMessage('No candidates found in this pool.')
@@ -386,7 +382,7 @@ export default function ActiveCampaignTab() {
         {message && <div className="mt-2 text-sm text-gray-700">{message}</div>}
       </div>
 
-      {/* RESULTS PANEL: white card, conditional scroller + LEFT-aligned counts */}
+      {/* RESULTS PANEL */}
       <div className="rounded-2xl border bg-white">
         <div className="flex items-center justify-start px-4 py-2">
           <div className="text-xs text-gray-500">
@@ -415,7 +411,7 @@ export default function ActiveCampaignTab() {
                       <td className={cell}>{name || ''}</td>
                       <td className={cell}>
                         {c.email ? (
-                          <a href={`mailto:${c.email}`} className="">
+                          <a href={`mailto:${c.email}`} className="underline decoration-dotted">
                             {c.email}
                           </a>
                         ) : (
