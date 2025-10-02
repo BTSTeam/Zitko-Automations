@@ -61,7 +61,13 @@ export default function ActiveCampaignTab() {
 
     fetch('/api/activecampaign/tags', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((data) => setTags(Array.isArray(data?.tags) ? data.tags : []))
+      .then((data) => {
+        const raw = Array.isArray(data?.tags) ? data.tags : []
+        const filtered = raw.filter(
+          (t: any) => String(t?.tag || '').trim().toLowerCase() !== 'customer'
+        )
+        setTags(filtered)
+      })
       .catch(() => setTags([]))
   }, [])
 
