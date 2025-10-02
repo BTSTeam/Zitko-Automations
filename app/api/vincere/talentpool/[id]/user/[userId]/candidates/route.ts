@@ -71,75 +71,212 @@ function normalizeCandidates(data: any): Norm[] {
     })
 }
 
-/** Try typical header fields for totals (case-insensitive). */
-function parseTotalFromHeaders(h: Headers): number | null {
-  const keys = [
-    'x-total',
-    'x-total-count',
-    'x-total-results',
-    'x-total-records',
-    'x-count',
-    'x-pagination-total',
-  ]
-  for (const k of keys) {
-    const v = h.get(k) || h.get(k.toUpperCase())
-    if (v && !Number.isNaN(Number(v))) return Number(v)
-  }
-  const cr = h.get('content-range') || h.get('Content-Range')
-  // e.g. "items 0-24/11234" or "0-24/11234"
-  if (cr) {
-    const m = cr.match(/\/\s*(\d+)\s*$/)
-    if (m) return Number(m[1])
-  }
-  return null
-}
+/** GET helper w/ auth + no-store */
+const do = (headers: Headers) => ({
+  get: (url: string) => fetch(url, { method: 'GET', headers, cache: 'no-store' }),
+  postJson: (url: string, body: any) =>
+    fetch(url, {
+      method: 'POST',
+      headers: new Headers([...headers.entries(), ['content-type', 'application/json']]),
+      cache: 'no-store',
+      body: JSON.stringify(body ?? {}),
+    }),
+  postNoBody: (url: string) =>
+    fetch(url, {
+      method: 'POST',
+      headers,
+      cache: 'no-store',
+    }),
+})
 
-/** Pull totals from common JSON shapes. Falls back to a cautious deep scan. */
-function parseTotalFromJson(d: any): number | null {
-  if (!d || typeof d !== 'object') return null
-  const direct =
-    (typeof d.numFound === 'number' && d.numFound) ||
-    (typeof d.total === 'number' && d.total) ||
-    (typeof d.count === 'number' && d.count) ||
-    (typeof d.totalCount === 'number' && d.totalCount) ||
-    (typeof d.recordsTotal === 'number' && d.recordsTotal) ||
-    (typeof d.totalRecords === 'number' && d.totalRecords) ||
-    (typeof d.totalElements === 'number' && d.totalElements) ||
-    (typeof d?.meta?.total === 'number' && d.meta.total) ||
-    (typeof d?.meta?.total_count === 'number' && d.meta.total_count) ||
-    (typeof d?.hits?.total?.value === 'number' && d.hits.total.value) ||
-    (typeof d?.pagination?.total === 'number' && d.pagination.total) ||
-    (typeof d?.page?.total === 'number' && d.page.total) ||
-    (typeof d?.page?.totalRows === 'number' && d.page.totalRows) ||
-    (typeof d?.page?.total_elements === 'number' && d.page.total_elements) ||
-    null
-  if (typeof direct === 'number') return direct
-
-  // careful deep scan
-  let found: number | null = null
-  const seen = new Set<any>()
-  const walk = (v: any) => {
-    if (!v || typeof v !== 'object' || seen.has(v)) return
-    seen.add(v)
-    for (const [k, val] of Object.entries(v)) {
-      if (typeof val === 'number' && /total|numfound|recordsTotal|totalCount|totalElements/i.test(k)) {
-        if (val > 0 && (found == null || val > found)) found = val
-      } else if (val && typeof val === 'object') {
-        walk(val)
-      }
+/** Extract candidate IDs from `getCandidates` response */
+function pickIds(resp: any): number[] {
+  const content = Array.isArray(resp?.content) ? resp.content : []
+  const ids: number[] = []
+  for (const item of content) {
+    if (typeof item === 'number') ids.push(item)
+    else if (typeof item === 'string' && /^\d+$/.test(item)) ids.push(Number(item))
+    else if (item && typeof item === 'object') {
+      const id =
+        (typeof item.id === 'number' && item.id) ||
+        (typeof item.candidateId === 'number' && item.candidateId) ||
+        (typeof item.personId === 'number' && item.personId) ||
+        null
+      if (typeof id === 'number') ids.push(id)
     }
   }
-  walk(d)
-  return found
+  return ids
 }
 
-function qs(u: string, params: Record<string, string | number | undefined>): string {
-  const url = new URL(u)
-  for (const [k, v] of Object.entries(params)) {
-    if (v === undefined) continue
-    url.searchParams.set(k, String(v))
+/** Pull total elements from getCandidates JSON */
+function pickTotalElements(resp: any): number | null {
+  const direct =
+    (typeof resp?.totalElements === 'number' && resp.totalElements) ||
+    (typeof resp?.page?.totalElements === 'number' && resp.page.totalElements) ||
+    (typeof resp?.total === 'number' && resp.total) ||
+    null
+  return typeof direct === 'number' ? direct : null
+}
+
+/** Try several shapes of POST to /talentpools/{id}/getCandidates until one works, then reuse it */
+async function fetchGetCandidatesPaged(args: {
+  base: string
+  poolId: string
+  headers: Headers
+  refresh: () => Promise<boolean>
+  rowsTarget: number
+  pageSize: number
+}) {
+  const { base, poolId, headers, refresh, rowsTarget, pageSize } = args
+  const http = do(headers)
+  const url = `${base}/talentpools/${encodeURIComponent(poolId)}/getCandidates`
+
+  type Strategy = (page0: number, size: number) => Promise<{ ok: boolean; status: number; data: any; used: string }>
+  const strategies: Strategy[] = [
+    // JSON body: { page, size } (page is 0-based)
+    async (page0, size) => {
+      const res = await http.postJson(url, { page: page0, size })
+      const data = await res.json().catch(() => ({}))
+      return { ok: res.ok, status: res.status, data, used: `${url} (POST JSON {page,size})` }
+    },
+    // JSON body: { pageNumber, pageSize }
+    async (page0, size) => {
+      const res = await http.postJson(url, { pageNumber: page0, pageSize: size })
+      const data = await res.json().catch(() => ({}))
+      return { ok: res.ok, status: res.status, data, used: `${url} (POST JSON {pageNumber,pageSize})` }
+    },
+    // JSON body: { pageable: { pageNumber, pageSize } }
+    async (page0, size) => {
+      const res = await http.postJson(url, { pageable: { pageNumber: page0, pageSize: size } })
+      const data = await res.json().catch(() => ({}))
+      return { ok: res.ok, status: res.status, data, used: `${url} (POST JSON {pageable})` }
+    },
+    // POST with querystring: ?page=0&size=…
+    async (page0, size) => {
+      const qs = `${url}?page=${page0}&size=${size}`
+      const res = await http.postNoBody(qs)
+      const data = await res.json().catch(() => ({}))
+      return { ok: res.ok, status: res.status, data, used: `${qs} (POST no body)` }
+    },
+  ]
+
+  const tried: Array<{ url: string; status?: number; count?: number }> = []
+  let chosenIdx = -1
+  let collectedIds: number[] = []
+  let total: number | null = null
+  let page0 = 0
+  let pagesFetched = 0
+
+  // Find a working strategy on page 0
+  for (let i = 0; i < strategies.length; i++) {
+    let resp = await strategies[i](0, pageSize)
+    if ((resp.status === 401 || resp.status === 403) && (await refresh())) {
+      resp = await strategies[i](0, pageSize)
+    }
+    const ids = pickIds(resp.data)
+    tried.push({ url: resp.used, status: resp.status, count: ids.length })
+    total = total ?? pickTotalElements(resp.data)
+
+    if (ids.length > 0) {
+      chosenIdx = i
+      collectedIds.push(...ids)
+      pagesFetched++
+      break
+    }
   }
-  return url.toString()
+
+  if (chosenIdx === -1) {
+    return { ids: collectedIds, total, tried, pagesFetched }
+  }
+
+  // Page through until we hit rowsTarget or last page
+  while (collectedIds.length < rowsTarget) {
+    page0++
+    let resp = await strategies[chosenIdx](page0, pageSize)
+    if ((resp.status === 401 || resp.status === 403) && (await refresh())) {
+      resp = await strategies[chosenIdx](page0, pageSize)
+    }
+    const ids = pickIds(resp.data)
+    tried.push({ url: resp.used, status: resp.status, count: ids.length })
+    total = total ?? pickTotalElements(resp.data)
+    if (ids.length === 0) break
+    collectedIds.push(...ids)
+    pagesFetched++
+    // stop if server says we've reached last page
+    if (resp.data?.last === true) break
+  }
+
+  return { ids: collectedIds.slice(0, rowsTarget), total, tried, pagesFetched }
+}
+
+/** Resolve candidate IDs -> names/emails using several strategies. */
+async function fetchCandidateDetails(args: {
+  base: string
+  headers: Headers
+  refresh: () => Promise<boolean>
+  ids: number[]
+}) {
+  const { base, headers, refresh, ids } = args
+  const http = do(headers)
+  const fl = encodeURIComponent('first_name,last_name,email')
+
+  const tried: Array<{ url: string; status?: number; count?: number }> = []
+
+  if (ids.length === 0) {
+    return { candidates: [] as Norm[], tried }
+  }
+
+  // Batch-friendly GET attempts
+  const paramKeys = ['ids', 'id', 'candidate_ids']
+  for (const key of paramKeys) {
+    const url = `${base}/candidate/search?${key}=${encodeURIComponent(ids.join(','))}&fl=${fl}&rows=${ids.length}`
+    let res = await http.get(url)
+    if ((res.status === 401 || res.status === 403) && (await refresh())) {
+      res = await http.get(url)
+    }
+    const data = await res.json().catch(() => ({}))
+    const norm = normalizeCandidates(data)
+    tried.push({ url, status: res.status, count: norm.length })
+    if (norm.length > 0) return { candidates: norm, tried }
+  }
+
+  // POST variants
+  const postBodies = [
+    { ids },
+    { id: ids },
+    { candidate_ids: ids },
+    { filters: { ids } },
+    { query: { ids } },
+  ]
+  for (const body of postBodies) {
+    const url = `${base}/candidate/search`
+    let res = await http.postJson(url, { ...body, fl: 'first_name,last_name,email', rows: ids.length })
+    if ((res.status === 401 || res.status === 403) && (await refresh())) {
+      res = await http.postJson(url, { ...body, fl: 'first_name,last_name,email', rows: ids.length })
+    }
+    const data = await res.json().catch(() => ({}))
+    const norm = normalizeCandidates(data)
+    tried.push({ url, status: res.status, count: norm.length })
+    if (norm.length > 0) return { candidates: norm, tried }
+  }
+
+  // FINAL FALLBACK: per-ID fetch (limit to 200 for preview safety)
+  const perIdLimit = Math.min(ids.length, 200)
+  const agg: Norm[] = []
+  for (let i = 0; i < perIdLimit; i++) {
+    const id = ids[i]
+    const url = `${base}/candidate/${encodeURIComponent(String(id))}`
+    let res = await http.get(url)
+    if ((res.status === 401 || res.status === 403) && (await refresh())) {
+      res = await http.get(url)
+    }
+    const data = await res.json().catch(() => ({}))
+    const norm = normalizeCandidates(data)
+    tried.push({ url, status: res.status, count: norm.length })
+    if (norm.length) agg.push(norm[0])
+  }
+
+  return { candidates: agg, tried }
 }
 
 export async function GET(
@@ -147,26 +284,16 @@ export async function GET(
   { params }: { params: { id: string; userId: string } }
 ) {
   try {
-    // How many rows to preview in the UI
     const rowsTarget = Math.max(1, Number(req.nextUrl.searchParams.get('rows') ?? 500))
-    // We'll try to fetch this many per page (up to upstream limits)
-    const pageSize = Math.min(rowsTarget, 500) // safe cap
+    const pageSize = Math.min(rowsTarget, 500) // safe page size
 
+    // session/auth
     let session = await getSession()
     let idToken = session.tokens?.idToken
     const userKey = session.user?.email ?? 'unknown'
     if (!idToken) return NextResponse.json({ error: 'Not connected to Vincere' }, { status: 401 })
 
     const BASE = withApiV2(config.VINCERE_TENANT_API_BASE)
-
-    // Candidate upstreams we’ll try
-    const upstreamBases: string[] = [
-      `${BASE}/talentpool/${encodeURIComponent(params.id)}/user/${encodeURIComponent(params.userId)}/candidates`,
-      `${BASE}/talentpools/${encodeURIComponent(params.id)}/user/${encodeURIComponent(params.userId)}/candidates`,
-      `${BASE}/talentpool/${encodeURIComponent(params.id)}/candidates`,
-      `${BASE}/talentpools/${encodeURIComponent(params.id)}/candidates`,
-    ]
-
     const headers = new Headers({
       'id-token': idToken,
       'x-api-key': (config as any).VINCERE_PUBLIC_API_KEY || config.VINCERE_API_KEY,
@@ -174,142 +301,47 @@ export async function GET(
       Authorization: `Bearer ${idToken}`,
     })
 
-    const doFetch = (url: string) => fetch(url, { method: 'GET', headers, cache: 'no-store' })
-
-    // pagination strategies to probe (first that returns rows will be used)
-    const strategies = [
-      // page + per_page
-      (base: string, page: number, size: number) => qs(base, { page, per_page: size }),
-      // page + page_size
-      (base: string, page: number, size: number) => qs(base, { page, page_size: size }),
-      // page + size
-      (base: string, page: number, size: number) => qs(base, { page, size }),
-      // start + rows (Solr style)
-      (base: string, page: number, size: number) => qs(base, { start: (page - 1) * size, rows: size }),
-      // offset + limit
-      (base: string, page: number, size: number) => qs(base, { offset: (page - 1) * size, limit: size }),
-      // skip + take
-      (base: string, page: number, size: number) => qs(base, { skip: (page - 1) * size, take: size }),
-      // page only (some APIs ignore size and stick to a tenant default, e.g., 25)
-      (base: string, page: number, _size: number) => qs(base, { page }),
-      // pageNo only
-      (base: string, page: number, _size: number) => qs(base, { pageNo: page }),
-      // page_number + page_size
-      (base: string, page: number, size: number) => qs(base, { page_number: page, page_size: size }),
-    ]
-
-    const tried: Array<{ url: string; status?: number; count?: number }> = []
-    const collected: Norm[] = []
-    const seenKey = new Set<string>()
-    let poolTotal: number | null = null
-    let finalUpstreamBase = upstreamBases[0]
-    let chosenStrategyIndex = -1
-
-    // helper to add rows with de-dupe
-    const addRows = (rows: Norm[]) => {
-      for (const r of rows) {
-        const key = (r.email || `${r.first_name} ${r.last_name}`).toLowerCase().trim()
-        if (key && !seenKey.has(key)) {
-          seenKey.add(key)
-          collected.push(r)
-          if (collected.length >= rowsTarget) break
-        }
-      }
+    const refresh = async () => {
+      const ok = await refreshIdToken(userKey)
+      if (!ok) return false
+      const s2 = await getSession()
+      const t2 = s2.tokens?.idToken
+      if (!t2) return false
+      headers.set('id-token', t2)
+      headers.set('Authorization', `Bearer ${t2}`)
+      return true
     }
 
-    // 1) Find a base + strategy that returns anything
-    outer: for (const base of upstreamBases) {
-      finalUpstreamBase = base
-      for (let sIdx = 0; sIdx < strategies.length; sIdx++) {
-        const url = strategies[sIdx](base, 1, pageSize)
-        let res = await doFetch(url)
-        if (res.status === 401 || res.status === 403) {
-          const ok = await refreshIdToken(userKey)
-          if (!ok) return NextResponse.json({ error: 'Auth refresh failed' }, { status: 401 })
-          const fresh = await getSession()
-          const newToken = fresh.tokens?.idToken
-          if (!newToken) return NextResponse.json({ error: 'No idToken after refresh' }, { status: 401 })
-          headers.set('id-token', newToken)
-          headers.set('Authorization', `Bearer ${newToken}`)
-          res = await doFetch(url)
-        }
+    // 1) Page through POST /talentpools/{id}/getCandidates to get IDs
+    const pageRes = await fetchGetCandidatesPaged({
+      base: BASE,
+      poolId: params.id,
+      headers,
+      refresh,
+      rowsTarget,
+      pageSize,
+    })
+    const tried: Array<{ url: string; status?: number; count?: number }> = [...pageRes.tried]
+    const ids = pageRes.ids
+    const total = pageRes.total
 
-        // try totals from headers first
-        poolTotal = poolTotal ?? parseTotalFromHeaders(res.headers)
-
-        const data = await res.json().catch(() => ({}))
-        poolTotal = poolTotal ?? parseTotalFromJson(data)
-
-        const norm = normalizeCandidates(data)
-        tried.push({ url, status: res.status, count: norm.length })
-
-        if (norm.length > 0) {
-          addRows(norm)
-          chosenStrategyIndex = sIdx
-          break outer
-        }
-      }
-    }
-
-    // If nothing at all came back, just respond empty
-    if (collected.length === 0 && chosenStrategyIndex === -1) {
-      return NextResponse.json(
-        {
-          candidates: [],
-          meta: {
-            upstream: finalUpstreamBase,
-            count: 0,
-            total: poolTotal,
-            tried,
-            rowsRequested: rowsTarget,
-            pagesFetched: 0,
-          },
-        },
-        {
-          status: 200,
-          headers: {
-            'x-vincere-base': withApiV2(config.VINCERE_TENANT_API_BASE),
-            'x-vincere-userid': params.userId,
-            'x-vincere-upstream': finalUpstreamBase,
-            'x-vincere-total': poolTotal != null ? String(poolTotal) : '',
-            'x-rows': String(rowsTarget),
-          },
-        }
-      )
-    }
-
-    // 2) Keep paging with the chosen strategy until we reach rowsTarget or no more rows
-    let page = 2
-    let pagesFetched = 1
-    const maxPages = Math.ceil(rowsTarget / Math.max(1, pageSize)) + 5 // small cushion
-
-    while (collected.length < rowsTarget && page <= maxPages) {
-      const pageUrl = strategies[chosenStrategyIndex](finalUpstreamBase, page, pageSize)
-      const res = await doFetch(pageUrl)
-      // totals again (some APIs only include on first page; we won't overwrite an existing number)
-      poolTotal = poolTotal ?? parseTotalFromHeaders(res.headers)
-
-      const data = await res.json().catch(() => ({}))
-      poolTotal = poolTotal ?? parseTotalFromJson(data)
-
-      const norm = normalizeCandidates(data)
-      tried.push({ url: pageUrl, status: res.status, count: norm.length })
-
-      if (!norm.length) break
-      const before = collected.length
-      addRows(norm)
-      pagesFetched++
-      if (collected.length === before) break // no net new (all dupes)
-      page++
-    }
+    // 2) Resolve those IDs to names/emails
+    const details = await fetchCandidateDetails({
+      base: BASE,
+      headers,
+      refresh,
+      ids,
+    })
+    const candidates = details.candidates
+    tried.push(...details.tried)
 
     return NextResponse.json(
       {
-        candidates: collected,
+        candidates,
         meta: {
-          upstream: finalUpstreamBase,
-          count: collected.length,
-          total: poolTotal,          // may still be null if upstream never exposes it
+          upstream: `${BASE}/talentpools/${encodeURIComponent(params.id)}/getCandidates`,
+          count: candidates.length,
+          total: typeof total === 'number' ? total : null,
           tried,
           rowsRequested: rowsTarget,
         },
@@ -317,10 +349,10 @@ export async function GET(
       {
         status: 200,
         headers: {
-          'x-vincere-base': withApiV2(config.VINCERE_TENANT_API_BASE),
+          'x-vincere-base': BASE,
           'x-vincere-userid': params.userId,
-          'x-vincere-upstream': finalUpstreamBase,
-          'x-vincere-total': poolTotal != null ? String(poolTotal) : '',
+          'x-vincere-upstream': `${BASE}/talentpools/${encodeURIComponent(params.id)}/getCandidates`,
+          'x-vincere-total': typeof total === 'number' ? String(total) : '',
           'x-rows': String(rowsTarget),
         },
       }
