@@ -31,12 +31,12 @@ export default function ActiveCampaignTab() {
   const [pools, setPools] = useState<Pool[]>([])
   const [poolId, setPoolId] = useState<string>('')
 
-  // Candidates from selected pool (preview only)
+  // Candidates preview
   const [candidates, setCandidates] = useState<Candidate[]>([])
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
 
-  // Pool total (true size reported by the API)
+  // True pool size from API
   const [poolTotal, setPoolTotal] = useState<number | null>(null)
 
   // Tags
@@ -102,7 +102,6 @@ export default function ActiveCampaignTab() {
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((data) => {
         const raw = Array.isArray(data?.tags) ? data.tags : []
-        // Hide "Customer" (quick filter)
         const filtered = raw.filter(
           (t: any) => String(t?.tag || '').trim().toLowerCase() !== 'customer'
         )
@@ -132,11 +131,8 @@ export default function ActiveCampaignTab() {
       const data = await res.json()
       const rows: Candidate[] = Array.isArray(data?.candidates) ? data.candidates : []
       setCandidates(rows)
-
-      // NEW: capture the true pool size for the counter
-      const total =
-        typeof data?.meta?.total === 'number' ? data.meta.total : null
-      setPoolTotal(total)
+      // capture true pool size
+      setPoolTotal(typeof data?.meta?.total === 'number' ? data.meta.total : null)
 
       if (!rows.length) setMessage('No candidates found in this pool.')
     } catch (e: any) {
@@ -148,7 +144,7 @@ export default function ActiveCampaignTab() {
     }
   }
 
-  // Enable send when there's a tag and a selected pool (preview not required)
+  // Enable send when there's a tag and selected pool (preview not required)
   const acEnabled = tagName.trim().length > 0 && poolId !== ''
 
   async function sendToActiveCampaign() {
@@ -163,7 +159,7 @@ export default function ActiveCampaignTab() {
     }
 
     try {
-      // 1) start background job
+      // start background job
       const res = await fetch('/api/activecampaign/import-pool/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -171,10 +167,10 @@ export default function ActiveCampaignTab() {
           poolId,
           userId: TP_USER_ID,
           tagName: effectiveTag,
-          rows: 500,    // page size from Vincere
-          max: 50000,   // safety ceiling; raise if needed
-          chunk: 500,   // batch size per AC import
-          pauseMs: 300, // polite pacing
+          rows: 500,
+          max: 50000,
+          chunk: 500,
+          pauseMs: 300,
         }),
       })
       const data = await res.json()
@@ -186,7 +182,7 @@ export default function ActiveCampaignTab() {
 
       setSendState('sending')
 
-      // 2) open SSE for live progress
+      // open SSE for live progress
       if (esRef.current) esRef.current.close()
       const es = new EventSource(`/api/activecampaign/import-pool/progress/${data.jobId}`)
       esRef.current = es
@@ -194,7 +190,6 @@ export default function ActiveCampaignTab() {
       es.onmessage = (evt) => {
         const payload: JobProgress = JSON.parse(evt.data || '{}')
         setProgress(payload)
-
         if (payload.status === 'done') {
           setSendState('success') // shows ✓
           es.close()
@@ -208,7 +203,7 @@ export default function ActiveCampaignTab() {
       }
 
       es.onerror = () => {
-        // network hiccup; keep UI safe
+        // network hiccup; let server drive final state
       }
     } catch (e: any) {
       setSendState('error')
@@ -233,7 +228,7 @@ export default function ActiveCampaignTab() {
     </svg>
   )
 
-  // Prefer the progress total (when sending). Otherwise use the preview's poolTotal.
+  // Prefer progress total when sending; otherwise use preview's poolTotal
   const totalInPool = (progress?.totals?.poolTotal ?? poolTotal) ?? null
   const sent = progress?.totals?.sent ?? 0
   const percent =
@@ -242,7 +237,7 @@ export default function ActiveCampaignTab() {
   const fmt = (n: number | null | undefined) =>
     typeof n === 'number' ? new Intl.NumberFormat().format(n) : '—'
 
-  // Show a scroller only when there are many rows (>25)
+  // scroller only when >25 rows (so all 25 show without scrolling)
   const tableWrapClass =
     candidates.length > 25 ? 'max-h-96 overflow-auto text-sm' : 'text-sm'
 
@@ -326,7 +321,7 @@ export default function ActiveCampaignTab() {
         </div>
 
         {/* Progress bar + numbers */}
-        {(progress && progress.status !== 'not-found') && (
+        {progress && progress.status !== 'not-found' && (
           <div className="mt-3">
             <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
               <span>Tagging & sending to ActiveCampaign</span>
@@ -381,11 +376,12 @@ export default function ActiveCampaignTab() {
                       <td className={cell}>{name || ''}</td>
                       <td className={cell}>
                         {c.email ? (
-                          <a href={`mailto:${c.email}`} className="underline decoration-dotted">
+                          <a href={`mailto:${c.email}`} className="">
                             {c.email}
                           </a>
                         ) : (
-                          ''}
+                          ''
+                        )}
                       </td>
                       <td className={cell}>{(tagName || '').trim()}</td>
                     </tr>
