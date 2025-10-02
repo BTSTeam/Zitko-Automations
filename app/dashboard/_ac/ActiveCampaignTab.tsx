@@ -102,6 +102,7 @@ export default function ActiveCampaignTab() {
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((data) => {
         const raw = Array.isArray(data?.tags) ? data.tags : []
+        // Hide "Customer"
         const filtered = raw.filter(
           (t: any) => String(t?.tag || '').trim().toLowerCase() !== 'customer'
         )
@@ -128,11 +129,22 @@ export default function ActiveCampaignTab() {
         const t = await res.text()
         throw new Error(`Failed to fetch pool candidates (${res.status}): ${t}`)
       }
+
       const data = await res.json()
       const rows: Candidate[] = Array.isArray(data?.candidates) ? data.candidates : []
       setCandidates(rows)
-      // capture true pool size
-      setPoolTotal(typeof data?.meta?.total === 'number' ? data.meta.total : null)
+
+      // NEW: pool total from meta OR header fallback
+      const headerTotalStr = res.headers.get('x-vincere-total')
+      const headerTotal =
+        headerTotalStr && headerTotalStr.trim() !== '' ? Number(headerTotalStr) : NaN
+      const total =
+        typeof data?.meta?.total === 'number'
+          ? data.meta.total
+          : !Number.isNaN(headerTotal)
+          ? headerTotal
+          : null
+      setPoolTotal(total)
 
       if (!rows.length) setMessage('No candidates found in this pool.')
     } catch (e: any) {
@@ -347,12 +359,12 @@ export default function ActiveCampaignTab() {
         {message && <div className="mt-2 text-sm text-gray-700">{message}</div>}
       </div>
 
-      {/* RESULTS PANEL: white card, conditional scroller + counts */}
+      {/* RESULTS PANEL: white card, conditional scroller + LEFT-aligned counts */}
       <div className="rounded-2xl border bg-white">
-        <div className="flex items-center justify-end px-4 py-2">
+        <div className="flex items-center justify-start px-4 py-2">
           <div className="text-xs text-gray-500">
-            {candidates.length} loaded
-            {totalInPool != null ? ` · ${fmt(totalInPool)} in pool` : ''}
+            {new Intl.NumberFormat().format(candidates.length)} loaded
+            {poolTotal != null ? ` · ${new Intl.NumberFormat().format(poolTotal)} in pool` : ''}
           </div>
         </div>
 
@@ -376,7 +388,7 @@ export default function ActiveCampaignTab() {
                       <td className={cell}>{name || ''}</td>
                       <td className={cell}>
                         {c.email ? (
-                          <a href={`mailto:${c.email}`} className="">
+                          <a href={`mailto:${c.email}`} className="underline decoration-dotted">
                             {c.email}
                           </a>
                         ) : (
