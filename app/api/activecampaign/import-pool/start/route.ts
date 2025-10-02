@@ -53,21 +53,14 @@ function extractEmail(c: any): string {
     ''
   )
 }
-function normalizeCandidates(data: any): Norm[] {
-  const arr =
-    (Array.isArray(data?.candidates) && data.candidates) ||
-    (Array.isArray(data?.docs) && data.docs) ||
-    (Array.isArray(data?.items) && data.items) ||
-    (Array.isArray(data?.results) && data.results) ||
-    (Array.isArray(data?.data) && data.data) ||
-    (Array.isArray(data?.content) && data.content) ||
-    (Array.isArray(data) ? data : [])
 
-  return (arr || [])
+function normalizeCandidatesFromSlice(data: any): Norm[] {
+  const arr = Array.isArray(data?.content) ? data.content : []
+  return arr
     .filter((x: any) => x && typeof x === 'object')
     .map((r: any) => {
-      let first = r.first_name ?? r.firstName ?? ''
-      let last = r.last_name ?? r.lastName ?? ''
+      let first = r.first_name ?? r.firstName ?? r.firstname ?? ''
+      let last = r.last_name ?? r.lastName ?? r.lastname ?? ''
       if ((!first || !last) && typeof r.name === 'string') {
         const parts = r.name.trim().split(/\s+/)
         first = first || parts[0] || ''
@@ -77,22 +70,20 @@ function normalizeCandidates(data: any): Norm[] {
       return { first_name: first, last_name: last, email }
     })
 }
-function parseTotal(d: any): number | null {
-  const candidates = [
-    d?.numFound,
-    d?.total,
-    d?.count,
-    d?.totalCount,
-    d?.meta?.total,
-    d?.hits?.total?.value,
-  ].find((n) => typeof n === 'number' && n >= 0)
-  return typeof candidates === 'number' ? candidates : null
-}
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 export async function POST(req: NextRequest) {
-  const { poolId, userId, tagName, rows = 500, max = 50000, chunk = 500, pauseMs = 300 } =
-    await req.json().catch(() => ({}))
+  // rows is retained for backward-compat but no longer used (Vincere slice size is fixed)
+  const {
+    poolId,
+    userId,
+    tagName,
+    rows = 200, // ignored now
+    max = 100000,
+    chunk = 250,
+    pauseMs = 250,
+  } = await req.json().catch(() => ({}))
 
   if (!poolId || !userId || !tagName) {
     return NextResponse.json({ error: 'poolId, userId, tagName are required' }, { status: 400 })
@@ -129,89 +120,147 @@ export async function POST(req: NextRequest) {
 
       const BASE = withApiV2(config.VINCERE_TENANT_API_BASE)
       const headers = new Headers({
+        'content-type': 'application/json',
         'id-token': idToken,
         'x-api-key': (config as any).VINCERE_PUBLIC_API_KEY || config.VINCERE_API_KEY,
         accept: 'application/json',
         Authorization: `Bearer ${idToken}`,
       })
-      const doFetch = (url: string) => fetch(url, { method: 'GET', headers, cache: 'no-store' })
 
-      const fl = encodeURIComponent('first_name,last_name,email,name,emails')
-      const idEnc = encodeURIComponent(poolId)
-      const keys = ['talent_pool_id', 'talentpool_id', 'talentPoolId', 'pool_id'] as const
+      const doGet = (url: string) =>
+        fetch(url, { method: 'GET', headers, cache: 'no-store' })
+      const doPost = (url: string, body: any) =>
+        fetch(url, {
+          method: 'POST',
+          headers,
+          cache: 'no-store',
+          body: JSON.stringify(body),
+        })
 
+      // helper to refresh token once on 401/403
+      const withRefresh = async <T>(
+        fn: () => Promise<Response>
+      ): Promise<Response> => {
+        let res = await fn()
+        if (res.status === 401 || res.status === 403) {
+          const ok = await refreshIdToken(userKey)
+          if (!ok) return res
+          session = await getSession()
+          idToken = session.tokens?.idToken
+          headers.set('id-token', idToken || '')
+          headers.set('Authorization', `Bearer ${idToken}`)
+          res = await fn()
+        }
+        return res
+      }
+
+      // 1) Get TOTAL size of pool using POST /talentpools/{id}/getCandidates with totalRequired
+      let total: number | null = null
+      {
+        const url = `${BASE}/talentpools/${encodeURIComponent(poolId)}/getCandidates`
+        const body = {
+          returnField: { fieldList: ['id'] },
+          page: 0,
+          pageSize: 1,
+          responseType: 'VALUE',
+          totalRequired: true,
+        }
+        const res = await withRefresh(() => doPost(url, body))
+        if (!res.ok) {
+          const t = await res.text().catch(() => '')
+          throw new Error(`Vincere getCandidates (total) failed (${res.status}) ${t}`)
+        }
+        const j = await res.json().catch(() => ({}))
+        total =
+          typeof j?.totalElements === 'number'
+            ? j.totalElements
+            : null
+        job.totals.poolTotal = total
+        job.updatedAt = Date.now()
+      }
+
+      // 2) Iterate slices of candidate details:
+      // GET /talentpool/{id}/user/{userId}/candidates?index=N
+      // Each slice returns up to 50 items; keep iterating until last=true or we reach "max".
       const emailSeen = new Set<string>()
       let gathered: Norm[] = []
+      let sliceIndex = 0
+      let last = false
 
       const importBatch = async (batch: Norm[]) => {
         if (!batch.length) return
         const res = await fetch(`${req.nextUrl.origin}/api/activecampaign/import`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ candidates: batch, tagName, excludeAutomations: true }),
+          body: JSON.stringify({
+            candidates: batch,
+            tagName,
+            excludeAutomations: true,
+          }),
         })
         if (!res.ok) {
           const t = await res.text().catch(() => '')
-          throw new Error(`AC import failed (${res.status}) ${t}`)
+          throw new Error(`ActiveCampaign import failed (${res.status}) ${t}`)
         }
         job.totals.sent += batch.length
         job.updatedAt = Date.now()
       }
 
-      outer: for (const key of keys) {
-        let start = 0
-        while (job.totals.valid < max) {
-          const url = `${BASE}/candidate/search?${key}=${idEnc}&fl=${fl}&rows=${rows}&start=${start}`
-          let res = await doFetch(url)
-          if (res.status === 401 || res.status === 403) {
-            const ok = await refreshIdToken(userKey)
-            if (!ok) throw new Error('Auth refresh failed')
-            session = await getSession()
-            idToken = session.tokens?.idToken
-            headers.set('id-token', idToken || '')
-            headers.set('Authorization', `Bearer ${idToken}`)
-            res = await doFetch(url)
+      while (!last && job.totals.valid < max && sliceIndex < 400) {
+        const url = `${BASE}/talentpool/${encodeURIComponent(poolId)}/user/${encodeURIComponent(
+          userId
+        )}/candidates?index=${sliceIndex}`
+
+        const res = await withRefresh(() => doGet(url))
+        if (!res.ok) {
+          const t = await res.text().catch(() => '')
+          // If the very first slice fails, treat as fatal; otherwise stop and send what we have.
+          if (sliceIndex === 0) {
+            throw new Error(`Vincere slice fetch failed (${res.status}) ${t}`)
+          } else {
+            break
           }
-
-          const data = await res.json().catch(() => ({}))
-          if (job.totals.poolTotal == null) {
-            const total = parseTotal(data)
-            if (typeof total === 'number') job.totals.poolTotal = total
-          }
-
-          const page = normalizeCandidates(data)
-          job.totals.pagesFetched++
-          job.updatedAt = Date.now()
-
-          if (!page.length) break
-
-          for (const r of page) {
-            job.totals.seen++
-            if (!r.email || !/\S+@\S+\.\S+/.test(r.email)) {
-              job.totals.skippedNoEmail++
-              continue
-            }
-            const eKey = r.email.toLowerCase()
-            if (emailSeen.has(eKey)) {
-              job.totals.duplicates++
-              continue
-            }
-            emailSeen.add(eKey)
-            job.totals.valid++
-            gathered.push(r)
-
-            if (gathered.length >= chunk) {
-              await importBatch(gathered)
-              gathered = []
-              if (pauseMs) await sleep(pauseMs)
-            }
-            if (job.totals.valid >= max) break
-          }
-
-          if (page.length < rows) break // last page
-          start += rows
         }
-        if (job.totals.valid >= max) break outer
+
+        const sliceJson = await res.json().catch(() => ({}))
+        const page = normalizeCandidatesFromSlice(sliceJson)
+        job.totals.pagesFetched++
+        job.updatedAt = Date.now()
+
+        // Update "last" from slice response
+        last = !!sliceJson?.last
+
+        if (!page.length) {
+          // If empty page, move to next slice or end on "last".
+          sliceIndex++
+          continue
+        }
+
+        for (const r of page) {
+          job.totals.seen++
+          if (!r.email || !/\S+@\S+\.\S+/.test(r.email)) {
+            job.totals.skippedNoEmail++
+            continue
+          }
+          const eKey = r.email.toLowerCase()
+          if (emailSeen.has(eKey)) {
+            job.totals.duplicates++
+            continue
+          }
+          emailSeen.add(eKey)
+          job.totals.valid++
+          gathered.push(r)
+
+          if (gathered.length >= chunk) {
+            await importBatch(gathered)
+            gathered = []
+            if (pauseMs) await sleep(pauseMs)
+          }
+
+          if (job.totals.valid >= max) break
+        }
+
+        sliceIndex++
       }
 
       if (gathered.length) await importBatch(gathered)
