@@ -7,14 +7,20 @@ import { config } from '@/lib/config'
 import { getSession } from '@/lib/session'
 import { refreshIdToken } from '@/lib/vincereRefresh'
 
-// Hardcoded per your instruction
+// Hardcoded per your instruction (can make env-driven later)
 const VINCERE_TALENTPOOL_USER_ID =
   process.env.VINCERE_TALENTPOOL_USER_ID?.trim() || '29018'
 
+// Ensure base includes /api/v2
+function withApiV2(base: string): string {
+  let b = (base || '').trim().replace(/\/+$/, '')
+  if (!/\/api\/v\d+$/i.test(b)) b = `${b}/api/v2`
+  return b
+}
+
 type Pool = { id?: string | number; name?: string; [k: string]: any }
 
-function normalizePoolsFromData(data: any): Pool[] {
-  // Accept a variety of containers
+function normalizePools(data: any): Pool[] {
   const raw =
     (Array.isArray(data?.pools) && data.pools) ||
     (Array.isArray(data?.talentPools) && data.talentPools) ||
@@ -24,8 +30,7 @@ function normalizePoolsFromData(data: any): Pool[] {
     (Array.isArray(data?.results) && data.results) ||
     (Array.isArray(data) ? data : [])
 
-  // Map a bunch of possible field names to { id, name }
-  const mapped: Pool[] = raw
+  return raw
     .map((p: any) => {
       const id =
         p?.id ??
@@ -35,7 +40,6 @@ function normalizePoolsFromData(data: any): Pool[] {
         p?.uid ??
         p?.value ??
         p?.key
-
       const name =
         p?.name ??
         p?.pool_name ??
@@ -43,12 +47,9 @@ function normalizePoolsFromData(data: any): Pool[] {
         p?.title ??
         p?.label ??
         p?.displayName
-
       return { id, name, ...p }
     })
-    .filter((p) => p.id)
-
-  return mapped
+    .filter((p: Pool) => p.id)
 }
 
 export async function GET(_req: NextRequest) {
@@ -56,35 +57,24 @@ export async function GET(_req: NextRequest) {
     let session = await getSession()
     let idToken = session.tokens?.idToken
     const userKey = session.user?.email ?? 'unknown'
-    if (!idToken) {
-      return NextResponse.json({ error: 'Not connected to Vincere' }, { status: 401 })
-    }
+    if (!idToken) return NextResponse.json({ error: 'Not connected to Vincere' }, { status: 401 })
 
-    const BASE = config.VINCERE_TENANT_API_BASE.replace(/\/$/, '')
-    const urls = [
-      `${BASE}/talentpools/user/${encodeURIComponent(VINCERE_TALENTPOOL_USER_ID)}`, // plural
-      `${BASE}/talentpool/user/${encodeURIComponent(VINCERE_TALENTPOOL_USER_ID)}`,  // singular fallback
-    ]
+    const RAW_BASE = config.VINCERE_TENANT_API_BASE
+    const BASE = withApiV2(RAW_BASE) // ✅ guarantees /api/v2 is present
 
-    const headers = new Headers()
-    headers.set('id-token', idToken)
-    headers.set('x-api-key', (config as any).VINCERE_PUBLIC_API_KEY || config.VINCERE_API_KEY)
-    headers.set('accept', 'application/json')
-    headers.set('Authorization', `Bearer ${idToken}`)
+    const url = `${BASE}/talentpools/user/${encodeURIComponent(VINCERE_TALENTPOOL_USER_ID)}`
 
-    const doFetch = (url: string) =>
-      fetch(url, { method: 'GET', headers, cache: 'no-store' })
+    const headers = new Headers({
+      'id-token': idToken,
+      'x-api-key': (config as any).VINCERE_PUBLIC_API_KEY || config.VINCERE_API_KEY,
+      accept: 'application/json',
+      Authorization: `Bearer ${idToken}`,
+    })
 
-    const tried: Array<{ url: string; status?: number; count?: number }> = []
+    const doFetch = () => fetch(url, { method: 'GET', headers, cache: 'no-store' })
 
-    // Try primary path
-    let res = await doFetch(urls[0])
-    let data: any = await res.json().catch(() => ({}))
-    let pools = normalizePoolsFromData(data)
-    tried.push({ url: urls[0], status: res.status, count: pools.length })
-
-    // If unauthorized, refresh then retry the same URL
-    if ((res.status === 401 || res.status === 403)) {
+    let res = await doFetch()
+    if (res.status === 401 || res.status === 403) {
       const ok = await refreshIdToken(userKey)
       if (!ok) return NextResponse.json({ error: 'Auth refresh failed' }, { status: 401 })
       session = await getSession()
@@ -92,36 +82,21 @@ export async function GET(_req: NextRequest) {
       if (!idToken) return NextResponse.json({ error: 'No idToken after refresh' }, { status: 401 })
       headers.set('id-token', idToken)
       headers.set('Authorization', `Bearer ${idToken}`)
-
-      res = await doFetch(urls[0])
-      data = await res.json().catch(() => ({}))
-      pools = normalizePoolsFromData(data)
-      tried.push({ url: urls[0] + ' (after refresh)', status: res.status, count: pools.length })
+      res = await doFetch()
     }
 
-    // If still empty or 404, try the fallback singular path
-    if ((!Array.isArray(pools) || pools.length === 0) || res.status === 404) {
-      const res2 = await doFetch(urls[1])
-      const data2 = await res2.json().catch(() => ({}))
-      const pools2 = normalizePoolsFromData(data2)
-      tried.push({ url: urls[1], status: res2.status, count: pools2.length })
-      if (pools2.length > 0) {
-        return NextResponse.json(
-          { pools: pools2, tried },
-          {
-            status: 200,
-            headers: { 'x-vincere-userid': VINCERE_TALENTPOOL_USER_ID },
-          },
-        )
-      }
-    }
+    const data = await res.json().catch(() => ({}))
+    const pools = normalizePools(data)
 
     return NextResponse.json(
-      { pools, tried },
+      { pools },
       {
         status: 200,
-        headers: { 'x-vincere-userid': VINCERE_TALENTPOOL_USER_ID },
-      },
+        headers: {
+          'x-vincere-userid': VINCERE_TALENTPOOL_USER_ID,
+          'x-vincere-base': BASE, // ✅ for quick verification in DevTools
+        },
+      }
     )
   } catch (e: any) {
     return NextResponse.json({ error: e?.message ?? 'Unknown error' }, { status: 500 })
