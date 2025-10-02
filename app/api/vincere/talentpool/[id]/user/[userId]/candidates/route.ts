@@ -23,7 +23,7 @@ function unwrapToArray(json: any): any[] {
   if (Array.isArray(json?.candidates)) return json.candidates
   if (Array.isArray(json?.docs)) return json.docs
   if (Array.isArray(json?.results)) return json.results
-  if (Array.isArray(json?.content)) return json.content  // 👈 add this line
+  if (Array.isArray(json?.content)) return json.content // Vincere TP paging shape
   return []
 }
 
@@ -57,7 +57,6 @@ function normalizeCandidate(r: any): NormalizedCandidate {
     r?.candidate?.id ??
     `${r.first_name ?? r.firstName ?? 'unknown'}-${r.last_name ?? r.lastName ?? 'unknown'}`
 
-  // Names may be at root or nested in candidate
   let first = r.first_name ?? r.firstName ?? r?.candidate?.first_name ?? r?.candidate?.firstName ?? ''
   let last  = r.last_name  ?? r.lastName  ?? r?.candidate?.last_name  ?? r?.candidate?.lastName  ?? ''
 
@@ -77,14 +76,19 @@ function normalizeCandidate(r: any): NormalizedCandidate {
   }
 }
 
+// Safely read id token from either session shape without TS errors
+function getIdTokenFromSession(session: any): string | null {
+  return session?.vincere?.id_token ?? session?.tokens?.idToken ?? null
+}
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: { id: string; userId: string } }
 ) {
   try {
-    // --- Session & token (mirror your other working routes) ---
-    let session = await getSession()
-    let idToken = session?.vincere?.id_token
+    // --- Session & token (compatible with both shapes) ---
+    let session: any = await getSession()
+    let idToken: string | null = getIdTokenFromSession(session)
     if (!idToken) {
       return NextResponse.json({ error: 'Not connected to Vincere' }, { status: 401 })
     }
@@ -98,7 +102,6 @@ export async function GET(
       accept: 'application/json',
       'id-token': idToken,
       'x-api-key': (config as any).VINCERE_PUBLIC_API_KEY || config.VINCERE_API_KEY,
-      // Some tenants accept Bearer, some ignore it—harmless to include:
       Authorization: `Bearer ${idToken}`,
     })
 
@@ -107,15 +110,32 @@ export async function GET(
     // First attempt
     let res = await doFetch()
 
-    // Refresh on auth failure (mirror pattern from your other routes)
+    // Refresh on auth failure; support both refresh signatures
     if (res.status === 401 || res.status === 403) {
-      const refreshed = await refreshIdToken(session)
-      if (!refreshed) {
+      // Some of your routes use refreshIdToken(session), others refreshIdToken(userKey)
+      const maybeUserKey = session?.user?.email ?? 'unknown'
+      let refreshedOk = false
+      try {
+        // Try the session-based variant first
+        const refreshed = await (refreshIdToken as any)(session)
+        refreshedOk = !!refreshed
+      } catch {
+        // Fallback to userKey signature
+        try {
+          const refreshed = await (refreshIdToken as any)(maybeUserKey)
+          refreshedOk = !!refreshed
+        } catch {
+          refreshedOk = false
+        }
+      }
+
+      if (!refreshedOk) {
         return NextResponse.json({ error: 'Auth refresh failed' }, { status: 401 })
       }
+
       // Re-read session after refresh
       session = await getSession()
-      idToken = session?.vincere?.id_token
+      idToken = getIdTokenFromSession(session)
       if (!idToken) {
         return NextResponse.json({ error: 'No idToken after refresh' }, { status: 401 })
       }
@@ -138,7 +158,7 @@ export async function GET(
       .filter((x: any) => x && typeof x === 'object')
       .map(normalizeCandidate)
 
-    // NOTE: do NOT filter by email here; let the UI decide
+    // Return a consistent shape for the UI
     return NextResponse.json(
       { items: candidates, meta: { upstream: upstreamUrl, count: candidates.length } },
       {
