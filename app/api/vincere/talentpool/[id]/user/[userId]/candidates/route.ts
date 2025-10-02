@@ -7,78 +7,68 @@ import { config } from '@/lib/config'
 import { getSession } from '@/lib/session'
 import { refreshIdToken } from '@/lib/vincereRefresh'
 
-// Ensure base ends with /api/v2
 function withApiV2(base: string): string {
   let b = (base || '').trim().replace(/\/+$/, '')
   if (!/\/api\/v\d+$/i.test(b)) b = `${b}/api/v2`
   return b
 }
 
-// ---------- Unwrap helpers ----------
-function unwrapToArray(json: any): any[] {
-  if (Array.isArray(json)) return json
-  if (Array.isArray(json?.items)) return json.items
-  if (Array.isArray(json?.data?.items)) return json.data.items
-  if (Array.isArray(json?.data)) return json.data
-  if (Array.isArray(json?.candidates)) return json.candidates
-  if (Array.isArray(json?.docs)) return json.docs
-  if (Array.isArray(json?.results)) return json.results
-  if (Array.isArray(json?.content)) return json.content // Vincere TP paging shape
-  return []
-}
+type Norm = { first_name: string; last_name: string; email: string }
 
-// ---------- Normalization ----------
-type NormalizedCandidate = { id: string | number; first_name: string; last_name: string; email: string | null }
-
-function extractEmail(c: any): string | null {
+function extractEmail(c: any): string {
   return (
     c?.email ??
-    c?.work_email ??
-    c?.email1 ??
     c?.primary_email ??
     c?.candidate_email ??
     c?.contact_email ??
     c?.emailAddress ??
     c?.contact?.email ??
     c?.person?.email ??
-    c?.candidate?.email ??
-    c?.candidate?.work_email ??
     (Array.isArray(c?.emails) && c.emails[0]?.email) ??
-    (Array.isArray(c?.candidate?.emails) && c.candidate.emails[0]?.email) ??
-    null
+    ''
   )
 }
 
-function normalizeCandidate(r: any): NormalizedCandidate {
-  const id =
-    r.candidate_id ??
-    r.id ??
-    r.candidateId ??
-    r?.candidate?.id ??
-    `${r.first_name ?? r.firstName ?? 'unknown'}-${r.last_name ?? r.lastName ?? 'unknown'}`
-
-  let first = r.first_name ?? r.firstName ?? r?.candidate?.first_name ?? r?.candidate?.firstName ?? ''
-  let last  = r.last_name  ?? r.lastName  ?? r?.candidate?.last_name  ?? r?.candidate?.lastName  ?? ''
-
-  if ((!first || !last) && typeof r.name === 'string') {
-    const parts = r.name.trim().split(/\s+/)
-    first = first || parts[0] || ''
-    last  = last  || parts.slice(1).join(' ') || ''
+function flattenArraysDeep(obj: any): any[] {
+  const out: any[] = []
+  const seen = new Set<any>()
+  const walk = (v: any) => {
+    if (!v || seen.has(v)) return
+    seen.add(v)
+    if (Array.isArray(v)) out.push(v)
+    else if (typeof v === 'object') for (const k of Object.keys(v)) walk(v[k])
   }
-
-  const email = extractEmail(r)
-
-  return {
-    id,
-    first_name: String(first || '').trim(),
-    last_name: String(last || '').trim(),
-    email: email ? String(email).trim() : null,
-  }
+  walk(obj)
+  return out.flat()
 }
 
-// Safely read id token from either session shape without TS errors
-function getIdTokenFromSession(session: any): string | null {
-  return session?.vincere?.id_token ?? session?.tokens?.idToken ?? null
+function normalizeCandidates(data: any): Norm[] {
+  const arr =
+    (Array.isArray(data?.candidates) && data.candidates) ||
+    (Array.isArray(data?.docs) && data.docs) ||
+    (Array.isArray(data?.items) && data.items) ||
+    (Array.isArray(data?.results) && data.results) ||
+    (Array.isArray(data?.data) && data.data) ||
+    (Array.isArray(data?.content) && data.content) ||
+    (Array.isArray(data) ? data : flattenArraysDeep(data))
+
+  return (arr || [])
+    .filter((x: any) => x && typeof x === 'object')
+    .map((r: any) => {
+      let first = r.first_name ?? r.firstName ?? ''
+      let last  = r.last_name  ?? r.lastName  ?? ''
+      if ((!first || !last) && typeof r.name === 'string') {
+        const parts = r.name.trim().split(/\s+/)
+        first = first || parts[0] || ''
+        last  = last  || parts.slice(1).join(' ') || ''
+      }
+      const email = extractEmail(r) || ''
+      return {
+        first_name: String(first || '').trim(),
+        last_name:  String(last || '').trim(),
+        email:      String(email || '').trim(),
+      }
+    })
 }
 
 export async function GET(
@@ -86,87 +76,89 @@ export async function GET(
   { params }: { params: { id: string; userId: string } }
 ) {
   try {
-    // --- Session & token (compatible with both shapes) ---
-    let session: any = await getSession()
-    let idToken: string | null = getIdTokenFromSession(session)
-    if (!idToken) {
-      return NextResponse.json({ error: 'Not connected to Vincere' }, { status: 401 })
-    }
+    let session = await getSession()
+    let idToken = session.tokens?.idToken
+    const userKey = session.user?.email ?? 'unknown'
+    if (!idToken) return NextResponse.json({ error: 'Not connected to Vincere' }, { status: 401 })
 
     const BASE = withApiV2(config.VINCERE_TENANT_API_BASE)
-    const upstreamUrl =
-      `${BASE}/talentpool/${encodeURIComponent(params.id)}` +
-      `/user/${encodeURIComponent(params.userId)}/candidates`
+
+    // We’ll try a few likely upstreams then fall back to search
+    const upstreams: string[] = [
+      // exact spec (singular)
+      `${BASE}/talentpool/${encodeURIComponent(params.id)}/user/${encodeURIComponent(params.userId)}/candidates`,
+      // plural variant (some tenants use plural)
+      `${BASE}/talentpools/${encodeURIComponent(params.id)}/user/${encodeURIComponent(params.userId)}/candidates`,
+      // without /user/
+      `${BASE}/talentpool/${encodeURIComponent(params.id)}/candidates`,
+      `${BASE}/talentpools/${encodeURIComponent(params.id)}/candidates`,
+    ]
 
     const headers = new Headers({
-      accept: 'application/json',
       'id-token': idToken,
       'x-api-key': (config as any).VINCERE_PUBLIC_API_KEY || config.VINCERE_API_KEY,
+      accept: 'application/json',
       Authorization: `Bearer ${idToken}`,
     })
 
-    const doFetch = () => fetch(upstreamUrl, { method: 'GET', headers, cache: 'no-store' })
+    const doFetch = (url: string) => fetch(url, { method: 'GET', headers, cache: 'no-store' })
+    const tried: Array<{ url: string; status?: number; count?: number }> = []
 
-    // First attempt
-    let res = await doFetch()
+    // Try each upstream candidate endpoint until we get rows
+    let finalCandidates: Norm[] = []
+    let finalUrl = upstreams[0]
+    for (const url of upstreams) {
+      finalUrl = url
+      let res = await doFetch(url)
+      if (res.status === 401 || res.status === 403) {
+        const ok = await refreshIdToken(userKey)
+        if (!ok) return NextResponse.json({ error: 'Auth refresh failed' }, { status: 401 })
+        session = await getSession()
+        idToken = session.tokens?.idToken
+        if (!idToken) return NextResponse.json({ error: 'No idToken after refresh' }, { status: 401 })
+        headers.set('id-token', idToken)
+        headers.set('Authorization', `Bearer ${idToken}`)
+        res = await doFetch(url)
+      }
+      const data = await res.json().catch(() => ({}))
+      const norm = normalizeCandidates(data)
+      tried.push({ url, status: res.status, count: norm.length })
+      if (norm.length) {
+        finalCandidates = norm
+        break
+      }
+    }
 
-    // Refresh on auth failure; support both refresh signatures
-    if (res.status === 401 || res.status === 403) {
-      // Some of your routes use refreshIdToken(session), others refreshIdToken(userKey)
-      const maybeUserKey = session?.user?.email ?? 'unknown'
-      let refreshedOk = false
-      try {
-        // Try the session-based variant first
-        const refreshed = await (refreshIdToken as any)(session)
-        refreshedOk = !!refreshed
-      } catch {
-        // Fallback to userKey signature
-        try {
-          const refreshed = await (refreshIdToken as any)(maybeUserKey)
-          refreshedOk = !!refreshed
-        } catch {
-          refreshedOk = false
+    // If still no rows, use search fallbacks to enrich
+    if (!finalCandidates.length) {
+      const fl = encodeURIComponent('first_name,last_name,email')
+      const searches = [
+        `${BASE}/candidate/search?talent_pool_id=${encodeURIComponent(params.id)}&fl=${fl}&rows=500`,
+        `${BASE}/candidate/search?talentpool_id=${encodeURIComponent(params.id)}&fl=${fl}&rows=500`,
+        `${BASE}/candidate/search?talentPoolId=${encodeURIComponent(params.id)}&fl=${fl}&rows=500`,
+        `${BASE}/candidate/search?pool_id=${encodeURIComponent(params.id)}&fl=${fl}&rows=500`,
+      ]
+      for (const s of searches) {
+        let res = await doFetch(s)
+        const data = await res.json().catch(() => ({}))
+        const norm = normalizeCandidates(data)
+        tried.push({ url: s, status: res.status, count: norm.length })
+        if (norm.length) {
+          finalCandidates = norm
+          finalUrl = s
+          break
         }
       }
-
-      if (!refreshedOk) {
-        return NextResponse.json({ error: 'Auth refresh failed' }, { status: 401 })
-      }
-
-      // Re-read session after refresh
-      session = await getSession()
-      idToken = getIdTokenFromSession(session)
-      if (!idToken) {
-        return NextResponse.json({ error: 'No idToken after refresh' }, { status: 401 })
-      }
-      headers.set('id-token', idToken)
-      headers.set('Authorization', `Bearer ${idToken}`)
-      res = await doFetch()
     }
 
-    if (!res.ok) {
-      const text = await res.text().catch(() => '')
-      return NextResponse.json(
-        { error: 'Upstream error', status: res.status, text },
-        { status: 502, headers: { 'x-vincere-upstream': upstreamUrl } }
-      )
-    }
-
-    const raw = await res.json().catch(() => ({}))
-    const unwrapped = unwrapToArray(raw)
-    const candidates = unwrapped
-      .filter((x: any) => x && typeof x === 'object')
-      .map(normalizeCandidate)
-
-    // Return a consistent shape for the UI
     return NextResponse.json(
-      { items: candidates, meta: { upstream: upstreamUrl, count: candidates.length } },
+      { candidates: finalCandidates, meta: { upstream: finalUrl, count: finalCandidates.length, tried } },
       {
         status: 200,
         headers: {
           'x-vincere-base': BASE,
           'x-vincere-userid': params.userId,
-          'x-vincere-upstream': upstreamUrl,
+          'x-vincere-upstream': finalUrl,
         },
       }
     )
