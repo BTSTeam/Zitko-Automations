@@ -415,7 +415,7 @@ export default function ActiveCampaignTab() {
                       <td className={cell}>{name || ''}</td>
                       <td className={cell}>
                         {c.email ? (
-                          <a href={`mailto:${c.email}`} className="underline decoration-dotted">
+                          <a href={`mailto:${c.email}`} className="">
                             {c.email}
                           </a>
                         ) : (
