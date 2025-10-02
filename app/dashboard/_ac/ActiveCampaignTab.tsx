@@ -22,6 +22,15 @@ export default function ActiveCampaignTab() {
   const [tags, setTags] = useState<Tag[]>([])
   const [tagName, setTagName] = useState('')
 
+  // Send button state
+  type SendState = 'idle' | 'sending' | 'success' | 'error'
+  const [sendState, setSendState] = useState<SendState>('idle')
+
+  // Reset the tick when inputs change
+  useEffect(() => {
+    setSendState('idle')
+  }, [tagName, poolId, candidates.length])
+
   // On tab mount: fetch Talent Pools and AC tags
   useEffect(() => {
     fetch('/api/vincere/talentpools/user', { cache: 'no-store' })
@@ -62,7 +71,7 @@ export default function ActiveCampaignTab() {
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((data) => {
         const raw = Array.isArray(data?.tags) ? data.tags : []
-        // Hide specific tags like "Customer"
+        // Hide "Customer"
         const filtered = raw.filter(
           (t: any) => String(t?.tag || '').trim().toLowerCase() !== 'customer'
         )
@@ -103,8 +112,11 @@ export default function ActiveCampaignTab() {
 
   async function sendToActiveCampaign() {
     setMessage('')
+    setSendState('sending')
+
     const effectiveTag = tagName.trim()
     if (!effectiveTag) {
+      setSendState('error')
       setMessage('Select a Tag')
       return
     }
@@ -118,6 +130,7 @@ export default function ActiveCampaignTab() {
       }))
 
     if (!prepared.length) {
+      setSendState('error')
       setMessage('No candidates with valid emails.')
       return
     }
@@ -132,24 +145,23 @@ export default function ActiveCampaignTab() {
           excludeAutomations: true,
         }),
       })
-      const data = await res.json().catch(() => ({}))
+      await res.json().catch(() => ({}))
       if (!res.ok) {
-        setMessage(
-          `Import failed (${res.status}). ${
-            typeof data === 'string' ? data : JSON.stringify(data)
-          }`
-        )
+        setSendState('error')
+        setMessage(`Import failed (${res.status}).`)
       } else {
-        setMessage('Import requested. Check console for detailed results.')
-        console.log('AC Import results:', data)
+        // ✅ Success: show white tick, no success message
+        setSendState('success')
       }
     } catch (e: any) {
+      setSendState('error')
       setMessage(e?.message ?? 'Import failed')
     }
   }
 
   const cell = 'px-4 py-2'
   const acEnabled = tagName.trim().length > 0 && candidates.length > 0
+  const isSending = sendState === 'sending'
 
   // Shared select styles + chevron (keeps arrows consistent)
   const selectBase =
@@ -170,7 +182,7 @@ export default function ActiveCampaignTab() {
       {/* TOP PANEL: Controls (white card) */}
       <div className="rounded-2xl border bg-white p-4">
         <div className="grid gap-4 md:grid-cols-2">
-          {/* Talent Pool select (with unified chevron) */}
+          {/* Talent Pool select */}
           <label className="grid gap-1">
             <span className="text-sm font-medium">Talent Pool</span>
             <div className="relative">
@@ -195,7 +207,7 @@ export default function ActiveCampaignTab() {
             </div>
           </label>
 
-          {/* Active Campaign Tag: dropdown only (no Custom option) */}
+          {/* Active Campaign Tag: dropdown only */}
           <label className="grid gap-1">
             <span className="text-sm font-medium">Active Campaign Tag</span>
             <div className="relative">
@@ -233,16 +245,22 @@ export default function ActiveCampaignTab() {
 
           <button
             onClick={sendToActiveCampaign}
-            disabled={!acEnabled}
+            disabled={!acEnabled || isSending}
             className={`ml-auto rounded-full px-5 py-3 font-medium shadow-sm transition 
-              ${acEnabled
+              ${acEnabled && !isSending
                 ? '!bg-[#001961] !text-white hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#001961]'
                 : 'bg-gray-100 text-gray-500 cursor-not-allowed'}`}
+            aria-live="polite"
           >
-            Send to Active Campaign
+            {sendState === 'success'
+              ? '✓'
+              : isSending
+              ? 'Sending…'
+              : 'Send to Active Campaign'}
           </button>
         </div>
 
+        {/* Show only error/info messages now (no success blurb) */}
         {message && <div className="mt-2 text-sm text-gray-700">{message}</div>}
       </div>
 
