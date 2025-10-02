@@ -140,79 +140,82 @@ export default function ActiveCampaignTab() {
     }
   }
 
-  const col = 'px-4 py-2'
+  const cell = 'px-4 py-2'
 
   return (
     <div className="grid gap-6">
-      {/* Top controls */}
-      <div className="grid gap-4 md:grid-cols-2">
-        <label className="grid gap-1">
-          <span className="text-sm font-medium">Talent Pool</span>
-          <select
-            value={poolId}
-            onChange={(e) => setPoolId(e.target.value)}
-            className="rounded-xl border px-3 py-2"
-          >
-            {pools.length === 0 ? (
-              <option value="" disabled>
-                No Talent Pools
-              </option>
-            ) : (
-              pools.map((p) => (
-                <option key={`${p.id}`} value={`${p.id}`}>
-                  {p.name}
+      {/* TOP PANEL: Controls (white card) */}
+      <div className="rounded-2xl border bg-white p-4">
+        <div className="grid gap-4 md:grid-cols-2">
+          <label className="grid gap-1">
+            <span className="text-sm font-medium">Talent Pool</span>
+            <select
+              value={poolId}
+              onChange={(e) => setPoolId(e.target.value)}
+              className="rounded-xl border px-3 py-2"
+            >
+              {pools.length === 0 ? (
+                <option value="" disabled>
+                  No Talent Pools
                 </option>
-              ))
-            )}
-          </select>
-        </label>
+              ) : (
+                pools.map((p) => (
+                  <option key={`${p.id}`} value={`${p.id}`}>
+                    {p.name}
+                  </option>
+                ))
+              )}
+            </select>
+          </label>
 
-        <label className="grid gap-1">
-          <span className="text-sm font-medium">Active Campaign Tag</span>
-          <div className="flex gap-2">
-            <input
-              value={tagName}
-              onChange={(e) => setTagName(e.target.value)}
-              placeholder="Type a tag or pick below"
-              className="flex-1 rounded-xl border px-3 py-2"
-              list="ac-tags"
-            />
-            <datalist id="ac-tags">
-              {tags.map((t) => (
-                <option key={t.id} value={t.tag} />
-              ))}
-            </datalist>
-          </div>
-        </label>
+          <label className="grid gap-1">
+            <span className="text-sm font-medium">Active Campaign Tag</span>
+            <div className="flex gap-2">
+              <input
+                value={tagName}
+                onChange={(e) => setTagName(e.target.value)}
+                placeholder="Type a tag or pick below"
+                className="flex-1 rounded-xl border px-3 py-2"
+                list="ac-tags"
+              />
+              <datalist id="ac-tags">
+                {tags.map((t) => (
+                  <option key={t.id} value={t.tag} />
+                ))}
+              </datalist>
+            </div>
+          </label>
+        </div>
+
+        {/* Primary actions */}
+        <div className="mt-4 flex items-center gap-3">
+          <button
+            onClick={retrievePoolCandidates}
+            disabled={loading || !poolId}
+            className="rounded-full px-6 py-3 bg-[#f7931e] text-white font-medium shadow-sm hover:opacity-95 disabled:opacity-50"
+          >
+            {loading ? 'Retrieving…' : 'Retrieve TP Candidates'}
+          </button>
+
+          <button
+            onClick={sendToActiveCampaign}
+            disabled={!tagName.trim() || candidates.length === 0}
+            className="rounded-full px-5 py-3 border font-medium hover:bg-gray-50 disabled:opacity-50"
+          >
+            Send to Active Campaign
+          </button>
+
+          {message && <div className="ml-2 text-sm text-gray-700">{message}</div>}
+        </div>
       </div>
 
-      {/* Primary actions */}
-      <div className="flex items-center gap-3">
-        <button
-          onClick={retrievePoolCandidates}
-          disabled={loading || !poolId}
-          className="rounded-full px-6 py-3 bg-[#f7931e] text-white font-medium shadow-sm hover:opacity-95 disabled:opacity-50"
-        >
-          {loading ? 'Retrieving…' : 'Retrieve TP Candidates'}
-        </button>
-
-        <button
-          onClick={sendToActiveCampaign}
-          disabled={!tagName.trim() || candidates.length === 0}
-          className="rounded-full px-5 py-3 border font-medium hover:bg-gray-50 disabled:opacity-50"
-        >
-          Send to Active Campaign
-        </button>
-      </div>
-
-      {message && <div className="text-sm text-gray-700">{message}</div>}
-
-      {/* Candidates table */}
-      <div className="rounded-2xl border">
+      {/* BOTTOM PANEL: Candidates (white card) */}
+      <div className="rounded-2xl border bg-white">
         <div className="flex items-center justify-between px-4 py-2">
           <div className="text-sm font-medium">Candidates</div>
-          <div className="text-xs text-gray-500">{candidates.length} loaded</div>
+          {/* removed "X loaded" by request */}
         </div>
+
         <div className="max-h-80 overflow-auto text-sm">
           {candidates.length === 0 ? (
             <div className="px-4 py-6 text-gray-500">No candidates loaded.</div>
@@ -220,19 +223,22 @@ export default function ActiveCampaignTab() {
             <table className="w-full text-left text-sm">
               <thead className="sticky top-0 bg-white">
                 <tr>
-                  <th className={col}>First name</th>
-                  <th className={col}>Surname</th>
-                  <th className={col}>Email</th>
+                  <th className={cell}>Candidate Name</th>
+                  <th className={cell}>Email</th>
+                  <th className={cell}>Tag</th>
                 </tr>
               </thead>
               <tbody>
-                {candidates.map((c, i) => (
-                  <tr key={i} className="border-t">
-                    <td className={col}>{c.first_name || ''}</td>
-                    <td className={col}>{c.last_name || ''}</td>
-                    <td className={col}>{c.email || ''}</td>
-                  </tr>
-                ))}
+                {candidates.map((c, i) => {
+                  const name = [c.first_name, c.last_name].filter(Boolean).join(' ').trim()
+                  return (
+                    <tr key={i} className="border-t">
+                      <td className={cell}>{name || ''}</td>
+                      <td className={cell}>{c.email || ''}</td>
+                      <td className={cell}>{tagName.trim() || ''}</td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           )}
