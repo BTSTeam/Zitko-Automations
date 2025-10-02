@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 type Pool = { id: string | number; name: string }
 type Candidate = { first_name: string; last_name: string; email: string }
@@ -20,15 +20,17 @@ export default function ActiveCampaignTab() {
   const [tags, setTags] = useState<Tag[]>([])
   const [tagName, setTagName] = useState('')
 
-  // Optional list IDs (CSV)
-  const [listIds, setListIds] = useState('')
-
-  // Load pools and tags when tab mounts
+  // On tab mount: fetch Talent Pools (auto) and AC tags (optional UX)
   useEffect(() => {
-    // Talent Pools for current user
+    // Talent Pools for current user (hardcoded user_id handled server-side)
     fetch('/api/vincere/talentpools/user', { cache: 'no-store' })
-      .then(r => r.ok ? r.json() : Promise.reject())
-      .then(data => {
+      .then(async (r) => {
+        const used = r.headers.get('x-vincere-userid') || ''
+        if (!r.ok) {
+          const errText = await r.text()
+          throw new Error(`Pools fetch ${r.status}. userId=${used}. ${errText}`)
+        }
+        const data = await r.json()
         const raw = Array.isArray(data?.docs) ? data.docs
           : Array.isArray(data?.items) ? data.items
           : Array.isArray(data) ? data
@@ -38,12 +40,17 @@ export default function ActiveCampaignTab() {
           id: p.id ?? p.pool_id ?? p.talent_pool_id ?? String(p?.uid ?? ''),
           name: p.name ?? p.title ?? p.pool_name ?? '(unnamed pool)',
         })).filter(p => p.id)
+
         setPools(mapped)
         if (mapped.length && !poolId) setPoolId(String(mapped[0].id))
+        if (!mapped.length) setMessage(`No Talent Pools returned for user.`)
       })
-      .catch(() => setPools([]))
+      .catch((e) => {
+        setPools([])
+        setMessage(e?.message ?? 'Failed to load Talent Pools')
+      })
 
-    // AC tags (optional UX)
+    // AC tags (optional)
     fetch('/api/activecampaign/tags', { cache: 'no-store' })
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(data => setTags(Array.isArray(data?.tags) ? data.tags : []))
@@ -86,10 +93,6 @@ export default function ActiveCampaignTab() {
 
     if (!prepared.length) { setMessage('No candidates with valid emails.'); return }
 
-    const listIdsArr = listIds.split(',')
-      .map(s => parseInt(s.trim(), 10))
-      .filter(n => Number.isFinite(n))
-
     try {
       const res = await fetch('/api/activecampaign/import', {
         method: 'POST',
@@ -97,7 +100,7 @@ export default function ActiveCampaignTab() {
         body: JSON.stringify({
           candidates: prepared,
           tagName: tagName.trim(),
-          listIds: listIdsArr,
+          // listIds removed as requested
           excludeAutomations: true,
         }),
       })
@@ -147,16 +150,6 @@ export default function ActiveCampaignTab() {
             </datalist>
           </div>
         </label>
-
-        <label className="grid gap-1 sm:col-span-2">
-          <span className="text-sm font-medium">List IDs (optional, CSV)</span>
-          <input
-            value={listIds}
-            onChange={e => setListIds(e.target.value)}
-            placeholder="e.g. 1,2"
-            className="rounded-xl border px-3 py-2"
-          />
-        </label>
       </div>
 
       <div className="flex gap-2">
@@ -165,7 +158,7 @@ export default function ActiveCampaignTab() {
           disabled={loading || !poolId}
           className="rounded-2xl border px-4 py-2 hover:bg-gray-50 disabled:opacity-50"
         >
-          {loading ? 'Retrieving…' : 'Retrieve Talent Pool – candidate data'}
+          {loading ? 'Retrieving…' : 'Retrieve TP Candidates'}
         </button>
 
         <button
