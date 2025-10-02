@@ -20,9 +20,10 @@ function unwrapToArray(json: any): any[] {
   if (Array.isArray(json?.items)) return json.items
   if (Array.isArray(json?.data?.items)) return json.data.items
   if (Array.isArray(json?.data)) return json.data
-  if (Array.isArray(json?.results)) return json.results
-  if (Array.isArray(json?.docs)) return json.docs
   if (Array.isArray(json?.candidates)) return json.candidates
+  if (Array.isArray(json?.docs)) return json.docs
+  if (Array.isArray(json?.results)) return json.results
+  if (Array.isArray(json?.content)) return json.content  // 👈 add this line
   return []
 }
 
