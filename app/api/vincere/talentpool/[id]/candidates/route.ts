@@ -7,6 +7,13 @@ import { config } from '@/lib/config'
 import { getSession } from '@/lib/session'
 import { refreshIdToken } from '@/lib/vincereRefresh'
 
+// Ensure base includes /api/v2
+function withApiV2(base: string): string {
+  let b = (base || '').trim().replace(/\/+$/, '')
+  if (!/\/api\/v\d+$/i.test(b)) b = `${b}/api/v2`
+  return b
+}
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: { id: string } }
@@ -19,28 +26,32 @@ export async function GET(
       return NextResponse.json({ error: 'Not connected to Vincere' }, { status: 401 })
     }
 
-    const BASE = config.VINCERE_TENANT_API_BASE.replace(/\/$/, '')
+    const RAW_BASE = config.VINCERE_TENANT_API_BASE
+    const BASE = withApiV2(RAW_BASE) // ✅ guarantees /api/v2 is present
+
+    // If you have a dedicated endpoint for pool candidates, replace this path.
+    // Using candidate search filtered by pool ID and limiting fields.
     const fl = encodeURIComponent('first_name,last_name,email')
     const url = `${BASE}/candidate/search?talent_pool_id=${encodeURIComponent(params.id)}&fl=${fl}&rows=500`
 
-    const headers = new Headers()
-    headers.set('id-token', idToken)
-    headers.set('x-api-key', (config as any).VINCERE_PUBLIC_API_KEY || config.VINCERE_API_KEY)
-    headers.set('accept', 'application/json')
+    const headers = new Headers({
+      'id-token': idToken,
+      'x-api-key': (config as any).VINCERE_PUBLIC_API_KEY || config.VINCERE_API_KEY,
+      accept: 'application/json',
+      Authorization: `Bearer ${idToken}`,
+    })
 
     const doFetch = () => fetch(url, { method: 'GET', headers, cache: 'no-store' })
 
     let res = await doFetch()
     if (res.status === 401 || res.status === 403) {
-      const ok = await refreshIdToken(userKey)   // boolean
+      const ok = await refreshIdToken(userKey)
       if (!ok) return NextResponse.json({ error: 'Auth refresh failed' }, { status: 401 })
-
-      // 🔁 re-read session to get the updated token
       session = await getSession()
       idToken = session.tokens?.idToken
       if (!idToken) return NextResponse.json({ error: 'No idToken after refresh' }, { status: 401 })
       headers.set('id-token', idToken)
-
+      headers.set('Authorization', `Bearer ${idToken}`)
       res = await doFetch()
     }
 
@@ -60,7 +71,10 @@ export async function GET(
       email:      r.email      ?? '',
     }))
 
-    return NextResponse.json({ candidates }, { status: 200 })
+    return NextResponse.json(
+      { candidates },
+      { status: 200, headers: { 'x-vincere-base': BASE } } // ✅ quick verification
+    )
   } catch (e: any) {
     return NextResponse.json({ error: e?.message ?? 'Unknown error' }, { status: 500 })
   }
