@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 type Pool = { id: string | number; name: string }
 type Candidate = { first_name: string; last_name: string; email: string }
@@ -8,12 +8,30 @@ type Tag = { id: number; tag: string }
 
 const TP_USER_ID = process.env.NEXT_PUBLIC_VINCERE_TALENTPOOL_USER_ID || '29018'
 
+type JobStatus = 'running' | 'done' | 'error' | 'not-found'
+type JobProgress = {
+  id?: string
+  status: JobStatus
+  poolId?: string
+  tagName?: string
+  totals?: {
+    poolTotal: number | null
+    seen: number
+    valid: number
+    sent: number
+    skippedNoEmail: number
+    duplicates: number
+    pagesFetched: number
+  }
+  error?: string
+}
+
 export default function ActiveCampaignTab() {
   // Talent pools
   const [pools, setPools] = useState<Pool[]>([])
   const [poolId, setPoolId] = useState<string>('')
 
-  // Candidates from selected pool
+  // Candidates from selected pool (preview only)
   const [candidates, setCandidates] = useState<Candidate[]>([])
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
@@ -23,13 +41,22 @@ export default function ActiveCampaignTab() {
   const [tagName, setTagName] = useState('')
 
   // Send button state
-  type SendState = 'idle' | 'sending' | 'success' | 'error'
+  type SendState = 'idle' | 'starting' | 'sending' | 'success' | 'error'
   const [sendState, setSendState] = useState<SendState>('idle')
+
+  // Progress (SSE)
+  const [progress, setProgress] = useState<JobProgress | null>(null)
+  const esRef = useRef<EventSource | null>(null)
 
   // Reset the tick when inputs change
   useEffect(() => {
     setSendState('idle')
-  }, [tagName, poolId, candidates.length])
+    setProgress(null)
+    if (esRef.current) {
+      esRef.current.close()
+      esRef.current = null
+    }
+  }, [tagName, poolId])
 
   // On tab mount: fetch Talent Pools and AC tags
   useEffect(() => {
@@ -71,7 +98,7 @@ export default function ActiveCampaignTab() {
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((data) => {
         const raw = Array.isArray(data?.tags) ? data.tags : []
-        // Hide "Customer"
+        // Hide "Customer" (quick filter)
         const filtered = raw.filter(
           (t: any) => String(t?.tag || '').trim().toLowerCase() !== 'customer'
         )
@@ -91,7 +118,7 @@ export default function ActiveCampaignTab() {
       const res = await fetch(
         `/api/vincere/talentpool/${encodeURIComponent(poolId)}/user/${encodeURIComponent(
           TP_USER_ID
-        )}/candidates`,
+        )}/candidates?rows=500`, // preview up to 500 in UI
         { cache: 'no-store' }
       )
       if (!res.ok) {
@@ -110,9 +137,12 @@ export default function ActiveCampaignTab() {
     }
   }
 
+  // Enable send when there's a tag and a selected pool (preview not required)
+  const acEnabled = tagName.trim().length > 0 && poolId !== ''
+
   async function sendToActiveCampaign() {
     setMessage('')
-    setSendState('sending')
+    setSendState('starting')
 
     const effectiveTag = tagName.trim()
     if (!effectiveTag) {
@@ -121,37 +151,54 @@ export default function ActiveCampaignTab() {
       return
     }
 
-    const prepared = candidates
-      .filter((c) => c?.email && /\S+@\S+\.\S+/.test(c.email))
-      .map((c) => ({
-        first_name: c.first_name ?? '',
-        last_name: c.last_name ?? '',
-        email: c.email,
-      }))
-
-    if (!prepared.length) {
-      setSendState('error')
-      setMessage('No candidates with valid emails.')
-      return
-    }
-
     try {
-      const res = await fetch('/api/activecampaign/import', {
+      // 1) start background job
+      const res = await fetch('/api/activecampaign/import-pool/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          candidates: prepared,
+          poolId,
+          userId: TP_USER_ID,
           tagName: effectiveTag,
-          excludeAutomations: true,
+          rows: 500,    // page size from Vincere
+          max: 50000,   // safety ceiling; raise if needed
+          chunk: 500,   // batch size per AC import
+          pauseMs: 300, // polite pacing
         }),
       })
-      await res.json().catch(() => ({}))
-      if (!res.ok) {
+      const data = await res.json()
+      if (!res.ok || !data?.jobId) {
         setSendState('error')
-        setMessage(`Import failed (${res.status}).`)
-      } else {
-        // ✅ Success: show white tick, no success message
-        setSendState('success')
+        setMessage(data?.error || `Failed to start import (${res.status}).`)
+        return
+      }
+
+      setSendState('sending')
+
+      // 2) open SSE for live progress
+      if (esRef.current) esRef.current.close()
+      const es = new EventSource(`/api/activecampaign/import-pool/progress/${data.jobId}`)
+      esRef.current = es
+
+      es.onmessage = (evt) => {
+        const payload: JobProgress = JSON.parse(evt.data || '{}')
+        setProgress(payload)
+
+        if (payload.status === 'done') {
+          setSendState('success') // shows ✓
+          es.close()
+          esRef.current = null
+        } else if (payload.status === 'error' || payload.status === 'not-found') {
+          setSendState('error')
+          setMessage(payload.error || 'Import failed')
+          es.close()
+          esRef.current = null
+        }
+      }
+
+      es.onerror = () => {
+        // network hiccup; keep UI safe
+        // we won't flip to success/error here; server will finalize on next tick
       }
     } catch (e: any) {
       setSendState('error')
@@ -160,10 +207,9 @@ export default function ActiveCampaignTab() {
   }
 
   const cell = 'px-4 py-2'
-  const acEnabled = tagName.trim().length > 0 && candidates.length > 0
-  const isSending = sendState === 'sending'
+  const isSending = sendState === 'sending' || sendState === 'starting'
 
-  // Shared select styles + chevron (keeps arrows consistent)
+  // consistent select look + chevron
   const selectBase =
     'w-full rounded-xl border px-3 py-2 appearance-none pr-9 focus:outline-none focus:ring-2 focus:ring-[#001961]'
   const SelectChevron = () => (
@@ -177,12 +223,20 @@ export default function ActiveCampaignTab() {
     </svg>
   )
 
+  const totalInPool = progress?.totals?.poolTotal ?? null
+  const sent = progress?.totals?.sent ?? 0
+  const percent =
+    totalInPool && totalInPool > 0 ? Math.min(100, Math.round((sent / totalInPool) * 100)) : 0
+
+  const fmt = (n: number | null | undefined) =>
+    typeof n === 'number' ? new Intl.NumberFormat().format(n) : '—'
+
   return (
     <div className="grid gap-6">
       {/* TOP PANEL: Controls (white card) */}
       <div className="rounded-2xl border bg-white p-4">
         <div className="grid gap-4 md:grid-cols-2">
-          {/* Talent Pool select */}
+          {/* Talent Pool */}
           <label className="grid gap-1">
             <span className="text-sm font-medium">Talent Pool</span>
             <div className="relative">
@@ -207,7 +261,7 @@ export default function ActiveCampaignTab() {
             </div>
           </label>
 
-          {/* Active Campaign Tag: dropdown only */}
+          {/* AC Tag */}
           <label className="grid gap-1">
             <span className="text-sm font-medium">Active Campaign Tag</span>
             <div className="relative">
@@ -230,13 +284,13 @@ export default function ActiveCampaignTab() {
           </label>
         </div>
 
-        {/* Actions row: Retrieve on the left, Send on the right */}
+        {/* Actions + progress */}
         <div className="mt-4 flex items-center gap-3">
           <button
             onClick={retrievePoolCandidates}
-            disabled={loading || !poolId}
+            disabled={loading || !poolId || isSending}
             className={`rounded-full px-6 py-3 font-medium shadow-sm transition
-              ${!loading && poolId
+              ${!loading && poolId && !isSending
                 ? '!bg-[#001961] !text-white hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#001961]'
                 : 'bg-gray-100 text-gray-500 cursor-not-allowed'}`}
           >
@@ -252,26 +306,45 @@ export default function ActiveCampaignTab() {
                 : 'bg-gray-100 text-gray-500 cursor-not-allowed'}`}
             aria-live="polite"
           >
-            {sendState === 'success'
-              ? '✓'
-              : isSending
-              ? 'Sending…'
-              : 'Send to Active Campaign'}
+            {sendState === 'success' ? '✓' : isSending ? 'Sending…' : 'Send to Active Campaign'}
           </button>
         </div>
 
-        {/* Show only error/info messages now (no success blurb) */}
+        {/* Progress bar + numbers (only when sending or done/error) */}
+        {(progress && progress.status !== 'not-found') && (
+          <div className="mt-3">
+            <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
+              <span>Tagging & sending to ActiveCampaign</span>
+              <span>
+                {fmt(sent)} / {fmt(totalInPool)} {totalInPool ? `(${percent}%)` : ''}
+              </span>
+            </div>
+            <div className="h-2 w-full rounded-full bg-gray-200 overflow-hidden">
+              <div
+                className="h-2 bg-[#001961] transition-all"
+                style={{ width: `${percent}%` }}
+              />
+            </div>
+            {progress?.status === 'error' && (
+              <div className="mt-2 text-sm text-red-600">
+                {progress?.error || 'Import failed'}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Only show non-success messages (errors, info) */}
         {message && <div className="mt-2 text-sm text-gray-700">{message}</div>}
       </div>
 
-      {/* RESULTS PANEL: white card, scroller + count */}
+      {/* RESULTS PANEL: white card, scroller + counts */}
       <div className="rounded-2xl border bg-white">
-        {/* Count only (no title) */}
         <div className="flex items-center justify-end px-4 py-2">
-          <div className="text-xs text-gray-500">{candidates.length} loaded</div>
+          <div className="text-xs text-gray-500">
+            {candidates.length} loaded{totalInPool != null ? ` · ${fmt(totalInPool)} in pool` : ''}
+          </div>
         </div>
 
-        {/* Scrollable list */}
         <div className="max-h-96 overflow-auto text-sm">
           {candidates.length === 0 ? (
             <div className="px-4 py-6 text-gray-500">No candidates loaded.</div>
