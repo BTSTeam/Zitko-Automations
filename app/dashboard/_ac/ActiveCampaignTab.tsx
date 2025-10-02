@@ -8,59 +8,6 @@ type Tag = { id: number; tag: string }
 
 const TP_USER_ID = process.env.NEXT_PUBLIC_VINCERE_TALENTPOOL_USER_ID || '29018'
 
-// ---------- Helpers: unwrap + normalize ----------
-function unwrapToArray(json: any): any[] {
-  if (Array.isArray(json)) return json
-  if (Array.isArray(json?.items)) return json.items
-  if (Array.isArray(json?.data?.items)) return json.data.items
-  if (Array.isArray(json?.data)) return json.data
-  if (Array.isArray(json?.candidates)) return json.candidates
-  if (Array.isArray(json?.docs)) return json.docs
-  if (Array.isArray(json?.results)) return json.results
-  if (Array.isArray(json?.content)) return json.content // Vincere paging shape
-  return []
-}
-
-function extractEmail(r: any): string | null {
-  return (
-    r?.email ??
-    r?.work_email ??
-    r?.email1 ??
-    r?.primary_email ??
-    r?.candidate_email ??
-    r?.contact_email ??
-    r?.emailAddress ??
-    r?.candidate?.email ??
-    r?.candidate?.work_email ??
-    r?.contact?.email ??
-    r?.person?.email ??
-    (Array.isArray(r?.emails) && r.emails[0]?.email) ??
-    (Array.isArray(r?.candidate?.emails) && r.candidate.emails[0]?.email) ??
-    null
-  )
-}
-
-function toUICandidate(r: any): Candidate {
-  let first =
-    r?.first_name ?? r?.firstName ?? r?.candidate?.first_name ?? r?.candidate?.firstName ?? ''
-  let last =
-    r?.last_name ?? r?.lastName ?? r?.candidate?.last_name ?? r?.candidate?.lastName ?? ''
-
-  if ((!first || !last) && typeof r?.name === 'string') {
-    const parts = r.name.trim().split(/\s+/)
-    first = first || parts[0] || ''
-    last = last || parts.slice(1).join(' ') || ''
-  }
-
-  const email = extractEmail(r)
-
-  return {
-    first_name: String(first || '').trim(),
-    last_name: String(last || '').trim(),
-    email: email ? String(email).trim() : '',
-  }
-}
-
 export default function ActiveCampaignTab() {
   // Talent pools
   const [pools, setPools] = useState<Pool[]>([])
@@ -85,7 +32,15 @@ export default function ActiveCampaignTab() {
           throw new Error(`Pools fetch ${r.status}. userId=${used}. ${errText}`)
         }
         const data = await r.json()
-        const arr: any[] = unwrapToArray(data)
+        const arr: any[] = Array.isArray(data?.pools)
+          ? data.pools
+          : Array.isArray(data?.docs)
+          ? data.docs
+          : Array.isArray(data?.items)
+          ? data.items
+          : Array.isArray(data)
+          ? data
+          : []
 
         const mapped: Pool[] = arr
           .map((p: any) => ({
@@ -97,27 +52,17 @@ export default function ActiveCampaignTab() {
         setPools(mapped)
         if (mapped.length && !poolId) setPoolId(String(mapped[0].id))
         if (!mapped.length) setMessage('No Talent Pools returned for user.')
-
-        console.log('[TP] pools loaded:', mapped.length, { userIdUsed: used })
       })
       .catch((e) => {
         setPools([])
         setMessage(e?.message ?? 'Failed to load Talent Pools')
-        console.error('[TP] pools error:', e)
       })
 
     fetch('/api/activecampaign/tags', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((data) => setTags(Array.isArray(data?.tags) ? data.tags : []))
       .catch(() => setTags([]))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  // Clear candidates when switching pool to avoid stale rows/count
-  useEffect(() => {
-    setCandidates([])
-    setMessage('')
-  }, [poolId])
 
   async function retrievePoolCandidates() {
     setMessage('')
@@ -137,25 +82,13 @@ export default function ActiveCampaignTab() {
         const t = await res.text()
         throw new Error(`Failed to fetch pool candidates (${res.status}): ${t}`)
       }
-      const data = await res.json().catch(() => ({}))
-      // Accept either { items: [...] }, { candidates: [...] }, or any wrapped array
-      const arr = Array.isArray(data?.items)
-        ? data.items
-        : Array.isArray(data?.candidates)
-        ? data.candidates
-        : unwrapToArray(data)
-
-      const rows: Candidate[] = arr.map(toUICandidate)
-
+      const data = await res.json()
+      const rows: Candidate[] = Array.isArray(data?.candidates) ? data.candidates : []
       setCandidates(rows)
       if (!rows.length) setMessage('No candidates found in this pool.')
-
-      console.log('[TP] fetched candidates:', rows.length)
-      if (rows[0]) console.log('[TP] sample candidate:', rows[0])
     } catch (e: any) {
       setMessage(e?.message ?? 'Failed to load candidates')
       setCandidates([])
-      console.error('[TP] candidates error:', e)
     } finally {
       setLoading(false)
     }
@@ -168,7 +101,6 @@ export default function ActiveCampaignTab() {
       return
     }
 
-    // Filter only at send-time (UI still shows all rows)
     const prepared = candidates
       .filter((c) => c?.email && /\S+@\S+\.\S+/.test(c.email))
       .map((c) => ({
@@ -205,7 +137,6 @@ export default function ActiveCampaignTab() {
       }
     } catch (e: any) {
       setMessage(e?.message ?? 'Import failed')
-      console.error('[AC] import error:', e)
     }
   }
 
