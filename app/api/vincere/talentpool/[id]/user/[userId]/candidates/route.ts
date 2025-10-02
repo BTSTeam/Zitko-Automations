@@ -79,7 +79,7 @@ function parseTotalFromHeaders(h: Headers): number | null {
     'x-total-results',
     'x-total-records',
     'x-count',
-    'x-pagination-total'
+    'x-pagination-total',
   ]
   for (const k of keys) {
     const v = h.get(k) || h.get(k.toUpperCase())
@@ -115,7 +115,7 @@ function parseTotalFromJson(d: any): number | null {
     null
   if (typeof direct === 'number') return direct
 
-  // Cautious deep scan for keys containing "total" / "numFound" variants
+  // careful deep scan
   let found: number | null = null
   const seen = new Set<any>()
   const walk = (v: any) => {
@@ -133,8 +133,13 @@ function parseTotalFromJson(d: any): number | null {
   return found
 }
 
-function withRows(url: string, rows: number): string {
-  return url.includes('?') ? `${url}&rows=${rows}` : `${url}?rows=${rows}`
+function qs(u: string, params: Record<string, string | number | undefined>): string {
+  const url = new URL(u)
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined) continue
+    url.searchParams.set(k, String(v))
+  }
+  return url.toString()
 }
 
 export async function GET(
@@ -142,7 +147,10 @@ export async function GET(
   { params }: { params: { id: string; userId: string } }
 ) {
   try {
-    const rows = Math.max(1, Number(req.nextUrl.searchParams.get('rows') ?? 500))
+    // How many rows to preview in the UI
+    const rowsTarget = Math.max(1, Number(req.nextUrl.searchParams.get('rows') ?? 500))
+    // We'll try to fetch this many per page (up to upstream limits)
+    const pageSize = Math.min(rowsTarget, 500) // safe cap
 
     let session = await getSession()
     let idToken = session.tokens?.idToken
@@ -151,12 +159,13 @@ export async function GET(
 
     const BASE = withApiV2(config.VINCERE_TENANT_API_BASE)
 
-    const upstreams: string[] = [
+    // Candidate upstreams we’ll try
+    const upstreamBases: string[] = [
       `${BASE}/talentpool/${encodeURIComponent(params.id)}/user/${encodeURIComponent(params.userId)}/candidates`,
       `${BASE}/talentpools/${encodeURIComponent(params.id)}/user/${encodeURIComponent(params.userId)}/candidates`,
       `${BASE}/talentpool/${encodeURIComponent(params.id)}/candidates`,
       `${BASE}/talentpools/${encodeURIComponent(params.id)}/candidates`,
-    ].map(u => withRows(u, rows))
+    ]
 
     const headers = new Headers({
       'id-token': idToken,
@@ -166,61 +175,153 @@ export async function GET(
     })
 
     const doFetch = (url: string) => fetch(url, { method: 'GET', headers, cache: 'no-store' })
+
+    // pagination strategies to probe (first that returns rows will be used)
+    const strategies = [
+      // page + per_page
+      (base: string, page: number, size: number) => qs(base, { page, per_page: size }),
+      // page + page_size
+      (base: string, page: number, size: number) => qs(base, { page, page_size: size }),
+      // page + size
+      (base: string, page: number, size: number) => qs(base, { page, size }),
+      // start + rows (Solr style)
+      (base: string, page: number, size: number) => qs(base, { start: (page - 1) * size, rows: size }),
+      // offset + limit
+      (base: string, page: number, size: number) => qs(base, { offset: (page - 1) * size, limit: size }),
+      // skip + take
+      (base: string, page: number, size: number) => qs(base, { skip: (page - 1) * size, take: size }),
+      // page only (some APIs ignore size and stick to a tenant default, e.g., 25)
+      (base: string, page: number, _size: number) => qs(base, { page }),
+      // pageNo only
+      (base: string, page: number, _size: number) => qs(base, { pageNo: page }),
+      // page_number + page_size
+      (base: string, page: number, size: number) => qs(base, { page_number: page, page_size: size }),
+    ]
+
     const tried: Array<{ url: string; status?: number; count?: number }> = []
-
-    let finalCandidates: Norm[] = []
-    let finalUrl = upstreams[0]
+    const collected: Norm[] = []
+    const seenKey = new Set<string>()
     let poolTotal: number | null = null
+    let finalUpstreamBase = upstreamBases[0]
+    let chosenStrategyIndex = -1
 
-    for (const url of upstreams) {
-      finalUrl = url
-      let res = await doFetch(url)
-      if (res.status === 401 || res.status === 403) {
-        const ok = await refreshIdToken(userKey)
-        if (!ok) return NextResponse.json({ error: 'Auth refresh failed' }, { status: 401 })
-        session = await getSession()
-        idToken = session.tokens?.idToken
-        if (!idToken) return NextResponse.json({ error: 'No idToken after refresh' }, { status: 401 })
-        headers.set('id-token', idToken)
-        headers.set('Authorization', `Bearer ${idToken}`)
-        res = await doFetch(url)
+    // helper to add rows with de-dupe
+    const addRows = (rows: Norm[]) => {
+      for (const r of rows) {
+        const key = (r.email || `${r.first_name} ${r.last_name}`).toLowerCase().trim()
+        if (key && !seenKey.has(key)) {
+          seenKey.add(key)
+          collected.push(r)
+          if (collected.length >= rowsTarget) break
+        }
       }
+    }
 
-      // Try to get totals from HEADERS first
+    // 1) Find a base + strategy that returns anything
+    outer: for (const base of upstreamBases) {
+      finalUpstreamBase = base
+      for (let sIdx = 0; sIdx < strategies.length; sIdx++) {
+        const url = strategies[sIdx](base, 1, pageSize)
+        let res = await doFetch(url)
+        if (res.status === 401 || res.status === 403) {
+          const ok = await refreshIdToken(userKey)
+          if (!ok) return NextResponse.json({ error: 'Auth refresh failed' }, { status: 401 })
+          const fresh = await getSession()
+          const newToken = fresh.tokens?.idToken
+          if (!newToken) return NextResponse.json({ error: 'No idToken after refresh' }, { status: 401 })
+          headers.set('id-token', newToken)
+          headers.set('Authorization', `Bearer ${newToken}`)
+          res = await doFetch(url)
+        }
+
+        // try totals from headers first
+        poolTotal = poolTotal ?? parseTotalFromHeaders(res.headers)
+
+        const data = await res.json().catch(() => ({}))
+        poolTotal = poolTotal ?? parseTotalFromJson(data)
+
+        const norm = normalizeCandidates(data)
+        tried.push({ url, status: res.status, count: norm.length })
+
+        if (norm.length > 0) {
+          addRows(norm)
+          chosenStrategyIndex = sIdx
+          break outer
+        }
+      }
+    }
+
+    // If nothing at all came back, just respond empty
+    if (collected.length === 0 && chosenStrategyIndex === -1) {
+      return NextResponse.json(
+        {
+          candidates: [],
+          meta: {
+            upstream: finalUpstreamBase,
+            count: 0,
+            total: poolTotal,
+            tried,
+            rowsRequested: rowsTarget,
+            pagesFetched: 0,
+          },
+        },
+        {
+          status: 200,
+          headers: {
+            'x-vincere-base': withApiV2(config.VINCERE_TENANT_API_BASE),
+            'x-vincere-userid': params.userId,
+            'x-vincere-upstream': finalUpstreamBase,
+            'x-vincere-total': poolTotal != null ? String(poolTotal) : '',
+            'x-rows': String(rowsTarget),
+          },
+        }
+      )
+    }
+
+    // 2) Keep paging with the chosen strategy until we reach rowsTarget or no more rows
+    let page = 2
+    let pagesFetched = 1
+    const maxPages = Math.ceil(rowsTarget / Math.max(1, pageSize)) + 5 // small cushion
+
+    while (collected.length < rowsTarget && page <= maxPages) {
+      const pageUrl = strategies[chosenStrategyIndex](finalUpstreamBase, page, pageSize)
+      const res = await doFetch(pageUrl)
+      // totals again (some APIs only include on first page; we won't overwrite an existing number)
       poolTotal = poolTotal ?? parseTotalFromHeaders(res.headers)
 
-      // Then parse the JSON body
       const data = await res.json().catch(() => ({}))
       poolTotal = poolTotal ?? parseTotalFromJson(data)
 
       const norm = normalizeCandidates(data)
-      tried.push({ url, status: res.status, count: norm.length })
-      if (norm.length) {
-        finalCandidates = norm
-        break
-      }
+      tried.push({ url: pageUrl, status: res.status, count: norm.length })
+
+      if (!norm.length) break
+      const before = collected.length
+      addRows(norm)
+      pagesFetched++
+      if (collected.length === before) break // no net new (all dupes)
+      page++
     }
 
-    // If still no rows, we’re done—will respond without a total
     return NextResponse.json(
       {
-        candidates: finalCandidates,
+        candidates: collected,
         meta: {
-          upstream: finalUrl,
-          count: finalCandidates.length,
-          total: poolTotal, // ← should now be set when Vincere exposes it
+          upstream: finalUpstreamBase,
+          count: collected.length,
+          total: poolTotal,          // may still be null if upstream never exposes it
           tried,
-          rowsRequested: rows,
+          rowsRequested: rowsTarget,
         },
       },
       {
         status: 200,
         headers: {
-          'x-vincere-base': BASE,
+          'x-vincere-base': withApiV2(config.VINCERE_TENANT_API_BASE),
           'x-vincere-userid': params.userId,
-          'x-vincere-upstream': finalUrl,
+          'x-vincere-upstream': finalUpstreamBase,
           'x-vincere-total': poolTotal != null ? String(poolTotal) : '',
-          'x-rows': String(rows),
+          'x-rows': String(rowsTarget),
         },
       }
     )
