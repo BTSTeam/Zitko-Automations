@@ -134,17 +134,44 @@ export default function ActiveCampaignTab() {
       const rows: Candidate[] = Array.isArray(data?.candidates) ? data.candidates : []
       setCandidates(rows)
 
-      // NEW: pool total from meta OR header fallback
+      // pool total from meta OR header fallback
       const headerTotalStr = res.headers.get('x-vincere-total')
       const headerTotal =
         headerTotalStr && headerTotalStr.trim() !== '' ? Number(headerTotalStr) : NaN
-      const total =
+      let total: number | null =
         typeof data?.meta?.total === 'number'
           ? data.meta.total
           : !Number.isNaN(headerTotal)
           ? headerTotal
           : null
       setPoolTotal(total)
+
+      // FINAL FALLBACK: call count endpoint if still null
+      if (total == null) {
+        try {
+          const cRes = await fetch(
+            `/api/vincere/talentpool/${encodeURIComponent(poolId)}/count`,
+            { cache: 'no-store' }
+          )
+          if (cRes.ok) {
+            const cData = await cRes.json().catch(() => ({}))
+            const h2 = cRes.headers.get('x-vincere-total')
+            const n2 = h2 && h2.trim() !== '' ? Number(h2) : NaN
+            const t2 =
+              typeof cData?.total === 'number'
+                ? cData.total
+                : !Number.isNaN(n2)
+                ? n2
+                : null
+            if (t2 != null) {
+              total = t2
+              setPoolTotal(t2)
+            }
+          }
+        } catch {
+          // ignore; leave as null
+        }
+      }
 
       if (!rows.length) setMessage('No candidates found in this pool.')
     } catch (e: any) {
@@ -363,7 +390,7 @@ export default function ActiveCampaignTab() {
       <div className="rounded-2xl border bg-white">
         <div className="flex items-center justify-start px-4 py-2">
           <div className="text-xs text-gray-500">
-            {new Intl.NumberFormat().format(candidates.length)} loaded
+            {new Intl.NumberFormat().format(candidates.length)} loaded (preview)
             {poolTotal != null ? ` · ${new Intl.NumberFormat().format(poolTotal)} in pool` : ''}
           </div>
         </div>
