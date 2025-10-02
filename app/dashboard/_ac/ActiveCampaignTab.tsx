@@ -141,6 +141,7 @@ export default function ActiveCampaignTab() {
   }
 
   const cell = 'px-4 py-2'
+  const acEnabled = !!tagName.trim() && candidates.length > 0
 
   return (
     <div className="grid gap-6">
@@ -199,8 +200,11 @@ export default function ActiveCampaignTab() {
 
           <button
             onClick={sendToActiveCampaign}
-            disabled={!tagName.trim() || candidates.length === 0}
-            className="rounded-full px-5 py-3 border font-medium hover:bg-gray-50 disabled:opacity-50"
+            disabled={!acEnabled}
+            // force dark blue like AC UI when enabled
+            className={`rounded-full px-5 py-3 font-medium shadow-sm transition 
+              ${acEnabled ? '!bg-[#001961] !text-white hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#001961]'
+                          : 'border bg-gray-100 text-gray-500 cursor-not-allowed'}`}
           >
             Send to Active Campaign
           </button>
@@ -213,7 +217,7 @@ export default function ActiveCampaignTab() {
       <div className="rounded-2xl border bg-white">
         <div className="flex items-center justify-between px-4 py-2">
           <div className="text-sm font-medium">Candidates</div>
-          {/* removed "X loaded" by request */}
+          {/* removed count text */}
         </div>
 
         <div className="max-h-80 overflow-auto text-sm">
