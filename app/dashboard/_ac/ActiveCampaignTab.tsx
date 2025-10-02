@@ -17,7 +17,7 @@ function unwrapToArray(json: any): any[] {
   if (Array.isArray(json?.candidates)) return json.candidates
   if (Array.isArray(json?.docs)) return json.docs
   if (Array.isArray(json?.results)) return json.results
-  if (Array.isArray(json?.content)) return json.content  // 👈 add this line
+  if (Array.isArray(json?.content)) return json.content // Vincere paging shape
   return []
 }
 
@@ -97,10 +97,13 @@ export default function ActiveCampaignTab() {
         setPools(mapped)
         if (mapped.length && !poolId) setPoolId(String(mapped[0].id))
         if (!mapped.length) setMessage('No Talent Pools returned for user.')
+
+        console.log('[TP] pools loaded:', mapped.length, { userIdUsed: used })
       })
       .catch((e) => {
         setPools([])
         setMessage(e?.message ?? 'Failed to load Talent Pools')
+        console.error('[TP] pools error:', e)
       })
 
     fetch('/api/activecampaign/tags', { cache: 'no-store' })
@@ -109,6 +112,12 @@ export default function ActiveCampaignTab() {
       .catch(() => setTags([]))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Clear candidates when switching pool to avoid stale rows/count
+  useEffect(() => {
+    setCandidates([])
+    setMessage('')
+  }, [poolId])
 
   async function retrievePoolCandidates() {
     setMessage('')
@@ -129,7 +138,7 @@ export default function ActiveCampaignTab() {
         throw new Error(`Failed to fetch pool candidates (${res.status}): ${t}`)
       }
       const data = await res.json().catch(() => ({}))
-      // Accept either { items: [...] }, { candidates: [...] }, or bare array shapes
+      // Accept either { items: [...] }, { candidates: [...] }, or any wrapped array
       const arr = Array.isArray(data?.items)
         ? data.items
         : Array.isArray(data?.candidates)
@@ -140,10 +149,13 @@ export default function ActiveCampaignTab() {
 
       setCandidates(rows)
       if (!rows.length) setMessage('No candidates found in this pool.')
+
       console.log('[TP] fetched candidates:', rows.length)
+      if (rows[0]) console.log('[TP] sample candidate:', rows[0])
     } catch (e: any) {
       setMessage(e?.message ?? 'Failed to load candidates')
       setCandidates([])
+      console.error('[TP] candidates error:', e)
     } finally {
       setLoading(false)
     }
@@ -193,6 +205,7 @@ export default function ActiveCampaignTab() {
       }
     } catch (e: any) {
       setMessage(e?.message ?? 'Import failed')
+      console.error('[AC] import error:', e)
     }
   }
 
