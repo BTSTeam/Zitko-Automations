@@ -56,26 +56,47 @@ function normalizeCandidates(data: any): Norm[] {
     .filter((x: any) => x && typeof x === 'object')
     .map((r: any) => {
       let first = r.first_name ?? r.firstName ?? ''
-      let last  = r.last_name  ?? r.lastName  ?? ''
+      let last = r.last_name ?? r.lastName ?? ''
       if ((!first || !last) && typeof r.name === 'string') {
         const parts = r.name.trim().split(/\s+/)
         first = first || parts[0] || ''
-        last  = last  || parts.slice(1).join(' ') || ''
+        last = last || parts.slice(1).join(' ') || ''
       }
       const email = extractEmail(r) || ''
       return {
         first_name: String(first || '').trim(),
-        last_name:  String(last || '').trim(),
-        email:      String(email || '').trim(),
+        last_name: String(last || '').trim(),
+        email: String(email || '').trim(),
       }
     })
 }
 
+/** Try to parse a "total results" field from various Vincere/ES styles */
+function parseTotal(d: any): number | null {
+  const n =
+    (typeof d?.numFound === 'number' && d.numFound) ||
+    (typeof d?.total === 'number' && d.total) ||
+    (typeof d?.count === 'number' && d.count) ||
+    (typeof d?.totalCount === 'number' && d.totalCount) ||
+    (typeof d?.meta?.total === 'number' && d.meta.total) ||
+    (typeof d?.hits?.total?.value === 'number' && d.hits.total.value) ||
+    null
+  return typeof n === 'number' ? n : null
+}
+
+/** Append rows= to a URL (harmless if upstream ignores it) */
+function withRows(url: string, rows: number): string {
+  return url.includes('?') ? `${url}&rows=${rows}` : `${url}?rows=${rows}`
+}
+
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: { id: string; userId: string } }
 ) {
   try {
+    // allow ?rows= to control preview size; default 500
+    const rows = Math.max(1, Number(req.nextUrl.searchParams.get('rows') ?? 500))
+
     let session = await getSession()
     let idToken = session.tokens?.idToken
     const userKey = session.user?.email ?? 'unknown'
@@ -83,16 +104,20 @@ export async function GET(
 
     const BASE = withApiV2(config.VINCERE_TENANT_API_BASE)
 
-    // We’ll try a few likely upstreams then fall back to search
+    // Try a few likely upstreams, requesting rows where possible
     const upstreams: string[] = [
       // exact spec (singular)
-      `${BASE}/talentpool/${encodeURIComponent(params.id)}/user/${encodeURIComponent(params.userId)}/candidates`,
+      `${BASE}/talentpool/${encodeURIComponent(params.id)}/user/${encodeURIComponent(
+        params.userId
+      )}/candidates`,
       // plural variant (some tenants use plural)
-      `${BASE}/talentpools/${encodeURIComponent(params.id)}/user/${encodeURIComponent(params.userId)}/candidates`,
+      `${BASE}/talentpools/${encodeURIComponent(params.id)}/user/${encodeURIComponent(
+        params.userId
+      )}/candidates`,
       // without /user/
       `${BASE}/talentpool/${encodeURIComponent(params.id)}/candidates`,
       `${BASE}/talentpools/${encodeURIComponent(params.id)}/candidates`,
-    ]
+    ].map((u) => withRows(u, rows))
 
     const headers = new Headers({
       'id-token': idToken,
@@ -101,12 +126,15 @@ export async function GET(
       Authorization: `Bearer ${idToken}`,
     })
 
-    const doFetch = (url: string) => fetch(url, { method: 'GET', headers, cache: 'no-store' })
+    const doFetch = (url: string) =>
+      fetch(url, { method: 'GET', headers, cache: 'no-store' })
     const tried: Array<{ url: string; status?: number; count?: number }> = []
 
-    // Try each upstream candidate endpoint until we get rows
     let finalCandidates: Norm[] = []
     let finalUrl = upstreams[0]
+    let poolTotal: number | null = null
+
+    // 1) Try each upstream endpoint until we get rows
     for (const url of upstreams) {
       finalUrl = url
       let res = await doFetch(url)
@@ -121,6 +149,9 @@ export async function GET(
         res = await doFetch(url)
       }
       const data = await res.json().catch(() => ({}))
+      // attempt to pick up a total if this payload includes one
+      poolTotal = poolTotal ?? parseTotal(data)
+
       const norm = normalizeCandidates(data)
       tried.push({ url, status: res.status, count: norm.length })
       if (norm.length) {
@@ -129,18 +160,20 @@ export async function GET(
       }
     }
 
-    // If still no rows, use search fallbacks to enrich
+    // 2) If still no rows, use search fallbacks (explicit rows=)
     if (!finalCandidates.length) {
       const fl = encodeURIComponent('first_name,last_name,email')
       const searches = [
-        `${BASE}/candidate/search?talent_pool_id=${encodeURIComponent(params.id)}&fl=${fl}&rows=500`,
-        `${BASE}/candidate/search?talentpool_id=${encodeURIComponent(params.id)}&fl=${fl}&rows=500`,
-        `${BASE}/candidate/search?talentPoolId=${encodeURIComponent(params.id)}&fl=${fl}&rows=500`,
-        `${BASE}/candidate/search?pool_id=${encodeURIComponent(params.id)}&fl=${fl}&rows=500`,
+        `${BASE}/candidate/search?talent_pool_id=${encodeURIComponent(params.id)}&fl=${fl}&rows=${rows}`,
+        `${BASE}/candidate/search?talentpool_id=${encodeURIComponent(params.id)}&fl=${fl}&rows=${rows}`,
+        `${BASE}/candidate/search?talentPoolId=${encodeURIComponent(params.id)}&fl=${fl}&rows=${rows}`,
+        `${BASE}/candidate/search?pool_id=${encodeURIComponent(params.id)}&fl=${fl}&rows=${rows}`,
       ]
       for (const s of searches) {
         let res = await doFetch(s)
         const data = await res.json().catch(() => ({}))
+        poolTotal = poolTotal ?? parseTotal(data)
+
         const norm = normalizeCandidates(data)
         tried.push({ url: s, status: res.status, count: norm.length })
         if (norm.length) {
@@ -152,13 +185,24 @@ export async function GET(
     }
 
     return NextResponse.json(
-      { candidates: finalCandidates, meta: { upstream: finalUrl, count: finalCandidates.length, tried } },
+      {
+        candidates: finalCandidates,
+        meta: {
+          upstream: finalUrl,
+          count: finalCandidates.length,
+          total: poolTotal, // ← true pool size when the API exposes it
+          tried,
+          rowsRequested: rows,
+        },
+      },
       {
         status: 200,
         headers: {
           'x-vincere-base': BASE,
           'x-vincere-userid': params.userId,
           'x-vincere-upstream': finalUrl,
+          'x-vincere-total': poolTotal != null ? String(poolTotal) : '',
+          'x-rows': String(rows),
         },
       }
     )
