@@ -71,17 +71,66 @@ function normalizeCandidates(data: any): Norm[] {
     })
 }
 
-/** Parse a total count from various Vincere/ES payload shapes */
-function parseTotal(d: any): number | null {
-  const n =
-    (typeof d?.numFound === 'number' && d.numFound) ||
-    (typeof d?.total === 'number' && d.total) ||
-    (typeof d?.count === 'number' && d.count) ||
-    (typeof d?.totalCount === 'number' && d.totalCount) ||
+/** Try typical header fields for totals (case-insensitive). */
+function parseTotalFromHeaders(h: Headers): number | null {
+  const keys = [
+    'x-total',
+    'x-total-count',
+    'x-total-results',
+    'x-total-records',
+    'x-count',
+    'x-pagination-total'
+  ]
+  for (const k of keys) {
+    const v = h.get(k) || h.get(k.toUpperCase())
+    if (v && !Number.isNaN(Number(v))) return Number(v)
+  }
+  const cr = h.get('content-range') || h.get('Content-Range')
+  // e.g. "items 0-24/11234" or "0-24/11234"
+  if (cr) {
+    const m = cr.match(/\/\s*(\d+)\s*$/)
+    if (m) return Number(m[1])
+  }
+  return null
+}
+
+/** Pull totals from common JSON shapes. Falls back to a cautious deep scan. */
+function parseTotalFromJson(d: any): number | null {
+  if (!d || typeof d !== 'object') return null
+  const direct =
+    (typeof d.numFound === 'number' && d.numFound) ||
+    (typeof d.total === 'number' && d.total) ||
+    (typeof d.count === 'number' && d.count) ||
+    (typeof d.totalCount === 'number' && d.totalCount) ||
+    (typeof d.recordsTotal === 'number' && d.recordsTotal) ||
+    (typeof d.totalRecords === 'number' && d.totalRecords) ||
+    (typeof d.totalElements === 'number' && d.totalElements) ||
     (typeof d?.meta?.total === 'number' && d.meta.total) ||
+    (typeof d?.meta?.total_count === 'number' && d.meta.total_count) ||
     (typeof d?.hits?.total?.value === 'number' && d.hits.total.value) ||
+    (typeof d?.pagination?.total === 'number' && d.pagination.total) ||
+    (typeof d?.page?.total === 'number' && d.page.total) ||
+    (typeof d?.page?.totalRows === 'number' && d.page.totalRows) ||
+    (typeof d?.page?.total_elements === 'number' && d.page.total_elements) ||
     null
-  return typeof n === 'number' ? n : null
+  if (typeof direct === 'number') return direct
+
+  // Cautious deep scan for keys containing "total" / "numFound" variants
+  let found: number | null = null
+  const seen = new Set<any>()
+  const walk = (v: any) => {
+    if (!v || typeof v !== 'object' || seen.has(v)) return
+    seen.add(v)
+    for (const [k, val] of Object.entries(v)) {
+      if (typeof val === 'number' && /total|numfound|recordsTotal|totalCount|totalElements/i.test(k)) {
+        if (val > 0 && (found == null || val > found)) found = val
+      } else if (val && typeof val === 'object') {
+        walk(val)
+      }
+    }
+  }
+  walk(d)
+  return found
 }
 
 function withRows(url: string, rows: number): string {
@@ -123,7 +172,6 @@ export async function GET(
     let finalUrl = upstreams[0]
     let poolTotal: number | null = null
 
-    // 1) Try direct endpoints
     for (const url of upstreams) {
       finalUrl = url
       let res = await doFetch(url)
@@ -137,8 +185,14 @@ export async function GET(
         headers.set('Authorization', `Bearer ${idToken}`)
         res = await doFetch(url)
       }
+
+      // Try to get totals from HEADERS first
+      poolTotal = poolTotal ?? parseTotalFromHeaders(res.headers)
+
+      // Then parse the JSON body
       const data = await res.json().catch(() => ({}))
-      poolTotal = poolTotal ?? parseTotal(data) // some tenants include total here
+      poolTotal = poolTotal ?? parseTotalFromJson(data)
+
       const norm = normalizeCandidates(data)
       tried.push({ url, status: res.status, count: norm.length })
       if (norm.length) {
@@ -147,53 +201,14 @@ export async function GET(
       }
     }
 
-    // 2) Fallback to search (and get totals) if no rows from direct
-    if (!finalCandidates.length) {
-      const fl = encodeURIComponent('first_name,last_name,email')
-      const searches = [
-        `${BASE}/candidate/search?talent_pool_id=${encodeURIComponent(params.id)}&fl=${fl}&rows=${rows}`,
-        `${BASE}/candidate/search?talentpool_id=${encodeURIComponent(params.id)}&fl=${fl}&rows=${rows}`,
-        `${BASE}/candidate/search?talentPoolId=${encodeURIComponent(params.id)}&fl=${fl}&rows=${rows}`,
-        `${BASE}/candidate/search?pool_id=${encodeURIComponent(params.id)}&fl=${fl}&rows=${rows}`,
-      ]
-      for (const s of searches) {
-        let res = await doFetch(s)
-        const data = await res.json().catch(() => ({}))
-        poolTotal = poolTotal ?? parseTotal(data)
-        const norm = normalizeCandidates(data)
-        tried.push({ url: s, status: res.status, count: norm.length })
-        if (norm.length) {
-          finalCandidates = norm
-          finalUrl = s
-          break
-        }
-      }
-    }
-
-    // 3) If we still don't have a total, do a quick "count probe" via search
-    if (poolTotal == null) {
-      const keys = ['talent_pool_id', 'talentpool_id', 'talentPoolId', 'pool_id'] as const
-      const flCount = encodeURIComponent('id') // minimal
-      for (const key of keys) {
-        const probe = `${BASE}/candidate/search?${key}=${encodeURIComponent(params.id)}&fl=${flCount}&rows=1&start=0`
-        const res = await doFetch(probe)
-        const data = await res.json().catch(() => ({}))
-        tried.push({ url: probe, status: res.status, count: 1 })
-        const t = parseTotal(data)
-        if (typeof t === 'number') {
-          poolTotal = t
-          break
-        }
-      }
-    }
-
+    // If still no rows, we’re done—will respond without a total
     return NextResponse.json(
       {
         candidates: finalCandidates,
         meta: {
           upstream: finalUrl,
           count: finalCandidates.length,
-          total: poolTotal,       // ← always try to provide this
+          total: poolTotal, // ← should now be set when Vincere exposes it
           tried,
           rowsRequested: rows,
         },
