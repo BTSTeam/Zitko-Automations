@@ -351,7 +351,7 @@ export default function ActiveCampaignTab() {
                 ? '!bg-[#001961] !text-white hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#001961]'
                 : 'bg-gray-100 text-gray-500 cursor-not-allowed'}`}
           >
-            {loading ? 'Retrieving…' : `Retrieve TP Candidates (first ${SAMPLE_PREVIEW_LIMIT})`}
+            {loading ? 'Retrieving…' : `Retrieve TP Candidates`}
           </button>
 
           <button
@@ -398,8 +398,8 @@ export default function ActiveCampaignTab() {
       <div className="rounded-2xl border bg-white">
         <div className="flex items-center justify-start px-4 py-2">
           <div className="text-xs text-gray-500">
-            {new Intl.NumberFormat().format(candidates.length)} loaded (preview)
-            {poolTotal != null ? ` · ${new Intl.NumberFormat().format(poolTotal)} in pool` : ''}
+            {new Intl.NumberFormat().format(candidates.length)} Loaded
+            {poolTotal != null ? `  |  ${new Intl.NumberFormat().format(poolTotal)} in Talent Pool` : ''}
           </div>
         </div>
 
@@ -423,7 +423,7 @@ export default function ActiveCampaignTab() {
                       <td className={cell}>{name || ''}</td>
                       <td className={cell}>
                         {c.email ? (
-                          <a href={`mailto:${c.email}`} className="underline decoration-dotted">
+                          <a href={`mailto:${c.email}`} className="">
                             {c.email}
                           </a>
                         ) : (
