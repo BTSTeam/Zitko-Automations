@@ -21,7 +21,6 @@ export default function ActiveCampaignTab() {
   // Tags
   const [tags, setTags] = useState<Tag[]>([])
   const [tagName, setTagName] = useState('')
-  const [tagMode, setTagMode] = useState<'select' | 'custom'>('select')
 
   // On tab mount: fetch Talent Pools and AC tags
   useEffect(() => {
@@ -63,6 +62,7 @@ export default function ActiveCampaignTab() {
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((data) => {
         const raw = Array.isArray(data?.tags) ? data.tags : []
+        // Hide specific tags like "Customer"
         const filtered = raw.filter(
           (t: any) => String(t?.tag || '').trim().toLowerCase() !== 'customer'
         )
@@ -103,9 +103,9 @@ export default function ActiveCampaignTab() {
 
   async function sendToActiveCampaign() {
     setMessage('')
-    const effectiveTag = tagMode === 'custom' ? tagName.trim() : tagName.trim()
+    const effectiveTag = tagName.trim()
     if (!effectiveTag) {
-      setMessage('Select or enter a Tag')
+      setMessage('Select a Tag')
       return
     }
 
@@ -149,10 +149,11 @@ export default function ActiveCampaignTab() {
   }
 
   const cell = 'px-4 py-2'
-  const acEnabled = (tagMode === 'custom' ? tagName.trim().length > 0 : tagName.trim().length > 0) && candidates.length > 0
+  const acEnabled = tagName.trim().length > 0 && candidates.length > 0
 
-  // Shared select styles + chevron
-  const selectBase = 'w-full rounded-xl border px-3 py-2 appearance-none pr-9 focus:outline-none focus:ring-2 focus:ring-[#001961]'
+  // Shared select styles + chevron (keeps arrows consistent)
+  const selectBase =
+    'w-full rounded-xl border px-3 py-2 appearance-none pr-9 focus:outline-none focus:ring-2 focus:ring-[#001961]'
   const SelectChevron = () => (
     <svg
       className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500"
@@ -194,46 +195,25 @@ export default function ActiveCampaignTab() {
             </div>
           </label>
 
-          {/* Active Campaign Tag: select with "Custom..." option -> shows input when chosen */}
+          {/* Active Campaign Tag: dropdown only (no Custom option) */}
           <label className="grid gap-1">
             <span className="text-sm font-medium">Active Campaign Tag</span>
-            <div className="grid gap-2">
-              <div className="relative">
-                <select
-                  value={tagMode === 'custom' ? '__custom__' : tagName}
-                  onChange={(e) => {
-                    const v = e.target.value
-                    if (v === '__custom__') {
-                      setTagMode('custom')
-                      // leave tagName as-is so user can tweak existing text if any
-                    } else {
-                      setTagMode('select')
-                      setTagName(v)
-                    }
-                  }}
-                  className={selectBase}
-                >
-                  <option value="" disabled>
-                    Select a tag
+            <div className="relative">
+              <select
+                value={tagName}
+                onChange={(e) => setTagName(e.target.value)}
+                className={selectBase}
+              >
+                <option value="" disabled>
+                  Select a tag
+                </option>
+                {tags.map((t) => (
+                  <option key={t.id} value={t.tag}>
+                    {t.tag}
                   </option>
-                  {tags.map((t) => (
-                    <option key={t.id} value={t.tag}>
-                      {t.tag}
-                    </option>
-                  ))}
-                  <option value="__custom__">Custom…</option>
-                </select>
-                <SelectChevron />
-              </div>
-
-              {tagMode === 'custom' && (
-                <input
-                  value={tagName}
-                  onChange={(e) => setTagName(e.target.value)}
-                  placeholder="Type a custom tag"
-                  className="w-full rounded-xl border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#001961]"
-                />
-              )}
+                ))}
+              </select>
+              <SelectChevron />
             </div>
           </label>
         </div>
@@ -268,7 +248,6 @@ export default function ActiveCampaignTab() {
 
       {/* RESULTS PANEL: white card, no title, auto-expanding height */}
       <div className="rounded-2xl border bg-white">
-        {/* Removed the "Candidates" header/title */}
         <div className="overflow-x-auto text-sm">
           {candidates.length === 0 ? (
             <div className="px-4 py-6 text-gray-500">No candidates loaded.</div>
@@ -296,11 +275,7 @@ export default function ActiveCampaignTab() {
                           ''
                         )}
                       </td>
-                      <td className={cell}>
-                        {tagMode === 'custom'
-                          ? (tagName || '').trim()
-                          : (tagName || '').trim()}
-                      </td>
+                      <td className={cell}>{(tagName || '').trim()}</td>
                     </tr>
                   )
                 })}
