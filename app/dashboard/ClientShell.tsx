@@ -104,12 +104,17 @@ export default function ClientShell(): JSX.Element {
           </div>
         </div>
 
-        {/* Right-aligned single button */}
+        {/* Right-aligned single button (Active Campaign) */}
         <div>
           <button
             onClick={() => setTab('ac')}
-            className={`tab ${tab === 'ac' ? 'tab-active' : ''}`}
             title="Active Campaign"
+            aria-selected={tab === 'ac'}
+            className={`tab ${
+              tab === 'ac'
+                ? 'bg-[#001961] text-white hover:opacity-95 shadow-sm'
+                : ''
+            }`}
           >
             Active Campaign
           </button>
