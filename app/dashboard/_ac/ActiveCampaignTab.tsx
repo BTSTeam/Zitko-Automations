@@ -18,11 +18,12 @@ export default function ActiveCampaignTab() {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
 
-  // Tag (free-type or pick from list)
+  // Tags
   const [tags, setTags] = useState<Tag[]>([])
   const [tagName, setTagName] = useState('')
+  const [tagMode, setTagMode] = useState<'select' | 'custom'>('select')
 
-  // On tab mount: fetch Talent Pools (auto) and AC tags
+  // On tab mount: fetch Talent Pools and AC tags
   useEffect(() => {
     fetch('/api/vincere/talentpools/user', { cache: 'no-store' })
       .then(async (r) => {
@@ -96,8 +97,9 @@ export default function ActiveCampaignTab() {
 
   async function sendToActiveCampaign() {
     setMessage('')
-    if (!tagName.trim()) {
-      setMessage('Enter or select a Tag')
+    const effectiveTag = tagMode === 'custom' ? tagName.trim() : tagName.trim()
+    if (!effectiveTag) {
+      setMessage('Select or enter a Tag')
       return
     }
 
@@ -120,7 +122,7 @@ export default function ActiveCampaignTab() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           candidates: prepared,
-          tagName: tagName.trim(),
+          tagName: effectiveTag,
           excludeAutomations: true,
         }),
       })
@@ -141,59 +143,104 @@ export default function ActiveCampaignTab() {
   }
 
   const cell = 'px-4 py-2'
-  const acEnabled = !!tagName.trim() && candidates.length > 0
+  const acEnabled = (tagMode === 'custom' ? tagName.trim().length > 0 : tagName.trim().length > 0) && candidates.length > 0
+
+  // Shared select styles + chevron
+  const selectBase = 'w-full rounded-xl border px-3 py-2 appearance-none pr-9 focus:outline-none focus:ring-2 focus:ring-[#001961]'
+  const SelectChevron = () => (
+    <svg
+      className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500"
+      viewBox="0 0 20 20"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.116l3.71-2.885a.75.75 0 1 1 .92 1.18l-4.2 3.265a.75.75 0 0 1-.92 0L5.25 8.39a.75.75 0 0 1-.02-1.18z" />
+    </svg>
+  )
 
   return (
     <div className="grid gap-6">
       {/* TOP PANEL: Controls (white card) */}
       <div className="rounded-2xl border bg-white p-4">
         <div className="grid gap-4 md:grid-cols-2">
+          {/* Talent Pool select (with unified chevron) */}
           <label className="grid gap-1">
             <span className="text-sm font-medium">Talent Pool</span>
-            <select
-              value={poolId}
-              onChange={(e) => setPoolId(e.target.value)}
-              className="rounded-xl border px-3 py-2"
-            >
-              {pools.length === 0 ? (
-                <option value="" disabled>
-                  No Talent Pools
-                </option>
-              ) : (
-                pools.map((p) => (
-                  <option key={`${p.id}`} value={`${p.id}`}>
-                    {p.name}
+            <div className="relative">
+              <select
+                value={poolId}
+                onChange={(e) => setPoolId(e.target.value)}
+                className={selectBase}
+              >
+                {pools.length === 0 ? (
+                  <option value="" disabled>
+                    No Talent Pools
                   </option>
-                ))
-              )}
-            </select>
+                ) : (
+                  pools.map((p) => (
+                    <option key={`${p.id}`} value={`${p.id}`}>
+                      {p.name}
+                    </option>
+                  ))
+                )}
+              </select>
+              <SelectChevron />
+            </div>
           </label>
 
+          {/* Active Campaign Tag: select with "Custom..." option -> shows input when chosen */}
           <label className="grid gap-1">
             <span className="text-sm font-medium">Active Campaign Tag</span>
-            <div className="flex gap-2">
-              <input
-                value={tagName}
-                onChange={(e) => setTagName(e.target.value)}
-                placeholder="Type a tag or pick below"
-                className="flex-1 rounded-xl border px-3 py-2"
-                list="ac-tags"
-              />
-              <datalist id="ac-tags">
-                {tags.map((t) => (
-                  <option key={t.id} value={t.tag} />
-                ))}
-              </datalist>
+            <div className="grid gap-2">
+              <div className="relative">
+                <select
+                  value={tagMode === 'custom' ? '__custom__' : tagName}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    if (v === '__custom__') {
+                      setTagMode('custom')
+                      // leave tagName as-is so user can tweak existing text if any
+                    } else {
+                      setTagMode('select')
+                      setTagName(v)
+                    }
+                  }}
+                  className={selectBase}
+                >
+                  <option value="" disabled>
+                    Select a tag
+                  </option>
+                  {tags.map((t) => (
+                    <option key={t.id} value={t.tag}>
+                      {t.tag}
+                    </option>
+                  ))}
+                  <option value="__custom__">Custom…</option>
+                </select>
+                <SelectChevron />
+              </div>
+
+              {tagMode === 'custom' && (
+                <input
+                  value={tagName}
+                  onChange={(e) => setTagName(e.target.value)}
+                  placeholder="Type a custom tag"
+                  className="w-full rounded-xl border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#001961]"
+                />
+              )}
             </div>
           </label>
         </div>
 
-        {/* Primary actions */}
+        {/* Actions row: Retrieve on the left, Send on the right */}
         <div className="mt-4 flex items-center gap-3">
           <button
             onClick={retrievePoolCandidates}
             disabled={loading || !poolId}
-            className="rounded-full px-6 py-3 bg-[#f7931e] text-white font-medium shadow-sm hover:opacity-95 disabled:opacity-50"
+            className={`rounded-full px-6 py-3 font-medium shadow-sm transition
+              ${!loading && poolId
+                ? '!bg-[#001961] !text-white hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#001961]'
+                : 'bg-gray-100 text-gray-500 cursor-not-allowed'}`}
           >
             {loading ? 'Retrieving…' : 'Retrieve TP Candidates'}
           </button>
@@ -201,26 +248,22 @@ export default function ActiveCampaignTab() {
           <button
             onClick={sendToActiveCampaign}
             disabled={!acEnabled}
-            // force dark blue like AC UI when enabled
-            className={`rounded-full px-5 py-3 font-medium shadow-sm transition 
-              ${acEnabled ? '!bg-[#001961] !text-white hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#001961]'
-                          : 'border bg-gray-100 text-gray-500 cursor-not-allowed'}`}
+            className={`ml-auto rounded-full px-5 py-3 font-medium shadow-sm transition 
+              ${acEnabled
+                ? '!bg-[#001961] !text-white hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#001961]'
+                : 'bg-gray-100 text-gray-500 cursor-not-allowed'}`}
           >
             Send to Active Campaign
           </button>
-
-          {message && <div className="ml-2 text-sm text-gray-700">{message}</div>}
         </div>
+
+        {message && <div className="mt-2 text-sm text-gray-700">{message}</div>}
       </div>
 
-      {/* BOTTOM PANEL: Candidates (white card) */}
+      {/* RESULTS PANEL: white card, no title, auto-expanding height */}
       <div className="rounded-2xl border bg-white">
-        <div className="flex items-center justify-between px-4 py-2">
-          <div className="text-sm font-medium">Candidates</div>
-          {/* removed count text */}
-        </div>
-
-        <div className="max-h-80 overflow-auto text-sm">
+        {/* Removed the "Candidates" header/title */}
+        <div className="overflow-x-auto text-sm">
           {candidates.length === 0 ? (
             <div className="px-4 py-6 text-gray-500">No candidates loaded.</div>
           ) : (
@@ -236,10 +279,22 @@ export default function ActiveCampaignTab() {
                 {candidates.map((c, i) => {
                   const name = [c.first_name, c.last_name].filter(Boolean).join(' ').trim()
                   return (
-                    <tr key={i} className="border-t">
+                    <tr key={i} className="border-t hover:bg-gray-50">
                       <td className={cell}>{name || ''}</td>
-                      <td className={cell}>{c.email || ''}</td>
-                      <td className={cell}>{tagName.trim() || ''}</td>
+                      <td className={cell}>
+                        {c.email ? (
+                          <a href={`mailto:${c.email}`} className="underline decoration-dotted">
+                            {c.email}
+                          </a>
+                        ) : (
+                          ''
+                        )}
+                      </td>
+                      <td className={cell}>
+                        {tagMode === 'custom'
+                          ? (tagName || '').trim()
+                          : (tagName || '').trim()}
+                      </td>
                     </tr>
                   )
                 })}
