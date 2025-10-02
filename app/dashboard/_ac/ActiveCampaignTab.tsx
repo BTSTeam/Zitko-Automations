@@ -6,6 +6,8 @@ type Pool = { id: string | number; name: string }
 type Candidate = { first_name: string; last_name: string; email: string }
 type Tag = { id: number; tag: string }
 
+const TP_USER_ID = process.env.NEXT_PUBLIC_VINCERE_TALENTPOOL_USER_ID || '29018'
+
 export default function ActiveCampaignTab() {
   // Talent pools
   const [pools, setPools] = useState<Pool[]>([])
@@ -71,8 +73,10 @@ export default function ActiveCampaignTab() {
     setLoading(true)
     try {
       const res = await fetch(
-        `/api/vincere/talentpool/${encodeURIComponent(poolId)}/candidates`,
-        { cache: 'no-store' },
+        `/api/vincere/talentpool/${encodeURIComponent(poolId)}/user/${encodeURIComponent(
+          TP_USER_ID
+        )}/candidates`,
+        { cache: 'no-store' }
       )
       if (!res.ok) {
         const t = await res.text()
@@ -125,7 +129,7 @@ export default function ActiveCampaignTab() {
         setMessage(
           `Import failed (${res.status}). ${
             typeof data === 'string' ? data : JSON.stringify(data)
-          }`,
+          }`
         )
       } else {
         setMessage('Import requested. Check console for detailed results.')
@@ -140,7 +144,7 @@ export default function ActiveCampaignTab() {
 
   return (
     <div className="grid gap-6">
-      {/* Top controls (styled to mirror your other pages) */}
+      {/* Top controls */}
       <div className="grid gap-4 md:grid-cols-2">
         <label className="grid gap-1">
           <span className="text-sm font-medium">Talent Pool</span>
