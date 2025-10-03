@@ -8,8 +8,8 @@ type Tag = { id: number; tag: string }
 
 const TP_USER_ID = process.env.NEXT_PUBLIC_VINCERE_TALENTPOOL_USER_ID || '29018'
 
-// ==== Preview / pagination tuning (sample fetch only; UI no longer lists rows) ====
-const SAMPLE_PREVIEW_LIMIT = 50
+// ==== Preview / pagination tuning (UI only) ====
+const SAMPLE_PREVIEW_LIMIT = 50 // import job still processes all on the server
 
 type JobStatus = 'running' | 'done' | 'error' | 'not-found'
 type JobProgress = {
@@ -34,12 +34,12 @@ export default function ActiveCampaignTab() {
   const [pools, setPools] = useState<Pool[]>([])
   const [poolId, setPoolId] = useState<string>('')
 
-  // Preview fetch (not displayed now; kept to drive true totals and validations)
+  // Candidates preview (used only to trigger count + sanity)
   const [candidates, setCandidates] = useState<Candidate[]>([])
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
 
-  // True pool size (mirrors Vincere count route when available)
+  // True pool size
   const [poolTotal, setPoolTotal] = useState<number | null>(null)
 
   // Tags
@@ -124,8 +124,8 @@ export default function ActiveCampaignTab() {
     try {
       // Request a small preview sample and (where supported) have the server return total
       const qs = new URLSearchParams({
-        limit: String(SAMPLE_PREVIEW_LIMIT),
-        rows: String(SAMPLE_PREVIEW_LIMIT), // legacy param for older handlers
+        limit: String(SAMPLE_PREVIEW_LIMIT), // new param
+        rows: String(SAMPLE_PREVIEW_LIMIT),  // legacy param (B/C)
       }).toString()
 
       const res = await fetch(
@@ -203,7 +203,7 @@ export default function ActiveCampaignTab() {
     }
 
     try {
-      // Start background job (server paginates the whole pool)
+      // Start background job (server paginates whole pool)
       const res = await fetch('/api/activecampaign/import-pool/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -211,7 +211,6 @@ export default function ActiveCampaignTab() {
           poolId,
           userId: TP_USER_ID,
           tagName: effectiveTag,
-          // server-side knobs (safe defaults)
           rows: 200,
           max: 100000,
           chunk: 250,
@@ -236,7 +235,7 @@ export default function ActiveCampaignTab() {
         const payload: JobProgress = JSON.parse(evt.data || '{}')
         setProgress(payload)
         if (payload.status === 'done') {
-          setSendState('success') // shows ✓ in the button
+          setSendState('success') // shows ✓
           es.close()
           esRef.current = null
         } else if (payload.status === 'error' || payload.status === 'not-found') {
@@ -248,7 +247,7 @@ export default function ActiveCampaignTab() {
       }
 
       es.onerror = () => {
-        // transient network hiccups are fine; server will emit final state
+        // network hiccup; let server drive final state
       }
     } catch (e: any) {
       setSendState('error')
@@ -258,65 +257,20 @@ export default function ActiveCampaignTab() {
 
   const isSending = sendState === 'sending' || sendState === 'starting'
 
-  // consistent select look + chevron
-  const selectBase =
-    'w-full rounded-xl border px-3 py-2 appearance-none pr-9 focus:outline-none focus:ring-2 focus:ring-[#001961]'
-  const SelectChevron = () => (
-    <svg
-      className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500"
-      viewBox="0 0 20 20"
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.116l3.71-2.885a.75.75 0 1 1 .92 1.18l-4.2 3.265a.75.75 0 0 1-.92 0L5.25 8.39a.75.75 0 0 1-.02-1.18z" />
-    </svg>
-  )
-
-  // ---------- Progress maths ----------
-  // Prefer progress-supplied totals while sending
+  // Prefer progress total when sending; otherwise use preview's poolTotal
   const totalInPool = (progress?.totals?.poolTotal ?? poolTotal) ?? null
   const sent = progress?.totals?.sent ?? 0
-
-  // "Actual target" = how many will truly be sent (unique + email)
-  // Use max(valid, sent) so % never gets stuck <100 when valid grows late in the job.
-  const valid = progress?.totals?.valid ?? 0
-  const toSendTarget = progress ? Math.max(valid, sent) : null
-
-  // Denominator preference: if we know actual-to-send, use it; else fall back to pool total
-  const denom = (toSendTarget && toSendTarget > 0) ? toSendTarget : (totalInPool || 0)
-  const circlePercent = denom > 0 ? Math.min(100, Math.round((sent / denom) * 100)) : 0
+  const denominator = progress?.totals?.valid ?? totalInPool ?? null // % based on actual valid where available
+  const percent =
+    denominator && denominator > 0 ? Math.min(100, Math.round((sent / denominator) * 100)) : 0
 
   const fmt = (n: number | null | undefined) =>
     typeof n === 'number' ? new Intl.NumberFormat().format(n) : '—'
 
-  // ---------- Circle component ----------
-  function CircleProgress({
-    percent,
-    numerator,
-    denominator,
-  }: {
-    percent: number
-    numerator: number
-    denominator: number | null
-  }) {
-    const angle = Math.max(0, Math.min(100, percent)) * 3.6
-    return (
-      <div className="relative mx-auto my-6 h-[260px] w-[260px] sm:h-[300px] sm:w-[300px]">
-        {/* ring */}
-        <div
-          className="absolute inset-0 rounded-full"
-          style={{
-            background: `conic-gradient(#001961 ${angle}deg, #E5E7EB 0deg)`,
-          }}
-        />
-        {/* inner white disc */}
-        <div className="absolute inset-3 sm:inset-4 rounded-full bg-white shadow-inner flex flex-col items-center justify-center text-center">
-          <div className="text-sm text-gray-500">{fmt(numerator)} of {fmt(denominator)}</div>
-          <div className="mt-1 text-4xl sm:text-5xl font-semibold text-[#001961]">{percent}%</div>
-        </div>
-      </div>
-    )
-  }
+  // ====== Circular progress (thicker ring) ======
+  const RING_SIZE = 360 // px
+  const RING_THICKNESS = 28 // px (thicker than before)
+  const pctDeg = Math.max(0, Math.min(360, Math.round((percent / 100) * 360)))
 
   return (
     <div className="grid gap-6">
@@ -330,7 +284,7 @@ export default function ActiveCampaignTab() {
               <select
                 value={poolId}
                 onChange={(e) => setPoolId(e.target.value)}
-                className={selectBase}
+                className="w-full rounded-xl border px-3 py-2 appearance-none pr-9 focus:outline-none focus:ring-2 focus:ring-[#001961]"
               >
                 {pools.length === 0 ? (
                   <option value="" disabled>
@@ -344,7 +298,14 @@ export default function ActiveCampaignTab() {
                   ))
                 )}
               </select>
-              <SelectChevron />
+              <svg
+                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.116l3.71-2.885a.75.75 0 1 1 .92 1.18l-4.2 3.265a.75.75 0 0 1-.92 0L5.25 8.39a.75.75 0 0 1-.02-1.18z" />
+              </svg>
             </div>
           </label>
 
@@ -355,7 +316,7 @@ export default function ActiveCampaignTab() {
               <select
                 value={tagName}
                 onChange={(e) => setTagName(e.target.value)}
-                className={selectBase}
+                className="w-full rounded-xl border px-3 py-2 appearance-none pr-9 focus:outline-none focus:ring-2 focus:ring-[#001961]"
               >
                 <option value="" disabled>
                   Select a tag
@@ -366,7 +327,14 @@ export default function ActiveCampaignTab() {
                   </option>
                 ))}
               </select>
-              <SelectChevron />
+              <svg
+                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.116l3.71-2.885a.75.75 0 1 1 .92 1.18l-4.2 3.265a.75.75 0 0 1-.92 0L5.25 8.39a.75.75 0 0 1-.02-1.18z" />
+              </svg>
             </div>
           </label>
         </div>
@@ -381,14 +349,14 @@ export default function ActiveCampaignTab() {
                 ? '!bg-[#001961] !text-white hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#001961]'
                 : 'bg-gray-100 text-gray-500 cursor-not-allowed'}`}
           >
-            {loading ? 'Retrieving…' : `Retrieve TP Candidates`}
+            {loading ? 'Retrieving…' : 'Retrieve TP Candidates'}
           </button>
 
           <button
             onClick={sendToActiveCampaign}
-            disabled={!tagName.trim() || !poolId || isSending}
+            disabled={!(tagName.trim().length > 0 && poolId !== '') || isSending}
             className={`ml-auto rounded-full px-5 py-3 font-medium shadow-sm transition 
-              ${tagName.trim() && poolId && !isSending
+              ${tagName.trim().length > 0 && poolId !== '' && !isSending
                 ? '!bg-[#001961] !text-white hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#001961]'
                 : 'bg-gray-100 text-gray-500 cursor-not-allowed'}`}
             aria-live="polite"
@@ -397,75 +365,56 @@ export default function ActiveCampaignTab() {
           </button>
         </div>
 
-        {/* Only show non-success messages (errors, info) */}
-        {message && <div className="mt-2 text-sm text-gray-700">{message}</div>}
+        {/* Only show non-success errors/info */}
+        {message && sendState !== 'success' && (
+          <div className="mt-2 text-sm text-gray-700">{message}</div>
+        )}
       </div>
 
-      {/* PROGRESS PANEL (replaces the table preview) */}
+      {/* PROGRESS PANEL (no table) */}
       <div className="rounded-2xl border bg-white p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-base font-semibold text-[#001961]">
-              Sending to Active Campaign
-            </div>
-            <div className="text-xs text-gray-500">
-              Tagging candidates as{' '}
-              <span className="font-medium text-gray-700">
-                {tagName ? `‘${tagName}’` : '—'}
-              </span>
-            </div>
-          </div>
+        {/* Header — replaced: show only Tagging line, in dark blue */}
+        <div className="text-[#001961] font-semibold text-lg">
+          Tagging candidates as <span className="font-normal text-gray-600">“{tagName || '—'}”</span>
+        </div>
 
-          {/* Small right-side stats */}
-          <div className="text-xs text-gray-500">
-            {poolTotal != null && (
-              <span>{new Intl.NumberFormat().format(poolTotal)} in Talent Pool</span>
-            )}
+        <div className="mt-6 flex items-center justify-center">
+          <div
+            className="relative"
+            style={{ width: RING_SIZE, height: RING_SIZE }}
+          >
+            {/* Track + progress via conic-gradient + mask for thickness */}
+            <div
+              className="absolute inset-0 rounded-full"
+              style={{
+                background: `conic-gradient(#001961 ${pctDeg}deg, #e5e7eb 0)`,
+                WebkitMask: `radial-gradient(farthest-side, transparent calc(100% - ${RING_THICKNESS}px), black 0)`,
+                mask: `radial-gradient(farthest-side, transparent calc(100% - ${RING_THICKNESS}px), black 0)`,
+                filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.06))',
+              }}
+            />
+            {/* Inner plate (for subtle depth) */}
+            <div
+              className="absolute rounded-full bg-white"
+              style={{
+                inset: RING_THICKNESS,
+                boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.05)',
+              }}
+            />
+            {/* Center labels */}
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+              <div className="text-xs text-gray-500">
+                {fmt(sent)} of {fmt(denominator)}
+              </div>
+              <div className="text-5xl font-bold text-[#001961] mt-1">{percent}%</div>
+            </div>
           </div>
         </div>
 
-        {/* Big circle */}
-        <div className="mt-2">
-          <CircleProgress
-            percent={circlePercent}
-            numerator={sent}
-            denominator={denom || null}
-          />
-        </div>
-
-        {/* Error display if any */}
+        {/* Error state (if any) */}
         {progress?.status === 'error' && (
-          <div className="mt-2 text-sm text-red-600">
+          <div className="mt-4 text-sm text-red-600">
             {progress?.error || 'Import failed'}
-          </div>
-        )}
-
-        {/* Footer line with fetched pages and skips (optional, shows only while running) */}
-        {progress && progress.status !== 'not-found' && (
-          <div className="mt-2 text-[11px] text-gray-500">
-            {typeof progress.totals?.skippedNoEmail === 'number' &&
-              progress.totals.skippedNoEmail > 0 && (
-                <span>
-                  Skipped (no email):{' '}
-                  {new Intl.NumberFormat().format(progress.totals.skippedNoEmail)} •{' '}
-                </span>
-              )}
-            {typeof progress.totals?.duplicates === 'number' &&
-              progress.totals.duplicates > 0 && (
-                <span>
-                  Duplicates: {new Intl.NumberFormat().format(progress.totals.duplicates)} •{' '}
-                </span>
-              )}
-            {typeof progress.totals?.pagesFetched === 'number' && (
-              <span>Pages fetched: {new Intl.NumberFormat().format(progress.totals.pagesFetched)}</span>
-            )}
-          </div>
-        )}
-
-        {/* Idle helper text */}
-        {!progress && (
-          <div className="mt-2 text-[11px] text-gray-500">
-            Choose a Talent Pool & Tag, then press <span className="font-medium">Send to Active Campaign</span>.
           </div>
         )}
       </div>
