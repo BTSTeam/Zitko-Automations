@@ -573,13 +573,22 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     }
   }
 
-  // Import handler (Sales): any->DOCX -> DOCX->HTML
-  async function handleFileToEditableHtml(f: File) {
-    setSalesErr(null)
-    try {
-      setProcessing(true)
+// replace your handleFileToEditableHtml() with this version
+async function handleFileToEditableHtml(f: File) {
+  setSalesErr(null)
+  try {
+    setProcessing(true)
 
-      // 1) Convert any to DOCX (CloudConvert)
+    const isDocx = /\.docx$/i.test(f.name) ||
+      f.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+
+    let docxBlob: Blob
+
+    if (isDocx) {
+      // ✅ DOCX → go straight to /api/docx/to-html (no CloudConvert)
+      docxBlob = f
+    } else {
+      // 🔄 any → DOCX via CloudConvert
       const anyFd = new FormData()
       anyFd.append('file', f, f.name)
       const anyRes = await fetch('/api/cloudconvert/any-to-docx', { method: 'POST', body: anyFd })
@@ -589,46 +598,47 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         throw new Error(msg)
       }
       const docxArrayBuf = await anyRes.arrayBuffer()
-      const docxBlob = new Blob([docxArrayBuf], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })
-      setSalesDocxBlob(docxBlob)
-
-      // 2) DOCX -> HTML (server route, likely uses mammoth)
-      const htmlFd = new FormData()
-      htmlFd.append('file', new File([docxBlob], (f.name.replace(/\.[^.]+$/, '') || 'document') + '.docx', { type: docxBlob.type }))
-      const htmlRes = await fetch('/api/docx/to-html', { method: 'POST', body: htmlFd })
-      const htmlJson = await htmlRes.json().catch(() => ({}))
-      if (!htmlRes.ok || !htmlJson?.ok || typeof htmlJson?.html !== 'string') {
-        throw new Error(htmlJson?.error || `DOCX→HTML failed (${htmlRes.status})`)
-      }
-
-      const clean = sanitizeHtml(htmlJson.html, {
-        allowedTags: sanitizeHtml.defaults.allowedTags.concat(['h1','h2','h3','img','span','u']),
-        allowedAttributes: {
-          ...sanitizeHtml.defaults.allowedAttributes,
-          img: ['src','alt','width','height','style'],
-          span: ['style'],
-          p: ['style'],
-          div: ['style'],
-        },
-        allowedStyles: {
-          '*': {
-            'text-align': [/^left|right|center|justify$/],
-            'font-weight': [/^\d+$/],
-            'font-style': [/^italic$/],
-            'text-decoration': [/^underline$/],
-          }
-        }
+      docxBlob = new Blob([docxArrayBuf], {
+        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
       })
-
-      setSalesImportedHtml(clean)
-      setSalesHtml(clean)
-      setSalesDocName(f.name.replace(/\.[^.]+$/, '') + '.docx')
-    } catch (e: any) {
-      setSalesErr(e?.message || 'Failed to import file')
-    } finally {
-      setProcessing(false)
     }
+
+    // DOCX → HTML
+    const htmlFd = new FormData()
+    htmlFd.append(
+      'file',
+      new File([docxBlob], (f.name.replace(/\.[^.]+$/, '') || 'document') + '.docx', { type: docxBlob.type })
+    )
+    const htmlRes = await fetch('/api/docx/to-html', { method: 'POST', body: htmlFd })
+    const htmlJson = await htmlRes.json().catch(() => ({}))
+    if (!htmlRes.ok || !htmlJson?.ok || typeof htmlJson?.html !== 'string') {
+      throw new Error(htmlJson?.error || `DOCX→HTML failed (${htmlRes.status})`)
+    }
+
+    const clean = sanitizeHtml(htmlJson.html, {
+      allowedTags: sanitizeHtml.defaults.allowedTags.concat(['h1','h2','h3','img','span','u']),
+      allowedAttributes: {
+        ...sanitizeHtml.defaults.allowedAttributes,
+        img: ['src','alt','width','height','style'],
+        span: ['style'], p: ['style'], div: ['style'],
+      },
+      allowedStyles: { '*': {
+        'text-align': [/^left|right|center|justify$/],
+        'font-weight': [/^\d+$/], 'font-style': [/^italic$/], 'text-decoration': [/^underline$/],
+      }}
+    })
+
+    setSalesDocxBlob(docxBlob)
+    setSalesImportedHtml(clean)
+    setSalesHtml(clean)
+    setSalesDocName(f.name.replace(/\.[^.]+$/, '') + '.docx')
+  } catch (e: any) {
+    setSalesErr(e?.message || 'Failed to import file')
+  } finally {
+    setProcessing(false)
   }
+}
+
 
   async function onUploadChange(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0]
