@@ -49,32 +49,43 @@ export async function POST(req: NextRequest, { params }: Params) {
     let vinRes = await postToVincere(url, idToken, payload)
 
     // If token has expired, refresh & retry once
-    if (vinRes.status === 401) {
-      const text = await vinRes.text().catch(() => '')
-      const looksExpired =
-        /token has expired/i.test(text) || /incoming token has expired/i.test(text) || /unauthorized/i.test(text)
+if (vinRes.status === 401) {
+  // ⬅️ use clone() so we can still read the body later
+  const text = await vinRes.clone().text().catch(() => '')
+  const looksExpired =
+    /token has expired/i.test(text) ||
+    /incoming token has expired/i.test(text) ||
+    /unauthorized/i.test(text)
 
-      // derive a stable user key for your refresh store (align with your tokenStore usage)
-      const userKey =
-        (session.user && (session.user.id || session.user.email || session.user.sub)) ||
-        'default-user'
+  // derive a stable user key for your refresh store (align with tokenStore usage)
+  const userKey =
+    (session as any)?.user?.email ??
+    (session as any)?.userEmail ??
+    (session as any)?.user_id ??
+    'default-user'
 
-      if (looksExpired) {
-        const refreshed = await refreshIdToken(String(userKey))
-        if (refreshed) {
-          // reload updated idToken from session (refreshIdToken writes into session)
-          const postRefreshSession = await getSession()
-          idToken = postRefreshSession.tokens?.idToken || ''
-          if (!idToken) {
-            return NextResponse.json({ ok: false, error: 'Failed to load refreshed id token' }, { status: 401 })
-          }
-          // attempt #2
-          vinRes = await postToVincere(url, idToken, payload)
-        }
+  if (looksExpired) {
+    const refreshed = await refreshIdToken(String(userKey))
+    if (refreshed) {
+      // reload updated idToken from session (refreshIdToken writes into session)
+      const postRefreshSession = await getSession()
+      idToken = postRefreshSession.tokens?.idToken || ''
+      if (!idToken) {
+        return NextResponse.json({ ok: false, error: 'Failed to load refreshed id token' }, { status: 401 })
       }
-      // if still 401 after refresh (or refresh failed) we'll fall through and return error payload below
-      // (client can prompt re-connect)
+      // attempt #2
+      vinRes = await postToVincere(url, idToken, payload)
+      if (vinRes.status === 401) {
+        // still unauthorized after refresh -> signal re-connect
+        return NextResponse.json({ ok: false, error: 'Unauthorized after token refresh' }, { status: 401 })
+      }
+    } else {
+      // refresh couldn’t run (e.g., no refresh token on file)
+      return NextResponse.json({ ok: false, error: 'Session expired. Please re-connect to Vincere.' }, { status: 401 })
     }
+  }
+  // if !looksExpired, we’ll fall through and return the original 401 below
+}
 
     const text = await vinRes.text().catch(() => '')
     let body: any = null
