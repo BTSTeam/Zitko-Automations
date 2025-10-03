@@ -6,8 +6,20 @@ export const revalidate = 0
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/session'
 import { config } from '@/lib/config'
+import { refreshIdToken } from '@/lib/vincereRefresh' // ⬅️ add
 
 type Params = { params: { id: string } }
+
+// Helper to do the POST once (so we can retry on 401)
+async function postToVincere(url: string, idToken: string, payload: any) {
+  const headers = {
+    accept: 'application/json',
+    'content-type': 'application/json',
+    'id-token': idToken,
+    'x-api-key': (config as any).VINCERE_PUBLIC_API_KEY || config.VINCERE_API_KEY,
+  }
+  return fetch(url, { method: 'POST', headers, body: JSON.stringify(payload) })
+}
 
 export async function POST(req: NextRequest, { params }: Params) {
   try {
@@ -22,42 +34,52 @@ export async function POST(req: NextRequest, { params }: Params) {
     }
 
     const session = await getSession()
-    const idToken = session.tokens?.idToken
-    if (!idToken) {
-      return NextResponse.json({ ok: false, error: 'Not connected to Vincere' }, { status: 401 })
-    }
+    let idToken = session.tokens?.idToken || ''
 
-    // --- Hardened base/url construction: always ensure /api/v2 is present ---
+    // Build base URL (ensure /api/v2)
     const rawBase = (config.VINCERE_TENANT_API_BASE || '').trim()
     if (!rawBase) {
       return NextResponse.json({ ok: false, error: 'VINCERE_TENANT_API_BASE not configured' }, { status: 500 })
     }
-    let base = rawBase.replace(/\/+$/, '') // strip trailing slashes
-    if (!/\/api\/v2$/i.test(base)) {
-      console.warn('[VINCERE] base missing /api/v2; auto-appending.', { rawBase })
-      base = base + '/api/v2'
-    }
+    let base = rawBase.replace(/\/+$/, '')
+    if (!/\/api\/v2$/i.test(base)) base = base + '/api/v2'
     const url = `${base}/candidate/${encodeURIComponent(candidateId)}/file`
-    // ----------------------------------------------------------------------
 
-    const headers = {
-      accept: 'application/json',
-      'content-type': 'application/json',
-      'id-token': idToken,
-      'x-api-key': (config as any).VINCERE_PUBLIC_API_KEY || config.VINCERE_API_KEY,
+    // ---- attempt #1
+    let vinRes = await postToVincere(url, idToken, payload)
+
+    // If token has expired, refresh & retry once
+    if (vinRes.status === 401) {
+      const text = await vinRes.text().catch(() => '')
+      const looksExpired =
+        /token has expired/i.test(text) || /incoming token has expired/i.test(text) || /unauthorized/i.test(text)
+
+      // derive a stable user key for your refresh store (align with your tokenStore usage)
+      const userKey =
+        (session.user && (session.user.id || session.user.email || session.user.sub)) ||
+        'default-user'
+
+      if (looksExpired) {
+        const refreshed = await refreshIdToken(String(userKey))
+        if (refreshed) {
+          // reload updated idToken from session (refreshIdToken writes into session)
+          const postRefreshSession = await getSession()
+          idToken = postRefreshSession.tokens?.idToken || ''
+          if (!idToken) {
+            return NextResponse.json({ ok: false, error: 'Failed to load refreshed id token' }, { status: 401 })
+          }
+          // attempt #2
+          vinRes = await postToVincere(url, idToken, payload)
+        }
+      }
+      // if still 401 after refresh (or refresh failed) we'll fall through and return error payload below
+      // (client can prompt re-connect)
     }
-
-    const vinRes = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(payload),
-    })
 
     const text = await vinRes.text().catch(() => '')
     let body: any = null
     try { body = text ? JSON.parse(text) : {} } catch { body = { raw: text } }
 
-    // Diagnostics (visible in Vercel Functions logs)
     console.log('[VINCERE CV FILE]', {
       url,
       status: vinRes.status,
@@ -74,7 +96,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     if (!vinRes.ok) {
       return NextResponse.json(
         { ok: false, status: vinRes.status, error: body?.error || body || text },
-        { status: 400 }
+        { status: vinRes.status === 401 ? 401 : 400 }
       )
     }
 
