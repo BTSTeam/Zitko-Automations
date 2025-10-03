@@ -573,22 +573,35 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     }
   }
 
-// replace your handleFileToEditableHtml() with this version
 async function handleFileToEditableHtml(f: File) {
   setSalesErr(null)
   try {
     setProcessing(true)
 
-    const isDocx = /\.docx$/i.test(f.name) ||
+    const isDocx =
+      /\.docx$/i.test(f.name) ||
       f.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 
     let docxBlob: Blob
 
     if (isDocx) {
-      // ✅ DOCX → go straight to /api/docx/to-html (no CloudConvert)
+      // ✅ DOCX → go straight to /api/docx/to-html
       docxBlob = f
+
+      const fd = new FormData()
+      fd.append('file', new File([docxBlob], f.name.replace(/\.[^.]+$/, '') + '.docx', { type: docxBlob.type }))
+
+      const res = await fetch('/api/docx/to-html', { method: 'POST', body: fd })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok || !json?.ok || typeof json?.html !== 'string') {
+        throw new Error(json?.error || `DOCX→HTML failed (${res.status})`)
+      }
+
+      setSalesImportedHtml(json.html)
+      setSalesHtml(json.html)
+      setSalesDocName(f.name.replace(/\.[^.]+$/, '') + '.docx')
     } else {
-      // 🔄 any → DOCX via CloudConvert
+      // 🔄 Non-DOCX → convert to DOCX first, then to HTML
       const anyFd = new FormData()
       anyFd.append('file', f, f.name)
       const anyRes = await fetch('/api/cloudconvert/any-to-docx', { method: 'POST', body: anyFd })
@@ -597,48 +610,30 @@ async function handleFileToEditableHtml(f: File) {
         try { const j = await anyRes.json(); if (j?.error) msg = j.error } catch {}
         throw new Error(msg)
       }
-      const docxArrayBuf = await anyRes.arrayBuffer()
-      docxBlob = new Blob([docxArrayBuf], {
+      const arrayBuf = await anyRes.arrayBuffer()
+      docxBlob = new Blob([arrayBuf], {
         type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
       })
+
+      const fd = new FormData()
+      fd.append('file', new File([docxBlob], f.name.replace(/\.[^.]+$/, '') + '.docx', { type: docxBlob.type }))
+
+      const res = await fetch('/api/docx/to-html', { method: 'POST', body: fd })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok || !json?.ok || typeof json?.html !== 'string') {
+        throw new Error(json?.error || `DOCX→HTML failed (${res.status})`)
+      }
+
+      setSalesImportedHtml(json.html)
+      setSalesHtml(json.html)
+      setSalesDocName(f.name.replace(/\.[^.]+$/, '') + '.docx')
     }
-
-    // DOCX → HTML
-    const htmlFd = new FormData()
-    htmlFd.append(
-      'file',
-      new File([docxBlob], (f.name.replace(/\.[^.]+$/, '') || 'document') + '.docx', { type: docxBlob.type })
-    )
-    const htmlRes = await fetch('/api/docx/to-html', { method: 'POST', body: htmlFd })
-    const htmlJson = await htmlRes.json().catch(() => ({}))
-    if (!htmlRes.ok || !htmlJson?.ok || typeof htmlJson?.html !== 'string') {
-      throw new Error(htmlJson?.error || `DOCX→HTML failed (${htmlRes.status})`)
-    }
-
-    const clean = sanitizeHtml(htmlJson.html, {
-      allowedTags: sanitizeHtml.defaults.allowedTags.concat(['h1','h2','h3','img','span','u']),
-      allowedAttributes: {
-        ...sanitizeHtml.defaults.allowedAttributes,
-        img: ['src','alt','width','height','style'],
-        span: ['style'], p: ['style'], div: ['style'],
-      },
-      allowedStyles: { '*': {
-        'text-align': [/^left|right|center|justify$/],
-        'font-weight': [/^\d+$/], 'font-style': [/^italic$/], 'text-decoration': [/^underline$/],
-      }}
-    })
-
-    setSalesDocxBlob(docxBlob)
-    setSalesImportedHtml(clean)
-    setSalesHtml(clean)
-    setSalesDocName(f.name.replace(/\.[^.]+$/, '') + '.docx')
   } catch (e: any) {
     setSalesErr(e?.message || 'Failed to import file')
   } finally {
     setProcessing(false)
   }
 }
-
 
   async function onUploadChange(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0]
@@ -687,39 +682,53 @@ async function handleFileToEditableHtml(f: File) {
   /* ====================== SALES: export edited HTML -> PDF & upload ====================== */
 
   function SalesViewerCard() {
-    return (
-      <div className="border rounded-2xl overflow-hidden bg-white">
-        {salesHtml ? (
-          <div className="p-4">
-            <div
-              ref={salesEditorRef}
-              className="min-h-[70vh] prose max-w-none focus:outline-none p-4 border rounded-xl"
-              contentEditable
-              suppressContentEditableWarning
-              onInput={(e) => setSalesHtml((e.target as HTMLDivElement).innerHTML)}
-              dangerouslySetInnerHTML={{ __html: salesHtml }}
-            />
-            <div className="flex items-center gap-2 mt-3">
-              <button
-                type="button"
-                className="text-[11px] px-3 py-1.5 rounded border"
-                onClick={() => setSalesHtml(salesImportedHtml)}
-                disabled={processing}
-                title="Revert to imported version"
-              >
-                Reset
-              </button>
-              <span className="text-[11px] text-gray-500">Edits here will be included when you upload.</span>
-            </div>
+  return (
+    <div className="border rounded-2xl overflow-hidden bg-white">
+      {salesHtml ? (
+        <div className="p-4">
+          {/* Header */}
+          <div className="flex items-start justify-between mb-3">
+            <div />
+            <img src="/zitko-full-logo.png" alt="Zitko" className="h-10" />
           </div>
-        ) : (
-          <div className="p-6 text-xs text-gray-600 bg-white">
-            No document imported yet. Use “Import CV” above.
+
+          {/* Editable body */}
+          <div
+            className="min-h-[60vh] prose max-w-none focus:outline-none p-4 border rounded-xl"
+            contentEditable
+            suppressContentEditableWarning
+            onInput={(e) => setSalesHtml((e.target as HTMLDivElement).innerHTML)}
+            dangerouslySetInnerHTML={{ __html: salesHtml }}
+          />
+
+          {/* Footer */}
+          <div className="mt-4 pt-3 border-t text-center text-[10px] leading-snug text-[#F7941D]">
+            <div>Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Inc</div>
+            <div>Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL</div>
+            <div>Tel: 01480 473245 Web: www.zitkogroup.com</div>
           </div>
-        )}
-      </div>
-    )
-  }
+
+          <div className="flex items-center gap-2 mt-3">
+            <button
+              type="button"
+              className="text-[11px] px-3 py-1.5 rounded border"
+              onClick={() => setSalesHtml(salesImportedHtml)}
+              disabled={processing}
+              title="Revert to imported version"
+            >
+              Reset
+            </button>
+            <span className="text-[11px] text-gray-500">Edits here will be exported and uploaded.</span>
+          </div>
+        </div>
+      ) : (
+        <div className="p-6 text-xs text-gray-600 bg-white">
+          No document imported yet. Use “Import CV” above.
+        </div>
+      )}
+    </div>
+  )
+}
 
   async function uploadSalesEditedHtmlToVincere(finalName: string, cid: string) {
     if (!salesHtml.trim()) throw new Error('No Sales document to upload')
