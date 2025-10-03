@@ -1,15 +1,9 @@
 'use client'
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
-import sanitizeHtml from 'sanitize-html'
-
-/**
- * CvTab.tsx — drop-in replacement
- * - STANDARD: unchanged
- * - SALES: Import (PDF/DOC/DOCX) -> any-to-docx -> docx-to-html -> inline editable HTML
- *          Upload converts edited HTML -> PDF (with Zitko header/footer) -> Vincere
- */
+// STANDARD keeps using html2pdf at runtime (dynamic import inside function)
+import { bakeHeaderFooter } from '@/lib/pdf/bake' // ← SALES: uses server-side bake (pdf-lib)
+                                                    // Ensure you created lib/pdf/bake.ts as provided
 
 type TemplateKey = 'standard' | 'sales'
 
@@ -43,78 +37,6 @@ type OpenState = {
 
 // === Size threshold for choosing base64 vs URL ===
 const BASE64_THRESHOLD_BYTES = 3 * 1024 * 1024 // ~3 MB
-
-// ---- brand assets (served from /public) ----
-const LOGO_PATH = '/zitko-full-logo.png'
-
-/* ---------------- Shared helpers (Standard section uses these) ---------------- */
-
-async function fetchBytes(url: string): Promise<Uint8Array> {
-  const absolute = new URL(url, window.location.origin).toString()
-  const res = await fetch(absolute)
-  if (!res.ok) throw new Error(`Failed to fetch asset: ${absolute}`)
-  const buf = await res.arrayBuffer()
-  return new Uint8Array(buf)
-}
-
-/** (Used previously for Sales PDF preview; still used by Standard if needed) */
-async function bakeHeaderFooter(input: Blob): Promise<Blob> {
-  if (input.type && !/pdf/i.test(input.type)) return input
-  try {
-    const srcBuf = await input.arrayBuffer()
-    const pdfDoc = await PDFDocument.load(srcBuf, { ignoreEncryption: true })
-    const pages = pdfDoc.getPages()
-    if (!pages.length) return input
-    const first = pages[0]
-    const last = pages[pages.length - 1]
-
-    const logoBytes = await fetchBytes(LOGO_PATH)
-    const logo = await pdfDoc.embedPng(logoBytes)
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
-
-    // Header (first page)
-    {
-      const w = first.getWidth(), h = first.getHeight()
-      const margin = 18
-      const stripHeight = 70
-      first.drawRectangle({ x: 0, y: h - stripHeight, width: w, height: stripHeight, color: rgb(1, 1, 1) })
-      const maxLogoW = Math.min(170, w * 0.28)
-      const scale = maxLogoW / logo.width
-      const logoW = maxLogoW, logoH = logo.height * scale
-      first.drawImage(logo, {
-        x: w - logoW - margin, y: h - logoH - (stripHeight - logoH) / 2, width: logoW, height: logoH
-      })
-    }
-
-    // Footer (last page)
-    {
-      const w = last.getWidth()
-      const marginX = 28
-      const stripHeight = 54
-      last.drawRectangle({ x: 0, y: 0, width: w, height: stripHeight, color: rgb(1, 1, 1) })
-      const footerLines = [
-        'Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Inc',
-        'Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL',
-        'Tel: 01480 473245  Web: www.zitkogroup.com',
-      ]
-      const fontSize = 8.5, lineGap = 2, step = fontSize + lineGap
-      const yTop = stripHeight - (fontSize + 10)
-      footerLines.forEach((line, i) => {
-        const textWidth = font.widthOfTextAtSize(line, fontSize)
-        const x = Math.max(marginX, (w - textWidth) / 2)
-        const y = yTop - i * step
-        last.drawText(line, { x, y, size: fontSize, font, color: rgb(0.97, 0.58, 0.11) })
-      })
-    }
-
-    const out = await pdfDoc.save()
-    const outBuf = out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength) as ArrayBuffer
-    return new Blob([outBuf], { type: 'application/pdf' })
-  } catch (err) {
-    console.warn('Baking header/footer failed, using original PDF', err)
-    return input
-  }
-}
 
 /* ---------------- Formatting helpers (Standard section) ---------------- */
 
@@ -305,29 +227,22 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   const standardPreviewRef = useRef<HTMLDivElement | null>(null)
   const footerRef = useRef<HTMLDivElement | null>(null)
 
-  // ================== SALES editor state ==================
-  const [salesErr, setSalesErr] = useState<string | null>(null)
-  const [salesDocName, setSalesDocName] = useState<string>('')       // filename (derived)
-  const [processing, setProcessing] = useState<boolean>(false)
-  const [dragOver, setDragOver] = useState<boolean>(false)
-
-  const [salesHtml, setSalesHtml] = useState<string>('')             // editable HTML
-  const [salesImportedHtml, setSalesImportedHtml] = useState<string>('') // for reset
-  const [salesDocxBlob, setSalesDocxBlob] = useState<Blob | null>(null)  // original DOCX (optional)
-
+  /* ====================== SALES: simple no-edit pipeline ====================== */
   const fileInputRef = useRef<HTMLInputElement | null>(null)
-  const salesEditorRef = useRef<HTMLDivElement | null>(null)
-  const salesExportRef = useRef<HTMLDivElement | null>(null) // hidden export DOM (with header/footer)
+  const [salesProcessing, setSalesProcessing] = useState(false)
+  const [dragOver, setDragOver] = useState(false)
+  const [salesDocName, setSalesDocName] = useState<string>('') // original name shown on faux input
+  const [salesBakedBlob, setSalesBakedBlob] = useState<Blob | null>(null)
+  const [salesPreviewUrl, setSalesPreviewUrl] = useState<string | null>(null)
 
   function resetSalesState() {
-    setSalesErr(null)
-    setSalesDocName('')
-    setProcessing(false)
+    setSalesProcessing(false)
     setDragOver(false)
-    setSalesHtml('')
-    setSalesImportedHtml('')
-    setSalesDocxBlob(null)
-    setUploadCandidateId('') // keep tidy when switching template
+    setSalesDocName('')
+    if (salesPreviewUrl) URL.revokeObjectURL(salesPreviewUrl)
+    setSalesPreviewUrl(null)
+    setSalesBakedBlob(null)
+    setUploadCandidateId('')
   }
 
   function resetAllForTemplate(t: TemplateKey | null) {
@@ -377,7 +292,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     setForm(prev => ({ ...prev, employment: [...prev.employment, { title: '', company: '', start: '', end: '', description: '' }] }))
   }
 
-  /* ====================== Standard: data + AI profile ====================== */
+  /* ====================== Standard: data + AI profile (unchanged) ====================== */
 
   async function generateProfile() {
     try {
@@ -503,9 +418,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     }
   }
 
-  /* ====================== SALES (Import -> DOCX -> HTML editor) ====================== */
-
-  function onClickUpload() { fileInputRef.current?.click() }
+  /* ====================== Shared helpers (upload paths) ====================== */
 
   async function blobToBase64(blob: Blob): Promise<string> {
     const buf = await blob.arrayBuffer()
@@ -536,7 +449,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   }
 
   async function postBase64ToVincere(fileName: string, base64: string, cid: string) {
-    const payload = { file_name: fileName, document_type_id: 1, base_64_content: base64, original_cv: true }
+    const payload = { file_name: fileName, document_type_id: 1, has_base64: true, base64, original_cv: true }
     const res = await fetch(`/api/vincere/candidate/${encodeURIComponent(cid)}/file`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload),
     })
@@ -555,7 +468,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   }
 
   async function postFileUrlToVincere(fileName: string, publicUrl: string, cid: string) {
-    const payload = { file_name: fileName, document_type_id: 1, url: publicUrl, original_cv: true }
+    const payload = { file_name: fileName, document_type_id: 1, has_url: true, url: publicUrl, original_cv: true }
     const res = await fetch(`/api/vincere/candidate/${encodeURIComponent(cid)}/file`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload),
     })
@@ -573,83 +486,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     }
   }
 
-async function handleFileToEditableHtml(f: File) {
-  setSalesErr(null)
-  try {
-    setProcessing(true)
-
-    const isDocx =
-      /\.docx$/i.test(f.name) ||
-      f.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-
-    let docxBlob: Blob
-
-    if (isDocx) {
-      // ✅ DOCX → go straight to /api/docx/to-html
-      docxBlob = f
-
-      const fd = new FormData()
-      fd.append('file', new File([docxBlob], f.name.replace(/\.[^.]+$/, '') + '.docx', { type: docxBlob.type }))
-
-      const res = await fetch('/api/docx/to-html', { method: 'POST', body: fd })
-      const json = await res.json().catch(() => ({}))
-      if (!res.ok || !json?.ok || typeof json?.html !== 'string') {
-        throw new Error(json?.error || `DOCX→HTML failed (${res.status})`)
-      }
-
-      setSalesImportedHtml(json.html)
-      setSalesHtml(json.html)
-      setSalesDocName(f.name.replace(/\.[^.]+$/, '') + '.docx')
-    } else {
-      // 🔄 Non-DOCX → convert to DOCX first, then to HTML
-      const anyFd = new FormData()
-      anyFd.append('file', f, f.name)
-      const anyRes = await fetch('/api/cloudconvert/any-to-docx', { method: 'POST', body: anyFd })
-      if (!anyRes.ok) {
-        let msg = `Convert to DOCX failed (${anyRes.status})`
-        try { const j = await anyRes.json(); if (j?.error) msg = j.error } catch {}
-        throw new Error(msg)
-      }
-      const arrayBuf = await anyRes.arrayBuffer()
-      docxBlob = new Blob([arrayBuf], {
-        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-      })
-
-      const fd = new FormData()
-      fd.append('file', new File([docxBlob], f.name.replace(/\.[^.]+$/, '') + '.docx', { type: docxBlob.type }))
-
-      const res = await fetch('/api/docx/to-html', { method: 'POST', body: fd })
-      const json = await res.json().catch(() => ({}))
-      if (!res.ok || !json?.ok || typeof json?.html !== 'string') {
-        throw new Error(json?.error || `DOCX→HTML failed (${res.status})`)
-      }
-
-      setSalesImportedHtml(json.html)
-      setSalesHtml(json.html)
-      setSalesDocName(f.name.replace(/\.[^.]+$/, '') + '.docx')
-    }
-  } catch (e: any) {
-    setSalesErr(e?.message || 'Failed to import file')
-  } finally {
-    setProcessing(false)
-  }
-}
-
-  async function onUploadChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0]
-    if (!f) return
-    await handleFileToEditableHtml(f)
-    e.currentTarget.value = ''
-  }
-
-  const onDrop: React.DragEventHandler<HTMLDivElement> = async (ev) => {
-    ev.preventDefault()
-    setDragOver(false)
-    const f = ev.dataTransfer.files?.[0]
-    if (f) await handleFileToEditableHtml(f)
-  }
-
-  /* ====================== STANDARD: export DOM to PDF & upload ====================== */
+  /* ====================== STANDARD: export DOM to PDF & upload (unchanged) ====================== */
 
   async function uploadStandardPreviewToVincereUrl(finalName: string, cid: string) {
     const mod = await import('html2pdf.js')
@@ -679,108 +516,81 @@ async function handleFileToEditableHtml(f: File) {
     }
   }
 
-  /* ====================== SALES: export edited HTML -> PDF & upload ====================== */
+  /* ====================== SALES: Import → any-to-pdf → bake → preview → upload ====================== */
 
-  function SalesViewerCard() {
-  return (
-    <div className="border rounded-2xl overflow-hidden bg-white">
-      {salesHtml ? (
-        <div className="p-4">
-          {/* Header */}
-          <div className="flex items-start justify-between mb-3">
-            <div />
-            <img src="/zitko-full-logo.png" alt="Zitko" className="h-10" />
-          </div>
+  function onClickUpload() { fileInputRef.current?.click() }
 
-          {/* Editable body */}
-          <div
-            className="min-h-[60vh] prose max-w-none focus:outline-none p-4 border rounded-xl"
-            contentEditable
-            suppressContentEditableWarning
-            onInput={(e) => setSalesHtml((e.target as HTMLDivElement).innerHTML)}
-            dangerouslySetInnerHTML={{ __html: salesHtml }}
-          />
-
-          {/* Footer */}
-          <div className="mt-4 pt-3 border-t text-center text-[10px] leading-snug text-[#F7941D]">
-            <div>Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Inc</div>
-            <div>Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL</div>
-            <div>Tel: 01480 473245 Web: www.zitkogroup.com</div>
-          </div>
-
-          <div className="flex items-center gap-2 mt-3">
-            <button
-              type="button"
-              className="text-[11px] px-3 py-1.5 rounded border"
-              onClick={() => setSalesHtml(salesImportedHtml)}
-              disabled={processing}
-              title="Revert to imported version"
-            >
-              Reset
-            </button>
-            <span className="text-[11px] text-gray-500">Edits here will be exported and uploaded.</span>
-          </div>
-        </div>
-      ) : (
-        <div className="p-6 text-xs text-gray-600 bg-white">
-          No document imported yet. Use “Import CV” above.
-        </div>
-      )}
-    </div>
-  )
-}
-
-  async function uploadSalesEditedHtmlToVincere(finalName: string, cid: string) {
-    if (!salesHtml.trim()) throw new Error('No Sales document to upload')
-
-    // Build a hidden export DOM with Zitko header/footer
-    const container = document.createElement('div')
-    container.style.position = 'fixed'
-    container.style.left = '-99999px'
-    container.style.top = '0'
-    container.style.width = '794px' // ~A4 @ 96dpi
-    container.style.background = '#ffffff'
-    container.innerHTML = `
-      <div class="p-6 cv-standard-page bg-white text-[13px] leading-[1.35]">
-        <div class="flex items-start justify-between">
-          <div></div>
-          <img src="${LOGO_PATH}" alt="Zitko" style="height:40px" />
-        </div>
-        <div style="height:12px"></div>
-        <div class="sales-html">${salesHtml}</div>
-        <div class="mt-6 pt-4 border-t text-center text-[10px] leading-snug" style="color:#F7941D">
-          <div>Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Inc</div>
-          <div>Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL</div>
-          <div>Tel: 01480 473245 Web: www.zitkogroup.com</div>
-        </div>
-      </div>
-    `
-    document.body.appendChild(container)
-
+  async function handleSalesFileSelected(file: File) {
     try {
-      const mod = await import('html2pdf.js')
-      const html2pdf = (mod as any).default || (mod as any)
-      const opt = {
-        margin: 10,
-        filename: finalName,
-        image: { type: 'jpeg', quality: 0.95 },
-        html2canvas: { scale: 2, backgroundColor: '#FFFFFF' },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
-        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] as const },
-      }
-      const worker = html2pdf().set(opt).from(container).toPdf()
-      const pdf = await worker.get('pdf')
-      const pdfBlob = new Blob([pdf.output('arraybuffer')], { type: 'application/pdf' })
+      setSalesProcessing(true)
+      setSalesDocName(file.name)
+      if (salesPreviewUrl) URL.revokeObjectURL(salesPreviewUrl)
+      setSalesPreviewUrl(null)
+      setSalesBakedBlob(null)
 
-      if (pdfBlob.size <= BASE64_THRESHOLD_BYTES) {
-        const base64 = await blobToBase64(pdfBlob)
-        await postBase64ToVincere(finalName, base64, cid)
+      // 1) Ensure we have PDF bytes (fast-path: already PDF)
+      let pdfBytes: ArrayBuffer
+      const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
+      if (isPdf) {
+        pdfBytes = await file.arrayBuffer()
       } else {
-        const publicUrl = await uploadBlobToPublicUrl(pdfBlob, finalName)
-        await postFileUrlToVincere(finalName, publicUrl, cid)
+        const form = new FormData()
+        form.append('file', file, file.name)
+        const res = await fetch('/api/convert/any-to-pdf', { method: 'POST', body: form })
+        if (!res.ok) {
+          let msg = `Convert to PDF failed (${res.status})`
+          try { const j = await res.json(); if (j?.error) msg = j.error } catch {}
+          throw new Error(msg)
+        }
+        pdfBytes = await res.arrayBuffer()
       }
+
+      // 2) Bake Zitko header/footer (first page header, last page footer)
+      const bakedBytes = await bakeHeaderFooter(pdfBytes, { template: 'sales' })
+      const bakedBlob = new Blob([bakedBytes], { type: 'application/pdf' })
+
+      // 3) Preview URL (exact upload target)
+      const url = URL.createObjectURL(bakedBlob)
+      setSalesBakedBlob(bakedBlob)
+      setSalesPreviewUrl(url)
+
+      // 4) Suggest a default filename
+      const base = file.name.replace(/\.[^.]+$/, '')
+      // If we already know candidateName from Standard retrieve, use it; else base
+      const suggested = `${(candidateName || form.name || base).replace(/\s+/g, '')}_Sales.pdf`
+      // Only set once per file import; user can edit in modal
+      setUploadFileName(suggested)
+    } catch (e: any) {
+      setError(e?.message || 'Failed to import and prepare file')
     } finally {
-      document.body.removeChild(container)
+      setSalesProcessing(false)
+    }
+  }
+
+  async function onUploadChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]
+    if (!f) return
+    await handleSalesFileSelected(f)
+    e.currentTarget.value = ''
+  }
+
+  const onDrop: React.DragEventHandler<HTMLDivElement> = async (ev) => {
+    ev.preventDefault()
+    setDragOver(false)
+    const f = ev.dataTransfer.files?.[0]
+    if (f) await handleSalesFileSelected(f)
+  }
+
+  async function uploadSalesBakedPdf(finalName: string, cid: string) {
+    if (!salesBakedBlob) throw new Error('No Sales PDF ready to upload')
+    if (!/\.pdf$/i.test(finalName)) finalName += '.pdf'
+
+    if (salesBakedBlob.size <= BASE64_THRESHOLD_BYTES) {
+      const base64 = await blobToBase64(salesBakedBlob)
+      await postBase64ToVincere(finalName, base64, cid)
+    } else {
+      const publicUrl = await uploadBlobToPublicUrl(salesBakedBlob, finalName)
+      await postFileUrlToVincere(finalName, publicUrl, cid)
     }
   }
 
@@ -789,20 +599,20 @@ async function handleFileToEditableHtml(f: File) {
       setUploadBusy(true)
       setUploadErr(null)
       setUploadSuccess(null)
-  
+
       const cid = (uploadContext === 'sales' ? uploadCandidateId : candidateId).trim()
       if (!cid) throw new Error('Please enter a Candidate ID')
       if (!uploadFileName?.trim()) throw new Error('Please enter a file name')
-  
+
       let finalName = uploadFileName.trim()
       if (!/\.pdf$/i.test(finalName)) finalName += '.pdf'
-  
+
       if (uploadContext === 'standard') {
         await uploadStandardPreviewToVincereUrl(finalName, cid)
       } else {
-        await uploadSalesEditedHtmlToVincere(finalName, cid)
+        await uploadSalesBakedPdf(finalName, cid)
       }
-  
+
       setUploadSuccess('Upload Successful')
     } catch (e: any) {
       const msg =
@@ -818,16 +628,25 @@ async function handleFileToEditableHtml(f: File) {
     }
   }
 
-  /* ====================== PREVIEW: Standard unchanged, Sales is editor ====================== */
+  /* ====================== PREVIEW: Standard unchanged, Sales = baked PDF preview ====================== */
 
   function CVTemplatePreview(): JSX.Element {
     if (template === 'sales') {
       return (
         <div className="p-4">
-          <SalesViewerCard />
-          <div className="px-1 pt-2 text-[11px] text-gray-500">
-            Edit the CV directly here; Upload will add Zitko header/footer and send a PDF to Vincere.
+          <div className="text-[11px] text-gray-600 mb-2">
+            Import a file. We’ll convert to PDF, bake the Zitko header (first page) and footer (last page), and show the exact PDF that will be uploaded.
           </div>
+
+          {salesPreviewUrl ? (
+            <div className="border rounded-2xl overflow-hidden bg-white">
+              <iframe src={salesPreviewUrl} className="w-full h-[75vh] border-0" />
+            </div>
+          ) : (
+            <div className="p-6 text-xs text-gray-600 bg-white border rounded-xl">
+              No file selected. Use “Import CV” or drag a file into the box above.
+            </div>
+          )}
         </div>
       )
     }
@@ -1126,7 +945,7 @@ async function handleFileToEditableHtml(f: File) {
             <input
               ref={fileInputRef}
               type="file"
-              accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              accept=".pdf,.doc,.docx,.rtf,.odt,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
               onChange={onUploadChange}
               className="hidden"
             />
@@ -1152,17 +971,17 @@ async function handleFileToEditableHtml(f: File) {
                 type="button"
                 className="btn btn-brand"
                 onClick={onClickUpload}
-                disabled={processing}
+                disabled={salesProcessing}
                 title="Import a PDF or Word (DOC/DOCX) document"
               >
-                {processing ? 'Processing…' : 'Import CV'}
+                {salesProcessing ? 'Processing…' : 'Import CV'}
               </button>
 
               {/* Upload (Sales) */}
               <button
                 type="button"
                 className="btn btn-grey"
-                disabled={!salesHtml.trim()}
+                disabled={!salesBakedBlob}
                 onClick={() => {
                   const baseName = (candidateName || form.name || 'CV').replace(/\s+/g, '')
                   const defaultName = `${baseName}_Sales.pdf`
@@ -1173,17 +992,17 @@ async function handleFileToEditableHtml(f: File) {
                   setUploadSuccess(null)
                   setShowUploadModal(true)
                 }}
-                title="Upload the edited CV to Vincere (as PDF with branding)"
+                title="Upload the baked PDF to Vincere"
               >
                 Upload
               </button>
             </div>
 
-            {salesErr && <div className="mt-3 text-xs text-red-600">{String(salesErr).slice(0, 300)}</div>}
+            {error && <div className="mt-3 text-xs text-red-600">{String(error).slice(0, 300)}</div>}
           </>
         )}
 
-        {error && <div className="mt-3 text-xs text-red-600">{String(error).slice(0, 300)}</div>}
+        {error && template !== 'sales' && <div className="mt-3 text-xs text-red-600">{String(error).slice(0, 300)}</div>}
       </div>
 
       {/* CONTENT GRID */}
@@ -1506,7 +1325,7 @@ async function handleFileToEditableHtml(f: File) {
 
                 <p className="text-[11px] text-gray-500 mt-1">
                   Source:&nbsp;
-                  {uploadContext === 'standard' ? 'Standard (right-panel template → PDF)' : 'Sales (edited HTML → PDF)'}
+                  {uploadContext === 'standard' ? 'Standard (right-panel template → PDF)' : 'Sales (baked PDF)'}
                 </p>
               </div>
 
@@ -1555,7 +1374,7 @@ async function handleFileToEditableHtml(f: File) {
                   disabled={
                     uploadBusy ||
                     !uploadFileName.trim() ||
-                    (uploadContext === 'sales' && !uploadCandidateId.trim())
+                    (uploadContext === 'sales' && (!uploadCandidateId.trim() || !salesBakedBlob))
                   }
                 >
                   {uploadBusy ? 'Uploading…' : 'Confirm & Upload'}
