@@ -4,12 +4,8 @@ export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
 import { NextRequest, NextResponse } from 'next/server'
-
-// npm i mammoth
 import mammoth from 'mammoth'
-// npm i isomorphic-dompurify  (or use your preferred sanitizer)
-import createDOMPurify from 'isomorphic-dompurify'
-import { JSDOM } from 'jsdom'
+import sanitizeHtml from 'sanitize-html'
 
 const MAX_BYTES = 20 * 1024 * 1024 // tune as needed
 
@@ -23,16 +19,29 @@ export async function POST(req: NextRequest) {
     }
 
     const arrayBuffer = await file.arrayBuffer()
-    const { value: rawHtml } = await mammoth.convertToHtml({ buffer: Buffer.from(arrayBuffer) }, {
-      convertImage: mammoth.images.inline() // optional: inline images as base64
-    })
 
-    // Sanitize (server-side)
-    const window = new JSDOM('').window as any
-    const DOMPurify = createDOMPurify(window)
-    const html = DOMPurify.sanitize(rawHtml, {
-      ALLOWED_ATTR: ['href', 'title', 'alt', 'colspan', 'rowspan', 'style'],
-      ALLOWED_TAGS: ['h1','h2','h3','h4','h5','h6','p','ul','ol','li','strong','em','b','i','u','table','thead','tbody','tr','th','td','blockquote','hr','br','span','img']
+    // DOCX -> HTML
+    const { value: rawHtml } = await mammoth.convertToHtml(
+      { buffer: Buffer.from(arrayBuffer) },
+      { convertImage: mammoth.images.inline() } // inline images as base64 (optional)
+    )
+
+    // Sanitize in Node (no JSDOM needed)
+    const html = sanitizeHtml(rawHtml, {
+      // allow the basics used in CVs
+      allowedTags: [
+        'h1','h2','h3','h4','h5','h6','p','ul','ol','li','strong','em','b','i','u',
+        'table','thead','tbody','tr','th','td','blockquote','hr','br','span','img'
+      ],
+      allowedAttributes: {
+        a: ['href','title'],
+        img: ['src','alt'],
+        '*': ['style','colspan','rowspan']
+      },
+      // keep links but prevent javascript: etc.
+      allowedSchemes: ['http', 'https', 'data', 'mailto', 'tel'],
+      // optional: limit CSS to safe subset, or strip styles entirely by removing 'style' above
+      // transformTags: { ... } // if you want to normalize headings/lists further
     })
 
     return NextResponse.json({ ok: true, html })
