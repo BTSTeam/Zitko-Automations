@@ -8,8 +8,8 @@ type Tag = { id: number; tag: string }
 
 const TP_USER_ID = process.env.NEXT_PUBLIC_VINCERE_TALENTPOOL_USER_ID || '29018'
 
-// ==== Preview / pagination tuning ====
-const SAMPLE_PREVIEW_LIMIT = 50 // show 50 in UI; import job still processes all
+// ==== Preview / pagination tuning (UI only) ====
+const SAMPLE_PREVIEW_LIMIT = 50 // import job still processes all on the server
 
 type JobStatus = 'running' | 'done' | 'error' | 'not-found'
 type JobProgress = {
@@ -34,7 +34,7 @@ export default function ActiveCampaignTab() {
   const [pools, setPools] = useState<Pool[]>([])
   const [poolId, setPoolId] = useState<string>('')
 
-  // Candidates preview
+  // Candidates preview (used only to trigger count + sanity)
   const [candidates, setCandidates] = useState<Candidate[]>([])
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
@@ -124,10 +124,8 @@ export default function ActiveCampaignTab() {
     try {
       // Request a small preview sample and (where supported) have the server return total
       const qs = new URLSearchParams({
-        // prefer new param
-        limit: String(SAMPLE_PREVIEW_LIMIT),
-        // keep legacy param for backward-compat with existing route handlers
-        rows: String(SAMPLE_PREVIEW_LIMIT),
+        limit: String(SAMPLE_PREVIEW_LIMIT), // new param
+        rows: String(SAMPLE_PREVIEW_LIMIT),  // legacy param (B/C)
       }).toString()
 
       const res = await fetch(
@@ -205,7 +203,7 @@ export default function ActiveCampaignTab() {
     }
 
     try {
-      // Start background job (server will paginate whole pool; these numbers are safe defaults)
+      // Start background job (server paginates whole pool)
       const res = await fetch('/api/activecampaign/import-pool/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -213,11 +211,10 @@ export default function ActiveCampaignTab() {
           poolId,
           userId: TP_USER_ID,
           tagName: effectiveTag,
-          // optional knobs; server can ignore if it now self-tunes
           rows: 200,
           max: 100000,
-          chunk: 250,
-          pauseMs: 250,
+          chunk: 25,
+          pauseMs: 150,
         }),
       })
       const data = await res.json()
@@ -258,35 +255,22 @@ export default function ActiveCampaignTab() {
     }
   }
 
-  const cell = 'px-4 py-2'
   const isSending = sendState === 'sending' || sendState === 'starting'
-
-  // consistent select look + chevron
-  const selectBase =
-    'w-full rounded-xl border px-3 py-2 appearance-none pr-9 focus:outline-none focus:ring-2 focus:ring-[#001961]'
-  const SelectChevron = () => (
-    <svg
-      className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500"
-      viewBox="0 0 20 20"
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.116l3.71-2.885a.75.75 0 1 1 .92 1.18l-4.2 3.265a.75.75 0 0 1-.92 0L5.25 8.39a.75.75 0 0 1-.02-1.18z" />
-    </svg>
-  )
 
   // Prefer progress total when sending; otherwise use preview's poolTotal
   const totalInPool = (progress?.totals?.poolTotal ?? poolTotal) ?? null
   const sent = progress?.totals?.sent ?? 0
+  const denominator = progress?.totals?.valid ?? totalInPool ?? null // % based on actual valid where available
   const percent =
-    totalInPool && totalInPool > 0 ? Math.min(100, Math.round((sent / totalInPool) * 100)) : 0
+    denominator && denominator > 0 ? Math.min(100, Math.round((sent / denominator) * 100)) : 0
 
   const fmt = (n: number | null | undefined) =>
     typeof n === 'number' ? new Intl.NumberFormat().format(n) : '—'
 
-  // scroller only when > sample (so all preview rows show without scrolling)
-  const tableWrapClass =
-    candidates.length > SAMPLE_PREVIEW_LIMIT ? 'max-h-96 overflow-auto text-sm' : 'text-sm'
+  // ====== Circular progress (thicker ring) ======
+  const RING_SIZE = 360 // px
+  const RING_THICKNESS = 28 // px (thicker than before)
+  const pctDeg = Math.max(0, Math.min(360, Math.round((percent / 100) * 360)))
 
   return (
     <div className="grid gap-6">
@@ -300,7 +284,7 @@ export default function ActiveCampaignTab() {
               <select
                 value={poolId}
                 onChange={(e) => setPoolId(e.target.value)}
-                className={selectBase}
+                className="w-full rounded-xl border px-3 py-2 appearance-none pr-9 focus:outline-none focus:ring-2 focus:ring-[#001961]"
               >
                 {pools.length === 0 ? (
                   <option value="" disabled>
@@ -314,7 +298,14 @@ export default function ActiveCampaignTab() {
                   ))
                 )}
               </select>
-              <SelectChevron />
+              <svg
+                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.116l3.71-2.885a.75.75 0 1 1 .92 1.18l-4.2 3.265a.75.75 0 0 1-.92 0L5.25 8.39a.75.75 0 0 1-.02-1.18z" />
+              </svg>
             </div>
           </label>
 
@@ -325,7 +316,7 @@ export default function ActiveCampaignTab() {
               <select
                 value={tagName}
                 onChange={(e) => setTagName(e.target.value)}
-                className={selectBase}
+                className="w-full rounded-xl border px-3 py-2 appearance-none pr-9 focus:outline-none focus:ring-2 focus:ring-[#001961]"
               >
                 <option value="" disabled>
                   Select a tag
@@ -336,12 +327,19 @@ export default function ActiveCampaignTab() {
                   </option>
                 ))}
               </select>
-              <SelectChevron />
+              <svg
+                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.116l3.71-2.885a.75.75 0 1 1 .92 1.18l-4.2 3.265a.75.75 0 0 1-.92 0L5.25 8.39a.75.75 0 0 1-.02-1.18z" />
+              </svg>
             </div>
           </label>
         </div>
 
-        {/* Actions + progress */}
+        {/* Actions */}
         <div className="mt-4 flex items-center gap-3">
           <button
             onClick={retrievePoolCandidates}
@@ -351,14 +349,14 @@ export default function ActiveCampaignTab() {
                 ? '!bg-[#001961] !text-white hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#001961]'
                 : 'bg-gray-100 text-gray-500 cursor-not-allowed'}`}
           >
-            {loading ? 'Retrieving…' : `Retrieve TP Candidates`}
+            {loading ? 'Retrieving…' : 'Retrieve TP Candidates'}
           </button>
 
           <button
             onClick={sendToActiveCampaign}
-            disabled={!acEnabled || isSending}
+            disabled={!(tagName.trim().length > 0 && poolId !== '') || isSending}
             className={`ml-auto rounded-full px-5 py-3 font-medium shadow-sm transition 
-              ${acEnabled && !isSending
+              ${tagName.trim().length > 0 && poolId !== '' && !isSending
                 ? '!bg-[#001961] !text-white hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#001961]'
                 : 'bg-gray-100 text-gray-500 cursor-not-allowed'}`}
             aria-live="polite"
@@ -367,77 +365,58 @@ export default function ActiveCampaignTab() {
           </button>
         </div>
 
-        {/* Progress bar + numbers */}
-        {progress && progress.status !== 'not-found' && (
-          <div className="mt-3">
-            <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
-              <span>Tagging & sending to ActiveCampaign</span>
-              <span>
-                {fmt(sent)} / {fmt(totalInPool)} {totalInPool ? `(${percent}%)` : ''}
-              </span>
-            </div>
-            <div className="h-2 w-full rounded-full bg-gray-200 overflow-hidden">
-              <div
-                className="h-2 bg-[#001961] transition-all"
-                style={{ width: `${percent}%` }}
-              />
-            </div>
-            {progress?.status === 'error' && (
-              <div className="mt-2 text-sm text-red-600">
-                {progress?.error || 'Import failed'}
-              </div>
-            )}
-          </div>
+        {/* Only show non-success errors/info */}
+        {message && sendState !== 'success' && (
+          <div className="mt-2 text-sm text-gray-700">{message}</div>
         )}
-
-        {/* Only show non-success messages (errors, info) */}
-        {message && <div className="mt-2 text-sm text-gray-700">{message}</div>}
       </div>
 
-      {/* RESULTS PANEL */}
-      <div className="rounded-2xl border bg-white">
-        <div className="flex items-center justify-start px-4 py-2">
-          <div className="text-xs text-gray-500">
-            {new Intl.NumberFormat().format(candidates.length)} Loaded
-            {poolTotal != null ? `  |  ${new Intl.NumberFormat().format(poolTotal)} in Talent Pool` : ''}
+      {/* PROGRESS PANEL (no table) */}
+      <div className="rounded-2xl border bg-white p-6">
+        {/* Header — replaced: show only Tagging line, in dark blue */}
+        <div className="text-[#001961] font-semibold text-lg">
+          Tagging candidates as <span className="font-normal text-gray-600">“{tagName || '—'}”</span>
+        </div>
+
+        <div className="mt-6 flex items-center justify-center">
+          <div
+            className="relative"
+            style={{ width: RING_SIZE, height: RING_SIZE }}
+          >
+            {/* Track + progress via conic-gradient + mask for thickness */}
+            <div
+              className="absolute inset-0 rounded-full"
+              style={{
+                background: `conic-gradient(#001961 ${pctDeg}deg, #e5e7eb 0)`,
+                WebkitMask: `radial-gradient(farthest-side, transparent calc(100% - ${RING_THICKNESS}px), black 0)`,
+                mask: `radial-gradient(farthest-side, transparent calc(100% - ${RING_THICKNESS}px), black 0)`,
+                filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.06))',
+              }}
+            />
+            {/* Inner plate (for subtle depth) */}
+            <div
+              className="absolute rounded-full bg-white"
+              style={{
+                inset: RING_THICKNESS,
+                boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.05)',
+              }}
+            />
+            {/* Center labels */}
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+              <div className="text-xs text-gray-500">
+                {fmt(sent)} of {fmt(denominator)}
+              </div>
+              <div className="text-5xl font-bold text-[#001961] mt-1">{percent}%</div>
+            </div>
           </div>
         </div>
 
-        <div className={tableWrapClass}>
-          {candidates.length === 0 ? (
-            <div className="px-4 py-6 text-gray-500">No candidates loaded.</div>
-          ) : (
-            <table className="w-full text-left text-sm">
-              <thead className="sticky top-0 bg-white">
-                <tr>
-                  <th className={cell}>Candidate Name</th>
-                  <th className={cell}>Email</th>
-                  <th className={cell}>Tag</th>
-                </tr>
-              </thead>
-              <tbody>
-                {candidates.map((c, i) => {
-                  const name = [c.first_name, c.last_name].filter(Boolean).join(' ').trim()
-                  return (
-                    <tr key={i} className="border-t hover:bg-gray-50">
-                      <td className={cell}>{name || ''}</td>
-                      <td className={cell}>
-                        {c.email ? (
-                          <a href={`mailto:${c.email}`} className="">
-                            {c.email}
-                          </a>
-                        ) : (
-                          ''
-                        )}
-                      </td>
-                      <td className={cell}>{(tagName || '').trim()}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
+        {/* Error state (if any) */}
+        {progress?.status === 'error' && (
+          <div className="mt-4 text-sm text-red-600">
+            {progress?.error || 'Import failed'}
+          </div>
+        )}
       </div>
     </div>
   )
