@@ -20,55 +20,85 @@ export async function bakeHeaderFooter(
   const last = pages[pages.length - 1]
 
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
-  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
-
   const ORANGE: RGB = ZITKO_BRAND.ORANGE
   const footerLines = opts.footerLines ?? ZITKO_BRAND.FOOTER_LINES
 
+  // logo
   const logoBytes = opts.logoBytes ?? (await tryGetLogoBytes())
   const logoImage = logoBytes ? await embedImage(pdfDoc, logoBytes) : null
 
-  drawHeader(first, { fontBold, logoImage, ORANGE })
+  drawHeader(first, { logoImage })
   drawFooter(last, { font, ORANGE, footerLines })
 
-  const out = await pdfDoc.save()
-  return out
+  return await pdfDoc.save()
 }
 
 // ---- helpers ----
-function drawHeader(page: any, { fontBold, logoImage, ORANGE }: { fontBold: any; logoImage: any | null; ORANGE: RGB }) {
-  const { width, height } = page.getSize()
-  const bandHeight = 42
-  page.drawRectangle({ x: 0, y: height - bandHeight, width, height: bandHeight, color: ORANGE })
+
+function drawHeader(page: any, { logoImage }: { logoImage: any | null }) {
+  const { height } = page.getSize()
+  const bandHeight = 50
+
+  // White band background
+  page.drawRectangle({
+    x: 0,
+    y: height - bandHeight,
+    width: page.getWidth(),
+    height: bandHeight,
+    color: rgb(1, 1, 1),
+  })
+
+  // Logo left-aligned
   if (logoImage) {
     const maxLogoH = bandHeight - 10
     const scale = maxLogoH / logoImage.height
     const logoW = logoImage.width * scale
     const logoH = logoImage.height * scale
-    page.drawImage(logoImage, { x: 16, y: height - bandHeight + (bandHeight - logoH) / 2, width: logoW, height: logoH })
+    page.drawImage(logoImage, {
+      x: page.getWidth() - logoW - 16, // ← 16px from the right
+      y: height - bandHeight + (bandHeight - logoH) / 2,
+      width: logoW,
+      height: logoH,
+    })
   }
 }
 
-function drawFooter(page: any, { font, ORANGE, footerLines }: { font: any; ORANGE: RGB; footerLines: string[] }) {
+function drawFooter(
+  page: any,
+  { font, ORANGE, footerLines }: { font: any; ORANGE: RGB; footerLines: string[] }
+) {
   const { width } = page.getSize()
-  page.drawRectangle({ x: 0, y: 32, width, height: 2, color: ORANGE })
+  const fontSize = 8
   let y = 20
   for (const line of footerLines) {
-    const fontSize = 8
     const textWidth = font.widthOfTextAtSize(line, fontSize)
-    page.drawText(line, { x: (width - textWidth) / 2, y, size: fontSize, font, color: rgb(0, 0, 0) })
+    page.drawText(line, {
+      x: (width - textWidth) / 2,
+      y,
+      size: fontSize,
+      font,
+      color: ORANGE, // Zitko orange text
+    })
     y -= 10
   }
 }
 
 async function embedImage(pdfDoc: PDFDocument, bytes: ArrayBuffer) {
-  try { return await pdfDoc.embedPng(bytes) } catch { return await pdfDoc.embedJpg(bytes) }
+  try {
+    return await pdfDoc.embedPng(bytes)
+  } catch {
+    return await pdfDoc.embedJpg(bytes)
+  }
 }
 
 async function tryGetLogoBytes(): Promise<ArrayBuffer | null> {
   try {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || ''}${ZITKO_BRAND.LOGO_PATH}`)
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_SITE_URL || ''}${ZITKO_BRAND.LOGO_PATH}`
+    )
     if (!res.ok) return null
     return await res.arrayBuffer()
-  } catch { return null }
+  } catch {
+    return null
+  }
 }
