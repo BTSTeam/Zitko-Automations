@@ -546,8 +546,9 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       }
 
       // 2) Bake Zitko header/footer (first page header, last page footer)
-      const bakedBytes = await bakeHeaderFooter(pdfBytes, { template: 'sales' })
-      const bakedBlob = new Blob([bakedBytes], { type: 'application/pdf' })
+      const u8 = bakedBytes as Uint8Array
+      const bakedAb = u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength)
+      const bakedBlob = new Blob([bakedAb], { type: 'application/pdf' })
 
       // 3) Preview URL (exact upload target)
       const url = URL.createObjectURL(bakedBlob)
