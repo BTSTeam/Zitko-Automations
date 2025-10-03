@@ -1,17 +1,13 @@
 'use client'
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
 
 /**
- * CvTab.tsx — drop-in replacement
- * - Adds experience_in_company into editable Description (and strips HTML tags)
- * - Removes separate expText block; preview now reads from editable Description only
- * - Sales upload modal accepts manual Candidate ID (used in POST endpoint)
- * - After "Confirm & Upload" shows a success state in the modal
- * - Standard template: footer forced to last page; header only on first for Sales (baked)
- * - Robust handling of custom fields; flexible mapping for work/education
- * - Uses base64 for <= 3MB; otherwise uploads to /api/upload for a public URL
+ * CvTab.tsx — full drop-in replacement (Sales editable DOCX-in-browser flow)
+ * - SALES: any → DOCX (CloudConvert) → HTML (mammoth) → in-app editor
+ * - SALES preview shows Zitko header/footer immediately (chrome)
+ * - SALES upload: DOM→PDF (html2pdf.js), then post to Vincere (base64 or URL)
+ * - STANDARD flow unchanged (DOM→PDF, as before)
  */
 
 type TemplateKey = 'standard' | 'sales'
@@ -49,92 +45,13 @@ const BASE64_THRESHOLD_BYTES = 3 * 1024 * 1024 // ~3 MB
 
 // ---- brand assets (served from /public) ----
 const LOGO_PATH = '/zitko-full-logo.png'
-
-// ===================== PDF BAKING (Sales only) =====================
-async function fetchBytes(url: string): Promise<Uint8Array> {
-  const absolute = new URL(url, window.location.origin).toString()
-  const res = await fetch(absolute)
-  if (!res.ok) throw new Error(`Failed to fetch asset: ${absolute}`)
-  const buf = await res.arrayBuffer()
-  return new Uint8Array(buf)
-}
-
-/**
- * Paints a white strip + Zitko logo at the top of the FIRST page,
- * and a white strip + 3 lines of footer text at the bottom of the LAST page.
- * (Used for Sales uploads & preview)
- */
-async function bakeHeaderFooter(input: Blob): Promise<Blob> {
-  if (input.type && !/pdf/i.test(input.type)) return input
-
-  try {
-    const srcBuf = await input.arrayBuffer()
-    const pdfDoc = await PDFDocument.load(srcBuf, { ignoreEncryption: true })
-
-    const pages = pdfDoc.getPages()
-    if (!pages.length) return input
-
-    const first = pages[0]
-    const last = pages[pages.length - 1]
-
-    const logoBytes = await fetchBytes(LOGO_PATH)
-    const logo = await pdfDoc.embedPng(logoBytes)
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
-
-    // ---- Header (first page only) ----
-    {
-      const w = first.getWidth()
-      const h = first.getHeight()
-      const margin = 18
-      const stripHeight = 70
-      first.drawRectangle({ x: 0, y: h - stripHeight, width: w, height: stripHeight, color: rgb(1, 1, 1) })
-      const maxLogoW = Math.min(170, w * 0.28)
-      const scale = maxLogoW / logo.width
-      const logoW = maxLogoW
-      const logoH = logo.height * scale
-      first.drawImage(logo, {
-        x: w - logoW - margin,
-        y: h - logoH - (stripHeight - logoH) / 2,
-        width: logoW,
-        height: logoH,
-      })
-    }
-
-    // ---- Footer (last page only) ----
-    {
-      const w = last.getWidth()
-      const marginX = 28
-      const stripHeight = 54
-      last.drawRectangle({ x: 0, y: 0, width: w, height: stripHeight, color: rgb(1, 1, 1) })
-    
-      const footerLines = [
-        'Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Inc',
-        'Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL',
-        'Tel: 01480 473245  Web: www.zitkogroup.com',
-      ]
-    
-      const fontSize = 8.5
-      const lineGap = 2
-      const step = fontSize + lineGap
-    
-      // draw TOP -> DOWN so visual order matches the array order
-      const yTop = stripHeight - (fontSize + 10)  // 10px top padding within strip
-    
-      footerLines.forEach((line, i) => {
-        const textWidth = font.widthOfTextAtSize(line, fontSize)
-        const x = Math.max(marginX, (w - textWidth) / 2)
-        const y = yTop - i * step
-        last.drawText(line, { x, y, size: fontSize, font, color: rgb(0.97, 0.58, 0.11) })
-      })
-    }
-
-    const out = await pdfDoc.save()
-    const outBuf = out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength) as ArrayBuffer
-    return new Blob([outBuf], { type: 'application/pdf' })
-  } catch (err) {
-    console.warn('Baking header/footer failed, using original PDF', err)
-    return input
-  }
+const BRAND = {
+  ORANGE_HEX: '#F7941D',
+  FOOTER_LINES: [
+    'Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Inc',
+    'Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL',
+    'Tel: 01480 473245  Web: www.zitkogroup.com',
+  ],
 }
 
 // ---------- helpers for education/work mapping ----------
@@ -353,21 +270,22 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
   // ================== local helpers ==================
   const [salesErr, setSalesErr] = useState<string | null>(null)
-  const [salesDocUrl, setSalesDocUrl] = useState<string | null>(null)  // preview URL (baked)
-  const [salesDocName, setSalesDocName] = useState<string>('')         // filename (final/derived)
-  const [salesDocType, setSalesDocType] = useState<string>('')         // mime type
+  const [salesDocName, setSalesDocName] = useState<string>('')         // original file name
+  const [salesDocType, setSalesDocType] = useState<string>('')         // mime type (for display)
   const [processing, setProcessing] = useState<boolean>(false)
   const [dragOver, setDragOver] = useState<boolean>(false)
-  const [salesDocBlob, setSalesDocBlob] = useState<Blob | null>(null)  // baked PDF blob (for upload+preview)
+
+  // NEW (Sales editor)
+  const [salesEditorHtml, setSalesEditorHtml] = useState<string>('')   // editable HTML
+  const salesEditorRef = useRef<HTMLDivElement | null>(null)
+
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   function resetSalesState() {
     setSalesErr(null)
-    if (salesDocUrl) URL.revokeObjectURL(salesDocUrl)
-    setSalesDocUrl(null)
     setSalesDocName('')
     setSalesDocType('')
-    setSalesDocBlob(null)
+    setSalesEditorHtml('')
     setProcessing(false)
     setDragOver(false)
   }
@@ -578,7 +496,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     }
   }
 
-  // ====================== SALES ( + PDF/DOCX handling ) ======================
+  // ====================== SALES (editable) ======================
   function onClickUpload() {
     fileInputRef.current?.click()
   }
@@ -597,13 +515,13 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     const fd = new FormData()
     fd.append('file', new File([file], desiredName, { type: (file as any).type || 'application/octet-stream' }))
     fd.append('filename', desiredName)
-  
+
     const res = await fetch('/api/upload', { method: 'POST', body: fd, credentials: 'include' })
-  
+
     let data: any = null
     const text = await res.text()
     try { data = text ? JSON.parse(text) : {} } catch { data = { raw: text } }
-  
+
     if (!res.ok || !data?.ok || !data?.url) {
       const errMsg =
         (typeof data?.error === 'string' && data.error) ||
@@ -616,7 +534,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     return data.url as string
   }
 
-  // --- Vincere POST helpers (now accept candidate ID explicitly) ---
+  // --- Vincere POST helpers (accept candidate ID explicitly) ---
   async function postBase64ToVincere(fileName: string, base64: string, cid: string) {
     const payload = { file_name: fileName, document_type_id: 1, base_64_content: base64, original_cv: true }
     const res = await fetch(`/api/vincere/candidate/${encodeURIComponent(cid)}/file`, {
@@ -628,7 +546,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     const raw = await res.text()
     let data: any = null
     try { data = raw ? JSON.parse(raw) : {} } catch { data = { raw } }
-  
+
     if (!res.ok || !data?.ok) {
       const errMsg =
         (typeof data?.error === 'string' && data.error) ||
@@ -651,7 +569,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     const raw = await res.text()
     let data: any = null
     try { data = raw ? JSON.parse(raw) : {} } catch { data = { raw } }
-  
+
     if (!res.ok || !data?.ok) {
       const errMsg =
         (typeof data?.error === 'string' && data.error) ||
@@ -663,52 +581,48 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     }
   }
 
-  // Handle a selected/dropped file for SALES — bake immediately so preview shows branding
+  // NEW: handle Sales file — any → DOCX → HTML editor
   async function handleFile(f: File) {
     setSalesErr(null)
-    if (salesDocUrl) URL.revokeObjectURL(salesDocUrl)
-
-    const isPdfFile = f.type?.includes('pdf') || /\.pdf$/i.test(f.name)
-    const isDocx    = f.type?.includes('officedocument.wordprocessingml.document') || /\.docx$/i.test(f.name)
 
     try {
       setProcessing(true)
-      let sourcePdf: Blob | null = null
 
-      if (isDocx) {
+      // 1) Ensure DOCX
+      let docxBlob: Blob
+      if (!/\.docx$/i.test(f.name)) {
         const fd = new FormData()
         fd.append('file', f, f.name)
-        const res = await fetch('/api/cloudconvert/docx-to-pdf', { method: 'POST', body: fd })
+        const res = await fetch('/api/cloudconvert/any-to-docx', { method: 'POST', body: fd })
         if (!res.ok) {
-          let msg = `DOCX convert failed (${res.status})`
+          let msg = `Convert to DOCX failed (${res.status})`
           try { const j = await res.json(); if (j?.error) msg = j.error } catch {}
           throw new Error(msg)
         }
-        const pdfBuf = await res.arrayBuffer()
-        sourcePdf = new Blob([pdfBuf], { type: 'application/pdf' })
-      } else if (isPdfFile) {
-        sourcePdf = f
+        const arr = await res.arrayBuffer()
+        docxBlob = new Blob([arr], {
+          type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        })
       } else {
-        const url = URL.createObjectURL(f)
-        setSalesDocUrl(url)
-        setSalesDocName(f.name)
-        setSalesDocType(f.type || 'application/octet-stream')
-        setSalesDocBlob(null)
-        setSalesErr('Preview only supports PDF (DOCX will auto-convert). This file type will not preview.')
-        return
+        docxBlob = f
       }
 
-      // 🔥 Bake header/footer for preview AND upload
-      const baked = await bakeHeaderFooter(sourcePdf)
+      // 2) DOCX → HTML (server-side mammoth)
+      const fd2 = new FormData()
+      fd2.append('file', docxBlob, f.name.replace(/\.[^.]+$/, '') + '.docx')
+      const htmlRes = await fetch('/api/docx/to-html', { method: 'POST', body: fd2 })
+      if (!htmlRes.ok) {
+        let msg = `DOCX→HTML failed (${htmlRes.status})`
+        try { const j = await htmlRes.json(); if (j?.error) msg = j.error } catch {}
+        throw new Error(msg)
+      }
+      const { html } = await htmlRes.json()
 
-      // preview baked file
-      const url = URL.createObjectURL(baked)
-      setSalesDocUrl(url)
-      setSalesDocName(isDocx ? f.name.replace(/\.docx$/i, '.pdf') : f.name)
-      setSalesDocType('application/pdf')
-
-      // store baked blob for upload
-      setSalesDocBlob(baked)
+      // 3) Fill editor / preview
+      setSalesEditorHtml(sanitiseHtml(html))
+      setSalesDocName(f.name)
+      setSalesDocType('text/html')
+      setSalesErr(null)
     } catch (e: any) {
       setSalesErr(e?.message || 'Failed to process file')
     } finally {
@@ -729,11 +643,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     const f = ev.dataTransfer.files?.[0]
     if (f) await handleFile(f)
   }
-
-  const isPdf = useMemo(
-    () => (salesDocType?.includes('pdf') || /\.pdf$/i.test(salesDocName)),
-    [salesDocType, salesDocName]
-  )
 
   // STANDARD: export right-panel DOM to PDF and upload (NO baking here)
   async function uploadStandardPreviewToVincereUrl(finalName: string, cid: string) {
@@ -765,40 +674,72 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     }
   }
 
-  // SALES: upload the already-baked file shown in preview
-  async function uploadSalesFileToVincereUrl(finalName: string, cid: string) {
-    if (!salesDocBlob) throw new Error('No Sales document to upload')
-    const baked = salesDocBlob // already baked in handleFile()
-  
-    if (baked.size <= BASE64_THRESHOLD_BYTES) {
-      const base64 = await blobToBase64(baked)
-      await postBase64ToVincere(finalName, base64, cid)
-    } else {
-      const publicUrl = await uploadBlobToPublicUrl(baked, finalName)
-      await postFileUrlToVincere(finalName, publicUrl, cid)
+  // NEW (Sales): export EDITED HTML (with header/footer chrome) to PDF and upload
+  async function uploadSalesEditedToVincereUrl(finalName: string, cid: string) {
+    const mod = await import('html2pdf.js')
+    const html2pdf = (mod as any).default || (mod as any)
+
+    // Build a temporary DOM node that includes header + body + footer (same as preview)
+    const container = document.createElement('div')
+    container.className = 'p-6 cv-standard-page bg-white text-[13px] leading-[1.35]'
+    container.innerHTML = `
+      <div class="flex items-start justify-between">
+        <div></div>
+        <img src="${LOGO_PATH}" alt="Zitko" class="h-10" />
+      </div>
+      <h1 class="text-2xl font-bold mt-5">Curriculum Vitae</h1>
+      <div class="mt-5 prose max-w-none">${salesEditorHtml || ''}</div>
+      <div class="mt-6 pt-4 border-t text-center text-[10px] leading-snug" style="color:${BRAND.ORANGE_HEX}">
+        ${BRAND.FOOTER_LINES.map(l => `<div>${l}</div>`).join('')}
+      </div>
+    `
+    document.body.appendChild(container)
+
+    try {
+      const opt = {
+        margin: 10, // mm
+        filename: finalName,
+        image: { type: 'jpeg', quality: 0.95 },
+        html2canvas: { scale: 2, backgroundColor: '#FFFFFF' },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
+        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] as const },
+      }
+
+      const worker = html2pdf().set(opt).from(container).toPdf()
+      const pdf = await worker.get('pdf')
+      const pdfBlob = new Blob([pdf.output('arraybuffer')], { type: 'application/pdf' })
+
+      if (pdfBlob.size <= BASE64_THRESHOLD_BYTES) {
+        const base64 = await blobToBase64(pdfBlob)
+        await postBase64ToVincere(finalName, base64, cid)
+      } else {
+        const publicUrl = await uploadBlobToPublicUrl(pdfBlob, finalName)
+        await postFileUrlToVincere(finalName, publicUrl, cid)
+      }
+    } finally {
+      container.remove()
     }
-}
+  }
 
   async function confirmUpload() {
     try {
       setUploadBusy(true)
       setUploadErr(null)
       setUploadSuccess(null)
-  
+
       const cid = (uploadContext === 'sales' ? uploadCandidateId : candidateId).trim()
       if (!cid) throw new Error('Please enter a Candidate ID')
       if (!uploadFileName?.trim()) throw new Error('Please enter a file name')
-  
+
       let finalName = uploadFileName.trim()
       if (!/\.pdf$/i.test(finalName)) finalName += '.pdf'
-  
+
       if (uploadContext === 'standard') {
         await uploadStandardPreviewToVincereUrl(finalName, cid)
       } else {
-        await uploadSalesFileToVincereUrl(finalName, cid)
+        await uploadSalesEditedToVincereUrl(finalName, cid)
       }
-  
-      // success message stays the same
+
       setUploadSuccess('Upload Successful')
     } catch (e: any) {
       const msg =
@@ -814,295 +755,294 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     }
   }
 
-  // Sales viewer — shows baked preview so you can verify branding
-  function SalesViewerCard() {
-    return (
-      <div className="border rounded-2xl overflow-hidden bg-white">
-        {salesDocUrl ? (
-          isPdf ? (
-            <iframe className="w-full h-[75vh] bg-white" src={salesDocUrl} title={salesDocName || 'Document'} />
-          ) : (
-            <div className="p-6 text-xs text-gray-600 bg-white">
-              Preview not available for this file type. You can still upload it.
-            </div>
-          )
-        ) : (
-          <div className="p-6 text-xs text-gray-600 bg-white">
-            No document imported yet. Use “Import CV” above.
-          </div>
-        )}
-      </div>
-    )
-  }
-
   // ========== preview (right) ==========
   function CVTemplatePreview(): JSX.Element {
-  if (template === 'sales') {
-    return (
-      <div className="p-4">
-        <SalesViewerCard />
-        <div className="px-1 pt-2 text-[11px] text-gray-500">
-          Preview shows branding; uploaded file will match this exactly.
-        </div>
-      </div>
-    )
-  }
-
-  // Standard (editor preview) — attach ref for DOM→PDF
-  return (
-    <div
-      ref={standardPreviewRef}
-      className="p-6 cv-standard-page bg-white text-[13px] leading-[1.35]"
-    >
-      <div className="flex items-start justify-between">
-        <div />
-        <img src="/zitko-full-logo.png" alt="Zitko" className="h-10" />
-      </div>
-
-      <h1 className="text-2xl font-bold mt-5">Curriculum Vitae</h1>
-
-      <div className="mt-2 text-[12px] text-gray-800 space-y-0.5">
-        <div>
-          <span className="font-semibold">Name:</span>{' '}
-          {form.name ? `${form.name}` : '—'}
-        </div>
-        <div>
-          <span className="font-semibold">Location:</span>{' '}
-          {form.location ? `${form.location}` : '—'}
-        </div>
-      </div>
-
-      <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
-        Profile
-      </h2>
-      <div className="whitespace-pre-wrap text-[12px]">
-        {form.profile?.trim() ? form.profile : 'No Profile yet'}
-      </div>
-
-      <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
-        Key Skills
-      </h2>
-      <div className="text-[12px]">
-        {(() => {
-          const items = (form.keySkills || '')
-            .split(/\r?\n|,\s*/).map(s => s.trim())
-            .filter(Boolean)
-
-          if (items.length === 0) return 'No Key Skills yet'
-
-          const mid = Math.ceil(items.length / 2)
-          const col1 = items.slice(0, mid)
-          const col2 = items.slice(mid)
-
-          return (
-            <div className="grid grid-cols-2 gap-x-6">
-              <div className="space-y-1">
-                {col1.map((s, i) => (
-                  <div key={`ks1-${i}`}>• {s}</div>
-                ))}
+    // SALES: show editor content with header/footer chrome
+    if (template === 'sales') {
+      return (
+        <div className="p-4">
+          <div className="border rounded-2xl overflow-hidden bg-white">
+            <div className="p-6 cv-standard-page bg-white text-[13px] leading-[1.35]">
+              {/* Header */}
+              <div className="flex items-start justify-between">
+                <div />
+                <img src="/zitko-full-logo.png" alt="Zitko" className="h-10" />
               </div>
-              <div className="space-y-1">
-                {col2.map((s, i) => (
-                  <div key={`ks2-${i}`}>• {s}</div>
-                ))}
+
+              <h1 className="text-2xl font-bold mt-5">Curriculum Vitae</h1>
+
+              {/* Edited content */}
+              <div
+                className="mt-5 prose max-w-none"
+                dangerouslySetInnerHTML={{ __html: salesEditorHtml || '<p class="text-gray-500 text-[12px]">No content yet. Import a CV to start editing.</p>' }}
+              />
+
+              {/* Footer */}
+              <div className="mt-6 pt-4 border-t text-center text-[10px] leading-snug text-[#F7941D] break-inside-avoid cv-footer">
+                {BRAND.FOOTER_LINES.map((l, i) => <div key={i}>{l}</div>)}
               </div>
             </div>
-          )
-        })()}
-      </div>
-
-      {/* Employment History (header + first entry stay together) */}
-      {form.employment.length === 0 ? (
-        <div className="cv-headpair">
-          <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
-            Employment History
-          </h2>
-          <div className="text-gray-500 text-[12px]">No employment history yet.</div>
+          </div>
+          <div className="px-1 pt-2 text-[11px] text-gray-500">
+            Preview shows branding; uploaded PDF will match this layout.
+          </div>
         </div>
-      ) : (
-        <>
+      )
+    }
+
+    // Standard (editor preview) — attach ref for DOM→PDF
+    return (
+      <div
+        ref={standardPreviewRef}
+        className="p-6 cv-standard-page bg-white text-[13px] leading-[1.35]"
+      >
+        <div className="flex items-start justify-between">
+          <div />
+          <img src="/zitko-full-logo.png" alt="Zitko" className="h-10" />
+        </div>
+
+        <h1 className="text-2xl font-bold mt-5">Curriculum Vitae</h1>
+
+        <div className="mt-2 text-[12px] text-gray-800 space-y-0.5">
+          <div>
+            <span className="font-semibold">Name:</span>{' '}
+            {form.name ? `${form.name}` : '—'}
+          </div>
+          <div>
+            <span className="font-semibold">Location:</span>{' '}
+            {form.location ? `${form.location}` : '—'}
+          </div>
+        </div>
+
+        <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+          Profile
+        </h2>
+        <div className="whitespace-pre-wrap text-[12px]">
+          {form.profile?.trim() ? form.profile : 'No Profile yet'}
+        </div>
+
+        <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+          Key Skills
+        </h2>
+        <div className="text-[12px]">
+          {(() => {
+            const items = (form.keySkills || '')
+              .split(/\r?\n|,\s*/).map(s => s.trim())
+              .filter(Boolean)
+
+            if (items.length === 0) return 'No Key Skills yet'
+
+            const mid = Math.ceil(items.length / 2)
+            const col1 = items.slice(0, mid)
+            const col2 = items.slice(mid)
+
+            return (
+              <div className="grid grid-cols-2 gap-x-6">
+                <div className="space-y-1">
+                  {col1.map((s, i) => (
+                    <div key={`ks1-${i}`}>• {s}</div>
+                  ))}
+                </div>
+                <div className="space-y-1">
+                  {col2.map((s, i) => (
+                    <div key={`ks2-${i}`}>• {s}</div>
+                  ))}
+                </div>
+              </div>
+            )
+          })()}
+        </div>
+
+        {/* Employment History (header + first entry stay together) */}
+        {form.employment.length === 0 ? (
           <div className="cv-headpair">
             <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
               Employment History
             </h2>
-            {(() => {
-              const e = form.employment[0]
-              const range = [e.start, e.end].filter(Boolean).join(' to ')
-              return (
-                <div className="cv-entry">
-                  <div className="flex justify-between">
-                    <div>
-                      <div className="font-medium">{e.title || 'Role'}</div>
-                      <div className="text-[11px] text-gray-500">{e.company}</div>
-                      {e.description?.trim() && (
-                        <div className="text-[12px] mt-1 whitespace-pre-wrap">
-                          {e.description}
-                        </div>
-                      )}
-                    </div>
-                    <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
-                  </div>
-                </div>
-              )
-            })()}
+            <div className="text-gray-500 text-[12px]">No employment history yet.</div>
           </div>
-
-          <div className="space-y-3">
-            {form.employment.slice(1).map((e, i) => {
-              const range = [e.start, e.end].filter(Boolean).join(' to ')
-              return (
-                <div key={i} className="cv-entry">
-                  <div className="flex justify-between">
-                    <div>
-                      <div className="font-medium">{e.title || 'Role'}</div>
-                      <div className="text-[11px] text-gray-500">{e.company}</div>
-                      {e.description?.trim() && (
-                        <div className="text-[12px] mt-1 whitespace-pre-wrap">
-                          {e.description}
-                        </div>
-                      )}
+        ) : (
+          <>
+            <div className="cv-headpair">
+              <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+                Employment History
+              </h2>
+              {(() => {
+                const e = form.employment[0]
+                const range = [e.start, e.end].filter(Boolean).join(' to ')
+                return (
+                  <div className="cv-entry">
+                    <div className="flex justify-between">
+                      <div>
+                        <div className="font-medium">{e.title || 'Role'}</div>
+                        <div className="text-[11px] text-gray-500">{e.company}</div>
+                        {e.description?.trim() && (
+                          <div className="text-[12px] mt-1 whitespace-pre-wrap">
+                            {e.description}
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
                     </div>
-                    <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
                   </div>
-                </div>
-              )
-            })}
-          </div>
-        </>
-      )}
+                )
+              })()}
+            </div>
 
-      {/* Education & Qualifications (header + first entry stay together) */}
-      {form.education.length === 0 ? (
-        <div className="cv-headpair">
-          <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
-            Education & Qualifications
-          </h2>
-          <div className="text-gray-500 text-[12px]">No education yet.</div>
-        </div>
-      ) : (
-        <>
+            <div className="space-y-3">
+              {form.employment.slice(1).map((e, i) => {
+                const range = [e.start, e.end].filter(Boolean).join(' to ')
+                return (
+                  <div key={i} className="cv-entry">
+                    <div className="flex justify-between">
+                      <div>
+                        <div className="font-medium">{e.title || 'Role'}</div>
+                        <div className="text-[11px] text-gray-500">{e.company}</div>
+                        {e.description?.trim() && (
+                          <div className="text-[12px] mt-1 whitespace-pre-wrap">
+                            {e.description}
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </>
+        )}
+
+        {/* Education & Qualifications (header + first entry stay together) */}
+        {form.education.length === 0 ? (
           <div className="cv-headpair">
             <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
               Education & Qualifications
             </h2>
-            {(() => {
-              const e = form.education[0]
-              const range = [e.start, e.end].filter(Boolean).join(' to ')
-              const showInstitutionLine =
-                !!e.institution &&
-                !!e.course &&
-                e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
-              return (
-                <div className="cv-entry">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <div className="font-medium">{e.course || e.institution || 'Course'}</div>
-                      {showInstitutionLine && (
-                        <div className="text-[11px] text-gray-500">{e.institution}</div>
-                      )}
-                    </div>
-                    <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
-                  </div>
-                </div>
-              )
-            })()}
+            <div className="text-gray-500 text-[12px]">No education yet.</div>
           </div>
-
-          <div className="space-y-3">
-            {form.education.slice(1).map((e, i) => {
-              const range = [e.start, e.end].filter(Boolean).join(' to ')
-              const showInstitutionLine =
-                !!e.institution &&
-                !!e.course &&
-                e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
-              return (
-                <div key={i} className="cv-entry">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <div className="font-medium">{e.course || e.institution || 'Course'}</div>
-                      {showInstitutionLine && (
-                        <div className="text-[11px] text-gray-500">{e.institution}</div>
-                      )}
+        ) : (
+          <>
+            <div className="cv-headpair">
+              <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+                Education & Qualifications
+              </h2>
+              {(() => {
+                const e = form.education[0]
+                const range = [e.start, e.end].filter(Boolean).join(' to ')
+                const showInstitutionLine =
+                  !!e.institution &&
+                  !!e.course &&
+                  e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
+                return (
+                  <div className="cv-entry">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="font-medium">{e.course || e.institution || 'Course'}</div>
+                        {showInstitutionLine && (
+                          <div className="text-[11px] text-gray-500">{e.institution}</div>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
                     </div>
-                    <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
                   </div>
-                </div>
-              )
-            })}
-          </div>
-        </>
-      )}
+                )
+              })()}
+            </div>
 
-      {/* Additional Information (keep header with content) */}
-      <div className="cv-headpair">
-        <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
-          Additional Information
-        </h2>
-        <div className="text-[12px] grid gap-1">
-          <div>Driving License: {form.additional.drivingLicense || '—'}</div>
-          <div>Nationality: {form.additional.nationality || '—'}</div>
-          <div>Availability: {form.additional.availability || '—'}</div>
-          <div>Health: {form.additional.health || '—'}</div>
-          <div>Criminal Record: {form.additional.criminalRecord || '—'}</div>
-          <div>Financial History: {form.additional.financialHistory || '—'}</div>
+            <div className="space-y-3">
+              {form.education.slice(1).map((e, i) => {
+                const range = [e.start, e.end].filter(Boolean).join(' to ')
+                const showInstitutionLine =
+                  !!e.institution &&
+                  !!e.course &&
+                  e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
+                return (
+                  <div key={i} className="cv-entry">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="font-medium">{e.course || e.institution || 'Course'}</div>
+                        {showInstitutionLine && (
+                          <div className="text-[11px] text-gray-500">{e.institution}</div>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </>
+        )}
+
+        {/* Additional Information */}
+        <div className="cv-headpair">
+          <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+            Additional Information
+          </h2>
+          <div className="text-[12px] grid gap-1">
+            <div>Driving License: {form.additional.drivingLicense || '—'}</div>
+            <div>Nationality: {form.additional.nationality || '—'}</div>
+            <div>Availability: {form.additional.availability || '—'}</div>
+            <div>Health: {form.additional.health || '—'}</div>
+            <div>Criminal Record: {form.additional.criminalRecord || '—'}</div>
+            <div>Financial History: {form.additional.financialHistory || '—'}</div>
+          </div>
+        </div>
+
+        {/* Footer (pushed to bottom by CSS) */}
+        <div
+          ref={footerRef}
+          className="mt-6 pt-4 border-t text-center text-[10px] leading-snug text-[#F7941D] break-inside-avoid cv-footer"
+        >
+          <div>{BRAND.FOOTER_LINES[0]}</div>
+          <div>{BRAND.FOOTER_LINES[1]}</div>
+          <div>{BRAND.FOOTER_LINES[2]}</div>
         </div>
       </div>
-
-      {/* Footer (will be pushed to bottom by CSS: .cv-standard-page {display:flex} + .cv-footer {margin-top:auto}) */}
-      <div
-        ref={footerRef}
-        className="mt-6 pt-4 border-t text-center text-[10px] leading-snug text-[#F7941D] break-inside-avoid cv-footer"
-      >
-        <div>Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Inc</div>
-        <div>Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL</div>
-        <div>Tel: 01480 473245 Web: www.zitkogroup.com</div>
-      </div>
-    </div>
-  )
-}
+    )
+  }
 
   // ========== render ==========
   return (
-  <div className="grid gap-4">
-    {/* Minimal print + PDF styles */}
-    <style jsx global>{`
-      @media print {
-        @page { size: A4; margin: 12mm; }
+    <div className="grid gap-4">
+      {/* Minimal print + PDF styles */}
+      <style jsx global>{`
+        @media print {
+          @page { size: A4; margin: 12mm; }
 
-        /* A4 content container; makes footer stick to bottom of last page */
-        .cv-standard-page {
-          width: 100%;
-          display: flex;
-          flex-direction: column;
-          min-height: calc(297mm - 24mm); /* page height minus top+bottom margins */
+          /* A4 content container; makes footer stick to bottom of last page */
+          .cv-standard-page {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            min-height: calc(297mm - 24mm); /* page height minus top+bottom margins */
+          }
+
+          /* keep each job/education entry intact (no splitting across pages) */
+          .cv-entry { break-inside: avoid; page-break-inside: avoid; }
+
+          /* keep section header with the FIRST entry only */
+          .cv-headpair { break-inside: avoid; page-break-inside: avoid; }
+
+          /* prevent headings from being orphaned/split */
+          .cv-standard-page h1,
+          .cv-standard-page h2 { break-inside: avoid; page-break-inside: avoid; }
+
+          /* footer pinned to bottom; never creates a blank page */
+          .cv-footer {
+            margin-top: auto;
+            break-inside: avoid;
+            page-break-inside: avoid;
+            page-break-before: auto;
+            page-break-after: auto;
+          }
         }
 
-        /* keep each job/education entry intact (no splitting across pages) */
-        .cv-entry { break-inside: avoid; page-break-inside: avoid; }
-
-        /* keep section header with the FIRST entry only */
+        /* Also help in on-screen preview */
+        .cv-entry,
         .cv-headpair { break-inside: avoid; page-break-inside: avoid; }
-
-        /* prevent headings from being orphaned/split */
-        .cv-standard-page h1,
-        .cv-standard-page h2 { break-inside: avoid; page-break-inside: avoid; }
-
-        /* footer pinned to bottom; never creates a blank page */
-        .cv-footer {
-          margin-top: auto;
-          break-inside: avoid;
-          page-break-inside: avoid;
-          page-break-before: auto;
-          page-break-after: auto;
-        }
-      }
-
-      /* Also help in on-screen preview */
-      .cv-entry,
-      .cv-headpair { break-inside: avoid; page-break-inside: avoid; }
-    `}</style>
-
-    {/* ...the rest of your JSX (cards, editor, preview, etc.) ... */}
+      `}</style>
 
       <div className="card p-4">
         {!templateFromShell && (
@@ -1119,7 +1059,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
               type="button"
               onClick={() => resetAllForTemplate('sales')}
               className={`btn w-full ${template === 'sales' ? 'btn-brand' : 'btn-grey'}`}
-              title="Sales template: import a CV (PDF/DOCX)"
+              title="Sales template: import a CV (any format)"
             >
               Sales
             </button>
@@ -1199,7 +1139,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                 className="btn btn-brand"
                 onClick={onClickUpload}
                 disabled={processing}
-                title="Import a PDF or Word (DOC/DOCX) document"
+                title="Import a document (any common format)"
               >
                 {processing ? 'Processing…' : 'Import CV'}
               </button>
@@ -1208,11 +1148,11 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
               <button
                 type="button"
                 className="btn btn-grey"
-                disabled={!salesDocUrl}
+                disabled={!salesEditorHtml.trim()}
                 onClick={() => {
                   const baseName = (candidateName || form.name || 'CV').replace(/\s+/g, '')
                   const defaultName = salesDocName?.trim()
-                    ? salesDocName.replace(/\.(doc|docx)$/i, '.pdf')
+                    ? salesDocName.replace(/\.(doc|docx|pdf)$/i, '.pdf')
                     : `${baseName}_Sales.pdf`
                   setUploadFileName(defaultName)
                   setUploadContext('sales')
@@ -1221,7 +1161,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                   setUploadSuccess(null)
                   setShowUploadModal(true)
                 }}
-                title="Upload the imported file to Vincere"
+                title="Convert edited Sales CV to PDF and upload to Vincere"
               >
                 Upload
               </button>
@@ -1236,281 +1176,32 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
       {/* CONTENT GRID */}
       <div className={`grid gap-4 ${template === 'sales' ? '' : 'md:grid-cols-2'}`}>
-        {template === 'standard' && (
-          <div className="card p-4 space-y-4">
-            {/* Standard editor */}
-            {/* Core */}
-            <section>
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-sm">Core Details</h3>
-                <div className="flex items-center gap-3">
-                  <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('core')}>
-                    {open.core ? 'Hide' : 'Show'}
-                  </button>
-                </div>
-              </div>
+        {/* SALES: editable left card */}
+        {template === 'sales' && (
+          <div className="card p-4">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <div className="font-semibold">Sales CV (editable)</div>
+              <div className="text-xs text-gray-500">Edit content below. Use “Auto-redact” to remove contacts.</div>
+            </div>
 
-              {open.core && (
-                <div className="grid gap-3 mt-3">
-                  <label className="grid gap-1">
-                    <span className="text-[11px] text-gray-500">Name</span>
-                    <input
-                      className="input"
-                      value={form.name}
-                      onChange={e => {
-                        setField('name', e.target.value)
-                        setCandidateName(e.target.value)
-                      }}
-                      disabled={loading}
-                    />
-                  </label>
-                  <label className="grid gap-1">
-                    <span className="text-[11px] text-gray-500">Location</span>
-                    <input className="input" value={form.location} onChange={e => setField('location', e.target.value)} disabled={loading} />
-                  </label>
-                </div>
-              )}
-            </section>
+            <div className="flex gap-2 mb-2">
+              <button
+                type="button"
+                className="btn btn-grey"
+                onClick={() => setSalesEditorHtml(s => autoRedactContacts(s))}
+              >
+                Auto-redact contact details
+              </button>
+            </div>
 
-            {/* Profile */}
-            <section>
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-sm">Profile</h3>
-                <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('profile')}>
-                  {open.profile ? 'Hide' : 'Show'}
-                </button>
-              </div>
-              {open.profile && (
-                <div className="mt-3">
-                  <div className="flex flex-col sm:flex-row gap-2 mb-3 items-stretch sm:items-center">
-                    <button
-                      type="button"
-                      className="btn btn-grey text-[11px] !px-3 !py-1.5 w-36 whitespace-nowrap"
-                      disabled={loading || !rawCandidate}
-                      onClick={generateProfile}
-                      title={!rawCandidate ? 'Retrieve a candidate first' : 'Generate profile from candidate data'}
-                    >
-                      Generate
-                    </button>
-                    <div className="border-t border-gray-200 my-2 sm:my-0 sm:mx-2 sm:border-t-0 sm:border-l sm:h-6" />
-                    <input className="input flex-1 min-w-[160px]" placeholder="Job ID" value={jobId} onChange={e => setJobId(e.target.value)} disabled={loading} />
-                    <button
-                      type="button"
-                      className="btn btn-grey text-[11px] !px-3 !py-1.5 w-36 whitespace-nowrap"
-                      disabled={loading || !rawCandidate || !jobId}
-                      onClick={generateJobProfile}
-                      title={!jobId ? 'Enter a Job ID' : 'Generate job-tailored profile'}
-                    >
-                      Generate for Job
-                    </button>
-                  </div>
-
-                  <label className="grid gap-1">
-                    <span className="text-[11px] text-gray-500">Profile</span>
-                    <textarea className="input min-h-[120px]" value={form.profile} onChange={e => setField('profile', e.target.value)} disabled={loading} />
-                  </label>
-                </div>
-              )}
-            </section>
-
-            {/* Key Skills */}
-            <section>
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-sm">Key Skills</h3>
-                <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('skills')}>
-                  {open.skills ? 'Hide' : 'Show'}
-                </button>
-              </div>
-              {open.skills && (
-                <label className="grid gap-1 mt-3">
-                  <span className="text-[11px] text-gray-500">Key Skills (comma or newline)</span>
-                  <textarea className="input min-h-[100px]" value={form.keySkills} onChange={e => setField('keySkills', e.target.value)} disabled={loading} />
-                </label>
-              )}
-            </section>
-
-            {/* Employment */}
-            <section>
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-sm">Employment History</h3>
-                <div className="flex items-center gap-3">
-                  <button type="button" className="text-[11px] text-gray-500 underline" onClick={addEmployment} disabled={loading}>Add role</button>
-                  <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('work')}>
-                    {open.work ? 'Hide' : 'Show'}
-                  </button>
-                </div>
-              </div>
-
-              {open.work && (
-                <div className="grid gap-3 mt-3">
-                  {form.employment.length === 0 ? (
-                    <div className="text-[12px] text-gray-500">No employment history yet.</div>
-                  ) : (
-                    form.employment.map((e, i) => (
-                      <div key={i} className="border rounded-xl p-3 grid gap-2">
-                        <label className="grid gap-1">
-                          <span className="text-[11px] text-gray-500">Title</span>
-                          <input className="input" value={e.title || ''} onChange={ev => {
-                            const v = ev.target.value
-                            setForm(prev => { const copy = structuredClone(prev); copy.employment[i].title = v; return copy })
-                          }} />
-                        </label>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          <label className="grid gap-1">
-                            <span className="text-[11px] text-gray-500">Company</span>
-                            <input className="input" value={e.company || ''} onChange={ev => {
-                              const v = ev.target.value
-                              setForm(prev => { const copy = structuredClone(prev); copy.employment[i].company = v; return copy })
-                            }} />
-                          </label>
-                          <div className="grid grid-cols-2 gap-2">
-                            <label className="grid gap-1">
-                              <span className="text-[11px] text-gray-500">Start</span>
-                              <input className="input" value={e.start || ''} onChange={ev => {
-                                const v = ev.target.value
-                                setForm(prev => { const copy = structuredClone(prev); copy.employment[i].start = v; return copy })
-                              }} />
-                            </label>
-                            <label className="grid gap-1">
-                              <span className="text-[11px] text-gray-500">End</span>
-                              <input className="input" value={e.end || ''} onChange={ev => {
-                                const v = ev.target.value
-                                setForm(prev => { const copy = structuredClone(prev); copy.employment[i].end = v; return copy })
-                              }} />
-                            </label>
-                          </div>
-                        </div>
-                        <label className="grid gap-1">
-                          <span className="text-[11px] text-gray-500">Description</span>
-                          <textarea className="input min-h-[80px]" value={e.description || ''} onChange={ev => {
-                            const v = ev.target.value
-                            setForm(prev => { const copy = structuredClone(prev); copy.employment[i].description = v; return copy })
-                          }} />
-                        </label>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-            </section>
-
-            {/* Education */}
-            <section>
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-sm">Education & Qualifications</h3>
-                <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('education')}>
-                  {open.education ? 'Hide' : 'Show'}
-                </button>
-              </div>
-
-              {open.education && (
-                <div className="grid gap-3 mt-3">
-                  {form.education.length === 0 ? (
-                    <div className="text-[12px] text-gray-500">No education yet.</div>
-                  ) : (
-                    form.education.map((e, i) => (
-                      <div key={i} className="flex items-start justify-between">
-                        <div className="grid gap-0.5">
-                          <div className="font-medium">{e.course || e.institution || 'Course'}</div>
-                          {!!e.institution && !!e.course && e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase() && (
-                            <div className="text-[11px] text-gray-500">{e.institution}</div>
-                          )}
-                        </div>
-                        <div className="text-[11px] text-gray-500 whitespace-nowrap">{[e.start, e.end].filter(Boolean).join(' to ')}</div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-            </section>
-
-            {/* Additional */}
-            <section>
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-sm">Additional Information</h3>
-                <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('extra')}>
-                  {open.extra ? 'Hide' : 'Show'}
-                </button>
-              </div>
-
-              {open.extra && (
-                <div className="text-[12px] grid gap-1 mt-3">
-                  <div>Driving License: {form.additional.drivingLicense || '—'}</div>
-                  <div>Nationality: {form.additional.nationality || '—'}</div>
-                  <div>Availability: {form.additional.availability || '—'}</div>
-                  <div>Health: {form.additional.health || '—'}</div>
-                  <div>Criminal Record: {form.additional.criminalRecord || '—'}</div>
-                  <div>Financial History: {form.additional.financialHistory || '—'}</div>
-                </div>
-              )}
-            </section>
-
-            {/* Debug: Raw JSON */}
-            <section>
-              <div className="mt-2 border rounded-xl p-2 bg-gray-50">
-                <div className="text-[10px] font-semibold text-gray-600 mb-1">Raw JSON Data (debug)</div>
-
-                {/* Candidate Data */}
-                <div className="border rounded-lg mb-2">
-                  <div className="flex items-center justify-between px-2 py-1">
-                    <div className="text-[10px] font-medium">Candidate Data</div>
-                    <button type="button" className="text-[10px] text-gray-500 underline" onClick={() => toggle('rawCandidate')}>
-                      {open.rawCandidate ? 'Hide' : 'Show'}
-                    </button>
-                  </div>
-                  {open.rawCandidate && (
-                    <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
-{JSON.stringify(rawCandidate, null, 2)}
-                    </pre>
-                  )}
-                </div>
-
-                {/* Work Experience */}
-                <div className="border rounded-lg mb-2">
-                  <div className="flex items-center justify-between px-2 py-1">
-                    <div className="text-[10px] font-medium">Work Experience</div>
-                    <button type="button" className="text-[10px] text-gray-500 underline" onClick={() => toggle('rawWork')}>
-                      {open.rawWork ? 'Hide' : 'Show'}
-                    </button>
-                  </div>
-                  {open.rawWork && (
-                    <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
-{JSON.stringify(rawWork, null, 2)}
-                    </pre>
-                  )}
-                </div>
-
-                {/* Education Details */}
-                <div className="border rounded-lg mb-2">
-                  <div className="flex items-center justify-between px-2 py-1">
-                    <div className="text-[10px] font-medium">Education Details</div>
-                    <button type="button" className="text-[10px] text-gray-500 underline" onClick={() => toggle('rawEdu')}>
-                      {open.rawEdu ? 'Hide' : 'Show'}
-                    </button>
-                  </div>
-                  {open.rawEdu && (
-                    <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
-{JSON.stringify(rawEdu, null, 2)}
-                    </pre>
-                  )}
-                </div>
-
-                {/* Custom Fields */}
-                <div className="border rounded-lg">
-                  <div className="flex items-center justify-between px-2 py-1">
-                    <div className="text-[10px] font-medium">Custom Fields</div>
-                    <button type="button" className="text-[10px] text-gray-500 underline" onClick={() => toggle('rawCustom')}>
-                      {open.rawCustom ? 'Hide' : 'Show'}
-                    </button>
-                  </div>
-                  {open.rawCustom && (
-                    <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
-{JSON.stringify(rawCustom, null, 2)}
-                    </pre>
-                  )}
-                </div>
-              </div>
-            </section>
+            <div
+              ref={salesEditorRef}
+              className="prose max-w-none border rounded-lg p-3 bg-white min-h-[40vh] focus:outline-none"
+              contentEditable
+              suppressContentEditableWarning
+              onInput={e => setSalesEditorHtml((e.target as HTMLDivElement).innerHTML)}
+              dangerouslySetInnerHTML={{ __html: salesEditorHtml || '<p>Drop or import a CV to start editing…</p>' }}
+            />
           </div>
         )}
 
@@ -1557,7 +1248,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
                 <p className="text-[11px] text-gray-500 mt-1">
                   Source:&nbsp;
-                  {uploadContext === 'standard' ? 'Standard (right-panel template → PDF)' : 'Sales (imported file)'}
+                  {uploadContext === 'standard' ? 'Standard (right-panel template → PDF)' : 'Sales (edited HTML → PDF)'}
                 </p>
               </div>
 
@@ -1618,4 +1309,16 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       )}
     </div>
   )
+}
+
+/* ===== Sales helpers (sanitisation & redaction) ===== */
+function sanitiseHtml(html: string): string {
+  return html.replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
+}
+function autoRedactContacts(html: string): string {
+  let out = html
+  out = out.replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, '[redacted]')
+  out = out.replace(/\b0\s*\d(?:[\s-]?\d){9}\b/gi, '[redacted]') // UK 11-digit variants
+  out = out.replace(/\bhttps?:\/\/[^\s<]+/gi, '[redacted]')
+  return out
 }
