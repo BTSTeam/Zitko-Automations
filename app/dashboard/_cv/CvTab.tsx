@@ -2,15 +2,13 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
+import sanitizeHtml from 'sanitize-html'
 
 /**
  * CvTab.tsx — drop-in replacement
- * (ONLY Sales flow changed; Standard left untouched)
- *
- * Sales:
- * - any → DOCX (CloudConvert) → HTML (mammoth) → edit in-app
- * - preview shows header/footer immediately (chrome)
- * - Upload: edited HTML → PDF (html2pdf.js) → Vincere
+ * - STANDARD: unchanged
+ * - SALES: Import (PDF/DOC/DOCX) -> any-to-docx -> docx-to-html -> inline editable HTML
+ *          Upload converts edited HTML -> PDF (with Zitko header/footer) -> Vincere
  */
 
 type TemplateKey = 'standard' | 'sales'
@@ -49,7 +47,8 @@ const BASE64_THRESHOLD_BYTES = 3 * 1024 * 1024 // ~3 MB
 // ---- brand assets (served from /public) ----
 const LOGO_PATH = '/zitko-full-logo.png'
 
-// ===================== PDF BAKING (Sales only; legacy — left intact) =====================
+/* ---------------- Shared helpers (Standard section uses these) ---------------- */
+
 async function fetchBytes(url: string): Promise<Uint8Array> {
   const absolute = new URL(url, window.location.origin).toString()
   const res = await fetch(absolute)
@@ -58,21 +57,14 @@ async function fetchBytes(url: string): Promise<Uint8Array> {
   return new Uint8Array(buf)
 }
 
-/**
- * Paints a white strip + Zitko logo at the top of the FIRST page,
- * and a white strip + 3 lines of footer text at the bottom of the LAST page.
- * (Kept from your original file; no longer used in new Sales flow, but harmless)
- */
+/** (Used previously for Sales PDF preview; still used by Standard if needed) */
 async function bakeHeaderFooter(input: Blob): Promise<Blob> {
   if (input.type && !/pdf/i.test(input.type)) return input
-
   try {
     const srcBuf = await input.arrayBuffer()
     const pdfDoc = await PDFDocument.load(srcBuf, { ignoreEncryption: true })
-
     const pages = pdfDoc.getPages()
     if (!pages.length) return input
-
     const first = pages[0]
     const last = pages[pages.length - 1]
 
@@ -80,45 +72,33 @@ async function bakeHeaderFooter(input: Blob): Promise<Blob> {
     const logo = await pdfDoc.embedPng(logoBytes)
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
 
-    // ---- Header (first page only) ----
+    // Header (first page)
     {
-      const w = first.getWidth()
-      const h = first.getHeight()
+      const w = first.getWidth(), h = first.getHeight()
       const margin = 18
       const stripHeight = 70
       first.drawRectangle({ x: 0, y: h - stripHeight, width: w, height: stripHeight, color: rgb(1, 1, 1) })
       const maxLogoW = Math.min(170, w * 0.28)
       const scale = maxLogoW / logo.width
-      const logoW = maxLogoW
-      const logoH = logo.height * scale
+      const logoW = maxLogoW, logoH = logo.height * scale
       first.drawImage(logo, {
-        x: w - logoW - margin,
-        y: h - logoH - (stripHeight - logoH) / 2,
-        width: logoW,
-        height: logoH,
+        x: w - logoW - margin, y: h - logoH - (stripHeight - logoH) / 2, width: logoW, height: logoH
       })
     }
 
-    // ---- Footer (last page only) ----
+    // Footer (last page)
     {
       const w = last.getWidth()
       const marginX = 28
       const stripHeight = 54
       last.drawRectangle({ x: 0, y: 0, width: w, height: stripHeight, color: rgb(1, 1, 1) })
-
       const footerLines = [
         'Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Inc',
         'Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL',
         'Tel: 01480 473245  Web: www.zitkogroup.com',
       ]
-
-      const fontSize = 8.5
-      const lineGap = 2
-      const step = fontSize + lineGap
-
-      // draw TOP -> DOWN so visual order matches the array order
-      const yTop = stripHeight - (fontSize + 10)  // 10px top padding within strip
-
+      const fontSize = 8.5, lineGap = 2, step = fontSize + lineGap
+      const yTop = stripHeight - (fontSize + 10)
       footerLines.forEach((line, i) => {
         const textWidth = font.widthOfTextAtSize(line, fontSize)
         const x = Math.max(marginX, (w - textWidth) / 2)
@@ -136,18 +116,15 @@ async function bakeHeaderFooter(input: Blob): Promise<Blob> {
   }
 }
 
-// ---------- helpers for education/work mapping ----------
+/* ---------------- Formatting helpers (Standard section) ---------------- */
+
 function formatDate(dateStr?: string | null): string {
   if (!dateStr) return ''
   const s = String(dateStr).trim()
-
   const ymd = s.match(/^(\d{4})-(\d{1,2})(?:-\d{1,2})?$/)
   const mmyyyy = s.match(/^(\d{1,2})[\/\-](\d{4})$/)
   const yyyy = s.match(/^(\d{4})$/)
-
-  let y: number | undefined
-  let m: number | undefined
-
+  let y: number | undefined, m: number | undefined
   if (ymd) { y = Number(ymd[1]); m = Number(ymd[2]) }
   else if (mmyyyy) { y = Number(mmyyyy[2]); m = Number(mmyyyy[1]) }
   else if (yyyy) { y = Number(yyyy[1]); m = 1 }
@@ -155,32 +132,22 @@ function formatDate(dateStr?: string | null): string {
     const d = new Date(s)
     if (!isNaN(d.getTime())) { y = d.getFullYear(); m = d.getMonth() + 1 }
   }
-
   if (!y || !m) return ''
   const month = new Date(y, m - 1, 1).toLocaleString('en-GB', { month: 'long' })
   return `${month} ${y}`
 }
 
-/** Convert Vincere rich text (e.g., <p>…<br>…) to clean multiline plain text */
 function cleanRichTextToPlain(input: unknown): string {
   if (!input) return ''
   let s = String(input)
-
-  // Normalize line breaks first
   s = s.replace(/<\s*br\s*\/?>/gi, '\n')
-  s = s.replace(/<\/\s*p\s*>\s*<\s*p[^>]*>/gi, '\n') // paragraph boundaries → newline
-
-  // Drop remaining tags
+  s = s.replace(/<\/\s*p\s*>\s*<\s*p[^>]*>/gi, '\n')
   s = s.replace(/<\/?[^>]+>/g, '')
-
-  // Decode HTML entities using the DOM (browser only)
   if (typeof window !== 'undefined') {
     const ta = document.createElement('textarea')
     ta.innerHTML = s
     s = ta.value
   }
-
-  // Tidy whitespace/newlines
   s = s.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
   return s
 }
@@ -190,18 +157,9 @@ function mapWorkExperiences(list: any[]): Employment[] {
   return list.map((w) => {
     const start = formatDate(w?.work_from)
     const end = w?.work_to == null ? 'Present' : formatDate(w?.work_to)
-
-    // Prefer experience_in_company; fall back to description. Strip HTML to plain text
     const rawDesc = w?.experience_in_company ?? w?.description ?? ''
     const description = cleanRichTextToPlain(rawDesc)
-
-    return {
-      title: w?.job_title || '',
-      company: w?.company_name || '',
-      start,
-      end,
-      description,
-    }
+    return { title: w?.job_title || '', company: w?.company_name || '', start, end, description }
   })
 }
 
@@ -211,40 +169,23 @@ function mapEducation(list: any[]): Education[] {
     const qualsRaw = e?.qualificications ?? e?.qualifications ?? e?.qualification
     const toArr = (v: any) =>
       Array.isArray(v) ? v.filter(Boolean).map(String)
-        : typeof v === 'string' ? v.split(/[,;]\s*/).filter(Boolean)
-          : []
-
+        : typeof v === 'string' ? v.split(/[,;]\s*/).filter(Boolean) : []
     const quals = toArr(qualsRaw)
     const training = toArr(e?.training)
     const honors = toArr(e?.honors)
-
     const mainTitle = (e?.degree_name && String(e.degree_name)) || (quals[0] || '')
     const extras = [...quals.slice(1), ...training, ...honors]
     let course = extras.length ? `${mainTitle}`.trim() + ` (${extras.join(' • ')})` : `${mainTitle}`.trim()
-
     const institution = e?.school_name || e?.institution || e?.school || ''
     if (!course) course = institution
-
     const start = formatDate(e?.start_date || e?.from_date || e?.start) || ''
     const end = formatDate(e?.end_date || e?.to_date || e?.end) || ''
-
     return { course: course || '', institution, start, end }
   })
 }
 
-// ===== New Sales helpers (sanitisation & redaction) — standalone, does not touch Standard =====
-function sanitiseHtml(html: string): string {
-  return html.replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
-}
-function autoRedactContacts(html: string): string {
-  let out = html
-  out = out.replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, '[redacted]')
-  out = out.replace(/\b0\s*\d(?:[\s-]?\d){9}\b/gi, '[redacted]') // UK 11-digit variants
-  out = out.replace(/\bhttps?:\/\/[^\s<]+/gi, '[redacted]')
-  return out
-}
+/* ---------------- Custom-field normalizers (Standard section) ---------------- */
 
-// ---------- robust custom-field normalizers ----------
 type CustomEntry = {
   field_key?: string
   key?: string
@@ -293,6 +234,8 @@ function firstCodeUniversal(entry: CustomEntry | null): number | null {
   return null
 }
 
+/* ================================== Component ================================== */
+
 export default function CvTab({ templateFromShell }: { templateFromShell?: TemplateKey }): JSX.Element {
   // ========== UI state ==========
   const [template, setTemplate] = useState<TemplateKey | null>(templateFromShell ?? null)
@@ -301,7 +244,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   const [loading, setLoading] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Raw fetched (debug)
+  // Raw fetched (debug) — Standard
   const [rawCandidate, setRawCandidate] = useState<any>(null)
   const [rawWork, setRawWork] = useState<any[]>([])
   const [rawEdu, setRawEdu] = useState<any[]>([])
@@ -362,30 +305,29 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   const standardPreviewRef = useRef<HTMLDivElement | null>(null)
   const footerRef = useRef<HTMLDivElement | null>(null)
 
-  // ================== local helpers ==================
+  // ================== SALES editor state ==================
   const [salesErr, setSalesErr] = useState<string | null>(null)
-  const [salesDocUrl, setSalesDocUrl] = useState<string | null>(null)  // preview URL (legacy)
-  const [salesDocName, setSalesDocName] = useState<string>('')         // filename (final/derived)
-  const [salesDocType, setSalesDocType] = useState<string>('')         // mime type
+  const [salesDocName, setSalesDocName] = useState<string>('')       // filename (derived)
   const [processing, setProcessing] = useState<boolean>(false)
   const [dragOver, setDragOver] = useState<boolean>(false)
-  const [salesDocBlob, setSalesDocBlob] = useState<Blob | null>(null)  // legacy baked PDF blob (not used now)
-  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
-  // NEW (Sales editor)
-  const [salesEditorHtml, setSalesEditorHtml] = useState<string>('')   // editable HTML for Sales
-  const salesEditorRef = useRef<HTMLDivElement | null>(null)           // contentEditable surface
+  const [salesHtml, setSalesHtml] = useState<string>('')             // editable HTML
+  const [salesImportedHtml, setSalesImportedHtml] = useState<string>('') // for reset
+  const [salesDocxBlob, setSalesDocxBlob] = useState<Blob | null>(null)  // original DOCX (optional)
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const salesEditorRef = useRef<HTMLDivElement | null>(null)
+  const salesExportRef = useRef<HTMLDivElement | null>(null) // hidden export DOM (with header/footer)
 
   function resetSalesState() {
     setSalesErr(null)
-    if (salesDocUrl) URL.revokeObjectURL(salesDocUrl)
-    setSalesDocUrl(null)
     setSalesDocName('')
-    setSalesDocType('')
-    setSalesDocBlob(null)
-    setSalesEditorHtml('')
     setProcessing(false)
     setDragOver(false)
+    setSalesHtml('')
+    setSalesImportedHtml('')
+    setSalesDocxBlob(null)
+    setUploadCandidateId('') // keep tidy when switching template
   }
 
   function resetAllForTemplate(t: TemplateKey | null) {
@@ -406,18 +348,13 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         financialHistory: '',
       },
     })
-    setRawCandidate(null)
-    setRawWork([])
-    setRawEdu([])
-    setRawCustom(null)
+    setRawCandidate(null); setRawWork([]); setRawEdu([]); setRawCustom(null)
     setError(null)
     resetSalesState()
   }
 
   useEffect(() => {
-    if (templateFromShell) {
-      resetAllForTemplate(templateFromShell)
-    }
+    if (templateFromShell) resetAllForTemplate(templateFromShell)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [templateFromShell])
 
@@ -440,72 +377,53 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     setForm(prev => ({ ...prev, employment: [...prev.employment, { title: '', company: '', start: '', end: '', description: '' }] }))
   }
 
-  // ========== AI profile (Standard) ==========
+  /* ====================== Standard: data + AI profile ====================== */
+
   async function generateProfile() {
     try {
       setLoading(true); setError(null)
       const aiRes = await fetch('/api/cv/profile', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode: 'profile', candidate: rawCandidate, work: rawWork, education: rawEdu }),
       })
       const aiData = await aiRes.json()
       if (!aiRes.ok || !aiData?.ok) throw new Error(aiData?.error || 'Profile generation failed.')
       setField('profile', aiData.profile || '')
-    } catch (e: any) {
-      setError(e?.message || 'Profile generation failed.')
-    } finally {
-      setLoading(false)
-    }
+    } catch (e: any) { setError(e?.message || 'Profile generation failed.') }
+    finally { setLoading(false) }
   }
 
   async function generateJobProfile() {
     if (!jobId) return
     try {
       setLoading(true); setError(null)
-
       let jobRes = await fetch('/api/job/extract', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jobId }),
       })
-      if (!jobRes.ok) {
-        jobRes = await fetch(`/api/job/extract?id=${encodeURIComponent(jobId)}`, { cache: 'no-store' })
-      }
-
+      if (!jobRes.ok) jobRes = await fetch(`/api/job/extract?id=${encodeURIComponent(jobId)}`, { cache: 'no-store' })
       const jobJson = await jobRes.json()
       if (!jobRes.ok) throw new Error(jobJson?.error || `Unable to retrieve job ${jobId}`)
-
       const aiRes = await fetch('/api/cv/profile', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode: 'jobprofile', candidate: rawCandidate, work: rawWork, education: rawEdu, job: jobJson }),
       })
-
       const aiData = await aiRes.json()
       if (!aiRes.ok || !aiData?.ok) throw new Error(aiData?.error || 'Job Profile generation failed.')
       setField('profile', aiData.profile || '')
-    } catch (e: any) {
-      setError(e?.message || 'Job Profile generation failed.')
-    } finally {
-      setLoading(false)
-    }
+    } catch (e: any) { setError(e?.message || 'Job Profile generation failed.') }
+    finally { setLoading(false) }
   }
 
-  // ========== data fetch (Standard) ==========
   async function fetchData() {
     if (!candidateId) return
     if (!template) { alert('Please select a template first.'); return }
     setLoading(true); setError(null)
     try {
       const res = await fetch('/api/cv/retrieve', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
         body: JSON.stringify({ candidateId: String(candidateId).trim() }),
       })
       const data = await res.json()
-
       if (!res.ok || !data?.ok) {
         if (res.status === 401) throw new Error('Not connected to Vincere. Please log in again.')
         if (res.status === 404) throw new Error(data?.error || `Candidate ${candidateId} not found in this tenant.`)
@@ -521,10 +439,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         Array.isArray(data?.raw?.education) ? data.raw.education : []
       const customRaw: any = data?.raw?.customfields ?? null
 
-      setRawCandidate(cRaw)
-      setRawWork(workArr)
-      setRawEdu(eduArr)
-      setRawCustom(customRaw)
+      setRawCandidate(cRaw); setRawWork(workArr); setRawEdu(eduArr); setRawCustom(customRaw)
 
       const name = [cRaw?.first_name, cRaw?.last_name].filter(Boolean).join(' ').trim()
       const location = cRaw?.candidate_current_address?.town_city ?? ''
@@ -566,8 +481,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       const nationality =
         cRaw?.nationality ??
         cRaw?.candidate_nationality ??
-        cRaw?.personal_info?.nationality ??
-        ''
+        cRaw?.personal_info?.nationality ?? ''
 
       setForm(prev => ({
         ...prev,
@@ -581,12 +495,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       }))
 
       setCandidateName(name)
-
-      // Keep Profile section open after retrieve
-      setOpen({
-        core: true, profile: true, skills: false, work: false, education: false, extra: false,
-        rawCandidate: false, rawWork: false, rawEdu: false, rawCustom: false
-      })
+      setOpen({ core: true, profile: true, skills: false, work: false, education: false, extra: false, rawCandidate: false, rawWork: false, rawEdu: false, rawCustom: false })
     } catch (e: any) {
       setError(e?.message || 'Failed to retrieve data')
     } finally {
@@ -594,12 +503,10 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     }
   }
 
-  // ====================== SALES (editable) ======================
-  function onClickUpload() {
-    fileInputRef.current?.click()
-  }
+  /* ====================== SALES (Import -> DOCX -> HTML editor) ====================== */
 
-  // Convert a Blob to a base64 string (browser-safe)
+  function onClickUpload() { fileInputRef.current?.click() }
+
   async function blobToBase64(blob: Blob): Promise<string> {
     const buf = await blob.arrayBuffer()
     let binary = ''
@@ -608,18 +515,14 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     return btoa(binary)
   }
 
-  // Upload a Blob to /api/upload and get public URL back (used for large files)
   async function uploadBlobToPublicUrl(file: Blob, desiredName: string): Promise<string> {
     const fd = new FormData()
     fd.append('file', new File([file], desiredName, { type: (file as any).type || 'application/octet-stream' }))
     fd.append('filename', desiredName)
-
     const res = await fetch('/api/upload', { method: 'POST', body: fd, credentials: 'include' })
-
     let data: any = null
     const text = await res.text()
     try { data = text ? JSON.parse(text) : {} } catch { data = { raw: text } }
-
     if (!res.ok || !data?.ok || !data?.url) {
       const errMsg =
         (typeof data?.error === 'string' && data.error) ||
@@ -632,19 +535,14 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     return data.url as string
   }
 
-  // --- Vincere POST helpers (now accept candidate ID explicitly) ---
   async function postBase64ToVincere(fileName: string, base64: string, cid: string) {
     const payload = { file_name: fileName, document_type_id: 1, base_64_content: base64, original_cv: true }
     const res = await fetch(`/api/vincere/candidate/${encodeURIComponent(cid)}/file`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify(payload),
+      method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload),
     })
     const raw = await res.text()
     let data: any = null
     try { data = raw ? JSON.parse(raw) : {} } catch { data = { raw } }
-
     if (!res.ok || !data?.ok) {
       const errMsg =
         (typeof data?.error === 'string' && data.error) ||
@@ -659,15 +557,11 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   async function postFileUrlToVincere(fileName: string, publicUrl: string, cid: string) {
     const payload = { file_name: fileName, document_type_id: 1, url: publicUrl, original_cv: true }
     const res = await fetch(`/api/vincere/candidate/${encodeURIComponent(cid)}/file`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify(payload),
+      method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload),
     })
     const raw = await res.text()
     let data: any = null
     try { data = raw ? JSON.parse(raw) : {} } catch { data = { raw } }
-
     if (!res.ok || !data?.ok) {
       const errMsg =
         (typeof data?.error === 'string' && data.error) ||
@@ -679,53 +573,58 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     }
   }
 
-  // Handle a selected/dropped file for SALES — NEW: any → DOCX → HTML (editable)
-  async function handleFile(f: File) {
+  // Import handler (Sales): any->DOCX -> DOCX->HTML
+  async function handleFileToEditableHtml(f: File) {
     setSalesErr(null)
-    if (salesDocUrl) URL.revokeObjectURL(salesDocUrl)
-
     try {
       setProcessing(true)
 
-      // 1) Ensure DOCX (CloudConvert), else use DOCX directly
-      let docxBlob: Blob
-      if (!/\.docx$/i.test(f.name)) {
-        const fd = new FormData()
-        fd.append('file', f, f.name)
-        const res = await fetch('/api/cloudconvert/any-to-docx', { method: 'POST', body: fd })
-        if (!res.ok) {
-          let msg = `Convert to DOCX failed (${res.status})`
-          try { const j = await res.json(); if (j?.error) msg = j.error } catch {}
-          throw new Error(msg)
-        }
-        const arr = await res.arrayBuffer()
-        docxBlob = new Blob([arr], {
-          type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-        })
-      } else {
-        docxBlob = f
-      }
-
-      // 2) DOCX → HTML (mammoth on server)
-      const fd2 = new FormData()
-      fd2.append('file', docxBlob, f.name.replace(/\.[^.]+$/, '') + '.docx')
-      const htmlRes = await fetch('/api/docx/to-html', { method: 'POST', body: fd2 })
-      if (!htmlRes.ok) {
-        let msg = `DOCX→HTML failed (${htmlRes.status})`
-        try { const j = await htmlRes.json(); if (j?.error) msg = j.error } catch {}
+      // 1) Convert any to DOCX (CloudConvert)
+      const anyFd = new FormData()
+      anyFd.append('file', f, f.name)
+      const anyRes = await fetch('/api/cloudconvert/any-to-docx', { method: 'POST', body: anyFd })
+      if (!anyRes.ok) {
+        let msg = `Convert to DOCX failed (${anyRes.status})`
+        try { const j = await anyRes.json(); if (j?.error) msg = j.error } catch {}
         throw new Error(msg)
       }
-      const { html } = await htmlRes.json()
+      const docxArrayBuf = await anyRes.arrayBuffer()
+      const docxBlob = new Blob([docxArrayBuf], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })
+      setSalesDocxBlob(docxBlob)
 
-      // 3) Fill editor, clear legacy preview state
-      setSalesEditorHtml(sanitiseHtml(html))
-      setSalesDocUrl(null)
-      setSalesDocName(f.name)
-      setSalesDocType('text/html')
-      setSalesDocBlob(null)
-      setSalesErr(null)
+      // 2) DOCX -> HTML (server route, likely uses mammoth)
+      const htmlFd = new FormData()
+      htmlFd.append('file', new File([docxBlob], (f.name.replace(/\.[^.]+$/, '') || 'document') + '.docx', { type: docxBlob.type }))
+      const htmlRes = await fetch('/api/docx/to-html', { method: 'POST', body: htmlFd })
+      const htmlJson = await htmlRes.json().catch(() => ({}))
+      if (!htmlRes.ok || !htmlJson?.ok || typeof htmlJson?.html !== 'string') {
+        throw new Error(htmlJson?.error || `DOCX→HTML failed (${htmlRes.status})`)
+      }
+
+      const clean = sanitizeHtml(htmlJson.html, {
+        allowedTags: sanitizeHtml.defaults.allowedTags.concat(['h1','h2','h3','img','span','u']),
+        allowedAttributes: {
+          ...sanitizeHtml.defaults.allowedAttributes,
+          img: ['src','alt','width','height','style'],
+          span: ['style'],
+          p: ['style'],
+          div: ['style'],
+        },
+        allowedStyles: {
+          '*': {
+            'text-align': [/^left|right|center|justify$/],
+            'font-weight': [/^\d+$/],
+            'font-style': [/^italic$/],
+            'text-decoration': [/^underline$/],
+          }
+        }
+      })
+
+      setSalesImportedHtml(clean)
+      setSalesHtml(clean)
+      setSalesDocName(f.name.replace(/\.[^.]+$/, '') + '.docx')
     } catch (e: any) {
-      setSalesErr(e?.message || 'Failed to process file')
+      setSalesErr(e?.message || 'Failed to import file')
     } finally {
       setProcessing(false)
     }
@@ -734,7 +633,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   async function onUploadChange(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0]
     if (!f) return
-    await handleFile(f)
+    await handleFileToEditableHtml(f)
     e.currentTarget.value = ''
   }
 
@@ -742,24 +641,19 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     ev.preventDefault()
     setDragOver(false)
     const f = ev.dataTransfer.files?.[0]
-    if (f) await handleFile(f)
+    if (f) await handleFileToEditableHtml(f)
   }
 
-  const isPdf = useMemo(
-    () => (salesDocType?.includes('pdf') || /\.pdf$/i.test(salesDocName)),
-    [salesDocType, salesDocName]
-  )
+  /* ====================== STANDARD: export DOM to PDF & upload ====================== */
 
-  // STANDARD: export right-panel DOM to PDF and upload (NO baking here)
   async function uploadStandardPreviewToVincereUrl(finalName: string, cid: string) {
     const mod = await import('html2pdf.js')
     const html2pdf = (mod as any).default || (mod as any)
-
     const node = standardPreviewRef.current
     if (!node) throw new Error('Preview not ready')
 
     const opt = {
-      margin: 10, // mm
+      margin: 10,
       filename: finalName,
       image: { type: 'jpeg', quality: 0.95 },
       html2canvas: { scale: 2, backgroundColor: '#FFFFFF' },
@@ -780,39 +674,81 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     }
   }
 
-  // SALES: export EDITED HTML (with header/footer chrome) to PDF and upload
-  async function uploadSalesEditedToVincereUrl(finalName: string, cid: string) {
-    const mod = await import('html2pdf.js')
-    const html2pdf = (mod as any).default || (mod as any)
+  /* ====================== SALES: export edited HTML -> PDF & upload ====================== */
 
-    // Build a temporary DOM node that includes header + body + footer (same as preview)
-    const container = document.createElement('div')
-    container.className = 'p-6 cv-standard-page bg-white text-[13px] leading-[1.35]'
-    container.innerHTML = `
-      <div class="flex items-start justify-between">
-        <div></div>
-        <img src="${LOGO_PATH}" alt="Zitko" class="h-10" />
+  function SalesViewerCard() {
+    return (
+      <div className="border rounded-2xl overflow-hidden bg-white">
+        {salesHtml ? (
+          <div className="p-4">
+            <div
+              ref={salesEditorRef}
+              className="min-h-[70vh] prose max-w-none focus:outline-none p-4 border rounded-xl"
+              contentEditable
+              suppressContentEditableWarning
+              onInput={(e) => setSalesHtml((e.target as HTMLDivElement).innerHTML)}
+              dangerouslySetInnerHTML={{ __html: salesHtml }}
+            />
+            <div className="flex items-center gap-2 mt-3">
+              <button
+                type="button"
+                className="text-[11px] px-3 py-1.5 rounded border"
+                onClick={() => setSalesHtml(salesImportedHtml)}
+                disabled={processing}
+                title="Revert to imported version"
+              >
+                Reset
+              </button>
+              <span className="text-[11px] text-gray-500">Edits here will be included when you upload.</span>
+            </div>
+          </div>
+        ) : (
+          <div className="p-6 text-xs text-gray-600 bg-white">
+            No document imported yet. Use “Import CV” above.
+          </div>
+        )}
       </div>
-      <h1 class="text-2xl font-bold mt-5">Curriculum Vitae</h1>
-      <div class="mt-5 prose max-w-none">${salesEditorHtml || ''}</div>
-      <div class="mt-6 pt-4 border-t text-center text-[10px] leading-snug text-[#F7941D] break-inside-avoid cv-footer">
-        <div>Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Inc</div>
-        <div>Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL</div>
-        <div>Tel: 01480 473245 Web: www.zitkogroup.com</div>
+    )
+  }
+
+  async function uploadSalesEditedHtmlToVincere(finalName: string, cid: string) {
+    if (!salesHtml.trim()) throw new Error('No Sales document to upload')
+
+    // Build a hidden export DOM with Zitko header/footer
+    const container = document.createElement('div')
+    container.style.position = 'fixed'
+    container.style.left = '-99999px'
+    container.style.top = '0'
+    container.style.width = '794px' // ~A4 @ 96dpi
+    container.style.background = '#ffffff'
+    container.innerHTML = `
+      <div class="p-6 cv-standard-page bg-white text-[13px] leading-[1.35]">
+        <div class="flex items-start justify-between">
+          <div></div>
+          <img src="${LOGO_PATH}" alt="Zitko" style="height:40px" />
+        </div>
+        <div style="height:12px"></div>
+        <div class="sales-html">${salesHtml}</div>
+        <div class="mt-6 pt-4 border-t text-center text-[10px] leading-snug" style="color:#F7941D">
+          <div>Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Inc</div>
+          <div>Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL</div>
+          <div>Tel: 01480 473245 Web: www.zitkogroup.com</div>
+        </div>
       </div>
     `
     document.body.appendChild(container)
 
     try {
+      const mod = await import('html2pdf.js')
+      const html2pdf = (mod as any).default || (mod as any)
       const opt = {
-        margin: 10, // mm
+        margin: 10,
         filename: finalName,
         image: { type: 'jpeg', quality: 0.95 },
         html2canvas: { scale: 2, backgroundColor: '#FFFFFF' },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
         pagebreak: { mode: ['avoid-all', 'css', 'legacy'] as const },
       }
-
       const worker = html2pdf().set(opt).from(container).toPdf()
       const pdf = await worker.get('pdf')
       const pdfBlob = new Blob([pdf.output('arraybuffer')], { type: 'application/pdf' })
@@ -825,20 +761,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         await postFileUrlToVincere(finalName, publicUrl, cid)
       }
     } finally {
-      container.remove()
-    }
-  }
-
-  // SALES: legacy uploader (kept but not used anymore)
-  async function uploadSalesFileToVincereUrl(finalName: string, cid: string) {
-    if (!salesDocBlob) throw new Error('No Sales document to upload')
-    const baked = salesDocBlob
-    if (baked.size <= BASE64_THRESHOLD_BYTES) {
-      const base64 = await blobToBase64(baked)
-      await postBase64ToVincere(finalName, base64, cid)
-    } else {
-      const publicUrl = await uploadBlobToPublicUrl(baked, finalName)
-      await postFileUrlToVincere(finalName, publicUrl, cid)
+      document.body.removeChild(container)
     }
   }
 
@@ -847,21 +770,20 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       setUploadBusy(true)
       setUploadErr(null)
       setUploadSuccess(null)
-
+  
       const cid = (uploadContext === 'sales' ? uploadCandidateId : candidateId).trim()
       if (!cid) throw new Error('Please enter a Candidate ID')
       if (!uploadFileName?.trim()) throw new Error('Please enter a file name')
-
+  
       let finalName = uploadFileName.trim()
       if (!/\.pdf$/i.test(finalName)) finalName += '.pdf'
-
+  
       if (uploadContext === 'standard') {
         await uploadStandardPreviewToVincereUrl(finalName, cid)
       } else {
-        // NEW: use edited HTML → PDF → Vincere
-        await uploadSalesEditedToVincereUrl(finalName, cid)
+        await uploadSalesEditedHtmlToVincere(finalName, cid)
       }
-
+  
       setUploadSuccess('Upload Successful')
     } catch (e: any) {
       const msg =
@@ -877,65 +799,21 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     }
   }
 
-  // Sales viewer (legacy) — kept but not shown in new Sales UI
-  function SalesViewerCard() {
-    return (
-      <div className="border rounded-2xl overflow-hidden bg-white">
-        {salesDocUrl ? (
-          isPdf ? (
-            <iframe className="w-full h-[75vh] bg-white" src={salesDocUrl} title={salesDocName || 'Document'} />
-          ) : (
-            <div className="p-6 text-xs text-gray-600 bg-white">
-              Preview not available for this file type. You can still upload it.
-            </div>
-          )
-        ) : (
-          <div className="p-6 text-xs text-gray-600 bg-white">
-            No document imported yet. Use “Import CV” above.
-          </div>
-        )}
-      </div>
-    )
-  }
+  /* ====================== PREVIEW: Standard unchanged, Sales is editor ====================== */
 
-  // ========== preview (right) ==========
   function CVTemplatePreview(): JSX.Element {
     if (template === 'sales') {
-      // NEW Sales preview: header/footer chrome + edited HTML
       return (
         <div className="p-4">
-          <div className="border rounded-2xl overflow-hidden bg-white">
-            <div className="p-6 cv-standard-page bg-white text-[13px] leading-[1.35]">
-              {/* Header */}
-              <div className="flex items-start justify-between">
-                <div />
-                <img src="/zitko-full-logo.png" alt="Zitko" className="h-10" />
-              </div>
-
-              <h1 className="text-2xl font-bold mt-5">Curriculum Vitae</h1>
-
-              {/* Edited content */}
-              <div
-                className="mt-5 prose max-w-none"
-                dangerouslySetInnerHTML={{ __html: salesEditorHtml || '<p class="text-gray-500 text-[12px]">No content yet. Import a CV to start editing.</p>' }}
-              />
-
-              {/* Footer */}
-              <div className="mt-6 pt-4 border-t text-center text-[10px] leading-snug text-[#F7941D] break-inside-avoid cv-footer">
-                <div>Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Inc</div>
-                <div>Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL</div>
-                <div>Tel: 01480 473245 Web: www.zitkogroup.com</div>
-              </div>
-            </div>
-          </div>
+          <SalesViewerCard />
           <div className="px-1 pt-2 text-[11px] text-gray-500">
-            Preview shows branding; uploaded PDF will match this layout.
+            Edit the CV directly here; Upload will add Zitko header/footer and send a PDF to Vincere.
           </div>
         </div>
       )
     }
 
-    // ===== Standard preview (UNCHANGED) =====
+    // -------- Standard (unchanged) --------
     return (
       <div
         ref={standardPreviewRef}
@@ -998,7 +876,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
           })()}
         </div>
 
-        {/* Employment History (header + first entry stay together) */}
+        {/* Employment History */}
         {form.employment.length === 0 ? (
           <div className="cv-headpair">
             <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
@@ -1058,7 +936,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
           </>
         )}
 
-        {/* Education & Qualifications (header + first entry stay together) */}
+        {/* Education & Qualifications */}
         {form.education.length === 0 ? (
           <div className="cv-headpair">
             <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
@@ -1076,9 +954,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                 const e = form.education[0]
                 const range = [e.start, e.end].filter(Boolean).join(' to ')
                 const showInstitutionLine =
-                  !!e.institution &&
-                  !!e.course &&
-                  e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
+                  !!e.institution && !!e.course && e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
                 return (
                   <div className="cv-entry">
                     <div className="flex items-start justify-between">
@@ -1099,9 +975,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
               {form.education.slice(1).map((e, i) => {
                 const range = [e.start, e.end].filter(Boolean).join(' to ')
                 const showInstitutionLine =
-                  !!e.institution &&
-                  !!e.course &&
-                  e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
+                  !!e.institution && !!e.course && e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
                 return (
                   <div key={i} className="cv-entry">
                     <div className="flex items-start justify-between">
@@ -1120,7 +994,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
           </>
         )}
 
-        {/* Additional Information (keep header with content) */}
+        {/* Additional Information */}
         <div className="cv-headpair">
           <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
             Additional Information
@@ -1135,7 +1009,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
           </div>
         </div>
 
-        {/* Footer (will be pushed to bottom by CSS: .cv-standard-page {display:flex} + .cv-footer {margin-top:auto}) */}
+        {/* Footer */}
         <div
           ref={footerRef}
           className="mt-6 pt-4 border-t text-center text-[10px] leading-snug text-[#F7941D] break-inside-avoid cv-footer"
@@ -1148,48 +1022,23 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     )
   }
 
-  // ========== render ==========
+  /* ====================== Render ====================== */
+
   return (
     <div className="grid gap-4">
       {/* Minimal print + PDF styles */}
       <style jsx global>{`
         @media print {
           @page { size: A4; margin: 12mm; }
-
-          /* A4 content container; makes footer stick to bottom of last page */
-          .cv-standard-page {
-            width: 100%;
-            display: flex;
-            flex-direction: column;
-            min-height: calc(297mm - 24mm); /* page height minus top+bottom margins */
-          }
-
-          /* keep each job/education entry intact (no splitting across pages) */
+          .cv-standard-page { width: 100%; display: flex; flex-direction: column; min-height: calc(297mm - 24mm); }
           .cv-entry { break-inside: avoid; page-break-inside: avoid; }
-
-          /* keep section header with the FIRST entry only */
           .cv-headpair { break-inside: avoid; page-break-inside: avoid; }
-
-          /* prevent headings from being orphaned/split */
-          .cv-standard-page h1,
-          .cv-standard-page h2 { break-inside: avoid; page-break-inside: avoid; }
-
-          /* footer pinned to bottom; never creates a blank page */
-          .cv-footer {
-            margin-top: auto;
-            break-inside: avoid;
-            page-break-inside: avoid;
-            page-break-before: auto;
-            page-break-after: auto;
-          }
+          .cv-standard-page h1, .cv-standard-page h2 { break-inside: avoid; page-break-inside: avoid; }
+          .cv-footer { margin-top: auto; break-inside: avoid; page-break-inside: avoid; page-break-before: auto; page-break-after: auto; }
         }
-
-        /* Also help in on-screen preview */
-        .cv-entry,
-        .cv-headpair { break-inside: avoid; page-break-inside: avoid; }
+        .cv-entry, .cv-headpair { break-inside: avoid; page-break-inside: avoid; }
+        .prose :where(p, li){ font-size: 13px; line-height: 1.45; }
       `}</style>
-
-      {/* ...the rest of your JSX (cards, editor, preview, etc.) ... */}
 
       <div className="card p-4">
         {!templateFromShell && (
@@ -1201,12 +1050,11 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
             >
               Standard
             </button>
-
             <button
               type="button"
               onClick={() => resetAllForTemplate('sales')}
               className={`btn w-full ${template === 'sales' ? 'btn-brand' : 'btn-grey'}`}
-              title="Sales template: import a CV (PDF/DOCX)"
+              title="Sales template: import a CV (PDF/DOC/DOCX)"
             >
               Sales
             </button>
@@ -1295,12 +1143,10 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
               <button
                 type="button"
                 className="btn btn-grey"
-                disabled={!salesEditorHtml.trim()}
+                disabled={!salesHtml.trim()}
                 onClick={() => {
                   const baseName = (candidateName || form.name || 'CV').replace(/\s+/g, '')
-                  const defaultName = salesDocName?.trim()
-                    ? salesDocName.replace(/\.(doc|docx)$/i, '.pdf')
-                    : `${baseName}_Sales.pdf`
+                  const defaultName = `${baseName}_Sales.pdf`
                   setUploadFileName(defaultName)
                   setUploadContext('sales')
                   setUploadCandidateId(candidateId || '') // prefill if available, editable in modal
@@ -1308,7 +1154,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                   setUploadSuccess(null)
                   setShowUploadModal(true)
                 }}
-                title="Upload the edited Sales CV to Vincere"
+                title="Upload the edited CV to Vincere (as PDF with branding)"
               >
                 Upload
               </button>
@@ -1325,7 +1171,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       <div className={`grid gap-4 ${template === 'sales' ? '' : 'md:grid-cols-2'}`}>
         {template === 'standard' && (
           <div className="card p-4 space-y-4">
-            {/* Standard editor */}
+            {/* ----- Standard editor (unchanged) ----- */}
             {/* Core */}
             <section>
               <div className="flex items-center justify-between">
@@ -1344,10 +1190,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                     <input
                       className="input"
                       value={form.name}
-                      onChange={e => {
-                        setField('name', e.target.value)
-                        setCandidateName(e.target.value)
-                      }}
+                      onChange={e => { setField('name', e.target.value); setCandidateName(e.target.value) }}
                       disabled={loading}
                     />
                   </label>
@@ -1366,7 +1209,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                 <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('profile')}>
                   {open.profile ? 'Hide' : 'Show'}
                 </button>
-              </div }
+              </div>
               {open.profile && (
                 <div className="mt-3">
                   <div className="flex flex-col sm:flex-row gap-2 mb-3 items-stretch sm:items-center">
@@ -1605,35 +1448,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         <div className="card p-0 overflow-hidden">
           <CVTemplatePreview />
         </div>
-
-        {/* SALES: editable left card (only rendered when Sales) */}
-        {template === 'sales' && (
-          <div className="card p-4">
-            <div className="flex items-center justify-between gap-2 mb-2">
-              <div className="font-semibold">Sales CV (editable)</div>
-              <div className="text-xs text-gray-500">Edit content. Use “Auto-redact” to remove contacts.</div>
-            </div>
-
-            <div className="flex gap-2 mb-2">
-              <button
-                type="button"
-                className="btn btn-grey"
-                onClick={() => setSalesEditorHtml(s => autoRedactContacts(s))}
-              >
-                Auto-redact contact details
-              </button>
-            </div>
-
-            <div
-              ref={salesEditorRef}
-              className="prose max-w-none border rounded-lg p-3 bg-white min-h-[40vh] focus:outline-none"
-              contentEditable
-              suppressContentEditableWarning
-              onInput={e => setSalesEditorHtml((e.target as HTMLDivElement).innerHTML)}
-              dangerouslySetInnerHTML={{ __html: salesEditorHtml || '<p>Drop or import a CV to start editing…</p>' }}
-            />
-          </div>
-        )}
       </div>
 
       {/* ===== Upload modal ===== */}
