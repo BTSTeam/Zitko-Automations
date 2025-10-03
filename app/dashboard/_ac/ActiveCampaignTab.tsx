@@ -213,8 +213,8 @@ export default function ActiveCampaignTab() {
           tagName: effectiveTag,
           rows: 200,
           max: 100000,
-          chunk: 250,
-          pauseMs: 250,
+          chunk: 25,
+          pauseMs: 150,
         }),
       })
       const data = await res.json()
