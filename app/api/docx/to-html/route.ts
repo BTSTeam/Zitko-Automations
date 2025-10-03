@@ -20,15 +20,25 @@ export async function POST(req: NextRequest) {
 
     const arrayBuffer = await file.arrayBuffer()
 
+    // ---- Mammoth image option shim (typings don't expose .images.inline())
+    const mAny = mammoth as any
+    const convertImage =
+      mAny?.images?.inline?.() ??
+      // fallback builds base64 <img> if inline() isn't available
+      mAny?.images?.imgElement?.((image: any) =>
+        image.read('base64').then((b64: string) => ({
+          src: `data:${image.contentType};base64,${b64}`,
+        }))
+      )
+
     // DOCX -> HTML
     const { value: rawHtml } = await mammoth.convertToHtml(
       { buffer: Buffer.from(arrayBuffer) },
-      { convertImage: mammoth.images.inline() } // inline images as base64 (optional)
+      convertImage ? { convertImage } : undefined
     )
 
     // Sanitize in Node (no JSDOM needed)
     const html = sanitizeHtml(rawHtml, {
-      // allow the basics used in CVs
       allowedTags: [
         'h1','h2','h3','h4','h5','h6','p','ul','ol','li','strong','em','b','i','u',
         'table','thead','tbody','tr','th','td','blockquote','hr','br','span','img'
@@ -38,10 +48,7 @@ export async function POST(req: NextRequest) {
         img: ['src','alt'],
         '*': ['style','colspan','rowspan']
       },
-      // keep links but prevent javascript: etc.
-      allowedSchemes: ['http', 'https', 'data', 'mailto', 'tel'],
-      // optional: limit CSS to safe subset, or strip styles entirely by removing 'style' above
-      // transformTags: { ... } // if you want to normalize headings/lists further
+      allowedSchemes: ['http', 'https', 'data', 'mailto', 'tel']
     })
 
     return NextResponse.json({ ok: true, html })
