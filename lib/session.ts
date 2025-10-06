@@ -8,11 +8,19 @@ export type Tokens = {
   idToken?: string
 }
 
+export type SessionUser = {
+  email: string
+  role: 'Admin' | 'User'
+  active?: boolean
+}
+
 export type SessionData = {
   tokens?: Tokens | null
   codeVerifier?: string | null
-  user?: { email: string } | null
+  user?: SessionUser | null
   sessionId?: string | null
+  // optional, handy if you later use the password gate for AC
+  acUnlocked?: boolean
 }
 
 const sessionOptions: SessionOptions = {
