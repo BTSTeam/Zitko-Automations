@@ -1305,42 +1305,81 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                     </button>
                   </div>
 
+                 {/* Profile */}
+            <section>
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-sm">Profile</h3>
+                <button
+                  type="button"
+                  className="text-[11px] text-gray-500 underline"
+                  onClick={() => toggle('profile')}
+                >
+                  {open.profile ? 'Hide' : 'Show'}
+                </button>
+              </div>
+              {open.profile && (
+                <div className="grid gap-3 mt-3">
                   <label className="grid gap-1">
                     <span className="text-[11px] text-gray-500">Profile</span>
-                    <textarea className="input min-h-[120px]" value={form.profile} onChange={e => setField('profile', e.target.value)} disabled={loading} />
+                    <textarea
+                      className="input cv-shrink min-h-[120px]"
+                      value={form.profile}
+                      onChange={e => setField('profile', e.target.value)}
+                      disabled={loading}
+                    />
                   </label>
                 </div>
               )}
             </section>
-
+            
             {/* Key Skills */}
             <section>
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold text-sm">Key Skills</h3>
-                <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('skills')}>
+                <button
+                  type="button"
+                  className="text-[11px] text-gray-500 underline"
+                  onClick={() => toggle('skills')}
+                >
                   {open.skills ? 'Hide' : 'Show'}
                 </button>
               </div>
               {open.skills && (
                 <label className="grid gap-1 mt-3">
                   <span className="text-[11px] text-gray-500">Key Skills (comma or newline)</span>
-                  <textarea className="input min-h-[100px]" value={form.keySkills} onChange={e => setField('keySkills', e.target.value)} disabled={loading} />
+                  <textarea
+                    className="input cv-shrink min-h-[100px]"
+                    value={form.keySkills}
+                    onChange={e => setField('keySkills', e.target.value)}
+                    disabled={loading}
+                  />
                 </label>
               )}
             </section>
-
+            
             {/* Employment */}
             <section>
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold text-sm">Employment History</h3>
                 <div className="flex items-center gap-3">
-                  <button type="button" className="text-[11px] text-gray-500 underline" onClick={addEmployment} disabled={loading}>Add role</button>
-                  <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('work')}>
+                  <button
+                    type="button"
+                    className="text-[11px] text-gray-500 underline"
+                    onClick={addEmployment}
+                    disabled={loading}
+                  >
+                    Add role
+                  </button>
+                  <button
+                    type="button"
+                    className="text-[11px] text-gray-500 underline"
+                    onClick={() => toggle('work')}
+                  >
                     {open.work ? 'Hide' : 'Show'}
                   </button>
                 </div>
               </div>
-
+            
               {open.work && (
                 <div className="grid gap-3 mt-3">
                   {form.employment.length === 0 ? (
@@ -1350,42 +1389,82 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                       <div key={i} className="border rounded-xl p-3 grid gap-2">
                         <label className="grid gap-1">
                           <span className="text-[11px] text-gray-500">Title</span>
-                          <input className="input" value={e.title || ''} onChange={ev => {
-                            const v = ev.target.value
-                            setForm(prev => { const copy = structuredClone(prev); copy.employment[i].title = v; return copy })
-                          }} />
+                          <input
+                            className="input"
+                            value={e.title || ''}
+                            onChange={ev => {
+                              const v = ev.target.value
+                              setForm(prev => {
+                                const copy = structuredClone(prev)
+                                copy.employment[i].title = v
+                                return copy
+                              })
+                            }}
+                          />
                         </label>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <label className="grid gap-1">
                             <span className="text-[11px] text-gray-500">Company</span>
-                            <input className="input" value={e.company || ''} onChange={ev => {
-                              const v = ev.target.value
-                              setForm(prev => { const copy = structuredClone(prev); copy.employment[i].company = v; return copy })
-                            }} />
+                            <input
+                              className="input"
+                              value={e.company || ''}
+                              onChange={ev => {
+                                const v = ev.target.value
+                                setForm(prev => {
+                                  const copy = structuredClone(prev)
+                                  copy.employment[i].company = v
+                                  return copy
+                                })
+                              }}
+                            />
                           </label>
                           <div className="grid grid-cols-2 gap-2">
                             <label className="grid gap-1">
                               <span className="text-[11px] text-gray-500">Start</span>
-                              <input className="input" value={e.start || ''} onChange={ev => {
-                                const v = ev.target.value
-                                setForm(prev => { const copy = structuredClone(prev); copy.employment[i].start = v; return copy })
-                              }} />
+                              <input
+                                className="input"
+                                value={e.start || ''}
+                                onChange={ev => {
+                                  const v = ev.target.value
+                                  setForm(prev => {
+                                    const copy = structuredClone(prev)
+                                    copy.employment[i].start = v
+                                    return copy
+                                  })
+                                }}
+                              />
                             </label>
                             <label className="grid gap-1">
                               <span className="text-[11px] text-gray-500">End</span>
-                              <input className="input" value={e.end || ''} onChange={ev => {
-                                const v = ev.target.value
-                                setForm(prev => { const copy = structuredClone(prev); copy.employment[i].end = v; return copy })
-                              }} />
+                              <input
+                                className="input"
+                                value={e.end || ''}
+                                onChange={ev => {
+                                  const v = ev.target.value
+                                  setForm(prev => {
+                                    const copy = structuredClone(prev)
+                                    copy.employment[i].end = v
+                                    return copy
+                                  })
+                                }}
+                              />
                             </label>
                           </div>
                         </div>
                         <label className="grid gap-1">
                           <span className="text-[11px] text-gray-500">Description</span>
-                          <textarea className="input min-h-[80px]" value={e.description || ''} onChange={ev => {
-                            const v = ev.target.value
-                            setForm(prev => { const copy = structuredClone(prev); copy.employment[i].description = v; return copy })
-                          }} />
+                          <textarea
+                            className="input cv-shrink min-h-[80px]"
+                            value={e.description || ''}
+                            onChange={ev => {
+                              const v = ev.target.value
+                              setForm(prev => {
+                                const copy = structuredClone(prev)
+                                copy.employment[i].description = v
+                                return copy
+                              })
+                            }}
+                          />
                         </label>
                       </div>
                     ))
@@ -1393,16 +1472,20 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                 </div>
               )}
             </section>
-
-            {/* Education */}
+            
+            {/* Education (unchanged) */}
             <section>
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold text-sm">Education & Qualifications</h3>
-                <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('education')}>
+                <button
+                  type="button"
+                  className="text-[11px] text-gray-500 underline"
+                  onClick={() => toggle('education')}
+                >
                   {open.education ? 'Hide' : 'Show'}
                 </button>
               </div>
-
+            
               {open.education && (
                 <div className="grid gap-3 mt-3">
                   {form.education.length === 0 ? (
@@ -1416,13 +1499,16 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                             <div className="text-[11px] text-gray-500">{e.institution}</div>
                           )}
                         </div>
-                        <div className="text-[11px] text-gray-500 whitespace-nowrap">{[e.start, e.end].filter(Boolean).join(' to ')}</div>
+                        <div className="text-[11px] text-gray-500 whitespace-nowrap">
+                          {[e.start, e.end].filter(Boolean).join(' to ')}
+                        </div>
                       </div>
                     ))
                   )}
                 </div>
               )}
             </section>
+
 
             {/* Additional */}
             <section>
