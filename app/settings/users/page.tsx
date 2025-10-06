@@ -33,7 +33,7 @@ export default function UsersPage() {
   const [cPassword, setCPassword] = useState('')
   const [cWorkPhone, setCWorkPhone] = useState('')
 
-  // edit state (inline inside the collapsible content)
+  // edit state
   const [editId, setEditId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [eName, setEName] = useState('')
@@ -41,7 +41,7 @@ export default function UsersPage() {
   const [ePassword, setEPassword] = useState('')
   const [eWorkPhone, setEWorkPhone] = useState('')
 
-  // UI state: which rows are expanded
+  // which rows are expanded
   const [openIds, setOpenIds] = useState<Record<string, boolean>>({})
 
   const load = async () => {
@@ -62,7 +62,6 @@ export default function UsersPage() {
     }
   }
 
-  // check role, then load users only if admin
   useEffect(() => {
     const check = async () => {
       try {
@@ -73,8 +72,7 @@ export default function UsersPage() {
         if (admin) await load()
         else setLoading(false)
       } catch {
-        setIsAdmin(false)
-        setLoading(false)
+        setIsAdmin(false); setLoading(false)
       }
     }
     check()
@@ -90,7 +88,6 @@ export default function UsersPage() {
     setERole(u.role)
     setEPassword('')
     setEWorkPhone(u.workPhone ?? '')
-    // ensure row is open when editing
     setOpenIds(prev => ({ ...prev, [u.id]: true }))
   }
   const cancelEdit = () => {
@@ -109,7 +106,7 @@ export default function UsersPage() {
           name: cName,
           role: cRole,
           password: cPassword,
-          workPhone: cWorkPhone, // server normalizes '' -> null
+          workPhone: cWorkPhone,
         }),
       })
       const j = await r.json().catch(() => ({}))
@@ -133,7 +130,7 @@ export default function UsersPage() {
           name: eName,
           role: eRole,
           password: ePassword || undefined,
-          workPhone: eWorkPhone, // server normalizes '' -> null
+          workPhone: eWorkPhone,
         }),
       })
       const j = await r.json().catch(() => ({}))
@@ -157,8 +154,9 @@ export default function UsersPage() {
     }
   }
 
+  // NEW: sort ascending so new users appear at the bottom
   const rows = useMemo(
-    () => users.sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    () => [...users].sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
     [users]
   )
 
@@ -192,7 +190,7 @@ export default function UsersPage() {
   // Admin view
   return (
     <div className="grid gap-6">
-      <div className="card p-6 rounded-2xl border">
+      <div className="card p-6 rounded-2xl">
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-xl font-semibold">User Management</h1>
@@ -245,8 +243,8 @@ export default function UsersPage() {
           </div>
         )}
 
-        {/* List */}
-        <div className="divide-y rounded-2xl border">
+        {/* Users list — no outer border, just horizontal rules */}
+        <div className="divide-y divide-gray-200 rounded-2xl">
           {loading ? (
             <div className="text-sm text-gray-600 p-4">Loading…</div>
           ) : error ? (
@@ -259,7 +257,7 @@ export default function UsersPage() {
               const isEditing = editId === u.id
               return (
                 <div key={u.id} className="p-3 sm:p-4">
-                  {/* Top row: arrow + name + created date + actions */}
+                  {/* Top row: arrow + name + ACCESS + date + actions */}
                   <div className="flex items-center gap-3">
                     <button
                       className="w-8 h-8 grid place-items-center rounded-full border text-gray-600 hover:text-gray-900"
@@ -270,9 +268,22 @@ export default function UsersPage() {
                     </button>
 
                     <div className="flex-1 min-w-0">
-                      <div className="font-medium truncate">{u.name || '—'}</div>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-medium truncate">{u.name || '—'}</span>
+                        {/* ACCESS LEVEL next to name */}
+                        <span
+                          className={`shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium border ${
+                            u.role === 'Admin'
+                              ? 'bg-[#F7941D]/10 text-[#F7941D] border-[#F7941D]/30'
+                              : 'bg-gray-100 text-gray-700 border-gray-200'
+                          }`}
+                          title="Access level"
+                        >
+                          {u.role}
+                        </span>
+                      </div>
                       <div className="text-xs text-gray-500">
-                        {new Date(u.createdAt).toLocaleDateString()} {/* date only */}
+                        {new Date(u.createdAt).toLocaleDateString()}
                       </div>
                     </div>
 
@@ -296,19 +307,21 @@ export default function UsersPage() {
                         <>
                           <button className="btn btn-grey" onClick={() => startEdit(u)}>Edit</button>
                           <button
-                            className="px-3 py-2 rounded-xl bg-red-700 hover:bg-red-800 text-white transition"
+                            aria-label="Delete user"
+                            title="Delete"
+                            className="w-9 h-9 grid place-items-center rounded-xl bg-red-700 hover:bg-red-800 text-white transition"
                             onClick={() => removeUser(u)}
                           >
-                            Delete
+                            ×
                           </button>
                         </>
                       )}
                     </div>
                   </div>
 
-                  {/* Collapsible content */}
+                  {/* Collapsible content: Email + No. */}
                   {isOpen && (
-                    <div className="mt-3 pl-11 grid sm:grid-cols-3 gap-4">
+                    <div className="mt-3 pl-11 grid sm:grid-cols-2 gap-4">
                       <div>
                         <div className="text-xs text-gray-500 mb-1">Email</div>
                         {isEditing ? (
@@ -329,26 +342,6 @@ export default function UsersPage() {
                           />
                         ) : (
                           <div className="text-sm">{u.workPhone || '—'}</div>
-                        )}
-                      </div>
-
-                      <div>
-                        <div className="text-xs text-gray-500 mb-1">Role</div>
-                        {isEditing ? (
-                          <select className="input w-full" value={eRole} onChange={e=>setERole(e.target.value as Role)}>
-                            <option value="User">User</option>
-                            <option value="Admin">Admin</option>
-                          </select>
-                        ) : (
-                          <span
-                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium border ${
-                              u.role === 'Admin'
-                                ? 'bg-[#F7941D]/10 text-[#F7941D] border-[#F7941D]/30'
-                                : 'bg-gray-100 text-gray-700 border-gray-200'
-                            }`}
-                          >
-                            {u.role}
-                          </span>
                         )}
                       </div>
                     </div>
