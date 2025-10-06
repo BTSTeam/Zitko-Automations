@@ -1,31 +1,28 @@
-export const dynamic = 'force-dynamic'
-export const revalidate = 0
-export const runtime = 'nodejs'
-
 import { NextResponse } from 'next/server'
 import { getSession } from '@/lib/session'
 import { ensureSeedAdmin, getUserByEmail } from '@/lib/users'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET() {
+  // ensure the seeded admin exists (as your codebase already does elsewhere)
   ensureSeedAdmin()
+
   const session = await getSession()
-  const email = session.user?.email ?? null
+  const email = session.user?.email || null
 
-  let role: 'Admin' | 'User' | null = null
-  let active: boolean | null = null
-  let name: string | null = null
-
-  if (email) {
-    const u = getUserByEmail(email)
-    if (u) {
-      role = u.role
-      active = u.active
-      name = u.name ?? null
-    }
+  if (!email) {
+    return NextResponse.json({ user: null })
   }
 
-  const vincereConnected = !!session.tokens?.idToken
-  const loggedIn = Boolean((email && active !== false) || vincereConnected)
+  // Look up full user (role, active, etc.) from your store
+  const u = getUserByEmail(email) || null
 
-  return NextResponse.json({ loggedIn, email, name, role, active, vincereConnected })
+  // fall back to what’s in session if store lookup fails
+  const role = u?.role ?? session.user?.role ?? null
+  const active = typeof u?.active === 'boolean' ? u.active : (session.user as any)?.active ?? true
+
+  return NextResponse.json({
+    user: email ? { email, role, active } : null
+  })
 }
