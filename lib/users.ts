@@ -2,19 +2,21 @@
 import crypto from 'crypto'
 
 export type Role = 'Admin' | 'User'
+
 export type User = {
   id: string
   email: string
   name?: string
   role: Role
   active: boolean
+  contactNumber?: string            // 👈 new optional field
   // password = sha256(salt + plain)
   passwordHash: string
   salt: string
   createdAt: string
 }
 
-// In-memory store (persists per server instance). We'll swap to Postgres later.
+// In-memory store (persists per server instance)
 const GLOBAL_KEY = '__zitko_users__'
 const g = globalThis as any
 if (!g[GLOBAL_KEY]) g[GLOBAL_KEY] = new Map<string, User>()
@@ -38,7 +40,6 @@ export function getUserByEmail(email: string) {
 }
 
 export function listUsers(): User[] {
-  // order by createdAt desc
   return Array.from(store.values()).sort((a, b) =>
     b.createdAt.localeCompare(a.createdAt)
   )
@@ -49,6 +50,7 @@ export function createUser(input: {
   name?: string
   role?: Role
   password: string
+  contactNumber?: string             // 👈 allow on creation
 }): User {
   const email = input.email.toLowerCase().trim()
   if (!email) throw new Error('Email is required')
@@ -63,6 +65,7 @@ export function createUser(input: {
     name: input.name?.trim(),
     role: input.role ?? 'User',
     active: true,
+    contactNumber: input.contactNumber?.trim() || undefined, // 👈 save if present
     passwordHash,
     salt,
     createdAt: new Date().toISOString(),
@@ -73,7 +76,9 @@ export function createUser(input: {
 
 export function updateUser(
   id: string,
-  patch: Partial<Pick<User, 'name' | 'role' | 'active'>> & { password?: string }
+  patch: Partial<Pick<User, 'name' | 'role' | 'active' | 'contactNumber'>> & {
+    password?: string
+  }
 ): User {
   const u = store.get(id)
   if (!u) throw new Error('User not found')
@@ -81,6 +86,8 @@ export function updateUser(
   if (typeof patch.name !== 'undefined') u.name = patch.name?.trim()
   if (typeof patch.role !== 'undefined') u.role = patch.role
   if (typeof patch.active !== 'undefined') u.active = !!patch.active
+  if (typeof patch.contactNumber !== 'undefined')
+    u.contactNumber = patch.contactNumber?.trim()
 
   if (typeof patch.password === 'string' && patch.password.length > 0) {
     const salt = crypto.randomBytes(16).toString('hex')
@@ -97,7 +104,7 @@ export function deleteUser(id: string) {
   store.delete(id)
 }
 
-// Seed a default admin if store is empty (so you’re never locked out)
+// --- Default Admin seed (only runs if empty) ---
 export function ensureSeedAdmin() {
   if (store.size > 0) return
   const email = 'stephenr@zitko.co.uk'
@@ -110,9 +117,11 @@ export function ensureSeedAdmin() {
     name: 'Stephen Rosamond',
     role: 'Admin',
     active: true,
+    contactNumber: '+44 0000 000000', // 👈 optional
     passwordHash,
     salt,
     createdAt: new Date().toISOString(),
   }
   store.set(user.id, user)
+  console.log('✅ Seeded admin:', email)
 }
