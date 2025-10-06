@@ -1389,7 +1389,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                 <label className="grid gap-1">
                   <span className="text-[11px] text-gray-500">Profile</span>
                   <textarea
-                    className={`input min-h-[120px] ${prefill.profile ? '!text-[11px]' : ''}`}
+                    className={`input min-h-[160px] ${prefill.profile ? '!text-[11px]' : ''}`}
                     value={form.profile}
                     onChange={e => { /* keep small even when editing */ setField('profile', e.target.value) }}
                     disabled={loading}
