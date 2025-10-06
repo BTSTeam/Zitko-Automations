@@ -1,93 +1,131 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
+import dynamic from 'next/dynamic'
 
-// 1) Define your tab keys (match your existing keys if different)
-type TabKey = 'ac' | 'cv' | 'match' | 'sourcing'
+const MatchTab  = dynamic(() => import('./_match/MatchTab'),   { ssr: false })
+const SourceTab = dynamic(() => import('./_source/SourceTab'), { ssr: false })
+const CvTab     = dynamic(() => import('./_cv/CvTab'),         { ssr: false })
+const ActiveCampaignTab = dynamic(() => import('./_ac/ActiveCampaignTab'), { ssr: false })
 
-// 2) Central tab config — mark Sourcing disabled
-const TABS: { key: TabKey; label: string; disabled?: boolean }[] = [
-  { key: 'ac', label: 'ActiveCampaign' },
-  { key: 'cv', label: 'CV' },
-  { key: 'match', label: 'Matching' },
-  { key: 'sourcing', label: 'Sourcing', disabled: true }, // 👈 disabled
-]
+type TabKey = 'match' | 'source' | 'cv' | 'ac'
+type SourceMode = 'candidates' | 'companies'
+type CvTemplate = 'standard' | 'sales'
 
-// 3) Lazy-load your sections as before (examples shown)
-const ACSection = () => <div className="p-4">ActiveCampaign content…</div>
-const CVSection = () => <div className="p-4">CV content…</div>
-const MatchSection = () => <div className="p-4">Matching content…</div>
-// We won’t render sourcing at all while disabled
-const SourcingSection = () => null
+export default function ClientShell(): JSX.Element {
+  const [tab, setTab] = useState<TabKey>('match')
 
-export default function ClientShell() {
-  // If URL sets a disabled tab, we’ll fall back to the first enabled tab.
-  const firstEnabled = useMemo(
-    () => TABS.find(t => !t.disabled)?.key ?? 'ac',
-    []
-  )
+  // sourcing dropdown
+  const [sourceOpen, setSourceOpen] = useState(false)
+  const [sourceMode, setSourceMode] = useState<SourceMode>('candidates')
 
-  // Initial tab: from URL ?tab=… or default
-  const [tab, setTab] = useState<TabKey>(firstEnabled)
+  // cv dropdown
+  const [cvOpen, setCvOpen] = useState(false)
+  const [cvTemplate, setCvTemplate] = useState<CvTemplate>('standard')
 
   useEffect(() => {
-    const url = new URL(window.location.href)
-    const qTab = (url.searchParams.get('tab') as TabKey | null) ?? null
-    const desired = qTab && TABS.some(t => t.key === qTab) ? qTab : null
-    const isDisabled = desired ? TABS.find(t => t.key === desired)?.disabled : false
-    setTab((!desired || isDisabled) ? firstEnabled : desired)
-  }, [firstEnabled])
-
-  const handleClick = (t: TabKey, disabled?: boolean) => {
-    if (disabled) return // 👈 do nothing
-    setTab(t)
-    // keep URL tidy (optional)
-    const url = new URL(window.location.href)
-    url.searchParams.set('tab', t)
-    window.history.replaceState(null, '', url.toString())
-  }
-
-  const Content = useMemo(() => {
-    switch (tab) {
-      case 'ac': return <ACSection />
-      case 'cv': return <CVSection />
-      case 'match': return <MatchSection />
-      case 'sourcing': return <SourcingSection /> // won’t show anyway
-      default: return null
+    function onClick(e: MouseEvent) {
+      const t = e.target as HTMLElement
+      if (!t.closest?.('[data-sourcing-root]')) setSourceOpen(false)
+      if (!t.closest?.('[data-cv-root]')) setCvOpen(false)
     }
-  }, [tab])
+    document.addEventListener('click', onClick)
+    return () => document.removeEventListener('click', onClick)
+  }, [])
 
   return (
-    <div className="grid gap-4">
-      {/* Tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto">
-        {TABS.map(t => {
-          const isActive = tab === t.key
-          const isDisabled = !!t.disabled
-          return (
+    <div className="grid gap-6">
+      {/* Top bar: left group (three tabs), right-aligned Active Campaign */}
+      <div className="flex items-center justify-between mb-6">
+        {/* Left cluster */}
+        <div className="flex gap-2">
+          {/* Match */}
+          <button
+            onClick={() => setTab('match')}
+            className={`tab ${tab === 'match' ? 'tab-active' : ''}`}
+          >
+            Candidate Matching
+          </button>
+
+          {/* Sourcing dropdown */}
+          <div className="relative" data-sourcing-root>
             <button
-              key={t.key}
-              type="button"
-              aria-disabled={isDisabled}
-              title={isDisabled ? 'Coming soon' : t.label}
-              onClick={() => handleClick(t.key, isDisabled)}
-              className={[
-                'px-3 py-2 rounded-xl border transition',
-                isActive && !isDisabled ? 'bg-[#F7941D] text-white border-[#F7941D]' : 'bg-white',
-                !isActive && !isDisabled ? 'hover:bg-gray-50' : '',
-                isDisabled ? 'opacity-50 cursor-not-allowed pointer-events-none grayscale border-gray-200 text-gray-400' : 'border-gray-200 text-gray-800',
-              ].join(' ')}
+              onClick={() => setSourceOpen(v => !v)}
+              className={`tab ${tab === 'source' ? 'tab-active' : ''}`}
+              title="Sourcing"
             >
-              {t.label}
+              Sourcing
             </button>
-          )
-        })}
+
+            {sourceOpen && (
+              <div className="absolute left-1/2 -translate-x-1/2 mt-2 w-44 rounded-xl border bg-white shadow-lg overflow-hidden z-10">
+                <button
+                  className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${sourceMode==='candidates' ? 'font-medium' : ''}`}
+                  onClick={() => { setSourceMode('candidates'); setTab('source'); setSourceOpen(false) }}
+                >
+                  Candidates
+                </button>
+                <button
+                  className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${sourceMode==='companies' ? 'font-medium' : ''}`}
+                  onClick={() => { setSourceMode('companies'); setTab('source'); setSourceOpen(false) }}
+                >
+                  Companies
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* CV Formatting dropdown */}
+          <div className="relative" data-cv-root>
+            <button
+              onClick={() => setCvOpen(v => !v)}
+              className={`tab ${tab === 'cv' ? 'tab-active' : ''}`}
+              title="CV Formatting"
+            >
+              CV Formatting
+            </button>
+
+            {cvOpen && (
+              <div className="absolute left-1/2 -translate-x-1/2 mt-2 w-44 rounded-xl border bg-white shadow-lg overflow-hidden z-10">
+                <button
+                  className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${cvTemplate==='standard' ? 'font-medium' : ''}`}
+                  onClick={() => { setCvTemplate('standard'); setTab('cv'); setCvOpen(false) }}
+                >
+                  Standard
+                </button>
+                <button
+                  className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${cvTemplate==='sales' ? 'font-medium' : ''}`}
+                  onClick={() => { setCvTemplate('sales'); setTab('cv'); setCvOpen(false) }}
+                >
+                  Sales
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Right-aligned single button (Active Campaign) */}
+        <div>
+          <button
+            onClick={() => setTab('ac')}
+            title="Active Campaign"
+            aria-selected={tab === 'ac'}
+            // Force our AC blue + white when active, ignore default tab-active style
+            className={`tab ${tab === 'ac' ? '!bg-[#001961] !text-white !border-transparent hover:opacity-95 shadow-sm' : ''}`}
+          >
+            Active Campaign
+          </button>
+        </div>
       </div>
 
-      {/* Body */}
-      <div className="card rounded-2xl border">
-        {Content}
-      </div>
+      {/* Content */}
+      {tab === 'match' && <MatchTab />}
+
+      {tab === 'source' && <SourceTab mode={sourceMode} />}
+
+      {tab === 'cv' && <CvTab templateFromShell={cvTemplate} />}
+
+      {tab === 'ac' && <ActiveCampaignTab />}
     </div>
   )
 }
