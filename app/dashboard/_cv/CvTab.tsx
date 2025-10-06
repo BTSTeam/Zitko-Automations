@@ -1374,7 +1374,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                   <input className="input flex-1 min-w-[160px]" placeholder="Job ID" value={jobId} onChange={e => setJobId(e.target.value)} disabled={loading} />
                   <button
                     type="button"
-                    className="btn btn-grey text:[11px] !px-3 !py-1.5 w-36 whitespace-nowrap"
+                    className="btn btn-grey text-[11px] !px-3 !py-1.5 w-36 whitespace-nowrap"
                     disabled={loading || !rawCandidate || !jobId}
                     onClick={generateJobProfile}
                     title={!jobId ? 'Enter a Job ID' : 'Generate job-tailored profile'}
@@ -1731,3 +1731,4 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     )}
   </div>
 )
+}
