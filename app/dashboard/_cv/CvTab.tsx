@@ -4,14 +4,11 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
 
 /**
- * CvTab.tsx — drop-in replacement
- * - Adds experience_in_company into editable Description (and strips HTML tags)
- * - Removes separate expText block; preview now reads from editable Description only
- * - Sales upload modal accepts manual Candidate ID (used in POST endpoint)
- * - After "Confirm & Upload" shows a success state in the modal
- * - Standard template: footer forced to last page; header only on first for Sales (baked)
- * - Robust handling of custom fields; flexible mapping for work/education
- * - Uses base64 for <= 3MB; otherwise uploads to /api/upload for a public URL
+ * CvTab.tsx — full file (prefill font shrinking in editor only)
+ * - Adds a "prefill" state to mark which editor fields were auto-filled from retrieve
+ * - Prefilled fields render with smaller font (text-[12px]) in LEFT editor only
+ * - Prefill flags clear as soon as the user edits the field
+ * - Preview and upload logic unchanged
  */
 
 type TemplateKey = 'standard' | 'sales'
@@ -42,6 +39,22 @@ type OpenState = {
   rawWork: boolean
   rawEdu: boolean
   rawCustom: boolean
+}
+
+/* ===== Prefill (for smaller font in editor when data is retrieved) ===== */
+type PrefillEmployment = {
+  title: boolean
+  company: boolean
+  start: boolean
+  end: boolean
+  description: boolean
+}
+type PrefillState = {
+  name: boolean
+  location: boolean
+  profile: boolean
+  keySkills: boolean
+  employment: PrefillEmployment[]
 }
 
 // === Size threshold for choosing base64 vs URL ===
@@ -332,6 +345,15 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     },
   }))
 
+  // Prefill flags (for smaller font in editor when retrieved)
+  const [prefill, setPrefill] = useState<PrefillState>({
+    name: false,
+    location: false,
+    profile: false,
+    keySkills: false,
+    employment: [],
+  })
+
   // Collapsible sections (Standard)
   const [open, setOpen] = useState<OpenState>({
     core: true, profile: true, skills: true, work: true, education: true, extra: true,
@@ -390,6 +412,13 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         financialHistory: '',
       },
     })
+    setPrefill({
+      name: false,
+      location: false,
+      profile: false,
+      keySkills: false,
+      employment: [],
+    })
     setRawCandidate(null)
     setRawWork([])
     setRawEdu([])
@@ -409,6 +438,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     setOpen(s => ({ ...s, [k]: !s[k] }))
   }
 
+  /* setField (no prefill changes) */
   function setField(path: string, value: any) {
     setForm(prev => {
       const clone = structuredClone(prev) as any
@@ -420,8 +450,30 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     })
   }
 
+  /* Clear prefill flag for a specific path when the user edits */
+  function clearPrefill(path: string) {
+    setPrefill(prev => {
+      const clone = structuredClone(prev) as any
+      const seg = path.split('.')
+      let cur = clone
+      for (let i = 0; i < seg.length - 1; i++) cur = cur[seg[i]]
+      // Only clear if field exists
+      if (cur && Object.prototype.hasOwnProperty.call(cur, seg[seg.length - 1])) {
+        cur[seg[seg.length - 1]] = false
+      }
+      return clone
+    })
+  }
+
   function addEmployment() {
-    setForm(prev => ({ ...prev, employment: [...prev.employment, { title: '', company: '', start: '', end: '', description: '' }] }))
+    setForm(prev => ({
+      ...prev,
+      employment: [...prev.employment, { title: '', company: '', start: '', end: '', description: '' }],
+    }))
+    setPrefill(prev => ({
+      ...prev,
+      employment: [...prev.employment, { title: false, company: false, start: false, end: false, description: false }],
+    }))
   }
 
   // ========== AI profile (Standard) ==========
@@ -436,6 +488,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       const aiData = await aiRes.json()
       if (!aiRes.ok || !aiData?.ok) throw new Error(aiData?.error || 'Profile generation failed.')
       setField('profile', aiData.profile || '')
+      clearPrefill('profile') // treat generated text as not "retrieved"
     } catch (e: any) {
       setError(e?.message || 'Profile generation failed.')
     } finally {
@@ -469,6 +522,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       const aiData = await aiRes.json()
       if (!aiRes.ok || !aiData?.ok) throw new Error(aiData?.error || 'Job Profile generation failed.')
       setField('profile', aiData.profile || '')
+      clearPrefill('profile') // not retrieved
     } catch (e: any) {
       setError(e?.message || 'Job Profile generation failed.')
     } finally {
@@ -553,18 +607,39 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         cRaw?.personal_info?.nationality ??
         ''
 
+      const employment = mapWorkExperiences(workArr)
+      const education = mapEducation(eduArr)
+
       setForm(prev => ({
         ...prev,
         name: name || prev.name,
         location: location || prev.location,
         profile: cRaw?.profile ?? prev.profile,
         keySkills: Array.isArray(cRaw?.skills) ? cRaw.skills.join(', ') : (cRaw?.skills || prev.keySkills || ''),
-        employment: mapWorkExperiences(workArr),
-        education: mapEducation(eduArr),
+        employment,
+        education,
         additional: { drivingLicense, nationality, availability, health, criminalRecord, financialHistory },
       }))
 
-      setCandidateName(name)
+      // ===== Set prefill flags for retrieved data (used for smaller font in editor) =====
+      const pfEmployment: PrefillEmployment[] = employment.map(e => ({
+        title: !!e.title,
+        company: !!e.company,
+        start: !!e.start,
+        end: !!e.end,
+        description: !!(e.description && e.description.trim()),
+      }))
+
+      setPrefill({
+        name: !!name,
+        location: !!location,
+        profile: !!(cRaw?.profile && String(cRaw.profile).trim()),
+        keySkills: !!( (Array.isArray(cRaw?.skills) && cRaw.skills.length) || (cRaw?.skills && String(cRaw.skills).trim()) ),
+        employment: pfEmployment,
+      })
+
+      const displayName = name
+      setCandidateName(displayName)
 
       // Keep Profile section open after retrieve
       setOpen({
@@ -777,7 +852,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       const publicUrl = await uploadBlobToPublicUrl(baked, finalName)
       await postFileUrlToVincere(finalName, publicUrl, cid)
     }
-}
+  }
 
   async function confirmUpload() {
     try {
@@ -798,7 +873,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         await uploadSalesFileToVincereUrl(finalName, cid)
       }
   
-      // success message stays the same
       setUploadSuccess('Upload Successful')
     } catch (e: any) {
       const msg =
@@ -837,234 +911,234 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
   // ========== preview (right) ==========
   function CVTemplatePreview(): JSX.Element {
-  if (template === 'sales') {
+    if (template === 'sales') {
+      return (
+        <div className="p-4">
+          <SalesViewerCard />
+          <div className="px-1 pt-2 text-[11px] text-gray-500">
+            Preview shows branding; uploaded file will match this exactly.
+          </div>
+        </div>
+      )
+    }
+
+    // Standard (editor preview) — attach ref for DOM→PDF
     return (
-      <div className="p-4">
-        <SalesViewerCard />
-        <div className="px-1 pt-2 text-[11px] text-gray-500">
-          Preview shows branding; uploaded file will match this exactly.
+      <div
+        ref={standardPreviewRef}
+        className="p-6 cv-standard-page bg-white text-[13px] leading-[1.35]"
+      >
+        <div className="flex items-start justify-between">
+          <div />
+          <img src="/zitko-full-logo.png" alt="Zitko" className="h-10" />
+        </div>
+
+        <h1 className="text-2xl font-bold mt-5">Curriculum Vitae</h1>
+
+        <div className="mt-2 text-[12px] text-gray-800 space-y-0.5">
+          <div>
+            <span className="font-semibold">Name:</span>{' '}
+            {form.name ? `${form.name}` : '—'}
+          </div>
+          <div>
+            <span className="font-semibold">Location:</span>{' '}
+            {form.location ? `${form.location}` : '—'}
+          </div>
+        </div>
+
+        <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+          Profile
+        </h2>
+        <div className="whitespace-pre-wrap text-[12px]">
+          {form.profile?.trim() ? form.profile : 'No Profile yet'}
+        </div>
+
+        <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+          Key Skills
+        </h2>
+        <div className="text-[12px]">
+          {(() => {
+            const items = (form.keySkills || '')
+              .split(/\r?\n|,\s*/).map(s => s.trim())
+              .filter(Boolean)
+
+            if (items.length === 0) return 'No Key Skills yet'
+
+            const mid = Math.ceil(items.length / 2)
+            const col1 = items.slice(0, mid)
+            const col2 = items.slice(mid)
+
+            return (
+              <div className="grid grid-cols-2 gap-x-6">
+                <div className="space-y-1">
+                  {col1.map((s, i) => (
+                    <div key={`ks1-${i}`}>• {s}</div>
+                  ))}
+                </div>
+                <div className="space-y-1">
+                  {col2.map((s, i) => (
+                    <div key={`ks2-${i}`}>• {s}</div>
+                  ))}
+                </div>
+              </div>
+            )
+          })()}
+        </div>
+
+        {/* Employment History (header + first entry stay together) */}
+        {form.employment.length === 0 ? (
+          <div className="cv-headpair">
+            <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+              Employment History
+            </h2>
+            <div className="text-gray-500 text-[12px]">No employment history yet.</div>
+          </div>
+        ) : (
+          <>
+            <div className="cv-headpair">
+              <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+                Employment History
+              </h2>
+              {(() => {
+                const e = form.employment[0]
+                const range = [e.start, e.end].filter(Boolean).join(' to ')
+                return (
+                  <div className="cv-entry">
+                    <div className="flex justify-between">
+                      <div>
+                        <div className="font-medium">{e.title || 'Role'}</div>
+                        <div className="text-[11px] text-gray-500">{e.company}</div>
+                        {e.description?.trim() && (
+                          <div className="text-[12px] mt-1 whitespace-pre-wrap">
+                            {e.description}
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
+                    </div>
+                  </div>
+                )
+              })()}
+            </div>
+
+            <div className="space-y-3">
+              {form.employment.slice(1).map((e, i) => {
+                const range = [e.start, e.end].filter(Boolean).join(' to ')
+                return (
+                  <div key={i} className="cv-entry">
+                    <div className="flex justify-between">
+                      <div>
+                        <div className="font-medium">{e.title || 'Role'}</div>
+                        <div className="text-[11px] text-gray-500">{e.company}</div>
+                        {e.description?.trim() && (
+                          <div className="text-[12px] mt-1 whitespace-pre-wrap">
+                            {e.description}
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </>
+        )}
+
+        {/* Education & Qualifications (header + first entry stay together) */}
+        {form.education.length === 0 ? (
+          <div className="cv-headpair">
+            <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+              Education & Qualifications
+            </h2>
+            <div className="text-gray-500 text-[12px]">No education yet.</div>
+          </div>
+        ) : (
+          <>
+            <div className="cv-headpair">
+              <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+                Education & Qualifications
+              </h2>
+              {(() => {
+                const e = form.education[0]
+                const range = [e.start, e.end].filter(Boolean).join(' to ')
+                const showInstitutionLine =
+                  !!e.institution &&
+                  !!e.course &&
+                  e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
+                return (
+                  <div className="cv-entry">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="font-medium">{e.course || e.institution || 'Course'}</div>
+                        {showInstitutionLine && (
+                          <div className="text-[11px] text-gray-500">{e.institution}</div>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
+                    </div>
+                  </div>
+                )
+              })()}
+            </div>
+
+            <div className="space-y-3">
+              {form.education.slice(1).map((e, i) => {
+                const range = [e.start, e.end].filter(Boolean).join(' to ')
+                const showInstitutionLine =
+                  !!e.institution &&
+                  !!e.course &&
+                  e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
+                return (
+                  <div key={i} className="cv-entry">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="font-medium">{e.course || e.institution || 'Course'}</div>
+                        {showInstitutionLine && (
+                          <div className="text-[11px] text-gray-500">{e.institution}</div>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </>
+        )}
+
+        {/* Additional Information (keep header with content) */}
+        <div className="cv-headpair">
+          <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+            Additional Information
+          </h2>
+          <div className="text-[12px] grid gap-1">
+            <div>Driving License: {form.additional.drivingLicense || '—'}</div>
+            <div>Nationality: {form.additional.nationality || '—'}</div>
+            <div>Availability: {form.additional.availability || '—'}</div>
+            <div>Health: {form.additional.health || '—'}</div>
+            <div>Criminal Record: {form.additional.criminalRecord || '—'}</div>
+            <div>Financial History: {form.additional.financialHistory || '—'}</div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div
+          ref={footerRef}
+          className="mt-6 pt-4 border-t text-center text-[10px] leading-snug text-[#F7941D] break-inside-avoid cv-footer"
+        >
+          <div>Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Inc</div>
+          <div>Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL</div>
+          <div>Tel: 01480 473245 Web: www.zitkogroup.com</div>
         </div>
       </div>
     )
   }
 
-  // Standard (editor preview) — attach ref for DOM→PDF
-  return (
-    <div
-      ref={standardPreviewRef}
-      className="p-6 cv-standard-page bg-white text-[13px] leading-[1.35]"
-    >
-      <div className="flex items-start justify-between">
-        <div />
-        <img src="/zitko-full-logo.png" alt="Zitko" className="h-10" />
-      </div>
-
-      <h1 className="text-2xl font-bold mt-5">Curriculum Vitae</h1>
-
-      <div className="mt-2 text-[12px] text-gray-800 space-y-0.5">
-        <div>
-          <span className="font-semibold">Name:</span>{' '}
-          {form.name ? `${form.name}` : '—'}
-        </div>
-        <div>
-          <span className="font-semibold">Location:</span>{' '}
-          {form.location ? `${form.location}` : '—'}
-        </div>
-      </div>
-
-      <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
-        Profile
-      </h2>
-      <div className="whitespace-pre-wrap text-[12px]">
-        {form.profile?.trim() ? form.profile : 'No Profile yet'}
-      </div>
-
-      <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
-        Key Skills
-      </h2>
-      <div className="text-[12px]">
-        {(() => {
-          const items = (form.keySkills || '')
-            .split(/\r?\n|,\s*/).map(s => s.trim())
-            .filter(Boolean)
-
-          if (items.length === 0) return 'No Key Skills yet'
-
-          const mid = Math.ceil(items.length / 2)
-          const col1 = items.slice(0, mid)
-          const col2 = items.slice(mid)
-
-          return (
-            <div className="grid grid-cols-2 gap-x-6">
-              <div className="space-y-1">
-                {col1.map((s, i) => (
-                  <div key={`ks1-${i}`}>• {s}</div>
-                ))}
-              </div>
-              <div className="space-y-1">
-                {col2.map((s, i) => (
-                  <div key={`ks2-${i}`}>• {s}</div>
-                ))}
-              </div>
-            </div>
-          )
-        })()}
-      </div>
-
-      {/* Employment History (header + first entry stay together) */}
-      {form.employment.length === 0 ? (
-        <div className="cv-headpair">
-          <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
-            Employment History
-          </h2>
-          <div className="text-gray-500 text-[12px]">No employment history yet.</div>
-        </div>
-      ) : (
-        <>
-          <div className="cv-headpair">
-            <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
-              Employment History
-            </h2>
-            {(() => {
-              const e = form.employment[0]
-              const range = [e.start, e.end].filter(Boolean).join(' to ')
-              return (
-                <div className="cv-entry">
-                  <div className="flex justify-between">
-                    <div>
-                      <div className="font-medium">{e.title || 'Role'}</div>
-                      <div className="text-[11px] text-gray-500">{e.company}</div>
-                      {e.description?.trim() && (
-                        <div className="text-[12px] mt-1 whitespace-pre-wrap">
-                          {e.description}
-                        </div>
-                      )}
-                    </div>
-                    <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
-                  </div>
-                </div>
-              )
-            })()}
-          </div>
-
-          <div className="space-y-3">
-            {form.employment.slice(1).map((e, i) => {
-              const range = [e.start, e.end].filter(Boolean).join(' to ')
-              return (
-                <div key={i} className="cv-entry">
-                  <div className="flex justify-between">
-                    <div>
-                      <div className="font-medium">{e.title || 'Role'}</div>
-                      <div className="text-[11px] text-gray-500">{e.company}</div>
-                      {e.description?.trim() && (
-                        <div className="text-[12px] mt-1 whitespace-pre-wrap">
-                          {e.description}
-                        </div>
-                      )}
-                    </div>
-                    <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </>
-      )}
-
-      {/* Education & Qualifications (header + first entry stay together) */}
-      {form.education.length === 0 ? (
-        <div className="cv-headpair">
-          <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
-            Education & Qualifications
-          </h2>
-          <div className="text-gray-500 text-[12px]">No education yet.</div>
-        </div>
-      ) : (
-        <>
-          <div className="cv-headpair">
-            <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
-              Education & Qualifications
-            </h2>
-            {(() => {
-              const e = form.education[0]
-              const range = [e.start, e.end].filter(Boolean).join(' to ')
-              const showInstitutionLine =
-                !!e.institution &&
-                !!e.course &&
-                e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
-              return (
-                <div className="cv-entry">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <div className="font-medium">{e.course || e.institution || 'Course'}</div>
-                      {showInstitutionLine && (
-                        <div className="text-[11px] text-gray-500">{e.institution}</div>
-                      )}
-                    </div>
-                    <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
-                  </div>
-                </div>
-              )
-            })()}
-          </div>
-
-          <div className="space-y-3">
-            {form.education.slice(1).map((e, i) => {
-              const range = [e.start, e.end].filter(Boolean).join(' to ')
-              const showInstitutionLine =
-                !!e.institution &&
-                !!e.course &&
-                e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
-              return (
-                <div key={i} className="cv-entry">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <div className="font-medium">{e.course || e.institution || 'Course'}</div>
-                      {showInstitutionLine && (
-                        <div className="text-[11px] text-gray-500">{e.institution}</div>
-                      )}
-                    </div>
-                    <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </>
-      )}
-
-      {/* Additional Information (keep header with content) */}
-      <div className="cv-headpair">
-        <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
-          Additional Information
-        </h2>
-        <div className="text-[12px] grid gap-1">
-          <div>Driving License: {form.additional.drivingLicense || '—'}</div>
-          <div>Nationality: {form.additional.nationality || '—'}</div>
-          <div>Availability: {form.additional.availability || '—'}</div>
-          <div>Health: {form.additional.health || '—'}</div>
-          <div>Criminal Record: {form.additional.criminalRecord || '—'}</div>
-          <div>Financial History: {form.additional.financialHistory || '—'}</div>
-        </div>
-      </div>
-
-      {/* Footer (will be pushed to bottom by CSS: .cv-standard-page {display:flex} + .cv-footer {margin-top:auto}) */}
-      <div
-        ref={footerRef}
-        className="mt-6 pt-4 border-t text-center text-[10px] leading-snug text-[#F7941D] break-inside-avoid cv-footer"
-      >
-        <div>Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Inc</div>
-        <div>Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL</div>
-        <div>Tel: 01480 473245 Web: www.zitkogroup.com</div>
-      </div>
-    </div>
-  )
-}
-
   // ========== render ==========
   return (
   <div className="grid gap-4">
-    {/* Minimal print + PDF styles */}
+    {/* Minimal print + PDF styles + prefill-only editor sizing */}
     <style jsx global>{`
       @media print {
         @page { size: A4; margin: 12mm; }
@@ -1102,597 +1176,558 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       .cv-headpair { break-inside: avoid; page-break-inside: avoid; }
     `}</style>
 
-    {/* ...the rest of your JSX (cards, editor, preview, etc.) ... */}
+    <div className="card p-4">
+      {!templateFromShell && (
+        <div className="grid sm:grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => resetAllForTemplate('standard')}
+            className={`btn w-full ${template === 'standard' ? 'btn-brand' : 'btn-grey'}`}
+          >
+            Standard
+          </button>
 
-      <div className="card p-4">
-        {!templateFromShell && (
-          <div className="grid sm:grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => resetAllForTemplate('sales')}
+            className={`btn w-full ${template === 'sales' ? 'btn-brand' : 'btn-grey'}`}
+            title="Sales template: import a CV (PDF/DOCX)"
+          >
+            Sales
+          </button>
+        </div>
+      )}
+
+      {/* Top controls: Standard vs Sales */}
+      {template === 'standard' && (
+        <div className="grid sm:grid-cols-[1fr_auto_auto] gap-2 mt-4">
+          <input
+            className={`input ${prefill.name ? 'text-[11px]' : ''}`}
+            placeholder="Enter Candidate ID"
+            value={candidateId}
+            onChange={e => setCandidateId(e.target.value)}
+            disabled={loading}
+            autoComplete="off"
+          />
+          <button
+            className="btn btn-brand"
+            onClick={fetchData}
+            disabled={loading || !candidateId}
+            title="Retrieve Candidate"
+          >
+            {loading ? 'Fetching…' : 'Retrieve Candidate'}
+          </button>
+
+          {/* Upload (Standard) */}
+          <button
+            type="button"
+            className="btn btn-grey"
+            disabled={!candidateId}
+            onClick={() => {
+              const defaultName = `${(candidateName || form.name || 'CV').replace(/\s+/g, '')}_Standard.pdf`
+              setUploadFileName(defaultName)
+              setUploadContext('standard')
+              setUploadErr(null)
+              setUploadSuccess(null)
+              setShowUploadModal(true)
+            }}
+            title="Export the right panel CV to PDF and upload to Vincere"
+          >
+            Upload
+          </button>
+        </div>
+      )}
+
+      {template === 'sales' && (
+        <>
+          {/* Hidden input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            onChange={onUploadChange}
+            className="hidden"
+          />
+
+          {/* Faux input + buttons */}
+          <div
+            className="grid sm:grid-cols-[1fr_auto_auto] gap-2 mt-4"
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={onDrop}
+          >
+            <div
+              className={`input flex items-center justify-between cursor-pointer ${dragOver ? 'ring-2 ring-[#F7941D]/50' : ''}`}
+              title="Import or drag a file here"
+              onClick={onClickUpload}
+            >
+              <span className={`text-gray-400 select-none ${salesDocName ? '!text-gray-700 truncate' : ''}`}>
+                {salesDocName ? salesDocName : 'Import or drag a file here'}
+              </span>
+            </div>
+
             <button
               type="button"
-              onClick={() => resetAllForTemplate('standard')}
-              className={`btn w-full ${template === 'standard' ? 'btn-brand' : 'btn-grey'}`}
-            >
-              Standard
-            </button>
-
-            <button
-              type="button"
-              onClick={() => resetAllForTemplate('sales')}
-              className={`btn w-full ${template === 'sales' ? 'btn-brand' : 'btn-grey'}`}
-              title="Sales template: import a CV (PDF/DOCX)"
-            >
-              Sales
-            </button>
-          </div>
-        )}
-
-        {/* Top controls: Standard vs Sales */}
-        {template === 'standard' && (
-          <div className="grid sm:grid-cols-[1fr_auto_auto] gap-2 mt-4">
-            <input
-              className="input"
-              placeholder="Enter Candidate ID"
-              value={candidateId}
-              onChange={e => setCandidateId(e.target.value)}
-              disabled={loading}
-              autoComplete="off"
-            />
-            <button
               className="btn btn-brand"
-              onClick={fetchData}
-              disabled={loading || !candidateId}
-              title="Retrieve Candidate"
+              onClick={onClickUpload}
+              disabled={processing}
+              title="Import a PDF or Word (DOC/DOCX) document"
             >
-              {loading ? 'Fetching…' : 'Retrieve Candidate'}
+              {processing ? 'Processing…' : 'Import CV'}
             </button>
 
-            {/* Upload (Standard) */}
+            {/* Upload (Sales) */}
             <button
               type="button"
               className="btn btn-grey"
-              disabled={!candidateId}
+              disabled={!salesDocUrl}
               onClick={() => {
-                const defaultName = `${(candidateName || form.name || 'CV').replace(/\s+/g, '')}_Standard.pdf`
+                const baseName = (candidateName || form.name || 'CV').replace(/\s+/g, '')
+                const defaultName = salesDocName?.trim()
+                  ? salesDocName.replace(/\.(doc|docx)$/i, '.pdf')
+                  : `${baseName}_Sales.pdf`
                 setUploadFileName(defaultName)
-                setUploadContext('standard')
+                setUploadContext('sales')
+                setUploadCandidateId(candidateId || '') // prefill if available, editable in modal
                 setUploadErr(null)
                 setUploadSuccess(null)
                 setShowUploadModal(true)
               }}
-              title="Export the right panel CV to PDF and upload to Vincere"
+              title="Upload the imported file to Vincere"
             >
               Upload
             </button>
           </div>
-        )}
 
-        {template === 'sales' && (
-          <>
-            {/* Hidden input */}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-              onChange={onUploadChange}
-              className="hidden"
-            />
+          {salesErr && <div className="mt-3 text-xs text-red-600">{String(salesErr).slice(0, 300)}</div>}
+        </>
+      )}
 
-            {/* Faux input + buttons */}
-            <div
-              className="grid sm:grid-cols-[1fr_auto_auto] gap-2 mt-4"
-              onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={onDrop}
-            >
-              <div
-                className={`input flex items-center justify-between cursor-pointer ${dragOver ? 'ring-2 ring-[#F7941D]/50' : ''}`}
-                title="Import or drag a file here"
-                onClick={onClickUpload}
-              >
-                <span className={`text-gray-400 select-none ${salesDocName ? '!text-gray-700 truncate' : ''}`}>
-                  {salesDocName ? salesDocName : 'Import or drag a file here'}
-                </span>
+      {error && <div className="mt-3 text-xs text-red-600">{String(error).slice(0, 300)}</div>}
+    </div>
+
+    {/* CONTENT GRID */}
+    <div className={`grid gap-4 ${template === 'sales' ? '' : 'md:grid-cols-2'}`}>
+      {template === 'standard' && (
+        <div className="card p-4 space-y-4">
+          {/* Standard editor */}
+          {/* Core */}
+          <section>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-sm">Core Details</h3>
+              <div className="flex items-center gap-3">
+                <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('core')}>
+                  {open.core ? 'Hide' : 'Show'}
+                </button>
               </div>
-
-              <button
-                type="button"
-                className="btn btn-brand"
-                onClick={onClickUpload}
-                disabled={processing}
-                title="Import a PDF or Word (DOC/DOCX) document"
-              >
-                {processing ? 'Processing…' : 'Import CV'}
-              </button>
-
-              {/* Upload (Sales) */}
-              <button
-                type="button"
-                className="btn btn-grey"
-                disabled={!salesDocUrl}
-                onClick={() => {
-                  const baseName = (candidateName || form.name || 'CV').replace(/\s+/g, '')
-                  const defaultName = salesDocName?.trim()
-                    ? salesDocName.replace(/\.(doc|docx)$/i, '.pdf')
-                    : `${baseName}_Sales.pdf`
-                  setUploadFileName(defaultName)
-                  setUploadContext('sales')
-                  setUploadCandidateId(candidateId || '') // prefill if available, editable in modal
-                  setUploadErr(null)
-                  setUploadSuccess(null)
-                  setShowUploadModal(true)
-                }}
-                title="Upload the imported file to Vincere"
-              >
-                Upload
-              </button>
             </div>
 
-            {salesErr && <div className="mt-3 text-xs text-red-600">{String(salesErr).slice(0, 300)}</div>}
-          </>
-        )}
-
-        {error && <div className="mt-3 text-xs text-red-600">{String(error).slice(0, 300)}</div>}
-      </div>
-
-      {/* CONTENT GRID */}
-      <div className={`grid gap-4 ${template === 'sales' ? '' : 'md:grid-cols-2'}`}>
-        {template === 'standard' && (
-          <div className="card p-4 space-y-4">
-            {/* Standard editor */}
-            {/* Core */}
-            <section>
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-sm">Core Details</h3>
-                <div className="flex items-center gap-3">
-                  <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('core')}>
-                    {open.core ? 'Hide' : 'Show'}
-                  </button>
-                </div>
-              </div>
-
-              {open.core && (
-                <div className="grid gap-3 mt-3">
-                  <label className="grid gap-1">
-                    <span className="text-[11px] text-gray-500">Name</span>
-                    <input
-                      className="input"
-                      value={form.name}
-                      onChange={e => {
-                        setField('name', e.target.value)
-                        setCandidateName(e.target.value)
-                      }}
-                      disabled={loading}
-                    />
-                  </label>
-                  <label className="grid gap-1">
-                    <span className="text-[11px] text-gray-500">Location</span>
-                    <input className="input" value={form.location} onChange={e => setField('location', e.target.value)} disabled={loading} />
-                  </label>
-                </div>
-              )}
-            </section>
-
-            {/* Profile */}
-            <section>
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-sm">Profile</h3>
-                <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('profile')}>
-                  {open.profile ? 'Hide' : 'Show'}
-                </button>
-              </div>
-              {open.profile && (
-                <div className="mt-3">
-                  <div className="flex flex-col sm:flex-row gap-2 mb-3 items-stretch sm:items-center">
-                    <button
-                      type="button"
-                      className="btn btn-grey text-[11px] !px-3 !py-1.5 w-36 whitespace-nowrap"
-                      disabled={loading || !rawCandidate}
-                      onClick={generateProfile}
-                      title={!rawCandidate ? 'Retrieve a candidate first' : 'Generate profile from candidate data'}
-                    >
-                      Generate
-                    </button>
-                    <div className="border-t border-gray-200 my-2 sm:my-0 sm:mx-2 sm:border-t-0 sm:border-l sm:h-6" />
-                    <input className="input flex-1 min-w-[160px]" placeholder="Job ID" value={jobId} onChange={e => setJobId(e.target.value)} disabled={loading} />
-                    <button
-                      type="button"
-                      className="btn btn-grey text-[11px] !px-3 !py-1.5 w-36 whitespace-nowrap"
-                      disabled={loading || !rawCandidate || !jobId}
-                      onClick={generateJobProfile}
-                      title={!jobId ? 'Enter a Job ID' : 'Generate job-tailored profile'}
-                    >
-                      Generate for Job
-                    </button>
-                  </div>
-
-                  <label className="grid gap-1">
-                      <span className="text-[11px] text-gray-500">Profile</span>
-                      <textarea
-                        className="input cv-shrink min-h-[120px]"
-                        value={form.profile}
-                        onChange={e => setField('profile', e.target.value)}
-                        disabled={loading}
-                      />
-                    </label>
-                </div>
-              )}
-            </section>
-
-            {/* Key Skills */}
-            <section>
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-sm">Key Skills</h3>
-                <button
-                  type="button"
-                  className="text-[11px] text-gray-500 underline"
-                  onClick={() => toggle('skills')}
-                >
-                  {open.skills ? 'Hide' : 'Show'}
-                </button>
-              </div>
-              {open.skills && (
-                <label className="grid gap-1 mt-3">
-                  <span className="text-[11px] text-gray-500">Key Skills (comma or newline)</span>
-                  <textarea
-                    className="input cv-shrink min-h-[100px]"
-                    value={form.keySkills}
-                    onChange={e => setField('keySkills', e.target.value)}
+            {open.core && (
+              <div className="grid gap-3 mt-3">
+                <label className="grid gap-1">
+                  <span className="text-[11px] text-gray-500">Name</span>
+                  <input
+                    className={`input ${prefill.name ? 'text-[11px]' : ''}`}
+                    value={form.name}
+                    onChange={e => {
+                      clearPrefill('name')
+                      setField('name', e.target.value)
+                      setCandidateName(e.target.value)
+                    }}
                     disabled={loading}
                   />
                 </label>
-              )}
-            </section>
-
-            {/* Employment */}
-            <section>
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-sm">Employment History</h3>
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    className="text-[11px] text-gray-500 underline"
-                    onClick={addEmployment}
+                <label className="grid gap-1">
+                  <span className="text-[11px] text-gray-500">Location</span>
+                  <input
+                    className={`input ${prefill.location ? 'text-[11px]' : ''}`}
+                    value={form.location}
+                    onChange={e => { clearPrefill('location'); setField('location', e.target.value) }}
                     disabled={loading}
-                  >
-                    Add role
-                  </button>
+                  />
+                </label>
+              </div>
+            )}
+          </section>
+
+          {/* Profile */}
+          <section>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-sm">Profile</h3>
+              <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('profile')}>
+                {open.profile ? 'Hide' : 'Show'}
+              </button>
+            </div>
+            {open.profile && (
+              <div className="mt-3">
+                <div className="flex flex-col sm:flex-row gap-2 mb-3 items-stretch sm:items-center">
                   <button
                     type="button"
-                    className="text-[11px] text-gray-500 underline"
-                    onClick={() => toggle('work')}
+                    className="btn btn-grey text-[11px] !px-3 !py-1.5 w-36 whitespace-nowrap"
+                    disabled={loading || !rawCandidate}
+                    onClick={generateProfile}
+                    title={!rawCandidate ? 'Retrieve a candidate first' : 'Generate profile from candidate data'}
                   >
-                    {open.work ? 'Hide' : 'Show'}
+                    Generate
+                  </button>
+                  <div className="border-t border-gray-200 my-2 sm:my-0 sm:mx-2 sm:border-t-0 sm:border-l sm:h-6" />
+                  <input className="input flex-1 min-w-[160px]" placeholder="Job ID" value={jobId} onChange={e => setJobId(e.target.value)} disabled={loading} />
+                  <button
+                    type="button"
+                    className="btn btn-grey text:[11px] !px-3 !py-1.5 w-36 whitespace-nowrap"
+                    disabled={loading || !rawCandidate || !jobId}
+                    onClick={generateJobProfile}
+                    title={!jobId ? 'Enter a Job ID' : 'Generate job-tailored profile'}
+                  >
+                    Generate for Job
                   </button>
                 </div>
+
+                <label className="grid gap-1">
+                  <span className="text-[11px] text-gray-500">Profile</span>
+                  <textarea
+                    className={`input min-h-[120px] ${prefill.profile ? 'text-[11px]' : ''}`}
+                    value={form.profile}
+                    onChange={e => { clearPrefill('profile'); setField('profile', e.target.value) }}
+                    disabled={loading}
+                  />
+                </label>
               </div>
-            
-              {open.work && (
-                <div className="grid gap-3 mt-3">
-                  {form.employment.length === 0 ? (
-                    <div className="text-[12px] text-gray-500">No employment history yet.</div>
-                  ) : (
-                    form.employment.map((e, i) => (
-                      <div key={i} className="border rounded-xl p-3 grid gap-2">
+            )}
+          </section>
+
+          {/* Key Skills */}
+          <section>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-sm">Key Skills</h3>
+              <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('skills')}>
+                {open.skills ? 'Hide' : 'Show'}
+              </button>
+            </div>
+            {open.skills && (
+              <label className="grid gap-1 mt-3">
+                <span className="text-[11px] text-gray-500">Key Skills (comma or newline)</span>
+                <textarea
+                  className={`input min-h-[100px] ${prefill.keySkills ? 'text-[11px]' : ''}`}
+                  value={form.keySkills}
+                  onChange={e => { clearPrefill('keySkills'); setField('keySkills', e.target.value) }}
+                  disabled={loading}
+                />
+              </label>
+            )}
+          </section>
+
+          {/* Employment */}
+          <section>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-sm">Employment History</h3>
+              <div className="flex items-center gap-3">
+                <button type="button" className="text-[11px] text-gray-500 underline" onClick={addEmployment} disabled={loading}>Add role</button>
+                <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('work')}>
+                  {open.work ? 'Hide' : 'Show'}
+                </button>
+              </div>
+            </div>
+
+            {open.work && (
+              <div className="grid gap-3 mt-3">
+                {form.employment.length === 0 ? (
+                  <div className="text-[12px] text-gray-500">No employment history yet.</div>
+                ) : (
+                  form.employment.map((e, i) => (
+                    <div key={i} className="border rounded-xl p-3 grid gap-2">
+                      <label className="grid gap-1">
+                        <span className="text-[11px] text-gray-500">Title</span>
+                        <input
+                          className={`input ${prefill.employment?.[i]?.title ? 'text-[11px]' : ''}`}
+                          value={e.title || ''}
+                          onChange={ev => {
+                            clearPrefill(`employment.${i}.title`)
+                            const v = ev.target.value
+                            setForm(prev => { const copy = structuredClone(prev); copy.employment[i].title = v; return copy })
+                          }}
+                        />
+                      </label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         <label className="grid gap-1">
-                          <span className="text-[11px] text-gray-500">Title</span>
+                          <span className="text-[11px] text-gray-500">Company</span>
                           <input
-                            className="input"
-                            value={e.title || ''}
+                            className={`input ${prefill.employment?.[i]?.company ? 'text-[11px]' : ''}`}
+                            value={e.company || ''}
                             onChange={ev => {
+                              clearPrefill(`employment.${i}.company`)
                               const v = ev.target.value
-                              setForm(prev => {
-                                const copy = structuredClone(prev)
-                                copy.employment[i].title = v
-                                return copy
-                              })
+                              setForm(prev => { const copy = structuredClone(prev); copy.employment[i].company = v; return copy })
                             }}
                           />
                         </label>
-            
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div className="grid grid-cols-2 gap-2">
                           <label className="grid gap-1">
-                            <span className="text-[11px] text-gray-500">Company</span>
+                            <span className="text-[11px] text-gray-500">Start</span>
                             <input
-                              className="input"
-                              value={e.company || ''}
+                              className={`input ${prefill.employment?.[i]?.start ? 'text-[11px]' : ''}`}
+                              value={e.start || ''}
                               onChange={ev => {
+                                clearPrefill(`employment.${i}.start`)
                                 const v = ev.target.value
-                                setForm(prev => {
-                                  const copy = structuredClone(prev)
-                                  copy.employment[i].company = v
-                                  return copy
-                                })
+                                setForm(prev => { const copy = structuredClone(prev); copy.employment[i].start = v; return copy })
                               }}
                             />
                           </label>
-            
-                          <div className="grid grid-cols-2 gap-2">
-                            <label className="grid gap-1">
-                              <span className="text-[11px] text-gray-500">Start</span>
-                              <input
-                                className="input"
-                                value={e.start || ''}
-                                onChange={ev => {
-                                  const v = ev.target.value
-                                  setForm(prev => {
-                                    const copy = structuredClone(prev)
-                                    copy.employment[i].start = v
-                                    return copy
-                                  })
-                                }}
-                              />
-                            </label>
-                            <label className="grid gap-1">
-                              <span className="text-[11px] text-gray-500">End</span>
-                              <input
-                                className="input"
-                                value={e.end || ''}
-                                onChange={ev => {
-                                  const v = ev.target.value
-                                  setForm(prev => {
-                                    const copy = structuredClone(prev)
-                                    copy.employment[i].end = v
-                                    return copy
-                                  })
-                                }}
-                              />
-                            </label>
-                          </div>
-                        </div>
-            
-                        <label className="grid gap-1">
-                          <span className="text-[11px] text-gray-500">Description</span>
-                          <textarea
-                            className="input cv-shrink min-h-[80px]"
-                            value={e.description || ''}
-                            onChange={ev => {
-                              const v = ev.target.value
-                              setForm(prev => {
-                                const copy = structuredClone(prev)
-                                copy.employment[i].description = v
-                                return copy
-                              })
-                            }}
-                          />
-                        </label>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-            </section>
-
-
-            {/* Education */}
-            <section>
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-sm">Education & Qualifications</h3>
-                <button
-                  type="button"
-                  className="text-[11px] text-gray-500 underline"
-                  onClick={() => toggle('education')}
-                >
-                  {open.education ? 'Hide' : 'Show'}
-                </button>
-              </div>
-            
-              {open.education && (
-                <div className="grid gap-3 mt-3">
-                  {form.education.length === 0 ? (
-                    <div className="text-[12px] text-gray-500">No education yet.</div>
-                  ) : (
-                    form.education.map((e, i) => (
-                      <div key={i} className="flex items-start justify-between">
-                        <div className="grid gap-0.5">
-                          <div className="font-medium">{e.course || e.institution || 'Course'}</div>
-                          {!!e.institution &&
-                            !!e.course &&
-                            e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase() && (
-                              <div className="text-[11px] text-gray-500">{e.institution}</div>
-                            )}
-                        </div>
-                        <div className="text-[11px] text-gray-500 whitespace-nowrap">
-                          {[e.start, e.end].filter(Boolean).join(' to ')}
+                          <label className="grid gap-1">
+                            <span className="text-[11px] text-gray-500">End</span>
+                            <input
+                              className={`input ${prefill.employment?.[i]?.end ? 'text-[11px]' : ''}`}
+                              value={e.end || ''}
+                              onChange={ev => {
+                                clearPrefill(`employment.${i}.end`)
+                                const v = ev.target.value
+                                setForm(prev => { const copy = structuredClone(prev); copy.employment[i].end = v; return copy })
+                              }}
+                            />
+                          </label>
                         </div>
                       </div>
-                    ))
-                  )}
-                </div>
-              )}
-            </section>
-
-            {/* Additional */}
-            <section>
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-sm">Additional Information</h3>
-                <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('extra')}>
-                  {open.extra ? 'Hide' : 'Show'}
-                </button>
+                      <label className="grid gap-1">
+                        <span className="text-[11px] text-gray-500">Description</span>
+                        <textarea
+                          className={`input min-h-[80px] ${prefill.employment?.[i]?.description ? 'text-[11px]' : ''}`}
+                          value={e.description || ''}
+                          onChange={ev => {
+                            clearPrefill(`employment.${i}.description`)
+                            const v = ev.target.value
+                            setForm(prev => { const copy = structuredClone(prev); copy.employment[i].description = v; return copy })
+                          }}
+                        />
+                      </label>
+                    </div>
+                  ))
+                )}
               </div>
+            )}
+          </section>
 
-              {open.extra && (
-                <div className="text-[12px] grid gap-1 mt-3">
-                  <div>Driving License: {form.additional.drivingLicense || '—'}</div>
-                  <div>Nationality: {form.additional.nationality || '—'}</div>
-                  <div>Availability: {form.additional.availability || '—'}</div>
-                  <div>Health: {form.additional.health || '—'}</div>
-                  <div>Criminal Record: {form.additional.criminalRecord || '—'}</div>
-                  <div>Financial History: {form.additional.financialHistory || '—'}</div>
+          {/* Education */}
+          <section>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-sm">Education & Qualifications</h3>
+              <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('education')}>
+                {open.education ? 'Hide' : 'Show'}
+              </button>
+            </div>
+
+            {open.education && (
+              <div className="grid gap-3 mt-3">
+                {form.education.length === 0 ? (
+                  <div className="text-[12px] text-gray-500">No education yet.</div>
+                ) : (
+                  form.education.map((e, i) => (
+                    <div key={i} className="flex items-start justify-between">
+                      <div className="grid gap-0.5">
+                        <div className="font-medium">{e.course || e.institution || 'Course'}</div>
+                        {!!e.institution && !!e.course && e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase() && (
+                          <div className="text-[11px] text-gray-500">{e.institution}</div>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-gray-500 whitespace-nowrap">{[e.start, e.end].filter(Boolean).join(' to ')}</div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </section>
+
+          {/* Additional */}
+          <section>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-sm">Additional Information</h3>
+              <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('extra')}>
+                {open.extra ? 'Hide' : 'Show'}
+              </button>
+            </div>
+
+            {open.extra && (
+              <div className="text-[12px] grid gap-1 mt-3">
+                <div>Driving License: {form.additional.drivingLicense || '—'}</div>
+                <div>Nationality: {form.additional.nationality || '—'}</div>
+                <div>Availability: {form.additional.availability || '—'}</div>
+                <div>Health: {form.additional.health || '—'}</div>
+                <div>Criminal Record: {form.additional.criminalRecord || '—'}</div>
+                <div>Financial History: {form.additional.financialHistory || '—'}</div>
+              </div>
+            )}
+          </section>
+
+          {/* Debug: Raw JSON */}
+          <section>
+            <div className="mt-2 border rounded-xl p-2 bg-gray-50">
+              <div className="text-[10px] font-semibold text-gray-600 mb-1">Raw JSON Data (debug)</div>
+
+              {/* Candidate Data */}
+              <div className="border rounded-lg mb-2">
+                <div className="flex items-center justify-between px-2 py-1">
+                  <div className="text-[10px] font-medium">Candidate Data</div>
+                  <button type="button" className="text-[10px] text-gray-500 underline" onClick={() => toggle('rawCandidate')}>
+                    {open.rawCandidate ? 'Hide' : 'Show'}
+                  </button>
                 </div>
-              )}
-            </section>
-
-            {/* Debug: Raw JSON */}
-            <section>
-              <div className="mt-2 border rounded-xl p-2 bg-gray-50">
-                <div className="text-[10px] font-semibold text-gray-600 mb-1">Raw JSON Data (debug)</div>
-
-                {/* Candidate Data */}
-                <div className="border rounded-lg mb-2">
-                  <div className="flex items-center justify-between px-2 py-1">
-                    <div className="text-[10px] font-medium">Candidate Data</div>
-                    <button type="button" className="text-[10px] text-gray-500 underline" onClick={() => toggle('rawCandidate')}>
-                      {open.rawCandidate ? 'Hide' : 'Show'}
-                    </button>
-                  </div>
-                  {open.rawCandidate && (
-                    <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
+                {open.rawCandidate && (
+                  <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
 {JSON.stringify(rawCandidate, null, 2)}
-                    </pre>
-                  )}
-                </div>
-
-                {/* Work Experience */}
-                <div className="border rounded-lg mb-2">
-                  <div className="flex items-center justify-between px-2 py-1">
-                    <div className="text-[10px] font-medium">Work Experience</div>
-                    <button type="button" className="text-[10px] text-gray-500 underline" onClick={() => toggle('rawWork')}>
-                      {open.rawWork ? 'Hide' : 'Show'}
-                    </button>
-                  </div>
-                  {open.rawWork && (
-                    <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
-{JSON.stringify(rawWork, null, 2)}
-                    </pre>
-                  )}
-                </div>
-
-                {/* Education Details */}
-                <div className="border rounded-lg mb-2">
-                  <div className="flex items-center justify-between px-2 py-1">
-                    <div className="text-[10px] font-medium">Education Details</div>
-                    <button type="button" className="text-[10px] text-gray-500 underline" onClick={() => toggle('rawEdu')}>
-                      {open.rawEdu ? 'Hide' : 'Show'}
-                    </button>
-                  </div>
-                  {open.rawEdu && (
-                    <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
-{JSON.stringify(rawEdu, null, 2)}
-                    </pre>
-                  )}
-                </div>
-
-                {/* Custom Fields */}
-                <div className="border rounded-lg">
-                  <div className="flex items-center justify-between px-2 py-1">
-                    <div className="text-[10px] font-medium">Custom Fields</div>
-                    <button type="button" className="text-[10px] text-gray-500 underline" onClick={() => toggle('rawCustom')}>
-                      {open.rawCustom ? 'Hide' : 'Show'}
-                    </button>
-                  </div>
-                  {open.rawCustom && (
-                    <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
-{JSON.stringify(rawCustom, null, 2)}
-                    </pre>
-                  )}
-                </div>
+                  </pre>
+                )}
               </div>
-            </section>
-          </div>
-        )}
 
-        {/* RIGHT: preview always renders here; on Sales it's full-width */}
-        <div className="card p-0 overflow-hidden">
-          <CVTemplatePreview />
-        </div>
-      </div>
+              {/* Work Experience */}
+              <div className="border rounded-lg mb-2">
+                <div className="flex items-center justify-between px-2 py-1">
+                  <div className="text-[10px] font-medium">Work Experience</div>
+                  <button type="button" className="text-[10px] text-gray-500 underline" onClick={() => toggle('rawWork')}>
+                    {open.rawWork ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+                {open.rawWork && (
+                  <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
+{JSON.stringify(rawWork, null, 2)}
+                  </pre>
+                )}
+              </div>
 
-      {/* ===== Upload modal ===== */}
-      {showUploadModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          {/* If we have success, show a separate success popup that replaces the previous window */}
-          {uploadSuccess ? (
-            <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl text-center">
-              <div className="text-2xl mb-2 text-green-600">Upload Successful</div>
-              <p className="text-[12px] text-gray-600">
-                {uploadContext === 'standard'
-                  ? `File uploaded for Candidate ID ${candidateId || '—'}.`
-                  : `File uploaded for Candidate ID ${uploadCandidateId || '—'}.`}
-              </p>
-              <div className="mt-6">
-                <button
-                  type="button"
-                  className="px-4 py-2 rounded-lg bg-zinc-900 text-white"
-                  onClick={() => { setShowUploadModal(false); setUploadSuccess(null) }}
-                >
-                  Close
-                </button>
+              {/* Education Details */}
+              <div className="border rounded-lg mb-2">
+                <div className="flex items-center justify-between px-2 py-1">
+                  <div className="text-[10px] font-medium">Education Details</div>
+                  <button type="button" className="text-[10px] text-gray-500 underline" onClick={() => toggle('rawEdu')}>
+                    {open.rawEdu ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+                {open.rawEdu && (
+                  <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
+{JSON.stringify(rawEdu, null, 2)}
+                  </pre>
+                )}
+              </div>
+
+              {/* Custom Fields */}
+              <div className="border rounded-lg">
+                <div className="flex items-center justify-between px-2 py-1">
+                  <div className="text-[10px] font-medium">Custom Fields</div>
+                  <button type="button" className="text-[10px] text-gray-500 underline" onClick={() => toggle('rawCustom')}>
+                    {open.rawCustom ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+                {open.rawCustom && (
+                  <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
+{JSON.stringify(rawCustom, null, 2)}
+                  </pre>
+                )}
               </div>
             </div>
-          ) : (
-            <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
-              <div className="mb-4">
-                <h3 className="text-base font-semibold">Upload CV to Vincere</h3>
+          </section>
+        </div>
+      )}
 
-                {/* Header summary only for Standard; Sales shows manual ID field below */}
-                {uploadContext === 'standard' && (
-                  <p className="text-[12px] text-gray-600">
-                    Candidate: <span className="font-medium">{candidateName || form.name || 'Unknown'}</span> · ID:{' '}
-                    <span className="font-mono">{candidateId || '—'}</span>
-                  </p>
-                )}
+      {/* RIGHT: preview always renders here; on Sales it's full-width */}
+      <div className="card p-0 overflow-hidden">
+        <CVTemplatePreview />
+      </div>
+    </div>
 
-                <p className="text-[11px] text-gray-500 mt-1">
-                  Source:&nbsp;
-                  {uploadContext === 'standard' ? 'Standard (right-panel template → PDF)' : 'Sales (imported file)'}
+    {/* ===== Upload modal ===== */}
+    {showUploadModal && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        {/* If we have success, show a separate success popup that replaces the previous window */}
+        {uploadSuccess ? (
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl text-center">
+            <div className="text-2xl mb-2 text-green-600">Upload Successful</div>
+            <p className="text-[12px] text-gray-600">
+              {uploadContext === 'standard'
+                ? `File uploaded for Candidate ID ${candidateId || '—'}.`
+                : `File uploaded for Candidate ID ${uploadCandidateId || '—'}.`}
+            </p>
+            <div className="mt-6">
+              <button
+                type="button"
+                className="px-4 py-2 rounded-lg bg-zinc-900 text-white"
+                onClick={() => { setShowUploadModal(false); setUploadSuccess(null) }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+            <div className="mb-4">
+              <h3 className="text-base font-semibold">Upload CV to Vincere</h3>
+
+              {/* Header summary only for Standard; Sales shows manual ID field below */}
+              {uploadContext === 'standard' && (
+                <p className="text-[12px] text-gray-600">
+                  Candidate: <span className="font-medium">{candidateName || form.name || 'Unknown'}</span> · ID:{' '}
+                  <span className="font-mono">{candidateId || '—'}</span>
                 </p>
-              </div>
+              )}
 
-              <div className="space-y-4">
-                {/* Manual Candidate ID entry for Sales */}
-                {uploadContext === 'sales' && (
-                  <div>
-                    <label className="block text-[12px] font-medium">Candidate ID</label>
-                    <input
-                      type="text"
-                      className="mt-1 w-full rounded-md border p-2 text-[13px]"
-                      value={uploadCandidateId}
-                      onChange={(e) => setUploadCandidateId(e.target.value)}
-                      placeholder="Type Candidate ID used in Vincere"
-                    />
-                  </div>
-                )}
+              <p className="text-[11px] text-gray-500 mt-1">
+                Source:&nbsp;
+                {uploadContext === 'standard' ? 'Standard (right-panel template → PDF)' : 'Sales (imported file)'}
+              </p>
+            </div>
 
+            <div className="space-y-4">
+              {/* Manual Candidate ID entry for Sales */}
+              {uploadContext === 'sales' && (
                 <div>
-                  <label className="block text-[12px] font-medium">File name</label>
+                  <label className="block text-[12px] font-medium">Candidate ID</label>
                   <input
                     type="text"
                     className="mt-1 w-full rounded-md border p-2 text-[13px]"
-                    value={uploadFileName}
-                    onChange={(e) => setUploadFileName(e.target.value)}
-                    placeholder="e.g. JohnSmith_CV.pdf"
+                    value={uploadCandidateId}
+                    onChange={(e) => setUploadCandidateId(e.target.value)}
+                    placeholder="Type Candidate ID used in Vincere"
                   />
                 </div>
+              )}
 
-                {uploadErr && <div className="text-[12px] text-red-600">{uploadErr}</div>}
+              <div>
+                <label className="block text-[12px] font-medium">File name</label>
+                <input
+                  type="text"
+                  className="mt-1 w-full rounded-md border p-2 text-[13px]"
+                  value={uploadFileName}
+                  onChange={(e) => setUploadFileName(e.target.value)}
+                  placeholder="e.g. JohnSmith_CV.pdf"
+                />
               </div>
 
-              <div className="mt-6 flex justify-end gap-3">
-                <button
-                  type="button"
-                  className="px-4 py-2 rounded-lg border"
-                  onClick={() => setShowUploadModal(false)}
-                  disabled={uploadBusy}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="px-4 py-2 rounded-lg bg-zinc-900 text-white disabled:opacity-50"
-                  onClick={confirmUpload}
-                  disabled={
-                    uploadBusy ||
-                    !uploadFileName.trim() ||
-                    (uploadContext === 'sales' && !uploadCandidateId.trim())
-                  }
-                >
-                  {uploadBusy ? 'Uploading…' : 'Confirm & Upload'}
-                </button>
-              </div>
+              {uploadErr && <div className="text-[12px] text-red-600">{uploadErr}</div>}
             </div>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                className="px-4 py-2 rounded-lg border"
+                onClick={() => setShowUploadModal(false)}
+                disabled={uploadBusy}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="px-4 py-2 rounded-lg bg-zinc-900 text-white disabled:opacity-50"
+                onClick={confirmUpload}
+                disabled={
+                  uploadBusy ||
+                  !uploadFileName.trim() ||
+                  (uploadContext === 'sales' && !uploadCandidateId.trim())
+                }
+              >
+                {uploadBusy ? 'Uploading…' : 'Confirm & Upload'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    )}
+  </div>
+)
