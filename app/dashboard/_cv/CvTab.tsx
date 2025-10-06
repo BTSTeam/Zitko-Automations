@@ -1062,656 +1062,645 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 }
 
   // ========== render ==========
-  return (
+return (
   <div className="grid gap-4">
-  {/* Minimal print + PDF styles */}
-  <style jsx global>{`
-    /* Smaller textarea font for retrieved sections (Profile, Key Skills, Employment Description) */
-    .input.cv-shrink { font-size: 12px; line-height: 1.25; }
-    @media (min-width: 640px) { .input.cv-shrink { font-size: 13px; } }
-    @media print { .input.cv-shrink { font-size: 11px; } }
+    {/* Minimal print + PDF styles */}
+    <style jsx global>{`
+      /* Smaller textarea font for retrieved sections (Profile, Key Skills, Employment Description) */
+      .input.cv-shrink { font-size: 12px; line-height: 1.25; }
+      @media (min-width: 640px) { .input.cv-shrink { font-size: 13px; } }
+      @media print { .input.cv-shrink { font-size: 11px; } }
 
-    @media print {
-      @page { size: A4; margin: 12mm; }
+      @media print {
+        @page { size: A4; margin: 12mm; }
 
-      /* A4 content container; makes footer stick to bottom of last page */
-      .cv-standard-page {
-        width: 100%;
-        display: flex;
-        flex-direction: column;
-        min-height: calc(297mm - 24mm); /* page height minus top+bottom margins */
+        /* A4 content container; makes footer stick to bottom of last page */
+        .cv-standard-page {
+          width: 100%;
+          display: flex;
+          flex-direction: column;
+          min-height: calc(297mm - 24mm); /* page height minus top+bottom margins */
+        }
+
+        /* keep each job/education entry intact (no splitting across pages) */
+        .cv-entry { break-inside: avoid; page-break-inside: avoid; }
+
+        /* keep section header with the FIRST entry only */
+        .cv-headpair { break-inside: avoid; page-break-inside: avoid; }
+
+        /* prevent headings from being orphaned/split */
+        .cv-standard-page h1,
+        .cv-standard-page h2 { break-inside: avoid; page-break-inside: avoid; }
+
+        /* footer pinned to bottom; never creates a blank page */
+        .cv-footer {
+          margin-top: auto;
+          break-inside: avoid;
+          page-break-inside: avoid;
+          page-break-before: auto;
+          page-break-after: auto;
+        }
       }
-
-      /* keep each job/education entry intact (no splitting across pages) */
-      .cv-entry { break-inside: avoid; page-break-inside: avoid; }
-
-      /* keep section header with the FIRST entry only */
-      .cv-headpair { break-inside: avoid; page-break-inside: avoid; }
-
-      /* prevent headings from being orphaned/split */
-      .cv-standard-page h1,
-      .cv-standard-page h2 { break-inside: avoid; page-break-inside: avoid; }
-
-      /* footer pinned to bottom; never creates a blank page */
-      .cv-footer {
-        margin-top: auto;
-        break-inside: avoid;
-        page-break-inside: avoid;
-        page-break-before: auto;
-        page-break-after: auto;
-      }
-    }
-
-    /* Also help in on-screen preview */
-    .cv-entry,
-    .cv-headpair { break-inside: avoid; page-break-inside: avoid; }
-  `}</style>
 
       /* Also help in on-screen preview */
       .cv-entry,
       .cv-headpair { break-inside: avoid; page-break-inside: avoid; }
     `}</style>
 
-    {/* ...the rest of your JSX (cards, editor, preview, etc.) ... */}
+    <div className="card p-4">
+      {!templateFromShell && (
+        <div className="grid sm:grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => resetAllForTemplate('standard')}
+            className={`btn w-full ${template === 'standard' ? 'btn-brand' : 'btn-grey'}`}
+          >
+            Standard
+          </button>
 
-      <div className="card p-4">
-        {!templateFromShell && (
-          <div className="grid sm:grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => resetAllForTemplate('sales')}
+            className={`btn w-full ${template === 'sales' ? 'btn-brand' : 'btn-grey'}`}
+            title="Sales template: import a CV (PDF/DOCX)"
+          >
+            Sales
+          </button>
+        </div>
+      )}
+
+      {/* Top controls: Standard vs Sales */}
+      {template === 'standard' && (
+        <div className="grid sm:grid-cols-[1fr_auto_auto] gap-2 mt-4">
+          <input
+            className="input"
+            placeholder="Enter Candidate ID"
+            value={candidateId}
+            onChange={e => setCandidateId(e.target.value)}
+            disabled={loading}
+            autoComplete="off"
+          />
+          <button
+            className="btn btn-brand"
+            onClick={fetchData}
+            disabled={loading || !candidateId}
+            title="Retrieve Candidate"
+          >
+            {loading ? 'Fetching…' : 'Retrieve Candidate'}
+          </button>
+
+          {/* Upload (Standard) */}
+          <button
+            type="button"
+            className="btn btn-grey"
+            disabled={!candidateId}
+            onClick={() => {
+              const defaultName = `${(candidateName || form.name || 'CV').replace(/\s+/g, '')}_Standard.pdf`
+              setUploadFileName(defaultName)
+              setUploadContext('standard')
+              setUploadErr(null)
+              setUploadSuccess(null)
+              setShowUploadModal(true)
+            }}
+            title="Export the right panel CV to PDF and upload to Vincere"
+          >
+            Upload
+          </button>
+        </div>
+      )}
+
+      {template === 'sales' && (
+        <>
+          {/* Hidden input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            onChange={onUploadChange}
+            className="hidden"
+          />
+
+          {/* Faux input + buttons */}
+          <div
+            className="grid sm:grid-cols-[1fr_auto_auto] gap-2 mt-4"
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={onDrop}
+          >
+            <div
+              className={`input flex items-center justify-between cursor-pointer ${dragOver ? 'ring-2 ring-[#F7941D]/50' : ''}`}
+              title="Import or drag a file here"
+              onClick={onClickUpload}
+            >
+              <span className={`text-gray-400 select-none ${salesDocName ? '!text-gray-700 truncate' : ''}`}>
+                {salesDocName ? salesDocName : 'Import or drag a file here'}
+              </span>
+            </div>
+
             <button
               type="button"
-              onClick={() => resetAllForTemplate('standard')}
-              className={`btn w-full ${template === 'standard' ? 'btn-brand' : 'btn-grey'}`}
-            >
-              Standard
-            </button>
-
-            <button
-              type="button"
-              onClick={() => resetAllForTemplate('sales')}
-              className={`btn w-full ${template === 'sales' ? 'btn-brand' : 'btn-grey'}`}
-              title="Sales template: import a CV (PDF/DOCX)"
-            >
-              Sales
-            </button>
-          </div>
-        )}
-
-        {/* Top controls: Standard vs Sales */}
-        {template === 'standard' && (
-          <div className="grid sm:grid-cols-[1fr_auto_auto] gap-2 mt-4">
-            <input
-              className="input"
-              placeholder="Enter Candidate ID"
-              value={candidateId}
-              onChange={e => setCandidateId(e.target.value)}
-              disabled={loading}
-              autoComplete="off"
-            />
-            <button
               className="btn btn-brand"
-              onClick={fetchData}
-              disabled={loading || !candidateId}
-              title="Retrieve Candidate"
+              onClick={onClickUpload}
+              disabled={processing}
+              title="Import a PDF or Word (DOC/DOCX) document"
             >
-              {loading ? 'Fetching…' : 'Retrieve Candidate'}
+              {processing ? 'Processing…' : 'Import CV'}
             </button>
 
-            {/* Upload (Standard) */}
+            {/* Upload (Sales) */}
             <button
               type="button"
               className="btn btn-grey"
-              disabled={!candidateId}
+              disabled={!salesDocUrl}
               onClick={() => {
-                const defaultName = `${(candidateName || form.name || 'CV').replace(/\s+/g, '')}_Standard.pdf`
+                const baseName = (candidateName || form.name || 'CV').replace(/\s+/g, '')
+                const defaultName = salesDocName?.trim()
+                  ? salesDocName.replace(/\.(doc|docx)$/i, '.pdf')
+                  : `${baseName}_Sales.pdf`
                 setUploadFileName(defaultName)
-                setUploadContext('standard')
+                setUploadContext('sales')
+                setUploadCandidateId(candidateId || '') // prefill if available, editable in modal
                 setUploadErr(null)
                 setUploadSuccess(null)
                 setShowUploadModal(true)
               }}
-              title="Export the right panel CV to PDF and upload to Vincere"
+              title="Upload the imported file to Vincere"
             >
               Upload
             </button>
           </div>
-        )}
 
-        {template === 'sales' && (
-          <>
-            {/* Hidden input */}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-              onChange={onUploadChange}
-              className="hidden"
-            />
+          {salesErr && <div className="mt-3 text-xs text-red-600">{String(salesErr).slice(0, 300)}</div>}
+        </>
+      )}
 
-            {/* Faux input + buttons */}
-            <div
-              className="grid sm:grid-cols-[1fr_auto_auto] gap-2 mt-4"
-              onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={onDrop}
-            >
-              <div
-                className={`input flex items-center justify-between cursor-pointer ${dragOver ? 'ring-2 ring-[#F7941D]/50' : ''}`}
-                title="Import or drag a file here"
-                onClick={onClickUpload}
-              >
-                <span className={`text-gray-400 select-none ${salesDocName ? '!text-gray-700 truncate' : ''}`}>
-                  {salesDocName ? salesDocName : 'Import or drag a file here'}
-                </span>
+      {error && <div className="mt-3 text-xs text-red-600">{String(error).slice(0, 300)}</div>}
+    </div>
+
+    {/* CONTENT GRID */}
+    <div className={`grid gap-4 ${template === 'sales' ? '' : 'md:grid-cols-2'}`}>
+      {template === 'standard' && (
+        <div className="card p-4 space-y-4">
+          {/* Standard editor */}
+          {/* Core */}
+          <section>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-sm">Core Details</h3>
+              <div className="flex items-center gap-3">
+                <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('core')}>
+                  {open.core ? 'Hide' : 'Show'}
+                </button>
               </div>
-
-              <button
-                type="button"
-                className="btn btn-brand"
-                onClick={onClickUpload}
-                disabled={processing}
-                title="Import a PDF or Word (DOC/DOCX) document"
-              >
-                {processing ? 'Processing…' : 'Import CV'}
-              </button>
-
-              {/* Upload (Sales) */}
-              <button
-                type="button"
-                className="btn btn-grey"
-                disabled={!salesDocUrl}
-                onClick={() => {
-                  const baseName = (candidateName || form.name || 'CV').replace(/\s+/g, '')
-                  const defaultName = salesDocName?.trim()
-                    ? salesDocName.replace(/\.(doc|docx)$/i, '.pdf')
-                    : `${baseName}_Sales.pdf`
-                  setUploadFileName(defaultName)
-                  setUploadContext('sales')
-                  setUploadCandidateId(candidateId || '') // prefill if available, editable in modal
-                  setUploadErr(null)
-                  setUploadSuccess(null)
-                  setShowUploadModal(true)
-                }}
-                title="Upload the imported file to Vincere"
-              >
-                Upload
-              </button>
             </div>
 
-            {salesErr && <div className="mt-3 text-xs text-red-600">{String(salesErr).slice(0, 300)}</div>}
-          </>
-        )}
-
-        {error && <div className="mt-3 text-xs text-red-600">{String(error).slice(0, 300)}</div>}
-      </div>
-
-      {/* CONTENT GRID */}
-      <div className={`grid gap-4 ${template === 'sales' ? '' : 'md:grid-cols-2'}`}>
-        {template === 'standard' && (
-          <div className="card p-4 space-y-4">
-            {/* Standard editor */}
-            {/* Core */}
-            <section>
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-sm">Core Details</h3>
-                <div className="flex items-center gap-3">
-                  <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('core')}>
-                    {open.core ? 'Hide' : 'Show'}
-                  </button>
-                </div>
-              </div>
-
-              {open.core && (
-                <div className="grid gap-3 mt-3">
-                  <label className="grid gap-1">
-                    <span className="text-[11px] text-gray-500">Name</span>
-                    <input
-                      className="input"
-                      value={form.name}
-                      onChange={e => {
-                        setField('name', e.target.value)
-                        setCandidateName(e.target.value)
-                      }}
-                      disabled={loading}
-                    />
-                  </label>
-                  <label className="grid gap-1">
-                    <span className="text-[11px] text-gray-500">Location</span>
-                    <input className="input" value={form.location} onChange={e => setField('location', e.target.value)} disabled={loading} />
-                  </label>
-                </div>
-              )}
-            </section>
-
-            {/* Profile */}
-            <section>
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-sm">Profile</h3>
-                <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('profile')}>
-                  {open.profile ? 'Hide' : 'Show'}
-                </button>
-              </div>
-              {open.profile && (
-                <div className="mt-3">
-                  <div className="flex flex-col sm:flex-row gap-2 mb-3 items-stretch sm:items-center">
-                    <button
-                      type="button"
-                      className="btn btn-grey text-[11px] !px-3 !py-1.5 w-36 whitespace-nowrap"
-                      disabled={loading || !rawCandidate}
-                      onClick={generateProfile}
-                      title={!rawCandidate ? 'Retrieve a candidate first' : 'Generate profile from candidate data'}
-                    >
-                      Generate
-                    </button>
-                    <div className="border-t border-gray-200 my-2 sm:my-0 sm:mx-2 sm:border-t-0 sm:border-l sm:h-6" />
-                    <input className="input flex-1 min-w-[160px]" placeholder="Job ID" value={jobId} onChange={e => setJobId(e.target.value)} disabled={loading} />
-                    <button
-                      type="button"
-                      className="btn btn-grey text-[11px] !px-3 !py-1.5 w-36 whitespace-nowrap"
-                      disabled={loading || !rawCandidate || !jobId}
-                      onClick={generateJobProfile}
-                      title={!jobId ? 'Enter a Job ID' : 'Generate job-tailored profile'}
-                    >
-                      Generate for Job
-                    </button>
-                  </div>
-
-                 {/* Profile */}
-            <section>
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-sm">Profile</h3>
-                <button
-                  type="button"
-                  className="text-[11px] text-gray-500 underline"
-                  onClick={() => toggle('profile')}
-                >
-                  {open.profile ? 'Hide' : 'Show'}
-                </button>
-              </div>
-              {open.profile && (
-                <div className="grid gap-3 mt-3">
-                  <label className="grid gap-1">
-                    <span className="text-[11px] text-gray-500">Profile</span>
-                    <textarea
-                      className="input cv-shrink min-h-[120px]"
-                      value={form.profile}
-                      onChange={e => setField('profile', e.target.value)}
-                      disabled={loading}
-                    />
-                  </label>
-                </div>
-              )}
-            </section>
-            
-            {/* Key Skills */}
-            <section>
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-sm">Key Skills</h3>
-                <button
-                  type="button"
-                  className="text-[11px] text-gray-500 underline"
-                  onClick={() => toggle('skills')}
-                >
-                  {open.skills ? 'Hide' : 'Show'}
-                </button>
-              </div>
-              {open.skills && (
-                <label className="grid gap-1 mt-3">
-                  <span className="text-[11px] text-gray-500">Key Skills (comma or newline)</span>
-                  <textarea
-                    className="input cv-shrink min-h-[100px]"
-                    value={form.keySkills}
-                    onChange={e => setField('keySkills', e.target.value)}
+            {open.core && (
+              <div className="grid gap-3 mt-3">
+                <label className="grid gap-1">
+                  <span className="text-[11px] text-gray-500">Name</span>
+                  <input
+                    className="input"
+                    value={form.name}
+                    onChange={e => {
+                      setField('name', e.target.value)
+                      setCandidateName(e.target.value)
+                    }}
                     disabled={loading}
                   />
                 </label>
-              )}
-            </section>
-            
-            {/* Employment */}
-            <section>
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-sm">Employment History</h3>
-                <div className="flex items-center gap-3">
+                <label className="grid gap-1">
+                  <span className="text-[11px] text-gray-500">Location</span>
+                  <input className="input" value={form.location} onChange={e => setField('location', e.target.value)} disabled={loading} />
+                </label>
+              </div>
+            )}
+          </section>
+
+          {/* Profile (merged: controls + textarea) */}
+          <section>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-sm">Profile</h3>
+              <button
+                type="button"
+                className="text-[11px] text-gray-500 underline"
+                onClick={() => toggle('profile')}
+              >
+                {open.profile ? 'Hide' : 'Show'}
+              </button>
+            </div>
+
+            {open.profile && (
+              <div className="mt-3">
+                <div className="flex flex-col sm:flex-row gap-2 mb-3 items-stretch sm:items-center">
                   <button
                     type="button"
-                    className="text-[11px] text-gray-500 underline"
-                    onClick={addEmployment}
-                    disabled={loading}
+                    className="btn btn-grey text-[11px] !px-3 !py-1.5 w-36 whitespace-nowrap"
+                    disabled={loading || !rawCandidate}
+                    onClick={generateProfile}
+                    title={!rawCandidate ? 'Retrieve a candidate first' : 'Generate profile from candidate data'}
                   >
-                    Add role
+                    Generate
                   </button>
+                  <div className="border-t border-gray-200 my-2 sm:my-0 sm:mx-2 sm:border-t-0 sm:border-l sm:h-6" />
+                  <input
+                    className="input flex-1 min-w-[160px]"
+                    placeholder="Job ID"
+                    value={jobId}
+                    onChange={e => setJobId(e.target.value)}
+                    disabled={loading}
+                  />
                   <button
                     type="button"
-                    className="text-[11px] text-gray-500 underline"
-                    onClick={() => toggle('work')}
+                    className="btn btn-grey text-[11px] !px-3 !py-1.5 w-36 whitespace-nowrap"
+                    disabled={loading || !rawCandidate || !jobId}
+                    onClick={generateJobProfile}
+                    title={!jobId ? 'Enter a Job ID' : 'Generate job-tailored profile'}
                   >
-                    {open.work ? 'Hide' : 'Show'}
+                    Generate for Job
                   </button>
                 </div>
+
+                <label className="grid gap-1">
+                  <span className="text-[11px] text-gray-500">Profile</span>
+                  <textarea
+                    className="input cv-shrink min-h-[120px]"
+                    value={form.profile}
+                    onChange={e => setField('profile', e.target.value)}
+                    disabled={loading}
+                  />
+                </label>
               </div>
-            
-              {open.work && (
-                <div className="grid gap-3 mt-3">
-                  {form.employment.length === 0 ? (
-                    <div className="text-[12px] text-gray-500">No employment history yet.</div>
-                  ) : (
-                    form.employment.map((e, i) => (
-                      <div key={i} className="border rounded-xl p-3 grid gap-2">
+            )}
+          </section>
+
+          {/* Key Skills */}
+          <section>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-sm">Key Skills</h3>
+              <button
+                type="button"
+                className="text-[11px] text-gray-500 underline"
+                onClick={() => toggle('skills')}
+              >
+                {open.skills ? 'Hide' : 'Show'}
+              </button>
+            </div>
+            {open.skills && (
+              <label className="grid gap-1 mt-3">
+                <span className="text-[11px] text-gray-500">Key Skills (comma or newline)</span>
+                <textarea
+                  className="input cv-shrink min-h-[100px]"
+                  value={form.keySkills}
+                  onChange={e => setField('keySkills', e.target.value)}
+                  disabled={loading}
+                />
+              </label>
+            )}
+          </section>
+
+          {/* Employment */}
+          <section>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-sm">Employment History</h3>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  className="text-[11px] text-gray-500 underline"
+                  onClick={addEmployment}
+                  disabled={loading}
+                >
+                  Add role
+                </button>
+                <button
+                  type="button"
+                  className="text-[11px] text-gray-500 underline"
+                  onClick={() => toggle('work')}
+                >
+                  {open.work ? 'Hide' : 'Show'}
+                </button>
+              </div>
+            </div>
+
+            {open.work && (
+              <div className="grid gap-3 mt-3">
+                {form.employment.length === 0 ? (
+                  <div className="text-[12px] text-gray-500">No employment history yet.</div>
+                ) : (
+                  form.employment.map((e, i) => (
+                    <div key={i} className="border rounded-xl p-3 grid gap-2">
+                      <label className="grid gap-1">
+                        <span className="text-[11px] text-gray-500">Title</span>
+                        <input
+                          className="input"
+                          value={e.title || ''}
+                          onChange={ev => {
+                            const v = ev.target.value
+                            setForm(prev => {
+                              const copy = structuredClone(prev)
+                              copy.employment[i].title = v
+                              return copy
+                            })
+                          }}
+                        />
+                      </label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         <label className="grid gap-1">
-                          <span className="text-[11px] text-gray-500">Title</span>
+                          <span className="text-[11px] text-gray-500">Company</span>
                           <input
                             className="input"
-                            value={e.title || ''}
+                            value={e.company || ''}
                             onChange={ev => {
                               const v = ev.target.value
                               setForm(prev => {
                                 const copy = structuredClone(prev)
-                                copy.employment[i].title = v
+                                copy.employment[i].company = v
                                 return copy
                               })
                             }}
                           />
                         </label>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div className="grid grid-cols-2 gap-2">
                           <label className="grid gap-1">
-                            <span className="text-[11px] text-gray-500">Company</span>
+                            <span className="text-[11px] text-gray-500">Start</span>
                             <input
                               className="input"
-                              value={e.company || ''}
+                              value={e.start || ''}
                               onChange={ev => {
                                 const v = ev.target.value
                                 setForm(prev => {
                                   const copy = structuredClone(prev)
-                                  copy.employment[i].company = v
+                                  copy.employment[i].start = v
                                   return copy
                                 })
                               }}
                             />
                           </label>
-                          <div className="grid grid-cols-2 gap-2">
-                            <label className="grid gap-1">
-                              <span className="text-[11px] text-gray-500">Start</span>
-                              <input
-                                className="input"
-                                value={e.start || ''}
-                                onChange={ev => {
-                                  const v = ev.target.value
-                                  setForm(prev => {
-                                    const copy = structuredClone(prev)
-                                    copy.employment[i].start = v
-                                    return copy
-                                  })
-                                }}
-                              />
-                            </label>
-                            <label className="grid gap-1">
-                              <span className="text-[11px] text-gray-500">End</span>
-                              <input
-                                className="input"
-                                value={e.end || ''}
-                                onChange={ev => {
-                                  const v = ev.target.value
-                                  setForm(prev => {
-                                    const copy = structuredClone(prev)
-                                    copy.employment[i].end = v
-                                    return copy
-                                  })
-                                }}
-                              />
-                            </label>
-                          </div>
-                        </div>
-                        <label className="grid gap-1">
-                          <span className="text-[11px] text-gray-500">Description</span>
-                          <textarea
-                            className="input cv-shrink min-h-[80px]"
-                            value={e.description || ''}
-                            onChange={ev => {
-                              const v = ev.target.value
-                              setForm(prev => {
-                                const copy = structuredClone(prev)
-                                copy.employment[i].description = v
-                                return copy
-                              })
-                            }}
-                          />
-                        </label>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-            </section>
-            
-            {/* Education (unchanged) */}
-            <section>
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-sm">Education & Qualifications</h3>
-                <button
-                  type="button"
-                  className="text-[11px] text-gray-500 underline"
-                  onClick={() => toggle('education')}
-                >
-                  {open.education ? 'Hide' : 'Show'}
-                </button>
-              </div>
-            
-              {open.education && (
-                <div className="grid gap-3 mt-3">
-                  {form.education.length === 0 ? (
-                    <div className="text-[12px] text-gray-500">No education yet.</div>
-                  ) : (
-                    form.education.map((e, i) => (
-                      <div key={i} className="flex items-start justify-between">
-                        <div className="grid gap-0.5">
-                          <div className="font-medium">{e.course || e.institution || 'Course'}</div>
-                          {!!e.institution && !!e.course && e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase() && (
-                            <div className="text-[11px] text-gray-500">{e.institution}</div>
-                          )}
-                        </div>
-                        <div className="text-[11px] text-gray-500 whitespace-nowrap">
-                          {[e.start, e.end].filter(Boolean).join(' to ')}
+                          <label className="grid gap-1">
+                            <span className="text-[11px] text-gray-500">End</span>
+                            <input
+                              className="input"
+                              value={e.end || ''}
+                              onChange={ev => {
+                                const v = ev.target.value
+                                setForm(prev => {
+                                  const copy = structuredClone(prev)
+                                  copy.employment[i].end = v
+                                  return copy
+                                })
+                              }}
+                            />
+                          </label>
                         </div>
                       </div>
-                    ))
-                  )}
-                </div>
-              )}
-            </section>
-
-
-            {/* Additional */}
-            <section>
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-sm">Additional Information</h3>
-                <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('extra')}>
-                  {open.extra ? 'Hide' : 'Show'}
-                </button>
+                      <label className="grid gap-1">
+                        <span className="text-[11px] text-gray-500">Description</span>
+                        <textarea
+                          className="input cv-shrink min-h-[80px]"
+                          value={e.description || ''}
+                          onChange={ev => {
+                            const v = ev.target.value
+                            setForm(prev => {
+                              const copy = structuredClone(prev)
+                              copy.employment[i].description = v
+                              return copy
+                            })
+                          }}
+                        />
+                      </label>
+                    </div>
+                  ))
+                )}
               </div>
+            )}
+          </section>
 
-              {open.extra && (
-                <div className="text-[12px] grid gap-1 mt-3">
-                  <div>Driving License: {form.additional.drivingLicense || '—'}</div>
-                  <div>Nationality: {form.additional.nationality || '—'}</div>
-                  <div>Availability: {form.additional.availability || '—'}</div>
-                  <div>Health: {form.additional.health || '—'}</div>
-                  <div>Criminal Record: {form.additional.criminalRecord || '—'}</div>
-                  <div>Financial History: {form.additional.financialHistory || '—'}</div>
+          {/* Education (unchanged) */}
+          <section>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-sm">Education & Qualifications</h3>
+              <button
+                type="button"
+                className="text-[11px] text-gray-500 underline"
+                onClick={() => toggle('education')}
+              >
+                {open.education ? 'Hide' : 'Show'}
+              </button>
+            </div>
+
+            {open.education && (
+              <div className="grid gap-3 mt-3">
+                {form.education.length === 0 ? (
+                  <div className="text-[12px] text-gray-500">No education yet.</div>
+                ) : (
+                  form.education.map((e, i) => (
+                    <div key={i} className="flex items-start justify-between">
+                      <div className="grid gap-0.5">
+                        <div className="font-medium">{e.course || e.institution || 'Course'}</div>
+                        {!!e.institution && !!e.course && e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase() && (
+                          <div className="text-[11px] text-gray-500">{e.institution}</div>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-gray-500 whitespace-nowrap">
+                        {[e.start, e.end].filter(Boolean).join(' to ')}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </section>
+
+          {/* Additional */}
+          <section>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-sm">Additional Information</h3>
+              <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('extra')}>
+                {open.extra ? 'Hide' : 'Show'}
+              </button>
+            </div>
+
+            {open.extra && (
+              <div className="text-[12px] grid gap-1 mt-3">
+                <div>Driving License: {form.additional.drivingLicense || '—'}</div>
+                <div>Nationality: {form.additional.nationality || '—'}</div>
+                <div>Availability: {form.additional.availability || '—'}</div>
+                <div>Health: {form.additional.health || '—'}</div>
+                <div>Criminal Record: {form.additional.criminalRecord || '—'}</div>
+                <div>Financial History: {form.additional.financialHistory || '—'}</div>
+              </div>
+            )}
+          </section>
+
+          {/* Debug: Raw JSON */}
+          <section>
+            <div className="mt-2 border rounded-xl p-2 bg-gray-50">
+              <div className="text-[10px] font-semibold text-gray-600 mb-1">Raw JSON Data (debug)</div>
+
+              {/* Candidate Data */}
+              <div className="border rounded-lg mb-2">
+                <div className="flex items-center justify-between px-2 py-1">
+                  <div className="text-[10px] font-medium">Candidate Data</div>
+                  <button type="button" className="text-[10px] text-gray-500 underline" onClick={() => toggle('rawCandidate')}>
+                    {open.rawCandidate ? 'Hide' : 'Show'}
+                  </button>
                 </div>
-              )}
-            </section>
-
-            {/* Debug: Raw JSON */}
-            <section>
-              <div className="mt-2 border rounded-xl p-2 bg-gray-50">
-                <div className="text-[10px] font-semibold text-gray-600 mb-1">Raw JSON Data (debug)</div>
-
-                {/* Candidate Data */}
-                <div className="border rounded-lg mb-2">
-                  <div className="flex items-center justify-between px-2 py-1">
-                    <div className="text-[10px] font-medium">Candidate Data</div>
-                    <button type="button" className="text-[10px] text-gray-500 underline" onClick={() => toggle('rawCandidate')}>
-                      {open.rawCandidate ? 'Hide' : 'Show'}
-                    </button>
-                  </div>
-                  {open.rawCandidate && (
-                    <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
+                {open.rawCandidate && (
+                  <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
 {JSON.stringify(rawCandidate, null, 2)}
-                    </pre>
-                  )}
-                </div>
-
-                {/* Work Experience */}
-                <div className="border rounded-lg mb-2">
-                  <div className="flex items-center justify-between px-2 py-1">
-                    <div className="text-[10px] font-medium">Work Experience</div>
-                    <button type="button" className="text-[10px] text-gray-500 underline" onClick={() => toggle('rawWork')}>
-                      {open.rawWork ? 'Hide' : 'Show'}
-                    </button>
-                  </div>
-                  {open.rawWork && (
-                    <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
-{JSON.stringify(rawWork, null, 2)}
-                    </pre>
-                  )}
-                </div>
-
-                {/* Education Details */}
-                <div className="border rounded-lg mb-2">
-                  <div className="flex items-center justify-between px-2 py-1">
-                    <div className="text-[10px] font-medium">Education Details</div>
-                    <button type="button" className="text-[10px] text-gray-500 underline" onClick={() => toggle('rawEdu')}>
-                      {open.rawEdu ? 'Hide' : 'Show'}
-                    </button>
-                  </div>
-                  {open.rawEdu && (
-                    <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
-{JSON.stringify(rawEdu, null, 2)}
-                    </pre>
-                  )}
-                </div>
-
-                {/* Custom Fields */}
-                <div className="border rounded-lg">
-                  <div className="flex items-center justify-between px-2 py-1">
-                    <div className="text-[10px] font-medium">Custom Fields</div>
-                    <button type="button" className="text-[10px] text-gray-500 underline" onClick={() => toggle('rawCustom')}>
-                      {open.rawCustom ? 'Hide' : 'Show'}
-                    </button>
-                  </div>
-                  {open.rawCustom && (
-                    <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
-{JSON.stringify(rawCustom, null, 2)}
-                    </pre>
-                  )}
-                </div>
+                  </pre>
+                )}
               </div>
-            </section>
-          </div>
-        )}
 
-        {/* RIGHT: preview always renders here; on Sales it's full-width */}
-        <div className="card p-0 overflow-hidden">
-          <CVTemplatePreview />
-        </div>
-      </div>
+              {/* Work Experience */}
+              <div className="border rounded-lg mb-2">
+                <div className="flex items-center justify-between px-2 py-1">
+                  <div className="text-[10px] font-medium">Work Experience</div>
+                  <button type="button" className="text-[10px] text-gray-500 underline" onClick={() => toggle('rawWork')}>
+                    {open.rawWork ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+                {open.rawWork && (
+                  <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
+{JSON.stringify(rawWork, null, 2)}
+                  </pre>
+                )}
+              </div>
 
-      {/* ===== Upload modal ===== */}
-      {showUploadModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          {/* If we have success, show a separate success popup that replaces the previous window */}
-          {uploadSuccess ? (
-            <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl text-center">
-              <div className="text-2xl mb-2 text-green-600">Upload Successful</div>
-              <p className="text-[12px] text-gray-600">
-                {uploadContext === 'standard'
-                  ? `File uploaded for Candidate ID ${candidateId || '—'}.`
-                  : `File uploaded for Candidate ID ${uploadCandidateId || '—'}.`}
-              </p>
-              <div className="mt-6">
-                <button
-                  type="button"
-                  className="px-4 py-2 rounded-lg bg-zinc-900 text-white"
-                  onClick={() => { setShowUploadModal(false); setUploadSuccess(null) }}
-                >
-                  Close
-                </button>
+              {/* Education Details */}
+              <div className="border rounded-lg mb-2">
+                <div className="flex items-center justify-between px-2 py-1">
+                  <div className="text-[10px] font-medium">Education Details</div>
+                  <button type="button" className="text-[10px] text-gray-500 underline" onClick={() => toggle('rawEdu')}>
+                    {open.rawEdu ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+                {open.rawEdu && (
+                  <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
+{JSON.stringify(rawEdu, null, 2)}
+                  </pre>
+                )}
+              </div>
+
+              {/* Custom Fields */}
+              <div className="border rounded-lg">
+                <div className="flex items-center justify-between px-2 py-1">
+                  <div className="text-[10px] font-medium">Custom Fields</div>
+                  <button type="button" className="text-[10px] text-gray-500 underline" onClick={() => toggle('rawCustom')}>
+                    {open.rawCustom ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+                {open.rawCustom && (
+                  <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
+{JSON.stringify(rawCustom, null, 2)}
+                  </pre>
+                )}
               </div>
             </div>
-          ) : (
-            <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
-              <div className="mb-4">
-                <h3 className="text-base font-semibold">Upload CV to Vincere</h3>
+          </section>
+        </div>
+      )}
 
-                {/* Header summary only for Standard; Sales shows manual ID field below */}
-                {uploadContext === 'standard' && (
-                  <p className="text-[12px] text-gray-600">
-                    Candidate: <span className="font-medium">{candidateName || form.name || 'Unknown'}</span> · ID:{' '}
-                    <span className="font-mono">{candidateId || '—'}</span>
-                  </p>
-                )}
+      {/* RIGHT: preview always renders here; on Sales it's full-width */}
+      <div className="card p-0 overflow-hidden">
+        <CVTemplatePreview />
+      </div>
+    </div>
 
-                <p className="text-[11px] text-gray-500 mt-1">
-                  Source:&nbsp;
-                  {uploadContext === 'standard' ? 'Standard (right-panel template → PDF)' : 'Sales (imported file)'}
+    {/* ===== Upload modal ===== */}
+    {showUploadModal && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        {/* Success state replaces modal content */}
+        {uploadSuccess ? (
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl text-center">
+            <div className="text-2xl mb-2 text-green-600">Upload Successful</div>
+            <p className="text-[12px] text-gray-600">
+              {uploadContext === 'standard'
+                ? `File uploaded for Candidate ID ${candidateId || '—'}.`
+                : `File uploaded for Candidate ID ${uploadCandidateId || '—'}.`}
+            </p>
+            <div className="mt-6">
+              <button
+                type="button"
+                className="px-4 py-2 rounded-lg bg-zinc-900 text-white"
+                onClick={() => { setShowUploadModal(false); setUploadSuccess(null) }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+            <div className="mb-4">
+              <h3 className="text-base font-semibold">Upload CV to Vincere</h3>
+
+              {/* Header summary only for Standard; Sales shows manual ID field below */}
+              {uploadContext === 'standard' && (
+                <p className="text-[12px] text-gray-600">
+                  Candidate: <span className="font-medium">{candidateName || form.name || 'Unknown'}</span> · ID:{' '}
+                  <span className="font-mono">{candidateId || '—'}</span>
                 </p>
-              </div>
+              )}
 
-              <div className="space-y-4">
-                {/* Manual Candidate ID entry for Sales */}
-                {uploadContext === 'sales' && (
-                  <div>
-                    <label className="block text-[12px] font-medium">Candidate ID</label>
-                    <input
-                      type="text"
-                      className="mt-1 w-full rounded-md border p-2 text-[13px]"
-                      value={uploadCandidateId}
-                      onChange={(e) => setUploadCandidateId(e.target.value)}
-                      placeholder="Type Candidate ID used in Vincere"
-                    />
-                  </div>
-                )}
+              <p className="text-[11px] text-gray-500 mt-1">
+                Source:&nbsp;
+                {uploadContext === 'standard' ? 'Standard (right-panel template → PDF)' : 'Sales (imported file)'}
+              </p>
+            </div>
 
+            <div className="space-y-4">
+              {/* Manual Candidate ID entry for Sales */}
+              {uploadContext === 'sales' && (
                 <div>
-                  <label className="block text-[12px] font-medium">File name</label>
+                  <label className="block text-[12px] font-medium">Candidate ID</label>
                   <input
                     type="text"
                     className="mt-1 w-full rounded-md border p-2 text-[13px]"
-                    value={uploadFileName}
-                    onChange={(e) => setUploadFileName(e.target.value)}
-                    placeholder="e.g. JohnSmith_CV.pdf"
+                    value={uploadCandidateId}
+                    onChange={(e) => setUploadCandidateId(e.target.value)}
+                    placeholder="Type Candidate ID used in Vincere"
                   />
                 </div>
+              )}
 
-                {uploadErr && <div className="text-[12px] text-red-600">{uploadErr}</div>}
+              <div>
+                <label className="block text-[12px] font-medium">File name</label>
+                <input
+                  type="text"
+                  className="mt-1 w-full rounded-md border p-2 text-[13px]"
+                  value={uploadFileName}
+                  onChange={(e) => setUploadFileName(e.target.value)}
+                  placeholder="e.g. JohnSmith_CV.pdf"
+                />
               </div>
 
-              <div className="mt-6 flex justify-end gap-3">
-                <button
-                  type="button"
-                  className="px-4 py-2 rounded-lg border"
-                  onClick={() => setShowUploadModal(false)}
-                  disabled={uploadBusy}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="px-4 py-2 rounded-lg bg-zinc-900 text-white disabled:opacity-50"
-                  onClick={confirmUpload}
-                  disabled={
-                    uploadBusy ||
-                    !uploadFileName.trim() ||
-                    (uploadContext === 'sales' && !uploadCandidateId.trim())
-                  }
-                >
-                  {uploadBusy ? 'Uploading…' : 'Confirm & Upload'}
-                </button>
-              </div>
+              {uploadErr && <div className="text-[12px] text-red-600">{uploadErr}</div>}
             </div>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                className="px-4 py-2 rounded-lg border"
+                onClick={() => setShowUploadModal(false)}
+                disabled={uploadBusy}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="px-4 py-2 rounded-lg bg-zinc-900 text-white disabled:opacity-50"
+                onClick={confirmUpload}
+                disabled={
+                  uploadBusy ||
+                  !uploadFileName.trim() ||
+                  (uploadContext === 'sales' && !uploadCandidateId.trim())
+                }
+              >
+                {uploadBusy ? 'Uploading…' : 'Confirm & Upload'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    )}
+  </div>
+)
+
