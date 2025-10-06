@@ -1064,38 +1064,48 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   // ========== render ==========
   return (
   <div className="grid gap-4">
-    {/* Minimal print + PDF styles */}
-    <style jsx global>{`
-      @media print {
-        @page { size: A4; margin: 12mm; }
+  {/* Minimal print + PDF styles */}
+  <style jsx global>{`
+    /* Smaller textarea font for retrieved sections (Profile, Key Skills, Employment Description) */
+    .input.cv-shrink { font-size: 12px; line-height: 1.25; }
+    @media (min-width: 640px) { .input.cv-shrink { font-size: 13px; } }
+    @media print { .input.cv-shrink { font-size: 11px; } }
 
-        /* A4 content container; makes footer stick to bottom of last page */
-        .cv-standard-page {
-          width: 100%;
-          display: flex;
-          flex-direction: column;
-          min-height: calc(297mm - 24mm); /* page height minus top+bottom margins */
-        }
+    @media print {
+      @page { size: A4; margin: 12mm; }
 
-        /* keep each job/education entry intact (no splitting across pages) */
-        .cv-entry { break-inside: avoid; page-break-inside: avoid; }
-
-        /* keep section header with the FIRST entry only */
-        .cv-headpair { break-inside: avoid; page-break-inside: avoid; }
-
-        /* prevent headings from being orphaned/split */
-        .cv-standard-page h1,
-        .cv-standard-page h2 { break-inside: avoid; page-break-inside: avoid; }
-
-        /* footer pinned to bottom; never creates a blank page */
-        .cv-footer {
-          margin-top: auto;
-          break-inside: avoid;
-          page-break-inside: avoid;
-          page-break-before: auto;
-          page-break-after: auto;
-        }
+      /* A4 content container; makes footer stick to bottom of last page */
+      .cv-standard-page {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        min-height: calc(297mm - 24mm); /* page height minus top+bottom margins */
       }
+
+      /* keep each job/education entry intact (no splitting across pages) */
+      .cv-entry { break-inside: avoid; page-break-inside: avoid; }
+
+      /* keep section header with the FIRST entry only */
+      .cv-headpair { break-inside: avoid; page-break-inside: avoid; }
+
+      /* prevent headings from being orphaned/split */
+      .cv-standard-page h1,
+      .cv-standard-page h2 { break-inside: avoid; page-break-inside: avoid; }
+
+      /* footer pinned to bottom; never creates a blank page */
+      .cv-footer {
+        margin-top: auto;
+        break-inside: avoid;
+        page-break-inside: avoid;
+        page-break-before: auto;
+        page-break-after: auto;
+      }
+    }
+
+    /* Also help in on-screen preview */
+    .cv-entry,
+    .cv-headpair { break-inside: avoid; page-break-inside: avoid; }
+  `}</style>
 
       /* Also help in on-screen preview */
       .cv-entry,
