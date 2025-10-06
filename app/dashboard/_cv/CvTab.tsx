@@ -4,11 +4,12 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
 
 /**
- * CvTab.tsx — full file (prefill font shrinking in editor only)
+ * CvTab.tsx — full file (prefill font shrinking in editor only) + Sales redaction
  * - Adds a "prefill" state to mark which editor fields were auto-filled from retrieve
  * - Prefilled fields render with smaller font (text-[12px]) in LEFT editor only
  * - Prefill flags clear as soon as the user edits the field
- * - Preview and upload logic unchanged
+ * - Sales redaction overlay to draw white cover rectangles and bake into a copy
+ * - Upload prefers saved redacted copy (if any) for Sales
  */
 
 type TemplateKey = 'standard' | 'sales'
@@ -383,6 +384,22 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   const [salesDocBlob, setSalesDocBlob] = useState<Blob | null>(null)  // baked PDF blob (for upload+preview)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
+  // --- Redaction (Sales only) ---
+  const [redactMode, setRedactMode] = useState(false)
+  const [salesDocBlobRedacted, setSalesDocBlobRedacted] = useState<Blob | null>(null)
+
+  // Per-page cover rectangles, stored as normalized 0..1 coords
+  type Cover = { x: number; y: number; w: number; h: number }
+  const [coversByPage, setCoversByPage] = useState<Record<number, Cover[]>>({})
+
+  // Which page the overlay is targeting (0 = first page)
+  const [currentPage, setCurrentPage] = useState<number>(0)
+
+  // Overlay drawing helpers
+  const overlayRef = useRef<HTMLDivElement | null>(null)
+  const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null)
+  const [dragRect, setDragRect] = useState<Cover | null>(null)
+
   function resetSalesState() {
     setSalesErr(null)
     if (salesDocUrl) URL.revokeObjectURL(salesDocUrl)
@@ -390,8 +407,16 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     setSalesDocName('')
     setSalesDocType('')
     setSalesDocBlob(null)
+    setSalesDocBlobRedacted(null)   // new
     setProcessing(false)
     setDragOver(false)
+
+    // redact UI reset
+    setRedactMode(false)
+    setCoversByPage({})
+    setCurrentPage(0)
+    setDragStart(null)
+    setDragRect(null)
   }
 
   function resetAllForTemplate(t: TemplateKey | null) {
@@ -488,7 +513,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       const aiData = await aiRes.json()
       if (!aiRes.ok || !aiData?.ok) throw new Error(aiData?.error || 'Profile generation failed.')
       setField('profile', aiData.profile || '')
-      setPrefill(prev => ({ ...prev, profile: true }))   // << keep small after Generate
+      setPrefill(prev => ({ ...prev, profile: true }))   // keep small after Generate
     } catch (e: any) {
       setError(e?.message || 'Profile generation failed.')
     } finally {
@@ -522,7 +547,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       const aiData = await aiRes.json()
       if (!aiRes.ok || !aiData?.ok) throw new Error(aiData?.error || 'Job Profile generation failed.')
       setField('profile', aiData.profile || '')
-      setPrefill(prev => ({ ...prev, profile: true }))   // << keep small after Generate
+      setPrefill(prev => ({ ...prev, profile: true }))   // keep small after Generate
     } catch (e: any) {
       setError(e?.message || 'Job Profile generation failed.')
     } finally {
@@ -784,6 +809,9 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
       // store baked blob for upload
       setSalesDocBlob(baked)
+      // clear any previous redactions
+      setSalesDocBlobRedacted(null)
+      setCoversByPage({})
     } catch (e: any) {
       setSalesErr(e?.message || 'Failed to process file')
     } finally {
@@ -809,6 +837,102 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     () => (salesDocType?.includes('pdf') || /\.pdf$/i.test(salesDocName)),
     [salesDocType, salesDocName]
   )
+
+  // ========== REDACTION: bake covers into a copy ==========
+  // Draw opaque white rectangles onto a COPY of the baked PDF and save it
+  async function saveRedactionsToCopy(): Promise<void> {
+    if (!salesDocBlob) {
+      setSalesErr('No document to redact.')
+      return
+    }
+    // If nothing to redact, clear redacted copy and exit
+    if (!Object.keys(coversByPage).length) {
+      setSalesDocBlobRedacted(null)
+      setRedactMode(false)
+      return
+    }
+
+    try {
+      setProcessing(true)
+      const ab = await salesDocBlob.arrayBuffer()
+      const pdfDoc = await PDFDocument.load(ab, { ignoreEncryption: true })
+      const pages = pdfDoc.getPages()
+
+      Object.entries(coversByPage).forEach(([pi, covers]) => {
+        const pageIndex = Number(pi)
+        const page = pages[pageIndex]
+        if (!page || !covers?.length) return
+        const { width, height } = page.getSize()
+        covers.forEach(c => {
+          page.drawRectangle({
+            x: c.x * width,
+            y: c.y * height,
+            width: c.w * width,
+            height: c.h * height,
+            color: rgb(1, 1, 1),
+            borderWidth: 0,
+          })
+        })
+      })
+
+      const out = await pdfDoc.save()
+      const blob = new Blob([out], { type: 'application/pdf' })
+      setSalesDocBlobRedacted(blob)    // will be used for upload
+      setRedactMode(false)
+    } catch (e: any) {
+      setSalesErr(e?.message || 'Failed to apply redactions.')
+    } finally {
+      setProcessing(false)
+    }
+  }
+
+  // ========== REDACTION overlay handlers ==========
+  function overlayPt(ev: React.MouseEvent): { nx: number; ny: number } {
+    const el = overlayRef.current!
+    const r = el.getBoundingClientRect()
+    const x = Math.min(Math.max(ev.clientX - r.left, 0), r.width)
+    const y = Math.min(Math.max(ev.clientY - r.top, 0), r.height)
+    return { nx: x / r.width, ny: 1 - y / r.height } // normalize; y=0 at bottom
+  }
+
+  function onOverlayMouseDown(ev: React.MouseEvent) {
+    if (!redactMode) return
+    const { nx, ny } = overlayPt(ev)
+    setDragStart({ x: nx, y: ny })
+    setDragRect({ x: nx, y: ny, w: 0, h: 0 })
+  }
+
+  function onOverlayMouseMove(ev: React.MouseEvent) {
+    if (!redactMode || !dragStart) return
+    const { nx, ny } = overlayPt(ev)
+    const x1 = Math.min(dragStart.x, nx)
+    const y1 = Math.min(dragStart.y, ny)
+    const x2 = Math.max(dragStart.x, nx)
+    const y2 = Math.max(dragStart.y, ny)
+    setDragRect({ x: x1, y: y1, w: x2 - x1, h: y2 - y1 })
+  }
+
+  function onOverlayMouseUp() {
+    if (!redactMode || !dragRect) { setDragStart(null); setDragRect(null); return }
+    setCoversByPage(prev => {
+      const arr = prev[currentPage] ? [...prev[currentPage]] : []
+      // Ignore tiny boxes
+      if (dragRect.w > 0.005 && dragRect.h > 0.005) arr.push(dragRect)
+      return { ...prev, [currentPage]: arr }
+    })
+    setDragStart(null)
+    setDragRect(null)
+  }
+
+  function removeCover(pageIndex: number, i: number) {
+    setCoversByPage(prev => {
+      const arr = [...(prev[pageIndex] || [])]
+      arr.splice(i, 1)
+      const next = { ...prev, [pageIndex]: arr }
+      if (!arr.length) delete next[pageIndex]
+      return next
+    })
+  }
 
   // STANDARD: export right-panel DOM to PDF and upload (NO baking here)
   async function uploadStandardPreviewToVincereUrl(finalName: string, cid: string) {
@@ -840,10 +964,11 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     }
   }
 
-  // SALES: upload the already-baked file shown in preview
+  // SALES: upload the already-baked (or redacted copy) shown in preview
   async function uploadSalesFileToVincereUrl(finalName: string, cid: string) {
-    if (!salesDocBlob) throw new Error('No Sales document to upload')
-    const baked = salesDocBlob // already baked in handleFile()
+    // Prefer the saved redacted version if present; otherwise use the baked original
+    const baked = salesDocBlobRedacted ?? salesDocBlob
+    if (!baked) throw new Error('No Sales document to upload')
   
     if (baked.size <= BASE64_THRESHOLD_BYTES) {
       const base64 = await blobToBase64(baked)
@@ -888,13 +1013,60 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     }
   }
 
-  // Sales viewer — shows baked preview so you can verify branding
+  // Sales viewer — shows baked preview so you can verify branding + redact overlay
   function SalesViewerCard() {
     return (
       <div className="border rounded-2xl overflow-hidden bg-white">
         {salesDocUrl ? (
           isPdf ? (
-            <iframe className="w-full h-[75vh] bg-white" src={salesDocUrl} title={salesDocName || 'Document'} />
+            <div className="relative">
+              <iframe className="w-full h-[75vh] bg-white" src={salesDocUrl} title={salesDocName || 'Document'} />
+
+              {/* Redaction overlay */}
+              {redactMode && (
+                <div
+                  ref={overlayRef}
+                  className="absolute inset-0 cursor-crosshair"
+                  style={{ background: 'transparent' }}
+                  onMouseDown={onOverlayMouseDown}
+                  onMouseMove={onOverlayMouseMove}
+                  onMouseUp={onOverlayMouseUp}
+                >
+                  {/* Existing saved covers for the current page */}
+                  {(coversByPage[currentPage] || []).map((c, i) => (
+                    <div
+                      key={i}
+                      title="Click to remove"
+                      onClick={(e) => { e.stopPropagation(); removeCover(currentPage, i) }}
+                      style={{
+                        position: 'absolute',
+                        left: `${c.x * 100}%`,
+                        bottom: `${c.y * 100}%`,
+                        width: `${c.w * 100}%`,
+                        height: `${c.h * 100}%`,
+                        background: 'rgba(255,255,255,0.75)',
+                        outline: '1px dashed rgba(0,0,0,0.3)',
+                      }}
+                    />
+                  ))}
+
+                  {/* Live rectangle while dragging */}
+                  {dragRect && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        left: `${dragRect.x * 100}%`,
+                        bottom: `${dragRect.y * 100}%`,
+                        width: `${dragRect.w * 100}%`,
+                        height: `${dragRect.h * 100}%`,
+                        background: 'rgba(255,255,255,0.5)',
+                        outline: '1px solid rgba(0,0,0,0.4)',
+                      }}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
           ) : (
             <div className="p-6 text-xs text-gray-600 bg-white">
               Preview not available for this file type. You can still upload it.
@@ -1048,7 +1220,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         )}
 
 
-        {/* Education & Qualifications (header + first entry stay together) */}
+                {/* Education & Qualifications (header + first entry stay together) */}
         {form.education.length === 0 ? (
           <div className="cv-headpair">
             <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
@@ -1140,598 +1312,651 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
   // ========== render ==========
   return (
-  <div className="grid gap-4">
-    {/* Minimal print + PDF styles + prefill-only editor sizing */}
-    <style jsx global>{`
-      @media print {
-        @page { size: A4; margin: 12mm; }
+    <div className="grid gap-4">
+      {/* Minimal print + PDF styles + prefill-only editor sizing */}
+      <style jsx global>{`
+        @media print {
+          @page { size: A4; margin: 12mm; }
 
-        /* A4 content container; makes footer stick to bottom of last page */
-        .cv-standard-page {
-          width: 100%;
-          display: flex;
-          flex-direction: column;
-          min-height: calc(297mm - 24mm); /* page height minus top+bottom margins */
+          /* A4 content container; makes footer stick to bottom of last page */
+          .cv-standard-page {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            min-height: calc(297mm - 24mm); /* page height minus top+bottom margins */
+          }
+
+          /* keep each job/education entry intact (no splitting across pages) */
+          .cv-entry { break-inside: avoid; page-break-inside: avoid; }
+
+          /* keep section header with the FIRST entry only */
+          .cv-headpair { break-inside: avoid; page-break-inside: avoid; }
+
+          /* prevent headings from being orphaned/split */
+          .cv-standard-page h1,
+          .cv-standard-page h2 { break-inside: avoid; page-break-inside: avoid; }
+
+          /* footer pinned to bottom; never creates a blank page */
+          .cv-footer {
+            margin-top: auto;
+            break-inside: avoid;
+            page-break-inside: avoid;
+            page-break-before: auto;
+            page-break-after: auto;
+          }
         }
 
-        /* keep each job/education entry intact (no splitting across pages) */
-        .cv-entry { break-inside: avoid; page-break-inside: avoid; }
-
-        /* keep section header with the FIRST entry only */
+        /* Also help in on-screen preview */
+        .cv-entry,
         .cv-headpair { break-inside: avoid; page-break-inside: avoid; }
+      `}</style>
 
-        /* prevent headings from being orphaned/split */
-        .cv-standard-page h1,
-        .cv-standard-page h2 { break-inside: avoid; page-break-inside: avoid; }
-
-        /* footer pinned to bottom; never creates a blank page */
-        .cv-footer {
-          margin-top: auto;
-          break-inside: avoid;
-          page-break-inside: avoid;
-          page-break-before: auto;
-          page-break-after: auto;
-        }
-      }
-
-      /* Also help in on-screen preview */
-      .cv-entry,
-      .cv-headpair { break-inside: avoid; page-break-inside: avoid; }
-    `}</style>
-
-    <div className="card p-4">
-      {!templateFromShell && (
-        <div className="grid sm:grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={() => resetAllForTemplate('standard')}
-            className={`btn w-full ${template === 'standard' ? 'btn-brand' : 'btn-grey'}`}
-          >
-            Standard
-          </button>
-
-          <button
-            type="button"
-            onClick={() => resetAllForTemplate('sales')}
-            className={`btn w-full ${template === 'sales' ? 'btn-brand' : 'btn-grey'}`}
-            title="Sales template: import a CV (PDF/DOCX)"
-          >
-            Sales
-          </button>
-        </div>
-      )}
-
-      {/* Top controls: Standard vs Sales */}
-      {template === 'standard' && (
-        <div className="grid sm:grid-cols-[1fr_auto_auto] gap-2 mt-4">
-          <input
-            className="input"
-            placeholder="Enter Candidate ID"
-            value={candidateId}
-            onChange={e => setCandidateId(e.target.value)}
-            disabled={loading}
-            autoComplete="off"
-          />
-          <button
-            className="btn btn-brand"
-            onClick={fetchData}
-            disabled={loading || !candidateId}
-            title="Retrieve Candidate"
-          >
-            {loading ? 'Fetching…' : 'Retrieve Candidate'}
-          </button>
-
-          {/* Upload (Standard) */}
-          <button
-            type="button"
-            className="btn btn-grey"
-            disabled={!candidateId}
-            onClick={() => {
-              const defaultName = `${(candidateName || form.name || 'CV').replace(/\s+/g, '')}_Standard.pdf`
-              setUploadFileName(defaultName)
-              setUploadContext('standard')
-              setUploadErr(null)
-              setUploadSuccess(null)
-              setShowUploadModal(true)
-            }}
-            title="Export the right panel CV to PDF and upload to Vincere"
-          >
-            Upload
-          </button>
-        </div>
-      )}
-
-      {template === 'sales' && (
-        <>
-          {/* Hidden input */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            onChange={onUploadChange}
-            className="hidden"
-          />
-
-          {/* Faux input + buttons */}
-          <div
-            className="grid sm:grid-cols-[1fr_auto_auto] gap-2 mt-4"
-            onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={onDrop}
-          >
-            <div
-              className={`input flex items-center justify-between cursor-pointer ${dragOver ? 'ring-2 ring-[#F7941D]/50' : ''}`}
-              title="Import or drag a file here"
-              onClick={onClickUpload}
+      <div className="card p-4">
+        {!templateFromShell && (
+          <div className="grid sm:grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => resetAllForTemplate('standard')}
+              className={`btn w-full ${template === 'standard' ? 'btn-brand' : 'btn-grey'}`}
             >
-              <span className={`text-gray-400 select-none ${salesDocName ? '!text-gray-700 truncate' : ''}`}>
-                {salesDocName ? salesDocName : 'Import or drag a file here'}
-              </span>
-            </div>
+              Standard
+            </button>
 
             <button
               type="button"
-              className="btn btn-brand"
-              onClick={onClickUpload}
-              disabled={processing}
-              title="Import a PDF or Word (DOC/DOCX) document"
+              onClick={() => resetAllForTemplate('sales')}
+              className={`btn w-full ${template === 'sales' ? 'btn-brand' : 'btn-grey'}`}
+              title="Sales template: import a CV (PDF/DOCX)"
             >
-              {processing ? 'Processing…' : 'Import CV'}
+              Sales
+            </button>
+          </div>
+        )}
+
+        {/* Top controls: Standard vs Sales */}
+        {template === 'standard' && (
+          <div className="grid sm:grid-cols-[1fr_auto_auto] gap-2 mt-4">
+            <input
+              className="input"
+              placeholder="Enter Candidate ID"
+              value={candidateId}
+              onChange={e => setCandidateId(e.target.value)}
+              disabled={loading}
+              autoComplete="off"
+            />
+            <button
+              className="btn btn-brand"
+              onClick={fetchData}
+              disabled={loading || !candidateId}
+              title="Retrieve Candidate"
+            >
+              {loading ? 'Fetching…' : 'Retrieve Candidate'}
             </button>
 
-            {/* Upload (Sales) */}
+            {/* Upload (Standard) */}
             <button
               type="button"
               className="btn btn-grey"
-              disabled={!salesDocUrl}
+              disabled={!candidateId}
               onClick={() => {
-                const baseName = (candidateName || form.name || 'CV').replace(/\s+/g, '')
-                const defaultName = salesDocName?.trim()
-                  ? salesDocName.replace(/\.(doc|docx)$/i, '.pdf')
-                  : `${baseName}_Sales.pdf`
+                const defaultName = `${(candidateName || form.name || 'CV').replace(/\s+/g, '')}_Standard.pdf`
                 setUploadFileName(defaultName)
-                setUploadContext('sales')
-                setUploadCandidateId(candidateId || '') // prefill if available, editable in modal
+                setUploadContext('standard')
                 setUploadErr(null)
                 setUploadSuccess(null)
                 setShowUploadModal(true)
               }}
-              title="Upload the imported file to Vincere"
+              title="Export the right panel CV to PDF and upload to Vincere"
             >
               Upload
             </button>
           </div>
+        )}
 
-          {salesErr && <div className="mt-3 text-xs text-red-600">{String(salesErr).slice(0, 300)}</div>}
-        </>
-      )}
+        {template === 'sales' && (
+          <>
+            {/* Hidden input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              onChange={onUploadChange}
+              className="hidden"
+            />
 
-      {error && <div className="mt-3 text-xs text-red-600">{String(error).slice(0, 300)}</div>}
-    </div>
-
-    {/* CONTENT GRID */}
-    <div className={`grid gap-4 ${template === 'sales' ? '' : 'md:grid-cols-2'}`}>
-      {template === 'standard' && (
-        <div className="card p-4 space-y-4">
-          {/* Standard editor */}
-          {/* Core */}
-          <section>
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-sm">Core Details</h3>
-              <div className="flex items-center gap-3">
-                <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('core')}>
-                  {open.core ? 'Hide' : 'Show'}
-                </button>
+            {/* Faux input + buttons */}
+            <div
+              className="grid sm:grid-cols-[1fr_auto_auto] gap-2 mt-4"
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={onDrop}
+            >
+              <div
+                className={`input flex items-center justify-between cursor-pointer ${dragOver ? 'ring-2 ring-[#F7941D]/50' : ''}`}
+                title="Import or drag a file here"
+                onClick={onClickUpload}
+              >
+                <span className={`text-gray-400 select-none ${salesDocName ? '!text-gray-700 truncate' : ''}`}>
+                  {salesDocName ? salesDocName : 'Import or drag a file here'}
+                </span>
               </div>
-            </div>
 
-            {open.core && (
-              <div className="grid gap-3 mt-3">
-                <label className="grid gap-1">
-                  <span className="text-[11px] text-gray-500">Name</span>
-                  <input
-                    className={`input ${prefill.name ? 'text-[11px]' : ''}`}
-                    value={form.name}
-                    onChange={e => {
-                      clearPrefill('name')
-                      setField('name', e.target.value)
-                      setCandidateName(e.target.value)
-                    }}
-                    disabled={loading}
-                  />
-                </label>
-                <label className="grid gap-1">
-                  <span className="text-[11px] text-gray-500">Location</span>
-                  <input
-                    className={`input ${prefill.location ? 'text-[11px]' : ''}`}
-                    value={form.location}
-                    onChange={e => { clearPrefill('location'); setField('location', e.target.value) }}
-                    disabled={loading}
-                  />
-                </label>
-              </div>
-            )}
-          </section>
+              <button
+                type="button"
+                className="btn btn-brand"
+                onClick={onClickUpload}
+                disabled={processing}
+                title="Import a PDF or Word (DOC/DOCX) document"
+              >
+                {processing ? 'Processing…' : 'Import CV'}
+              </button>
 
-          {/* Profile */}
-          <section>
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-sm">Profile</h3>
-              <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('profile')}>
-                {open.profile ? 'Hide' : 'Show'}
+              {/* Upload (Sales) */}
+              <button
+                type="button"
+                className="btn btn-grey"
+                disabled={!salesDocUrl}
+                onClick={() => {
+                  const baseName = (candidateName || form.name || 'CV').replace(/\s+/g, '')
+                  const defaultName = salesDocName?.trim()
+                    ? salesDocName.replace(/\.(doc|docx)$/i, '.pdf')
+                    : `${baseName}_Sales.pdf`
+                  setUploadFileName(defaultName)
+                  setUploadContext('sales')
+                  setUploadCandidateId(candidateId || '') // prefill if available, editable in modal
+                  setUploadErr(null)
+                  setUploadSuccess(null)
+                  setShowUploadModal(true)
+                }}
+                title="Upload the imported file to Vincere"
+              >
+                Upload
               </button>
             </div>
-            {open.profile && (
-              <div className="mt-3">
-                <div className="flex flex-col sm:flex-row gap-2 mb-3 items-stretch sm:items-center">
-                  <button
-                    type="button"
-                    className="btn btn-grey text-[11px] !px-3 !py-1.5 w-36 whitespace-nowrap"
-                    disabled={loading || !rawCandidate}
-                    onClick={generateProfile}
-                    title={!rawCandidate ? 'Retrieve a candidate first' : 'Generate profile from candidate data'}
-                  >
-                    Generate
-                  </button>
-                  <div className="border-t border-gray-200 my-2 sm:my-0 sm:mx-2 sm:border-t-0 sm:border-l sm:h-6" />
-                  <input className="input flex-1 min-w-[160px]" placeholder="Job ID" value={jobId} onChange={e => setJobId(e.target.value)} disabled={loading} />
-                  <button
-                    type="button"
-                    className="btn btn-grey text-[11px] !px-3 !py-1.5 w-36 whitespace-nowrap"
-                    disabled={loading || !rawCandidate || !jobId}
-                    onClick={generateJobProfile}
-                    title={!jobId ? 'Enter a Job ID' : 'Generate job-tailored profile'}
-                  >
-                    Generate for Job
+
+            {salesErr && <div className="mt-3 text-xs text-red-600">{String(salesErr).slice(0, 300)}</div>}
+
+            {/* Redaction controls (shown only when a document is loaded) */}
+            {salesDocUrl && (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  className={`btn ${redactMode ? 'btn-brand' : 'btn-grey'}`}
+                  onClick={() => setRedactMode(v => !v)}
+                  title="Draw white covers over areas to hide"
+                >
+                  {redactMode ? 'Exit Redact Mode' : 'Redact Mode'}
+                </button>
+
+                <button
+                  type="button"
+                  className="btn btn-grey"
+                  disabled={!Object.keys(coversByPage).length}
+                  onClick={saveRedactionsToCopy}
+                  title="Bake covers into a copy for upload"
+                >
+                  Save Redactions
+                </button>
+
+                <button
+                  type="button"
+                  className="btn btn-grey"
+                  disabled={!Object.keys(coversByPage).length}
+                  onClick={() => { setCoversByPage({}); setSalesDocBlobRedacted(null) }}
+                >
+                  Clear Redactions
+                </button>
+
+                {/* Page selector (simple; 0 = first page) */}
+                <label className="ml-auto text-[11px] text-gray-500 flex items-center gap-1">
+                  Page:
+                  <input
+                    type="number"
+                    min={0}
+                    className="input w-16 !py-1 !px-2"
+                    value={currentPage}
+                    onChange={e => setCurrentPage(Math.max(0, Number(e.target.value) || 0))}
+                    title="Page index (0-based)"
+                  />
+                </label>
+
+                {/* Tiny status */}
+                {salesDocBlobRedacted && (
+                  <span className="text-[11px] text-green-700">Redacted copy ready</span>
+                )}
+              </div>
+            )}
+          </>
+        )}
+
+        {error && <div className="mt-3 text-xs text-red-600">{String(error).slice(0, 300)}</div>}
+      </div>
+
+      {/* CONTENT GRID */}
+      <div className={`grid gap-4 ${template === 'sales' ? '' : 'md:grid-cols-2'}`}>
+        {template === 'standard' && (
+          <div className="card p-4 space-y-4">
+            {/* Standard editor */}
+            {/* Core */}
+            <section>
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-sm">Core Details</h3>
+                <div className="flex items-center gap-3">
+                  <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('core')}>
+                    {open.core ? 'Hide' : 'Show'}
                   </button>
                 </div>
+              </div>
 
-                <label className="grid gap-1">
-                  <span className="text-[11px] text-gray-500">Profile</span>
+              {open.core && (
+                <div className="grid gap-3 mt-3">
+                  <label className="grid gap-1">
+                    <span className="text-[11px] text-gray-500">Name</span>
+                    <input
+                      className={`input ${prefill.name ? 'text-[11px]' : ''}`}
+                      value={form.name}
+                      onChange={e => {
+                        clearPrefill('name')
+                        setField('name', e.target.value)
+                        setCandidateName(e.target.value)
+                      }}
+                      disabled={loading}
+                    />
+                  </label>
+                  <label className="grid gap-1">
+                    <span className="text-[11px] text-gray-500">Location</span>
+                    <input
+                      className={`input ${prefill.location ? 'text-[11px]' : ''}`}
+                      value={form.location}
+                      onChange={e => { clearPrefill('location'); setField('location', e.target.value) }}
+                      disabled={loading}
+                    />
+                  </label>
+                </div>
+              )}
+            </section>
+
+            {/* Profile */}
+            <section>
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-sm">Profile</h3>
+                <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('profile')}>
+                  {open.profile ? 'Hide' : 'Show'}
+                </button>
+              </div>
+              {open.profile && (
+                <div className="mt-3">
+                  <div className="flex flex-col sm:flex-row gap-2 mb-3 items-stretch sm:items-center">
+                    <button
+                      type="button"
+                      className="btn btn-grey text-[11px] !px-3 !py-1.5 w-36 whitespace-nowrap"
+                      disabled={loading || !rawCandidate}
+                      onClick={generateProfile}
+                      title={!rawCandidate ? 'Retrieve a candidate first' : 'Generate profile from candidate data'}
+                    >
+                      Generate
+                    </button>
+                    <div className="border-t border-gray-200 my-2 sm:my-0 sm:mx-2 sm:border-t-0 sm:border-l sm:h-6" />
+                    <input className="input flex-1 min-w-[160px]" placeholder="Job ID" value={jobId} onChange={e => setJobId(e.target.value)} disabled={loading} />
+                    <button
+                      type="button"
+                      className="btn btn-grey text-[11px] !px-3 !py-1.5 w-36 whitespace-nowrap"
+                      disabled={loading || !rawCandidate || !jobId}
+                      onClick={generateJobProfile}
+                      title={!jobId ? 'Enter a Job ID' : 'Generate job-tailored profile'}
+                    >
+                      Generate for Job
+                    </button>
+                  </div>
+
+                  <label className="grid gap-1">
+                    <span className="text-[11px] text-gray-500">Profile</span>
+                    <textarea
+                      className={`input min-h-[160px] ${prefill.profile ? '!text-[11px]' : ''}`}
+                      value={form.profile}
+                      onChange={e => { /* keep small even when editing */ setField('profile', e.target.value) }}
+                      disabled={loading}
+                    />
+                  </label>
+                </div>
+              )}
+            </section>
+
+            {/* Key Skills */}
+            <section>
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-sm">Key Skills</h3>
+                <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('skills')}>
+                  {open.skills ? 'Hide' : 'Show'}
+                </button>
+              </div>
+              {open.skills && (
+                <label className="grid gap-1 mt-3">
+                  <span className="text-[11px] text-gray-500">Key Skills (comma or newline)</span>
                   <textarea
-                    className={`input min-h-[160px] ${prefill.profile ? '!text-[11px]' : ''}`}
-                    value={form.profile}
-                    onChange={e => { /* keep small even when editing */ setField('profile', e.target.value) }}
+                    className={`input min-h-[100px] ${prefill.keySkills ? 'text-[11px]' : ''}`}
+                    value={form.keySkills}
+                    onChange={e => { clearPrefill('keySkills'); setField('keySkills', e.target.value) }}
                     disabled={loading}
                   />
                 </label>
+              )}
+            </section>
+
+            {/* Employment */}
+            <section>
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-sm">Employment History</h3>
+                <div className="flex items-center gap-3">
+                  <button type="button" className="text-[11px] text-gray-500 underline" onClick={addEmployment} disabled={loading}>Add role</button>
+                  <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('work')}>
+                    {open.work ? 'Hide' : 'Show'}
+                  </button>
+                </div>
               </div>
-            )}
-          </section>
 
-          {/* Key Skills */}
-          <section>
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-sm">Key Skills</h3>
-              <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('skills')}>
-                {open.skills ? 'Hide' : 'Show'}
-              </button>
-            </div>
-            {open.skills && (
-              <label className="grid gap-1 mt-3">
-                <span className="text-[11px] text-gray-500">Key Skills (comma or newline)</span>
-                <textarea
-                  className={`input min-h-[100px] ${prefill.keySkills ? 'text-[11px]' : ''}`}
-                  value={form.keySkills}
-                  onChange={e => { clearPrefill('keySkills'); setField('keySkills', e.target.value) }}
-                  disabled={loading}
-                />
-              </label>
-            )}
-          </section>
-
-          {/* Employment */}
-          <section>
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-sm">Employment History</h3>
-              <div className="flex items-center gap-3">
-                <button type="button" className="text-[11px] text-gray-500 underline" onClick={addEmployment} disabled={loading}>Add role</button>
-                <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('work')}>
-                  {open.work ? 'Hide' : 'Show'}
-                </button>
-              </div>
-            </div>
-
-            {open.work && (
-              <div className="grid gap-3 mt-3">
-                {form.employment.length === 0 ? (
-                  <div className="text-[12px] text-gray-500">No employment history yet.</div>
-                ) : (
-                  form.employment.map((e, i) => (
-                    <div key={i} className="border rounded-xl p-3 grid gap-2">
-                      <label className="grid gap-1">
-                        <span className="text-[11px] text-gray-500">Title</span>
-                        <input
-                          className={`input ${prefill.employment?.[i]?.title ? 'text-[11px]' : ''}`}
-                          value={e.title || ''}
-                          onChange={ev => {
-                            clearPrefill(`employment.${i}.title`)
-                            const v = ev.target.value
-                            setForm(prev => { const copy = structuredClone(prev); copy.employment[i].title = v; return copy })
-                          }}
-                        />
-                      </label>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {open.work && (
+                <div className="grid gap-3 mt-3">
+                  {form.employment.length === 0 ? (
+                    <div className="text-[12px] text-gray-500">No employment history yet.</div>
+                  ) : (
+                    form.employment.map((e, i) => (
+                      <div key={i} className="border rounded-xl p-3 grid gap-2">
                         <label className="grid gap-1">
-                          <span className="text-[11px] text-gray-500">Company</span>
+                          <span className="text-[11px] text-gray-500">Title</span>
                           <input
-                            className={`input ${prefill.employment?.[i]?.company ? 'text-[11px]' : ''}`}
-                            value={e.company || ''}
+                            className={`input ${prefill.employment?.[i]?.title ? 'text-[11px]' : ''}`}
+                            value={e.title || ''}
                             onChange={ev => {
-                              clearPrefill(`employment.${i}.company`)
+                              clearPrefill(`employment.${i}.title`)
                               const v = ev.target.value
-                              setForm(prev => { const copy = structuredClone(prev); copy.employment[i].company = v; return copy })
+                              setForm(prev => { const copy = structuredClone(prev); copy.employment[i].title = v; return copy })
                             }}
                           />
                         </label>
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <label className="grid gap-1">
-                            <span className="text-[11px] text-gray-500">Start</span>
+                            <span className="text-[11px] text-gray-500">Company</span>
                             <input
-                              className={`input ${prefill.employment?.[i]?.start ? 'text-[11px]' : ''}`}
-                              value={e.start || ''}
+                              className={`input ${prefill.employment?.[i]?.company ? 'text-[11px]' : ''}`}
+                              value={e.company || ''}
                               onChange={ev => {
-                                clearPrefill(`employment.${i}.start`)
+                                clearPrefill(`employment.${i}.company`)
                                 const v = ev.target.value
-                                setForm(prev => { const copy = structuredClone(prev); copy.employment[i].start = v; return copy })
+                                setForm(prev => { const copy = structuredClone(prev); copy.employment[i].company = v; return copy })
                               }}
                             />
                           </label>
-                          <label className="grid gap-1">
-                            <span className="text-[11px] text-gray-500">End</span>
-                            <input
-                              className={`input ${prefill.employment?.[i]?.end ? 'text-[11px]' : ''}`}
-                              value={e.end || ''}
-                              onChange={ev => {
-                                clearPrefill(`employment.${i}.end`)
-                                const v = ev.target.value
-                                setForm(prev => { const copy = structuredClone(prev); copy.employment[i].end = v; return copy })
-                              }}
-                            />
-                          </label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <label className="grid gap-1">
+                              <span className="text-[11px] text-gray-500">Start</span>
+                              <input
+                                className={`input ${prefill.employment?.[i]?.start ? 'text-[11px]' : ''}`}
+                                value={e.start || ''}
+                                onChange={ev => {
+                                  clearPrefill(`employment.${i}.start`)
+                                  const v = ev.target.value
+                                  setForm(prev => { const copy = structuredClone(prev); copy.employment[i].start = v; return copy })
+                                }}
+                              />
+                            </label>
+                            <label className="grid gap-1">
+                              <span className="text-[11px] text-gray-500">End</span>
+                              <input
+                                className={`input ${prefill.employment?.[i]?.end ? 'text-[11px]' : ''}`}
+                                value={e.end || ''}
+                                onChange={ev => {
+                                  clearPrefill(`employment.${i}.end`)
+                                  const v = ev.target.value
+                                  setForm(prev => { const copy = structuredClone(prev); copy.employment[i].end = v; return copy })
+                                }}
+                              />
+                            </label>
+                          </div>
                         </div>
+                        <label className="grid gap-1">
+                          <span className="text-[11px] text-gray-500">Description</span>
+                          <textarea
+                            className={`input min-h-[80px] ${prefill.employment?.[i]?.description ? 'text-[11px]' : ''}`}
+                            value={e.description || ''}
+                            onChange={ev => {
+                              clearPrefill(`employment.${i}.description`)
+                              const v = ev.target.value
+                              setForm(prev => { const copy = structuredClone(prev); copy.employment[i].description = v; return copy })
+                            }}
+                          />
+                        </label>
                       </div>
-                      <label className="grid gap-1">
-                        <span className="text-[11px] text-gray-500">Description</span>
-                        <textarea
-                          className={`input min-h-[80px] ${prefill.employment?.[i]?.description ? 'text-[11px]' : ''}`}
-                          value={e.description || ''}
-                          onChange={ev => {
-                            clearPrefill(`employment.${i}.description`)
-                            const v = ev.target.value
-                            setForm(prev => { const copy = structuredClone(prev); copy.employment[i].description = v; return copy })
-                          }}
-                        />
-                      </label>
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
-          </section>
-
-          {/* Education */}
-          <section>
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-sm">Education & Qualifications</h3>
-              <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('education')}>
-                {open.education ? 'Hide' : 'Show'}
-              </button>
-            </div>
-
-            {open.education && (
-              <div className="grid gap-3 mt-3">
-                {form.education.length === 0 ? (
-                  <div className="text-[12px] text-gray-500">No education yet.</div>
-                ) : (
-                  form.education.map((e, i) => (
-                    <div key={i} className="flex items-start justify-between">
-                      <div className="grid gap-0.5">
-                        <div className="font-medium">{e.course || e.institution || 'Course'}</div>
-                        {!!e.institution && !!e.course && e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase() && (
-                          <div className="text-[11px] text-gray-500">{e.institution}</div>
-                        )}
-                      </div>
-                      <div className="text-[11px] text-gray-500 whitespace-nowrap">{[e.start, e.end].filter(Boolean).join(' to ')}</div>
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
-          </section>
-
-          {/* Additional */}
-          <section>
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-sm">Additional Information</h3>
-              <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('extra')}>
-                {open.extra ? 'Hide' : 'Show'}
-              </button>
-            </div>
-
-            {open.extra && (
-              <div className="text-[12px] grid gap-1 mt-3">
-                <div>Driving License: {form.additional.drivingLicense || '—'}</div>
-                <div>Nationality: {form.additional.nationality || '—'}</div>
-                <div>Availability: {form.additional.availability || '—'}</div>
-                <div>Health: {form.additional.health || '—'}</div>
-                <div>Criminal Record: {form.additional.criminalRecord || '—'}</div>
-                <div>Financial History: {form.additional.financialHistory || '—'}</div>
-              </div>
-            )}
-          </section>
-
-          {/* Debug: Raw JSON */}
-          <section>
-            <div className="mt-2 border rounded-xl p-2 bg-gray-50">
-              <div className="text-[10px] font-semibold text-gray-600 mb-1">Raw JSON Data (debug)</div>
-
-              {/* Candidate Data */}
-              <div className="border rounded-lg mb-2">
-                <div className="flex items-center justify-between px-2 py-1">
-                  <div className="text-[10px] font-medium">Candidate Data</div>
-                  <button type="button" className="text-[10px] text-gray-500 underline" onClick={() => toggle('rawCandidate')}>
-                    {open.rawCandidate ? 'Hide' : 'Show'}
-                  </button>
+                    ))
+                  )}
                 </div>
-                {open.rawCandidate && (
-                  <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
-{JSON.stringify(rawCandidate, null, 2)}
-                  </pre>
-                )}
-              </div>
-
-              {/* Work Experience */}
-              <div className="border rounded-lg mb-2">
-                <div className="flex items-center justify-between px-2 py-1">
-                  <div className="text-[10px] font-medium">Work Experience</div>
-                  <button type="button" className="text-[10px] text-gray-500 underline" onClick={() => toggle('rawWork')}>
-                    {open.rawWork ? 'Hide' : 'Show'}
-                  </button>
-                </div>
-                {open.rawWork && (
-                  <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
-{JSON.stringify(rawWork, null, 2)}
-                  </pre>
-                )}
-              </div>
-
-              {/* Education Details */}
-              <div className="border rounded-lg mb-2">
-                <div className="flex items-center justify-between px-2 py-1">
-                  <div className="text-[10px] font-medium">Education Details</div>
-                  <button type="button" className="text-[10px] text-gray-500 underline" onClick={() => toggle('rawEdu')}>
-                    {open.rawEdu ? 'Hide' : 'Show'}
-                  </button>
-                </div>
-                {open.rawEdu && (
-                  <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
-{JSON.stringify(rawEdu, null, 2)}
-                  </pre>
-                )}
-              </div>
-
-              {/* Custom Fields */}
-              <div className="border rounded-lg">
-                <div className="flex items-center justify-between px-2 py-1">
-                  <div className="text-[10px] font-medium">Custom Fields</div>
-                  <button type="button" className="text-[10px] text-gray-500 underline" onClick={() => toggle('rawCustom')}>
-                    {open.rawCustom ? 'Hide' : 'Show'}
-                  </button>
-                </div>
-                {open.rawCustom && (
-                  <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
-{JSON.stringify(rawCustom, null, 2)}
-                  </pre>
-                )}
-              </div>
-            </div>
-          </section>
-        </div>
-      )}
-
-      {/* RIGHT: preview always renders here; on Sales it's full-width */}
-      <div className="card p-0 overflow-hidden">
-        <CVTemplatePreview />
-      </div>
-    </div>
-
-    {/* ===== Upload modal ===== */}
-    {showUploadModal && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-        {/* If we have success, show a separate success popup that replaces the previous window */}
-        {uploadSuccess ? (
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl text-center">
-            <div className="text-2xl mb-2 text-green-600">Upload Successful</div>
-            <p className="text-[12px] text-gray-600">
-              {uploadContext === 'standard'
-                ? `File uploaded for Candidate ID ${candidateId || '—'}.`
-                : `File uploaded for Candidate ID ${uploadCandidateId || '—'}.`}
-            </p>
-            <div className="mt-6">
-              <button
-                type="button"
-                className="px-4 py-2 rounded-lg bg-zinc-900 text-white"
-                onClick={() => { setShowUploadModal(false); setUploadSuccess(null) }}
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
-            <div className="mb-4">
-              <h3 className="text-base font-semibold">Upload CV to Vincere</h3>
-
-              {/* Header summary only for Standard; Sales shows manual ID field below */}
-              {uploadContext === 'standard' && (
-                <p className="text-[12px] text-gray-600">
-                  Candidate: <span className="font-medium">{candidateName || form.name || 'Unknown'}</span> · ID:{' '}
-                  <span className="font-mono">{candidateId || '—'}</span>
-                </p>
               )}
+            </section>
 
-              <p className="text-[11px] text-gray-500 mt-1">
-                Source:&nbsp;
-                {uploadContext === 'standard' ? 'Standard (right-panel template → PDF)' : 'Sales (imported file)'}
+            {/* Education */}
+            <section>
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-sm">Education & Qualifications</h3>
+                <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('education')}>
+                  {open.education ? 'Hide' : 'Show'}
+                </button>
+              </div>
+
+              {open.education && (
+                <div className="grid gap-3 mt-3">
+                  {form.education.length === 0 ? (
+                    <div className="text-[12px] text-gray-500">No education yet.</div>
+                  ) : (
+                    form.education.map((e, i) => (
+                      <div key={i} className="flex items-start justify-between">
+                        <div className="grid gap-0.5">
+                          <div className="font-medium">{e.course || e.institution || 'Course'}</div>
+                          {!!e.institution && !!e.course && e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase() && (
+                            <div className="text-[11px] text-gray-500">{e.institution}</div>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-gray-500 whitespace-nowrap">{[e.start, e.end].filter(Boolean).join(' to ')}</div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </section>
+
+            {/* Additional */}
+            <section>
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-sm">Additional Information</h3>
+                <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('extra')}>
+                  {open.extra ? 'Hide' : 'Show'}
+                </button>
+              </div>
+
+              {open.extra && (
+                <div className="text-[12px] grid gap-1 mt-3">
+                  <div>Driving License: {form.additional.drivingLicense || '—'}</div>
+                  <div>Nationality: {form.additional.nationality || '—'}</div>
+                  <div>Availability: {form.additional.availability || '—'}</div>
+                  <div>Health: {form.additional.health || '—'}</div>
+                  <div>Criminal Record: {form.additional.criminalRecord || '—'}</div>
+                  <div>Financial History: {form.additional.financialHistory || '—'}</div>
+                </div>
+              )}
+            </section>
+
+            {/* Debug: Raw JSON */}
+            <section>
+              <div className="mt-2 border rounded-xl p-2 bg-gray-50">
+                <div className="text-[10px] font-semibold text-gray-600 mb-1">Raw JSON Data (debug)</div>
+
+                {/* Candidate Data */}
+                <div className="border rounded-lg mb-2">
+                  <div className="flex items-center justify-between px-2 py-1">
+                    <div className="text-[10px] font-medium">Candidate Data</div>
+                    <button type="button" className="text-[10px] text-gray-500 underline" onClick={() => toggle('rawCandidate')}>
+                      {open.rawCandidate ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
+                  {open.rawCandidate && (
+                    <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
+{JSON.stringify(rawCandidate, null, 2)}
+                    </pre>
+                  )}
+                </div>
+
+                {/* Work Experience */}
+                <div className="border rounded-lg mb-2">
+                  <div className="flex items-center justify-between px-2 py-1">
+                    <div className="text-[10px] font-medium">Work Experience</div>
+                    <button type="button" className="text-[10px] text-gray-500 underline" onClick={() => toggle('rawWork')}>
+                      {open.rawWork ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
+                  {open.rawWork && (
+                    <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
+{JSON.stringify(rawWork, null, 2)}
+                    </pre>
+                  )}
+                </div>
+
+                {/* Education Details */}
+                <div className="border rounded-lg mb-2">
+                  <div className="flex items-center justify-between px-2 py-1">
+                    <div className="text-[10px] font-medium">Education Details</div>
+                    <button type="button" className="text-[10px] text-gray-500 underline" onClick={() => toggle('rawEdu')}>
+                      {open.rawEdu ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
+                  {open.rawEdu && (
+                    <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
+{JSON.stringify(rawEdu, null, 2)}
+                    </pre>
+                  )}
+                </div>
+
+                {/* Custom Fields */}
+                <div className="border rounded-lg">
+                  <div className="flex items-center justify-between px-2 py-1">
+                    <div className="text-[10px] font-medium">Custom Fields</div>
+                    <button type="button" className="text-[10px] text-gray-500 underline" onClick={() => toggle('rawCustom')}>
+                      {open.rawCustom ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
+                  {open.rawCustom && (
+                    <pre className="text-[10px] leading-tight bg-white border-t rounded-b-lg p-2 max-h-64 overflow-auto">
+{JSON.stringify(rawCustom, null, 2)}
+                    </pre>
+                  )}
+                </div>
+              </div>
+            </section>
+          </div>
+        )}
+
+        {/* RIGHT: preview always renders here; on Sales it's full-width */}
+        <div className="card p-0 overflow-hidden">
+          <CVTemplatePreview />
+        </div>
+      </div>
+
+      {/* ===== Upload modal ===== */}
+      {showUploadModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          {/* If we have success, show a separate success popup that replaces the previous window */}
+          {uploadSuccess ? (
+            <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl text-center">
+              <div className="text-2xl mb-2 text-green-600">Upload Successful</div>
+              <p className="text-[12px] text-gray-600">
+                {uploadContext === 'standard'
+                  ? `File uploaded for Candidate ID ${candidateId || '—'}.`
+                  : `File uploaded for Candidate ID ${uploadCandidateId || '—'}.`}
               </p>
+              <div className="mt-6">
+                <button
+                  type="button"
+                  className="px-4 py-2 rounded-lg bg-zinc-900 text-white"
+                  onClick={() => { setShowUploadModal(false); setUploadSuccess(null) }}
+                >
+                  Close
+                </button>
+              </div>
             </div>
+          ) : (
+            <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+              <div className="mb-4">
+                <h3 className="text-base font-semibold">Upload CV to Vincere</h3>
 
-            <div className="space-y-4">
-              {/* Manual Candidate ID entry for Sales */}
-              {uploadContext === 'sales' && (
+                {/* Header summary only for Standard; Sales shows manual ID field below */}
+                {uploadContext === 'standard' && (
+                  <p className="text-[12px] text-gray-600">
+                    Candidate: <span className="font-medium">{candidateName || form.name || 'Unknown'}</span> · ID:{' '}
+                    <span className="font-mono">{candidateId || '—'}</span>
+                  </p>
+                )}
+
+                <p className="text-[11px] text-gray-500 mt-1">
+                  Source:&nbsp;
+                  {uploadContext === 'standard' ? 'Standard (right-panel template → PDF)' : 'Sales (imported file)'}
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                {/* Manual Candidate ID entry for Sales */}
+                {uploadContext === 'sales' && (
+                  <div>
+                    <label className="block text-[12px] font-medium">Candidate ID</label>
+                    <input
+                      type="text"
+                      className="mt-1 w-full rounded-md border p-2 text-[13px]"
+                      value={uploadCandidateId}
+                      onChange={(e) => setUploadCandidateId(e.target.value)}
+                      placeholder="Type Candidate ID used in Vincere"
+                    />
+                  </div>
+                )}
+
                 <div>
-                  <label className="block text-[12px] font-medium">Candidate ID</label>
+                  <label className="block text-[12px] font-medium">File name</label>
                   <input
                     type="text"
                     className="mt-1 w-full rounded-md border p-2 text-[13px]"
-                    value={uploadCandidateId}
-                    onChange={(e) => setUploadCandidateId(e.target.value)}
-                    placeholder="Type Candidate ID used in Vincere"
+                    value={uploadFileName}
+                    onChange={(e) => setUploadFileName(e.target.value)}
+                    placeholder="e.g. JohnSmith_CV.pdf"
                   />
                 </div>
-              )}
 
-              <div>
-                <label className="block text-[12px] font-medium">File name</label>
-                <input
-                  type="text"
-                  className="mt-1 w-full rounded-md border p-2 text-[13px]"
-                  value={uploadFileName}
-                  onChange={(e) => setUploadFileName(e.target.value)}
-                  placeholder="e.g. JohnSmith_CV.pdf"
-                />
+                {uploadErr && <div className="text-[12px] text-red-600">{uploadErr}</div>}
               </div>
 
-              {uploadErr && <div className="text-[12px] text-red-600">{uploadErr}</div>}
+              <div className="mt-6 flex justify-end gap-3">
+                <button
+                  type="button"
+                  className="px-4 py-2 rounded-lg border"
+                  onClick={() => setShowUploadModal(false)}
+                  disabled={uploadBusy}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="px-4 py-2 rounded-lg bg-zinc-900 text-white disabled:opacity-50"
+                  onClick={confirmUpload}
+                  disabled={
+                    uploadBusy ||
+                    !uploadFileName.trim() ||
+                    (uploadContext === 'sales' && !uploadCandidateId.trim())
+                  }
+                >
+                  {uploadBusy ? 'Uploading…' : 'Confirm & Upload'}
+                </button>
+              </div>
             </div>
-
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                type="button"
-                className="px-4 py-2 rounded-lg border"
-                onClick={() => setShowUploadModal(false)}
-                disabled={uploadBusy}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="px-4 py-2 rounded-lg bg-zinc-900 text-white disabled:opacity-50"
-                onClick={confirmUpload}
-                disabled={
-                  uploadBusy ||
-                  !uploadFileName.trim() ||
-                  (uploadContext === 'sales' && !uploadCandidateId.trim())
-                }
-              >
-                {uploadBusy ? 'Uploading…' : 'Confirm & Upload'}
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    )}
-  </div>
-)
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
+
+                     
