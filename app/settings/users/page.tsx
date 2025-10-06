@@ -10,6 +10,7 @@ type User = {
   role: Role
   active: boolean
   createdAt: string
+  workPhone?: string | null
 }
 
 export default function UsersPage() {
@@ -31,6 +32,7 @@ export default function UsersPage() {
   const [cName, setCName] = useState('')
   const [cRole, setCRole] = useState<Role>('User')
   const [cPassword, setCPassword] = useState('')
+  const [cWorkPhone, setCWorkPhone] = useState('')
 
   // edit state
   const [editId, setEditId] = useState<string | null>(null)
@@ -39,6 +41,7 @@ export default function UsersPage() {
   const [eRole, setERole] = useState<Role>('User')
   const [eActive, setEActive] = useState(true)
   const [ePassword, setEPassword] = useState('')
+  const [eWorkPhone, setEWorkPhone] = useState('')
 
   const load = async () => {
     setLoading(true)
@@ -84,9 +87,10 @@ export default function UsersPage() {
     setERole(u.role)
     setEActive(u.active)
     setEPassword('')
+    setEWorkPhone(u.workPhone ?? '')
   }
   const cancelEdit = () => {
-    setEditId(null); setEName(''); setERole('User'); setEActive(true); setEPassword('')
+    setEditId(null); setEName(''); setERole('User'); setEActive(true); setEPassword(''); setEWorkPhone('')
   }
 
   const submitCreate = async () => {
@@ -96,12 +100,18 @@ export default function UsersPage() {
       const r = await fetch('/api/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: cEmail, name: cName, role: cRole, password: cPassword }),
+        body: JSON.stringify({
+          email: cEmail,
+          name: cName,
+          role: cRole,
+          password: cPassword,
+          workPhone: cWorkPhone, // send as string; server normalizes empty => null
+        }),
       })
       const j = await r.json().catch(() => ({}))
       if (!r.ok) throw new Error(j?.error || `Create failed (${r.status})`)
       setShowCreate(false)
-      setCEmail(''); setCName(''); setCRole('User'); setCPassword('')
+      setCEmail(''); setCName(''); setCRole('User'); setCPassword(''); setCWorkPhone('')
       await load()
     } catch (e: any) {
       alert(e?.message || 'Create failed')
@@ -116,7 +126,11 @@ export default function UsersPage() {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: eName, role: eRole, active: eActive, password: ePassword || undefined,
+          name: eName,
+          role: eRole,
+          active: eActive,
+          password: ePassword || undefined,
+          workPhone: eWorkPhone, // send string; server normalizes empty => null
         }),
       })
       const j = await r.json().catch(() => ({}))
@@ -213,6 +227,10 @@ export default function UsersPage() {
               <label className="text-sm text-gray-600">Password</label>
               <input type="password" className="input mt-1 w-full" value={cPassword} onChange={e=>setCPassword(e.target.value)} />
             </div>
+            <div>
+              <label className="text-sm text-gray-600">No.</label>
+              <input className="input mt-1 w-full" placeholder="+44…" value={cWorkPhone} onChange={e=>setCWorkPhone(e.target.value)} />
+            </div>
             <div className="sm:col-span-2">
               <button className="btn btn-grey" onClick={submitCreate} disabled={creating}>
                 {creating ? 'Creating…' : 'Create'}
@@ -233,6 +251,7 @@ export default function UsersPage() {
                 <tr className="text-left text-gray-600 border-b">
                   <th className="py-2">Name</th>
                   <th>Email</th>
+                  <th>No.</th>
                   <th>Role</th>
                   <th>Active</th>
                   <th>Created</th>
@@ -242,25 +261,37 @@ export default function UsersPage() {
               <tbody>
                 {users.map(u => (
                   <tr key={u.id} className="border-b">
-                    <td className="py-2">{editId === u.id ? (
-                      <input className="input w-full" value={eName} onChange={e=>setEName(e.target.value)} />
-                    ) : (u.name || '—')}</td>
+                    <td className="py-2">
+                      {editId === u.id ? (
+                        <input className="input w-full" value={eName} onChange={e=>setEName(e.target.value)} />
+                      ) : (u.name || '—')}
+                    </td>
 
                     <td>{u.email}</td>
 
-                    <td>{editId === u.id ? (
-                      <select className="input" value={eRole} onChange={e=>setERole(e.target.value as Role)}>
-                        <option value="User">User</option>
-                        <option value="Admin">Admin</option>
-                      </select>
-                    ) : u.role}</td>
+                    <td>
+                      {editId === u.id ? (
+                        <input className="input w-full" placeholder="+44…" value={eWorkPhone} onChange={e=>setEWorkPhone(e.target.value)} />
+                      ) : (u.workPhone || '—')}
+                    </td>
 
-                    <td>{editId === u.id ? (
-                      <label className="inline-flex items-center gap-2">
-                        <input type="checkbox" checked={eActive} onChange={e=>setEActive(e.target.checked)} />
-                        <span>Active</span>
-                      </label>
-                    ) : (u.active ? 'Yes' : 'No')}</td>
+                    <td>
+                      {editId === u.id ? (
+                        <select className="input" value={eRole} onChange={e=>setERole(e.target.value as Role)}>
+                          <option value="User">User</option>
+                          <option value="Admin">Admin</option>
+                        </select>
+                      ) : u.role}
+                    </td>
+
+                    <td>
+                      {editId === u.id ? (
+                        <label className="inline-flex items-center gap-2">
+                          <input type="checkbox" checked={eActive} onChange={e=>setEActive(e.target.checked)} />
+                          <span>Active</span>
+                        </label>
+                      ) : (u.active ? 'Yes' : 'No')}
+                    </td>
 
                     <td>{new Date(u.createdAt).toLocaleString()}</td>
 
