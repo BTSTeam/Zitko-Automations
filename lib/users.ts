@@ -8,6 +8,8 @@ export type User = {
   name?: string
   role: Role
   active: boolean
+  // Optional work phone (E.164 preferred). Null/undefined means “not set”.
+  workPhone?: string | null
   // password = sha256(salt + plain)
   passwordHash: string
   salt: string
@@ -49,6 +51,7 @@ export function createUser(input: {
   name?: string
   role?: Role
   password: string
+  workPhone?: string | null
 }): User {
   const email = input.email.toLowerCase().trim()
   if (!email) throw new Error('Email is required')
@@ -57,12 +60,22 @@ export function createUser(input: {
 
   const salt = crypto.randomBytes(16).toString('hex')
   const passwordHash = sha256(salt + input.password)
+
+  // normalize work phone: trim; empty string => null; leave undefined as undefined
+  const normalizedWorkPhone =
+    typeof input.workPhone === 'undefined'
+      ? undefined
+      : (input.workPhone ?? '').trim() === ''
+        ? null
+        : (input.workPhone ?? '').trim()
+
   const user: User = {
     id: crypto.randomUUID(),
     email,
     name: input.name?.trim(),
     role: input.role ?? 'User',
     active: true,
+    workPhone: normalizedWorkPhone ?? null,
     passwordHash,
     salt,
     createdAt: new Date().toISOString(),
@@ -73,7 +86,7 @@ export function createUser(input: {
 
 export function updateUser(
   id: string,
-  patch: Partial<Pick<User, 'name' | 'role' | 'active'>> & { password?: string }
+  patch: Partial<Pick<User, 'name' | 'role' | 'active' | 'workPhone'>> & { password?: string }
 ): User {
   const u = store.get(id)
   if (!u) throw new Error('User not found')
@@ -81,6 +94,16 @@ export function updateUser(
   if (typeof patch.name !== 'undefined') u.name = patch.name?.trim()
   if (typeof patch.role !== 'undefined') u.role = patch.role
   if (typeof patch.active !== 'undefined') u.active = !!patch.active
+
+  if (typeof patch.workPhone !== 'undefined') {
+    // Allow clearing by sending null or empty string
+    if (patch.workPhone === null) {
+      u.workPhone = null
+    } else {
+      const trimmed = patch.workPhone?.trim() ?? ''
+      u.workPhone = trimmed === '' ? null : trimmed
+    }
+  }
 
   if (typeof patch.password === 'string' && patch.password.length > 0) {
     const salt = crypto.randomBytes(16).toString('hex')
@@ -110,6 +133,7 @@ export function ensureSeedAdmin() {
     name: 'Stephen Rosamond',
     role: 'Admin',
     active: true,
+    workPhone: null,
     passwordHash,
     salt,
     createdAt: new Date().toISOString(),
