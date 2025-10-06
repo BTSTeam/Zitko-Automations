@@ -450,6 +450,10 @@ export default function MatchTab(): JSX.Element {
     <div className="grid gap-6">
       <div className="card p-6">
           <div className="grid md:grid-cols-3 gap-4 md:gap-x-6 md:gap-y-8 items-end">
+    {/* Full-width title, spans all columns */}
+    <p className="md:col-span-3 text-sm text-gray-600">
+      Enter a Job ID and Search for suitable candidates to be retrieved &amp; scored.
+    </p>
     {/* Row 1: Job ID / Job Title / Location (all with placeholders) */}
     <div>
       <input
