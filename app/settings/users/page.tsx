@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 type Role = 'Admin' | 'User'
@@ -18,7 +18,6 @@ export default function UsersPage() {
 
   // auth/role state
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null)
-  const [meEmail, setMeEmail] = useState<string | null>(null)
 
   // data state
   const [users, setUsers] = useState<User[]>([])
@@ -34,14 +33,16 @@ export default function UsersPage() {
   const [cPassword, setCPassword] = useState('')
   const [cWorkPhone, setCWorkPhone] = useState('')
 
-  // edit state
+  // edit state (inline inside the collapsible content)
   const [editId, setEditId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [eName, setEName] = useState('')
   const [eRole, setERole] = useState<Role>('User')
-  const [eActive, setEActive] = useState(true)
   const [ePassword, setEPassword] = useState('')
   const [eWorkPhone, setEWorkPhone] = useState('')
+
+  // UI state: which rows are expanded
+  const [openIds, setOpenIds] = useState<Record<string, boolean>>({})
 
   const load = async () => {
     setLoading(true)
@@ -67,7 +68,6 @@ export default function UsersPage() {
       try {
         const r = await fetch('/api/auth/me', { cache: 'no-store' })
         const j = await r.json()
-        setMeEmail(j?.email ?? null)
         const admin = j?.role === 'Admin' && j?.active !== false
         setIsAdmin(admin)
         if (admin) await load()
@@ -81,16 +81,20 @@ export default function UsersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  const toggleOpen = (id: string) =>
+    setOpenIds(prev => ({ ...prev, [id]: !prev[id] }))
+
   const startEdit = (u: User) => {
     setEditId(u.id)
     setEName(u.name ?? '')
     setERole(u.role)
-    setEActive(u.active)
     setEPassword('')
     setEWorkPhone(u.workPhone ?? '')
+    // ensure row is open when editing
+    setOpenIds(prev => ({ ...prev, [u.id]: true }))
   }
   const cancelEdit = () => {
-    setEditId(null); setEName(''); setERole('User'); setEActive(true); setEPassword(''); setEWorkPhone('')
+    setEditId(null); setEName(''); setERole('User'); setEPassword(''); setEWorkPhone('')
   }
 
   const submitCreate = async () => {
@@ -105,7 +109,7 @@ export default function UsersPage() {
           name: cName,
           role: cRole,
           password: cPassword,
-          workPhone: cWorkPhone, // send as string; server normalizes empty => null
+          workPhone: cWorkPhone, // server normalizes '' -> null
         }),
       })
       const j = await r.json().catch(() => ({}))
@@ -128,9 +132,8 @@ export default function UsersPage() {
         body: JSON.stringify({
           name: eName,
           role: eRole,
-          active: eActive,
           password: ePassword || undefined,
-          workPhone: eWorkPhone, // send string; server normalizes empty => null
+          workPhone: eWorkPhone, // server normalizes '' -> null
         }),
       })
       const j = await r.json().catch(() => ({}))
@@ -142,10 +145,10 @@ export default function UsersPage() {
     } finally { setSaving(false) }
   }
 
-  const removeUser = async (id: string) => {
-    if (!confirm('Delete this user?')) return
+  const removeUser = async (u: User) => {
+    if (!confirm(`Delete ${u.name || u.email}?`)) return
     try {
-      const r = await fetch(`/api/users/${encodeURIComponent(id)}`, { method: 'DELETE' })
+      const r = await fetch(`/api/users/${encodeURIComponent(u.id)}`, { method: 'DELETE' })
       const j = await r.json().catch(() => ({}))
       if (!r.ok) throw new Error(j?.error || `Delete failed (${r.status})`)
       await load()
@@ -153,6 +156,11 @@ export default function UsersPage() {
       alert(e?.message || 'Delete failed')
     }
   }
+
+  const rows = useMemo(
+    () => users.sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    [users]
+  )
 
   // Not admin view
   if (isAdmin === false) {
@@ -184,25 +192,23 @@ export default function UsersPage() {
   // Admin view
   return (
     <div className="grid gap-6">
-      <div className="card p-6">
-        {/* Header with Close X */}
+      <div className="card p-6 rounded-2xl border">
+        {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-xl font-semibold">User Management</h1>
-          <button
-            aria-label="Close"
-            onClick={() => router.back()}
-            className="w-8 h-8 grid place-items-center rounded-full border text-gray-600 hover:text-gray-900"
-            title="Close"
-          >
-            ×
-          </button>
-        </div>
-
-        {/* Actions */}
-        <div className="mb-4 flex items-center gap-3">
-          <button className="btn btn-brand" onClick={() => setShowCreate(v => !v)}>
-            {showCreate ? 'Cancel' : 'Create User'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button className="btn btn-brand" onClick={() => setShowCreate(v => !v)}>
+              {showCreate ? 'Cancel' : 'Create User'}
+            </button>
+            <button
+              aria-label="Close"
+              onClick={() => router.back()}
+              className="w-9 h-9 grid place-items-center rounded-full border text-gray-600 hover:text-gray-900"
+              title="Close"
+            >
+              ×
+            </button>
+          </div>
         </div>
 
         {/* Create form */}
@@ -239,65 +245,41 @@ export default function UsersPage() {
           </div>
         )}
 
-        {/* Table */}
-        <div className="overflow-auto">
+        {/* List */}
+        <div className="divide-y rounded-2xl border">
           {loading ? (
-            <div className="text-sm text-gray-600">Loading…</div>
+            <div className="text-sm text-gray-600 p-4">Loading…</div>
           ) : error ? (
-            <div className="text-sm text-red-600">{error}</div>
+            <div className="text-sm text-red-600 p-4">{error}</div>
+          ) : rows.length === 0 ? (
+            <div className="text-sm text-gray-600 p-6 text-center">No users found.</div>
           ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-gray-600 border-b">
-                  <th className="py-2">Name</th>
-                  <th>Email</th>
-                  <th>No.</th>
-                  <th>Role</th>
-                  <th>Active</th>
-                  <th>Created</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.map(u => (
-                  <tr key={u.id} className="border-b">
-                    <td className="py-2">
-                      {editId === u.id ? (
-                        <input className="input w-full" value={eName} onChange={e=>setEName(e.target.value)} />
-                      ) : (u.name || '—')}
-                    </td>
+            rows.map(u => {
+              const isOpen = !!openIds[u.id]
+              const isEditing = editId === u.id
+              return (
+                <div key={u.id} className="p-3 sm:p-4">
+                  {/* Top row: arrow + name + created date + actions */}
+                  <div className="flex items-center gap-3">
+                    <button
+                      className="w-8 h-8 grid place-items-center rounded-full border text-gray-600 hover:text-gray-900"
+                      aria-label={isOpen ? 'Collapse' : 'Expand'}
+                      onClick={() => toggleOpen(u.id)}
+                    >
+                      {isOpen ? '▾' : '▸'}
+                    </button>
 
-                    <td>{u.email}</td>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium truncate">{u.name || '—'}</div>
+                      <div className="text-xs text-gray-500">
+                        {new Date(u.createdAt).toLocaleDateString()} {/* date only */}
+                      </div>
+                    </div>
 
-                    <td>
-                      {editId === u.id ? (
-                        <input className="input w-full" placeholder="+44…" value={eWorkPhone} onChange={e=>setEWorkPhone(e.target.value)} />
-                      ) : (u.workPhone || '—')}
-                    </td>
-
-                    <td>
-                      {editId === u.id ? (
-                        <select className="input" value={eRole} onChange={e=>setERole(e.target.value as Role)}>
-                          <option value="User">User</option>
-                          <option value="Admin">Admin</option>
-                        </select>
-                      ) : u.role}
-                    </td>
-
-                    <td>
-                      {editId === u.id ? (
-                        <label className="inline-flex items-center gap-2">
-                          <input type="checkbox" checked={eActive} onChange={e=>setEActive(e.target.checked)} />
-                          <span>Active</span>
-                        </label>
-                      ) : (u.active ? 'Yes' : 'No')}
-                    </td>
-
-                    <td>{new Date(u.createdAt).toLocaleString()}</td>
-
-                    <td className="text-right">
-                      {editId === u.id ? (
-                        <div className="flex items-center gap-2 justify-end">
+                    {/* Actions far right */}
+                    <div className="flex items-center gap-2">
+                      {isEditing ? (
+                        <>
                           <input
                             type="password"
                             placeholder="New password (optional)"
@@ -309,21 +291,73 @@ export default function UsersPage() {
                             {saving ? 'Saving…' : 'Save'}
                           </button>
                           <button className="btn btn-grey" onClick={cancelEdit}>Cancel</button>
-                        </div>
+                        </>
                       ) : (
-                        <div className="flex items-center gap-2 justify-end">
+                        <>
                           <button className="btn btn-grey" onClick={() => startEdit(u)}>Edit</button>
-                          <button className="btn btn-grey" onClick={() => removeUser(u.id)}>Delete</button>
-                        </div>
+                          <button
+                            className="px-3 py-2 rounded-xl bg-red-700 hover:bg-red-800 text-white transition"
+                            onClick={() => removeUser(u)}
+                          >
+                            Delete
+                          </button>
+                        </>
                       )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    </div>
+                  </div>
+
+                  {/* Collapsible content */}
+                  {isOpen && (
+                    <div className="mt-3 pl-11 grid sm:grid-cols-3 gap-4">
+                      <div>
+                        <div className="text-xs text-gray-500 mb-1">Email</div>
+                        {isEditing ? (
+                          <input className="input w-full" value={u.email} disabled />
+                        ) : (
+                          <div className="text-sm">{u.email}</div>
+                        )}
+                      </div>
+
+                      <div>
+                        <div className="text-xs text-gray-500 mb-1">No.</div>
+                        {isEditing ? (
+                          <input
+                            className="input w-full"
+                            placeholder="+44…"
+                            value={eWorkPhone}
+                            onChange={e=>setEWorkPhone(e.target.value)}
+                          />
+                        ) : (
+                          <div className="text-sm">{u.workPhone || '—'}</div>
+                        )}
+                      </div>
+
+                      <div>
+                        <div className="text-xs text-gray-500 mb-1">Role</div>
+                        {isEditing ? (
+                          <select className="input w-full" value={eRole} onChange={e=>setERole(e.target.value as Role)}>
+                            <option value="User">User</option>
+                            <option value="Admin">Admin</option>
+                          </select>
+                        ) : (
+                          <span
+                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium border ${
+                              u.role === 'Admin'
+                                ? 'bg-[#F7941D]/10 text-[#F7941D] border-[#F7941D]/30'
+                                : 'bg-gray-100 text-gray-700 border-gray-200'
+                            }`}
+                          >
+                            {u.role}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })
           )}
         </div>
-
       </div>
     </div>
   )
