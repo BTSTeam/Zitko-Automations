@@ -1,6 +1,44 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+
+/* ---------- Admin-only gate (client) ---------- */
+function AdminGate({ children }: { children: ReactNode }) {
+  const [ready, setReady] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch('/api/auth/me', { cache: 'no-store' })
+        const j = await r.json().catch(() => ({}))
+        setIsAdmin(j?.user?.role === 'Admin')
+      } catch {
+        setIsAdmin(false)
+      } finally {
+        setReady(true)
+      }
+    })()
+  }, [])
+
+  if (!ready) return <div className="card p-6 text-sm text-gray-500">Checking access…</div>
+
+  if (!isAdmin) {
+    return (
+      <div className="card p-6">
+        <h3 className="font-semibold mb-2">Restricted</h3>
+        <p className="text-sm text-gray-600">
+          This section is available to <span className="font-medium">Admin</span> users only.
+          Please contact an administrator if you need access.
+        </p>
+      </div>
+    )
+  }
+
+  return <>{children}</>
+}
+
+/* ---------- Existing tab code ---------- */
 
 type Pool = { id: string | number; name: string }
 type Candidate = { first_name: string; last_name: string; email: string }
@@ -265,7 +303,9 @@ export default function ActiveCampaignTab() {
     denominator && denominator > 0 ? Math.min(100, Math.round((sent / denominator) * 100)) : 0
 
   const fmt = (n: number | null | undefined) =>
-    typeof n === 'number' ? new Intl.NumberFormat().format(n) : '—'
+    typeof n === 'number' ? new Intl.NumberFormat().format(n) : '—
+
+'
 
   // ====== Circular progress (thicker ring) ======
   const RING_SIZE = 360 // px
@@ -273,151 +313,153 @@ export default function ActiveCampaignTab() {
   const pctDeg = Math.max(0, Math.min(360, Math.round((percent / 100) * 360)))
 
   return (
-    <div className="grid gap-6">
-      {/* TOP PANEL: Controls (white card) */}
-      <div className="rounded-2xl border bg-white p-4">
-        <div className="grid gap-4 md:grid-cols-2">
-          {/* Talent Pool */}
-          <label className="grid gap-1">
-            <span className="text-sm font-medium">Talent Pool</span>
-            <div className="relative">
-              <select
-                value={poolId}
-                onChange={(e) => setPoolId(e.target.value)}
-                className="w-full rounded-xl border px-3 py-2 appearance-none pr-9 focus:outline-none focus:ring-2 focus:ring-[#001961]"
-              >
-                {pools.length === 0 ? (
-                  <option value="" disabled>
-                    No Talent Pools
-                  </option>
-                ) : (
-                  pools.map((p) => (
-                    <option key={`${p.id}`} value={`${p.id}`}>
-                      {p.name}
+    <AdminGate>
+      <div className="grid gap-6">
+        {/* TOP PANEL: Controls (white card) */}
+        <div className="rounded-2xl border bg-white p-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            {/* Talent Pool */}
+            <label className="grid gap-1">
+              <span className="text-sm font-medium">Talent Pool</span>
+              <div className="relative">
+                <select
+                  value={poolId}
+                  onChange={(e) => setPoolId(e.target.value)}
+                  className="w-full rounded-xl border px-3 py-2 appearance-none pr-9 focus:outline-none focus:ring-2 focus:ring-[#001961]"
+                >
+                  {pools.length === 0 ? (
+                    <option value="" disabled>
+                      No Talent Pools
                     </option>
-                  ))
-                )}
-              </select>
-              <svg
-                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500"
-                viewBox="0 0 20 20"
-                fill="currentColor"
-                aria-hidden="true"
-              >
-                <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.116l3.71-2.885a.75.75 0 1 1 .92 1.18l-4.2 3.265a.75.75 0 0 1-.92 0L5.25 8.39a.75.75 0 0 1-.02-1.18z" />
-              </svg>
-            </div>
-          </label>
-
-          {/* AC Tag */}
-          <label className="grid gap-1">
-            <span className="text-sm font-medium">Active Campaign Tag</span>
-            <div className="relative">
-              <select
-                value={tagName}
-                onChange={(e) => setTagName(e.target.value)}
-                className="w-full rounded-xl border px-3 py-2 appearance-none pr-9 focus:outline-none focus:ring-2 focus:ring-[#001961]"
-              >
-                <option value="" disabled>
-                  Select a tag
-                </option>
-                {tags.map((t) => (
-                  <option key={t.id} value={t.tag}>
-                    {t.tag}
-                  </option>
-                ))}
-              </select>
-              <svg
-                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500"
-                viewBox="0 0 20 20"
-                fill="currentColor"
-                aria-hidden="true"
-              >
-                <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.116l3.71-2.885a.75.75 0 1 1 .92 1.18l-4.2 3.265a.75.75 0 0 1-.92 0L5.25 8.39a.75.75 0 0 1-.02-1.18z" />
-              </svg>
-            </div>
-          </label>
-        </div>
-
-        {/* Actions */}
-        <div className="mt-4 flex items-center gap-3">
-          <button
-            onClick={retrievePoolCandidates}
-            disabled={loading || !poolId || isSending}
-            className={`rounded-full px-6 py-3 font-medium shadow-sm transition
-              ${!loading && poolId && !isSending
-                ? '!bg-[#001961] !text-white hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#001961]'
-                : 'bg-gray-100 text-gray-500 cursor-not-allowed'}`}
-          >
-            {loading ? 'Retrieving…' : 'Retrieve TP Candidates'}
-          </button>
-
-          <button
-            onClick={sendToActiveCampaign}
-            disabled={!(tagName.trim().length > 0 && poolId !== '') || isSending}
-            className={`ml-auto rounded-full px-5 py-3 font-medium shadow-sm transition 
-              ${tagName.trim().length > 0 && poolId !== '' && !isSending
-                ? '!bg-[#001961] !text-white hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#001961]'
-                : 'bg-gray-100 text-gray-500 cursor-not-allowed'}`}
-            aria-live="polite"
-          >
-            {sendState === 'success' ? '✓' : isSending ? 'Sending…' : 'Send to Active Campaign'}
-          </button>
-        </div>
-
-        {/* Only show non-success errors/info */}
-        {message && sendState !== 'success' && (
-          <div className="mt-2 text-sm text-gray-700">{message}</div>
-        )}
-      </div>
-
-      {/* PROGRESS PANEL (no table) */}
-      <div className="rounded-2xl border bg-white p-6">
-        {/* Header — replaced: show only Tagging line, in dark blue */}
-        <div className="text-[#001961] font-semibold text-lg">
-          Tagging candidates as <span className="font-normal text-gray-600">“{tagName || '—'}”</span>
-        </div>
-
-        <div className="mt-6 flex items-center justify-center">
-          <div
-            className="relative"
-            style={{ width: RING_SIZE, height: RING_SIZE }}
-          >
-            {/* Track + progress via conic-gradient + mask for thickness */}
-            <div
-              className="absolute inset-0 rounded-full"
-              style={{
-                background: `conic-gradient(#001961 ${pctDeg}deg, #e5e7eb 0)`,
-                WebkitMask: `radial-gradient(farthest-side, transparent calc(100% - ${RING_THICKNESS}px), black 0)`,
-                mask: `radial-gradient(farthest-side, transparent calc(100% - ${RING_THICKNESS}px), black 0)`,
-                filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.06))',
-              }}
-            />
-            {/* Inner plate (for subtle depth) */}
-            <div
-              className="absolute rounded-full bg-white"
-              style={{
-                inset: RING_THICKNESS,
-                boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.05)',
-              }}
-            />
-            {/* Center labels */}
-            <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-              <div className="text-xs text-gray-500">
-                {fmt(sent)} of {fmt(denominator)}
+                  ) : (
+                    pools.map((p) => (
+                      <option key={`${p.id}`} value={`${p.id}`}>
+                        {p.name}
+                      </option>
+                    ))
+                  )}
+                </select>
+                <svg
+                  className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.116l3.71-2.885a.75.75 0 1 1 .92 1.18l-4.2 3.265a.75.75 0 0 1-.92 0L5.25 8.39a.75.75 0 0 1-.02-1.18z" />
+                </svg>
               </div>
-              <div className="text-5xl font-bold text-[#001961] mt-1">{percent}%</div>
-            </div>
+            </label>
+
+            {/* AC Tag */}
+            <label className="grid gap-1">
+              <span className="text-sm font-medium">Active Campaign Tag</span>
+              <div className="relative">
+                <select
+                  value={tagName}
+                  onChange={(e) => setTagName(e.target.value)}
+                  className="w-full rounded-xl border px-3 py-2 appearance-none pr-9 focus:outline-none focus:ring-2 focus:ring-[#001961]"
+                >
+                  <option value="" disabled>
+                    Select a tag
+                  </option>
+                  {tags.map((t) => (
+                    <option key={t.id} value={t.tag}>
+                      {t.tag}
+                    </option>
+                  ))}
+                </select>
+                <svg
+                  className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.116l3.71-2.885a.75.75 0 1 1 .92 1.18l-4.2 3.265a.75.75 0 0 1-.92 0L5.25 8.39a.75.75 0 0 1-.02-1.18z" />
+                </svg>
+              </div>
+            </label>
           </div>
+
+          {/* Actions */}
+          <div className="mt-4 flex items-center gap-3">
+            <button
+              onClick={retrievePoolCandidates}
+              disabled={loading || !poolId || isSending}
+              className={`rounded-full px-6 py-3 font-medium shadow-sm transition
+                ${!loading && poolId && !isSending
+                  ? '!bg-[#001961] !text-white hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#001961]'
+                  : 'bg-gray-100 text-gray-500 cursor-not-allowed'}`}
+            >
+              {loading ? 'Retrieving…' : 'Retrieve TP Candidates'}
+            </button>
+
+            <button
+              onClick={sendToActiveCampaign}
+              disabled={!(tagName.trim().length > 0 && poolId !== '') || isSending}
+              className={`ml-auto rounded-full px-5 py-3 font-medium shadow-sm transition 
+                ${tagName.trim().length > 0 && poolId !== '' && !isSending
+                  ? '!bg-[#001961] !text-white hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#001961]'
+                  : 'bg-gray-100 text-gray-500 cursor-not-allowed'}`}
+              aria-live="polite"
+            >
+              {sendState === 'success' ? '✓' : isSending ? 'Sending…' : 'Send to Active Campaign'}
+            </button>
+          </div>
+
+          {/* Only show non-success errors/info */}
+          {message && sendState !== 'success' && (
+            <div className="mt-2 text-sm text-gray-700">{message}</div>
+          )}
         </div>
 
-        {/* Error state (if any) */}
-        {progress?.status === 'error' && (
-          <div className="mt-4 text-sm text-red-600">
-            {progress?.error || 'Import failed'}
+        {/* PROGRESS PANEL (no table) */}
+        <div className="rounded-2xl border bg-white p-6">
+          {/* Header — replaced: show only Tagging line, in dark blue */}
+          <div className="text-[#001961] font-semibold text-lg">
+            Tagging candidates as <span className="font-normal text-gray-600">“{tagName || '—'}”</span>
           </div>
-        )}
+
+          <div className="mt-6 flex items-center justify-center">
+            <div
+              className="relative"
+              style={{ width: RING_SIZE, height: RING_SIZE }}
+            >
+              {/* Track + progress via conic-gradient + mask for thickness */}
+              <div
+                className="absolute inset-0 rounded-full"
+                style={{
+                  background: `conic-gradient(#001961 ${pctDeg}deg, #e5e7eb 0)`,
+                  WebkitMask: `radial-gradient(farthest-side, transparent calc(100% - ${RING_THICKNESS}px), black 0)`,
+                  mask: `radial-gradient(farthest-side, transparent calc(100% - ${RING_THICKNESS}px), black 0)`,
+                  filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.06))',
+                }}
+              />
+              {/* Inner plate (for subtle depth) */}
+              <div
+                className="absolute rounded-full bg-white"
+                style={{
+                  inset: RING_THICKNESS,
+                  boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.05)',
+                }}
+              />
+              {/* Center labels */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                <div className="text-xs text-gray-500">
+                  {fmt(sent)} of {fmt(denominator)}
+                </div>
+                <div className="text-5xl font-bold text-[#001961] mt-1">{percent}%</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Error state (if any) */}
+          {progress?.status === 'error' && (
+            <div className="mt-4 text-sm text-red-600">
+              {progress?.error || 'Import failed'}
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+    </AdminGate>
   )
 }
