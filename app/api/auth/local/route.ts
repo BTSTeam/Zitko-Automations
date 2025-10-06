@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Email and password are required' }, { status: 400 })
   }
 
-  // Make sure there is at least one admin (admin@example.com / changeMe123!)
+  // Make sure there is at least one admin
   ensureSeedAdmin()
 
   const user = getUserByEmail(String(email))
@@ -21,8 +21,12 @@ export async function POST(req: NextRequest) {
   }
 
   const session = await getSession()
-  session.user = { email: user.email }
+  // IMPORTANT: include role & active so the client can gate by role
+  session.user = { email: user.email, role: user.role, active: user.active }
   await session.save()
 
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({
+    ok: true,
+    user: { email: user.email, role: user.role, active: user.active },
+  })
 }
