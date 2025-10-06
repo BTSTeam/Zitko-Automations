@@ -225,6 +225,32 @@ export default function MatchTab(): JSX.Element {
     return () => clearInterval(id)
   }, [loadingSearch])
 
+  /* --- NEW: reset all state --- */
+  const resetAll = () => {
+    setJobId('')
+    setJob(null)
+
+    setLoadingAll(false)
+    setLoadingSearch(false)
+
+    setTitle('')
+    setLocation('')
+    setSkillsText('')
+    setQualsText('')
+
+    setRawCands([])
+    setScored([])
+    setView('raw')
+
+    setServerCount(null)
+    setServerQuery(null)
+
+    setShowJson(false)
+    setAiPayload(null)
+
+    try { window.scrollTo({ top: 0, behavior: 'smooth' }) } catch {}
+  }
+
   const retrieveJob = async (): Promise<JobSummary | null> => {
     if (!jobId) return null
     setScored([]); setRawCands([]); setServerCount(null); setServerQuery(null)
@@ -351,7 +377,7 @@ export default function MatchTab(): JSX.Element {
           const title = c.title || c.current_job_title || ''
           return {
             candidate_id: String(c.id),
-            full_name: c.fullName || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim() || String(c.id),
+            full_name: c.fullName || `${c.firstName ?? ''} ${c.LastName ?? ''}`.trim() || String(c.id),
             current_job_title: title,
             skills: candSkills,
             matched_skills: matchedSkills,
@@ -448,33 +474,82 @@ export default function MatchTab(): JSX.Element {
 
   return (
     <div className="grid gap-6">
-      <div className="card p-6">
-        <div className="grid md:grid-cols-2 gap-6">
+      {/* make relative so the refresh button can be positioned */}
+      <div className="card p-6 relative">
+        {/* Refresh button (top-right) */}
+        <button
+          type="button"
+          onClick={resetAll}
+          disabled={loadingAll || loadingSearch}
+          title="Reset form"
+          aria-label="Reset form"
+          className={`absolute right-3 top-3 w-8 h-8 grid place-items-center rounded-full border
+                      text-gray-600 hover:text-gray-900 transition
+                      ${loadingAll || loadingSearch ? 'opacity-40 cursor-not-allowed' : 'hover:rotate-180'}`}
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M21 12a9 9 0 1 1-3.3-6.9" />
+            <polyline points="21 3 21 9 15 9" />
+          </svg>
+        </button>
+
+        {/* Form grid */}
+        <div className="grid md:grid-cols-3 gap-4 md:gap-x-6 md:gap-y-8 items-end">
+          {/* Full-width title, spans all columns */}
+          <p className="md:col-span-3 text-sm text-gray-600">
+            Enter a Job ID and Search for suitable candidates to be retrieved &amp; scored.
+          </p>
+
+          {/* Row 1: Job ID / Job Title / Location (placeholders, no visible labels) */}
           <div>
-            <p className="mb-4">Enter your Vincere Job ID to find matching candidates.</p>
-            <div>
-              <label className="text-sm text-gray-600">Job ID</label>
-              <input className="input mt-1" placeholder="Enter Job ID" value={jobId} onChange={e=>setJobId(e.target.value)} />
-            </div>
-            <button className="btn btn-brand mt-4 w-full" onClick={retrieveSearchScore} disabled={loadingAll || !jobId}>
+            <input
+              className="input w-full"
+              placeholder="Job ID"
+              aria-label="Job ID"
+              value={jobId}
+              onChange={e=>setJobId(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <input
+              className="input w-full"
+              placeholder="Job Title (e.g., Fire & Security Engineer)"
+              aria-label="Job Title"
+              value={title}
+              onChange={e=>setTitle(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <input
+              className="input w-full"
+              placeholder="Location (e.g., London)"
+              aria-label="Location"
+              value={location}
+              onChange={e=>setLocation(e.target.value)}
+            />
+          </div>
+
+          {/* Row 2: Search (col 1) + Skills (cols 2–3) */}
+          <div className="flex items-end">
+            <button
+              className="btn btn-brand w-full h-[44px]"
+              onClick={retrieveSearchScore}
+              disabled={loadingAll || !jobId}
+            >
               {loadingAll ? 'Searching…' : 'Search'}
             </button>
           </div>
-          <div>
-            <div className="grid sm:grid-cols-2 gap-4 text-sm mb-2">
-              <div>
-                <div className="text-gray-500">Job Title</div>
-                <input className="input mt-1" value={title} onChange={e=>setTitle(e.target.value)} placeholder="e.g., Fire & Security Engineer" />
-              </div>
-              <div>
-                <div className="text-gray-500">Location</div>
-                <input className="input mt-1" value={location} onChange={e=>setLocation(e.target.value)} placeholder="e.g., London" />
-              </div>
-              <div className="sm:col-span-2">
-                <div className="text-gray-500">Skills (comma-separated)</div>
-                <input className="input mt-1" value={skillsText} onChange={e=>setSkillsText(e.target.value)} placeholder="CCTV, Access Control, IP Networking" />
-              </div>
-            </div>
+
+          <div className="md:col-span-2">
+            <input
+              className="input w-full"
+              placeholder="Skills (comma-separated) e.g., CCTV, Access Control, IP Networking"
+              aria-label="Skills"
+              value={skillsText}
+              onChange={e=>setSkillsText(e.target.value)}
+            />
           </div>
         </div>
 
@@ -538,7 +613,7 @@ export default function MatchTab(): JSX.Element {
 
       <Modal open={showJson} onClose={() => setShowJson(false)} title="JSON sent to ChatGPT">
         {!aiPayload ? (
-          <div className="text-sm text-gray-500">No payload available yet. Run a search & scoring first.</div>
+          <div className="text-sm text-gray-500">No payload available yet. Run a search &amp; scoring first.</div>
         ) : (
           <div>
             <div className="mb-2 flex items-center gap-2">
