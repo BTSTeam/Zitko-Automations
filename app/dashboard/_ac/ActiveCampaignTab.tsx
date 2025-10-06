@@ -303,9 +303,7 @@ export default function ActiveCampaignTab() {
     denominator && denominator > 0 ? Math.min(100, Math.round((sent / denominator) * 100)) : 0
 
   const fmt = (n: number | null | undefined) =>
-    typeof n === 'number' ? new Intl.NumberFormat().format(n) : '—
-
-'
+    typeof n === 'number' ? new Intl.NumberFormat().format(n) : '—';
 
   // ====== Circular progress (thicker ring) ======
   const RING_SIZE = 360 // px
