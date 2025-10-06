@@ -488,19 +488,20 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       const aiData = await aiRes.json()
       if (!aiRes.ok || !aiData?.ok) throw new Error(aiData?.error || 'Profile generation failed.')
       setField('profile', aiData.profile || '')
-      clearPrefill('profile') // treat generated text as not "retrieved"
+      // make Profile textarea normal-sized (no prefill styling)
+      setPrefill(prev => ({ ...prev, profile: false }))
     } catch (e: any) {
       setError(e?.message || 'Profile generation failed.')
     } finally {
       setLoading(false)
     }
   }
-
+  
   async function generateJobProfile() {
     if (!jobId) return
     try {
       setLoading(true); setError(null)
-
+  
       let jobRes = await fetch('/api/job/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -509,20 +510,21 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       if (!jobRes.ok) {
         jobRes = await fetch(`/api/job/extract?id=${encodeURIComponent(jobId)}`, { cache: 'no-store' })
       }
-
+  
       const jobJson = await jobRes.json()
       if (!jobRes.ok) throw new Error(jobJson?.error || `Unable to retrieve job ${jobId}`)
-
+  
       const aiRes = await fetch('/api/cv/profile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode: 'jobprofile', candidate: rawCandidate, work: rawWork, education: rawEdu, job: jobJson }),
       })
-
+  
       const aiData = await aiRes.json()
       if (!aiRes.ok || !aiData?.ok) throw new Error(aiData?.error || 'Job Profile generation failed.')
       setField('profile', aiData.profile || '')
-      clearPrefill('profile') // not retrieved
+      // make Profile textarea normal-sized (no prefill styling)
+      setPrefill(prev => ({ ...prev, profile: false }))
     } catch (e: any) {
       setError(e?.message || 'Job Profile generation failed.')
     } finally {
@@ -1205,7 +1207,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       {template === 'standard' && (
         <div className="grid sm:grid-cols-[1fr_auto_auto] gap-2 mt-4">
           <input
-            className={`input ${prefill.name ? 'text-[11px]' : ''}`}
+            className="input"
             placeholder="Enter Candidate ID"
             value={candidateId}
             onChange={e => setCandidateId(e.target.value)}
