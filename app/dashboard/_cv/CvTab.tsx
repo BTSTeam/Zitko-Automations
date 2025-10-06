@@ -995,7 +995,8 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
           </div>
         ) : (
           <>
-            <div className="cv-headpair">
+            {/* First entry stays paired with header, plus bottom margin for gap */}
+            <div className="cv-headpair mb-4 md:mb-6">
               <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
                 Employment History
               </h2>
@@ -1020,8 +1021,9 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                 )
               })()}
             </div>
-
-            <div className="space-y-3">
+        
+            {/* Subsequent entries with a bit more vertical spacing */}
+            <div className="space-y-4">
               {form.employment.slice(1).map((e, i) => {
                 const range = [e.start, e.end].filter(Boolean).join(' to ')
                 return (
@@ -1044,6 +1046,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
             </div>
           </>
         )}
+
 
         {/* Education & Qualifications (header + first entry stay together) */}
         {form.education.length === 0 ? (
