@@ -39,11 +39,12 @@ export async function POST(req: NextRequest) {
   if (!me) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json().catch(() => ({} as any))
-  const { email, name, role = 'User', password } = body as {
+  const { email, name, role = 'User', password, workPhone } = body as {
     email?: string
     name?: string
     role?: Role
     password?: string
+    workPhone?: string | null
   }
 
   if (!email || !password) {
@@ -54,7 +55,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const u = createUser({ email, name, role, password })
+    const u = createUser({ email, name, role, password, workPhone })
     return NextResponse.json(sanitize(u), { status: 201 })
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Create failed' }, { status: 400 })
