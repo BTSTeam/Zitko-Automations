@@ -8,12 +8,31 @@ const SourceTab = dynamic(() => import('./_source/SourceTab'), { ssr: false })
 const CvTab     = dynamic(() => import('./_cv/CvTab'),         { ssr: false })
 const ActiveCampaignTab = dynamic(() => import('./_ac/ActiveCampaignTab'), { ssr: false })
 
-type TabKey = 'match' | 'source' | 'cv' | 'ac'
+type TabKey = 'welcome' | 'match' | 'source' | 'cv' | 'ac'
 type SourceMode = 'candidates' | 'companies'
 type CvTemplate = 'standard' | 'sales'
 
+function WelcomeCard() {
+  return (
+    <div className="card p-10 md:p-14">
+      <div className="w-full grid place-items-center text-center py-10">
+        <h1 className="text-5xl md:text-6xl tracking-[0.25em] font-semibold text-gray-800 mb-4">
+          W E L C O M E
+        </h1>
+        <div className="text-brand-orange font-semibold tracking-wider mb-6">
+          &gt; ALPHA TEST &lt;
+        </div>
+        <p className="text-gray-400">
+          Please utilise the tabs above to navigate this app.
+        </p>
+      </div>
+    </div>
+  )
+}
+
 export default function ClientShell(): JSX.Element {
-  const [tab, setTab] = useState<TabKey>('match')
+  // default to the welcome view instead of Candidate Matching
+  const [tab, setTab] = useState<TabKey>('welcome')
 
   // sourcing dropdown
   const [sourceOpen, setSourceOpen] = useState(false)
@@ -50,7 +69,7 @@ export default function ClientShell(): JSX.Element {
           {/* Sourcing dropdown */}
           <div className="relative" data-sourcing-root>
             <button
-              onClick={() => setSourceOpen(v => !v)}
+              onClick={() => { setSourceOpen(v => !v); setTab('source') }}
               className={`tab ${tab === 'source' ? 'tab-active' : ''}`}
               title="Sourcing"
             >
@@ -78,7 +97,7 @@ export default function ClientShell(): JSX.Element {
           {/* CV Formatting dropdown */}
           <div className="relative" data-cv-root>
             <button
-              onClick={() => setCvOpen(v => !v)}
+              onClick={() => { setCvOpen(v => !v); setTab('cv') }}
               className={`tab ${tab === 'cv' ? 'tab-active' : ''}`}
               title="CV Formatting"
             >
@@ -110,7 +129,6 @@ export default function ClientShell(): JSX.Element {
             onClick={() => setTab('ac')}
             title="Active Campaign"
             aria-selected={tab === 'ac'}
-            // Force our AC blue + white when active, ignore default tab-active style
             className={`tab ${tab === 'ac' ? '!bg-[#001961] !text-white !border-transparent hover:opacity-95 shadow-sm' : ''}`}
           >
             Active Campaign
@@ -119,6 +137,8 @@ export default function ClientShell(): JSX.Element {
       </div>
 
       {/* Content */}
+      {tab === 'welcome' && <WelcomeCard />}
+
       {tab === 'match' && <MatchTab />}
 
       {tab === 'source' && <SourceTab mode={sourceMode} />}
