@@ -875,8 +875,11 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         })
       })
 
-      const out = await pdfDoc.save()
-      const blob = new Blob([out], { type: 'application/pdf' })
+      const out: Uint8Array = await pdfDoc.save()
+      // 👇 Convert Uint8Array -> ArrayBuffer slice for Blob()
+      const outBuf = out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength) as ArrayBuffer
+      const blob = new Blob([outBuf], { type: 'application/pdf' })
+  
       setSalesDocBlobRedacted(blob)    // will be used for upload
       setRedactMode(false)
     } catch (e: any) {
