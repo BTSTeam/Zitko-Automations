@@ -449,34 +449,60 @@ export default function MatchTab(): JSX.Element {
   return (
     <div className="grid gap-6">
       <div className="card p-6">
-        <div className="grid md:grid-cols-2 gap-6">
-          <div>
-            <p className="mb-4">Enter your Vincere Job ID to find matching candidates.</p>
-            <div>
-              <label className="text-sm text-gray-600">Job ID</label>
-              <input className="input mt-1" placeholder="Enter Job ID" value={jobId} onChange={e=>setJobId(e.target.value)} />
-            </div>
-            <button className="btn btn-brand mt-4 w-full" onClick={retrieveSearchScore} disabled={loadingAll || !jobId}>
-              {loadingAll ? 'Searching…' : 'Search'}
-            </button>
-          </div>
-          <div>
-            <div className="grid sm:grid-cols-2 gap-4 text-sm mb-2">
-              <div>
-                <div className="text-gray-500">Job Title</div>
-                <input className="input mt-1" value={title} onChange={e=>setTitle(e.target.value)} placeholder="e.g., Fire & Security Engineer" />
-              </div>
-              <div>
-                <div className="text-gray-500">Location</div>
-                <input className="input mt-1" value={location} onChange={e=>setLocation(e.target.value)} placeholder="e.g., London" />
-              </div>
-              <div className="sm:col-span-2">
-                <div className="text-gray-500">Skills (comma-separated)</div>
-                <input className="input mt-1" value={skillsText} onChange={e=>setSkillsText(e.target.value)} placeholder="CCTV, Access Control, IP Networking" />
-              </div>
-            </div>
-          </div>
-        </div>
+          <div className="grid md:grid-cols-3 gap-4 md:gap-x-6 md:gap-y-8 items-end">
+    {/* Row 1: Job ID / Title / Location */}
+    <div>
+      <p className="mb-4">Enter your Vincere Job ID to find matching candidates.</p>
+      <label className="text-sm text-gray-600">Job ID</label>
+      <input
+        className="input mt-1 w-full"
+        placeholder="Enter Job ID"
+        value={jobId}
+        onChange={e=>setJobId(e.target.value)}
+      />
+    </div>
+  
+    <div>
+      <div className="text-sm text-gray-500">Job Title</div>
+      <input
+        className="input mt-1 w-full"
+        value={title}
+        onChange={e=>setTitle(e.target.value)}
+        placeholder="e.g., Fire & Security Engineer"
+      />
+    </div>
+  
+    <div>
+      <div className="text-sm text-gray-500">Location</div>
+      <input
+        className="input mt-1 w-full"
+        value={location}
+        onChange={e=>setLocation(e.target.value)}
+        placeholder="e.g., London"
+      />
+    </div>
+  
+    {/* Row 2: Search (col 1) + Skills (cols 2–3) */}
+    <div className="flex items-end">
+      <button
+        className="btn btn-brand w-full h-[44px] mt-1"
+        onClick={retrieveSearchScore}
+        disabled={loadingAll || !jobId}
+      >
+        {loadingAll ? 'Searching…' : 'Search'}
+      </button>
+    </div>
+  
+    <div className="md:col-span-2">
+      <div className="text-sm text-gray-500">Skills (comma-separated)</div>
+      <input
+        className="input mt-1 w-full"
+        value={skillsText}
+        onChange={e=>setSkillsText(e.target.value)}
+        placeholder="CCTV, Access Control, IP Networking"
+      />
+    </div>
+  </div>
 
         <div className="h-px bg-gray-200 my-4" />
 
