@@ -450,42 +450,41 @@ export default function MatchTab(): JSX.Element {
     <div className="grid gap-6">
       <div className="card p-6">
           <div className="grid md:grid-cols-3 gap-4 md:gap-x-6 md:gap-y-8 items-end">
-    {/* Row 1: Job ID / Title / Location */}
+    {/* Row 1: Job ID / Job Title / Location (all with placeholders) */}
     <div>
-      <p className="mb-4">Enter your Vincere Job ID to find matching candidates.</p>
-      <label className="text-sm text-gray-600">Job ID</label>
       <input
-        className="input mt-1 w-full"
-        placeholder="Enter Job ID"
+        className="input w-full"
+        placeholder="Job ID"
+        aria-label="Job ID"
         value={jobId}
         onChange={e=>setJobId(e.target.value)}
       />
     </div>
   
     <div>
-      <div className="text-sm text-gray-500">Job Title</div>
       <input
-        className="input mt-1 w-full"
+        className="input w-full"
+        placeholder="Job Title (e.g., Fire & Security Engineer)"
+        aria-label="Job Title"
         value={title}
         onChange={e=>setTitle(e.target.value)}
-        placeholder="e.g., Fire & Security Engineer"
       />
     </div>
   
     <div>
-      <div className="text-sm text-gray-500">Location</div>
       <input
-        className="input mt-1 w-full"
+        className="input w-full"
+        placeholder="Location (e.g., London)"
+        aria-label="Location"
         value={location}
         onChange={e=>setLocation(e.target.value)}
-        placeholder="e.g., London"
       />
     </div>
   
     {/* Row 2: Search (col 1) + Skills (cols 2–3) */}
     <div className="flex items-end">
       <button
-        className="btn btn-brand w-full h-[44px] mt-1"
+        className="btn btn-brand w-full h-[44px]"
         onClick={retrieveSearchScore}
         disabled={loadingAll || !jobId}
       >
@@ -494,12 +493,12 @@ export default function MatchTab(): JSX.Element {
     </div>
   
     <div className="md:col-span-2">
-      <div className="text-sm text-gray-500">Skills (comma-separated)</div>
       <input
-        className="input mt-1 w-full"
+        className="input w-full"
+        placeholder="Skills (comma-separated) e.g., CCTV, Access Control, IP Networking"
+        aria-label="Skills"
         value={skillsText}
         onChange={e=>setSkillsText(e.target.value)}
-        placeholder="CCTV, Access Control, IP Networking"
       />
     </div>
   </div>
