@@ -33,18 +33,19 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (!me) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json().catch(() => ({} as any))
-  const { name, role, active, password } = body as {
+  const { name, role, active, password, workPhone } = body as {
     name?: string
     role?: Role
     active?: boolean
     password?: string
+    workPhone?: string | null
   }
   if (role && role !== 'Admin' && role !== 'User') {
     return NextResponse.json({ error: 'Invalid role' }, { status: 400 })
   }
 
   try {
-    const u = updateUser(params.id, { name, role, active, password })
+    const u = updateUser(params.id, { name, role, active, password, workPhone })
     return NextResponse.json(sanitize(u))
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Update failed' }, { status: 400 })
