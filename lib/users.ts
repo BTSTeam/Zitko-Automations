@@ -8,8 +8,10 @@ export type User = {
   name?: string
   role: Role
   active: boolean
-  // Optional work phone (E.164 preferred). Null/undefined means “not set”.
+
+  // Optional work phone (E.164 preferred). Null/undefined = not set.
   workPhone?: string | null
+
   // password = sha256(salt + plain)
   passwordHash: string
   salt: string
@@ -61,7 +63,7 @@ export function createUser(input: {
   const salt = crypto.randomBytes(16).toString('hex')
   const passwordHash = sha256(salt + input.password)
 
-  // normalize work phone: trim; empty string => null; leave undefined as undefined
+  // normalize work phone: empty string => null; undefined => leave undefined
   const normalizedWorkPhone =
     typeof input.workPhone === 'undefined'
       ? undefined
@@ -96,7 +98,7 @@ export function updateUser(
   if (typeof patch.active !== 'undefined') u.active = !!patch.active
 
   if (typeof patch.workPhone !== 'undefined') {
-    // Allow clearing by sending null or empty string
+    // allow clearing with null or empty string
     if (patch.workPhone === null) {
       u.workPhone = null
     } else {
