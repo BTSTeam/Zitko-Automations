@@ -488,8 +488,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       const aiData = await aiRes.json()
       if (!aiRes.ok || !aiData?.ok) throw new Error(aiData?.error || 'Profile generation failed.')
       setField('profile', aiData.profile || '')
-      // make Profile textarea normal-sized (no prefill styling)
-      setPrefill(prev => ({ ...prev, profile: false }))
+      setPrefill(prev => ({ ...prev, profile: true }))   // << keep small after Generate
     } catch (e: any) {
       setError(e?.message || 'Profile generation failed.')
     } finally {
@@ -523,8 +522,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       const aiData = await aiRes.json()
       if (!aiRes.ok || !aiData?.ok) throw new Error(aiData?.error || 'Job Profile generation failed.')
       setField('profile', aiData.profile || '')
-      // make Profile textarea small-sized (no prefill styling)
-      setPrefill(prev => ({ ...prev, profile: true }))
+      setPrefill(prev => ({ ...prev, profile: true }))   // << keep small after Generate
     } catch (e: any) {
       setError(e?.message || 'Job Profile generation failed.')
     } finally {
@@ -1393,7 +1391,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                   <textarea
                     className={`input min-h-[120px] ${prefill.profile ? '!text-[11px]' : ''}`}
                     value={form.profile}
-                    onChange={e => { clearPrefill('profile'); setField('profile', e.target.value) }}
+                    onChange={e => { /* keep small even when editing */ setField('profile', e.target.value) }}
                     disabled={loading}
                   />
                 </label>
