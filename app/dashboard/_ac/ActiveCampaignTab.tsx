@@ -17,7 +17,7 @@ function normalizeEnvPw(s: string | undefined | null) {
   }
   return t
 }
-const RAW_ENV = process.env.NEXT_PUBLIC_ACTIVE_CAMPAIGN_TAB_PASSWORD ??
+const RAW_ENV = process.env.NEXT_PUBLIC_ACTIVE_CAMPAIGN_TAB_PASSWORD ?? ''
 const TAB_PW = normalizeEnvPw(RAW_ENV) // no fallback; fail clearly if unset
 const UNLOCK_KEY = 'acTabUnlocked'
 
@@ -307,7 +307,7 @@ export default function ActiveCampaignTab() {
   // Prefer progress total when sending; otherwise use preview's poolTotal
   const totalInPool = (progress?.totals?.poolTotal ?? poolTotal) ?? null
   const sent = progress?.totals?.sent ?? 0
-  const denominator = progress?.totals?.valid ?? totalInPool ?? null // % based on actual valid where available
+  const denominator = (progress?.totals?.valid ?? totalInPool) ?? null
   const percent =
     denominator && denominator > 0 ? Math.min(100, Math.round((sent / denominator) * 100)) : 0
 
@@ -316,7 +316,7 @@ export default function ActiveCampaignTab() {
 
   // ====== Circular progress (thicker ring) ======
   const RING_SIZE = 360 // px
-  const RING_THICKNESS = 28 // px (thicker than before)
+  const RING_THICKNESS = 28 // px
   const pctDeg = Math.max(0, Math.min(360, Math.round((percent / 100) * 360)))
 
   // ===== Gate UI (render early if locked) =====
