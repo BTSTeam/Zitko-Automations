@@ -19,11 +19,11 @@ function sanitize(u: User) {
 }
 
 async function requireAdmin() {
-  ensureSeedAdmin()
+  await ensureSeedAdmin()
   const session = await getSession()
   const email = session.user?.email
   if (!email) return null
-  const me = getUserByEmail(email)
+  const me = await getUserByEmail(email)
   if (!me || me.role !== 'Admin' || !me.active) return null
   return me
 }
@@ -45,7 +45,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   }
 
   try {
-    const u = updateUser(params.id, { name, role, active, password, workPhone })
+    const u = await updateUser(params.id, { name, role, active, password, workPhone })
     return NextResponse.json(sanitize(u))
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Update failed' }, { status: 400 })
@@ -57,7 +57,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   if (!me) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   try {
-    deleteUser(params.id)
+    await deleteUser(params.id)
     return NextResponse.json({ ok: true })
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Delete failed' }, { status: 400 })
