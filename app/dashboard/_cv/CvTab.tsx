@@ -1063,7 +1063,12 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                     // 1) Paint out selected rects
                     const redacted = await applySalesRedactions(salesPdfBytes, piiRects, hiddenIds)
                     // 2) Bake branding on top of redactions
-                    const bakedBlob = await bakeHeaderFooter(new Blob([redacted], { type: 'application/pdf' }))
+                    const arrBuf = redacted.buffer.slice(
+                      redacted.byteOffset,
+                      redacted.byteOffset + redacted.byteLength
+                    )
+                    const redactedBlob = new Blob([arrBuf], { type: 'application/pdf' })
+                    const bakedBlob = await bakeHeaderFooter(redactedBlob)
                     // 3) Preview + set as final upload blob
                     setSalesDocBlob(bakedBlob)
                     if (salesDocUrl) URL.revokeObjectURL(salesDocUrl)
