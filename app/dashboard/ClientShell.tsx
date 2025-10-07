@@ -15,6 +15,9 @@ type CvTemplate = 'standard' | 'sales'
 export default function ClientShell(): JSX.Element {
   const [tab, setTab] = useState<TabKey>('match')
 
+  // show welcome until a tab is actively chosen
+  const [showWelcome, setShowWelcome] = useState<boolean>(true)
+
   // sourcing dropdown
   const [sourceOpen, setSourceOpen] = useState(false)
   const [sourceMode, setSourceMode] = useState<SourceMode>('candidates')
@@ -33,6 +36,48 @@ export default function ClientShell(): JSX.Element {
     return () => document.removeEventListener('click', onClick)
   }, [])
 
+  // central welcome block
+  const WelcomeBlock = () => (
+    <section className="min-h-[50vh] grid place-items-center px-6">
+      <div className="text-center select-none">
+        {/* W E L C O M E */}
+        <h1
+          className="font-semibold uppercase"
+          style={{
+            color: '#3B3E44',         // Zitko dark gray
+            letterSpacing: '0.5em',
+            fontSize: 'clamp(2.25rem, 6vw, 6rem)',
+          }}
+        >
+          WELCOME
+        </h1>
+
+        {/* > ALPHA TEST < */}
+        <p
+          className="mt-3 font-semibold uppercase"
+          style={{
+            color: '#F7941D',         // Zitko orange
+            letterSpacing: '0.25em',
+            fontSize: 'clamp(0.875rem, 2.2vw, 1.25rem)',
+          }}
+        >
+          &gt; ALPHA TEST &lt;
+        </p>
+
+        {/* helper text */}
+        <p
+          className="mt-4"
+          style={{
+            color: '#9CA3AF',         // light gray
+            fontSize: 'clamp(0.8rem, 1.8vw, 1rem)',
+          }}
+        >
+          Please utilise the tabs above to navigate the app
+        </p>
+      </div>
+    </section>
+  )
+
   return (
     <div className="grid gap-6">
       {/* Top bar: left group (three tabs), right-aligned Active Campaign */}
@@ -41,7 +86,7 @@ export default function ClientShell(): JSX.Element {
         <div className="flex gap-2">
           {/* Match */}
           <button
-            onClick={() => setTab('match')}
+            onClick={() => { setTab('match'); setShowWelcome(false) }}
             className={`tab ${tab === 'match' ? 'tab-active' : ''}`}
           >
             Candidate Matching
@@ -61,13 +106,13 @@ export default function ClientShell(): JSX.Element {
               <div className="absolute left-1/2 -translate-x-1/2 mt-2 w-44 rounded-xl border bg-white shadow-lg overflow-hidden z-10">
                 <button
                   className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${sourceMode==='candidates' ? 'font-medium' : ''}`}
-                  onClick={() => { setSourceMode('candidates'); setTab('source'); setSourceOpen(false) }}
+                  onClick={() => { setSourceMode('candidates'); setTab('source'); setSourceOpen(false); setShowWelcome(false) }}
                 >
                   Candidates
                 </button>
                 <button
                   className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${sourceMode==='companies' ? 'font-medium' : ''}`}
-                  onClick={() => { setSourceMode('companies'); setTab('source'); setSourceOpen(false) }}
+                  onClick={() => { setSourceMode('companies'); setTab('source'); setSourceOpen(false); setShowWelcome(false) }}
                 >
                   Companies
                 </button>
@@ -89,13 +134,13 @@ export default function ClientShell(): JSX.Element {
               <div className="absolute left-1/2 -translate-x-1/2 mt-2 w-44 rounded-xl border bg-white shadow-lg overflow-hidden z-10">
                 <button
                   className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${cvTemplate==='standard' ? 'font-medium' : ''}`}
-                  onClick={() => { setCvTemplate('standard'); setTab('cv'); setCvOpen(false) }}
+                  onClick={() => { setCvTemplate('standard'); setTab('cv'); setCvOpen(false); setShowWelcome(false) }}
                 >
                   Standard
                 </button>
                 <button
                   className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${cvTemplate==='sales' ? 'font-medium' : ''}`}
-                  onClick={() => { setCvTemplate('sales'); setTab('cv'); setCvOpen(false) }}
+                  onClick={() => { setCvTemplate('sales'); setTab('cv'); setCvOpen(false); setShowWelcome(false) }}
                 >
                   Sales
                 </button>
@@ -107,7 +152,7 @@ export default function ClientShell(): JSX.Element {
         {/* Right-aligned single button (Active Campaign) */}
         <div>
           <button
-            onClick={() => setTab('ac')}
+            onClick={() => { setTab('ac'); setShowWelcome(false) }}
             title="Active Campaign"
             aria-selected={tab === 'ac'}
             // Force our AC blue + white when active, ignore default tab-active style
@@ -119,13 +164,16 @@ export default function ClientShell(): JSX.Element {
       </div>
 
       {/* Content */}
-      {tab === 'match' && <MatchTab />}
-
-      {tab === 'source' && <SourceTab mode={sourceMode} />}
-
-      {tab === 'cv' && <CvTab templateFromShell={cvTemplate} />}
-
-      {tab === 'ac' && <ActiveCampaignTab />}
+      {showWelcome ? (
+        <WelcomeBlock />
+      ) : (
+        <>
+          {tab === 'match' && <MatchTab />}
+          {tab === 'source' && <SourceTab mode={sourceMode} />}
+          {tab === 'cv' && <CvTab templateFromShell={cvTemplate} />}
+          {tab === 'ac' && <ActiveCampaignTab />}
+        </>
+      )}
     </div>
   )
 }
