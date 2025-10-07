@@ -2,8 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
-import * as pdfjs from 'pdfjs-dist/legacy/build/pdf'
-import 'pdfjs-dist/legacy/build/pdf.worker'
+import * as pdfjs from 'pdfjs-dist/build/pdf'
 
 /**
  * CvTab.tsx — full file (prefill font shrinking in editor only)
@@ -157,7 +156,7 @@ const EMAIL_RE = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/ig
 const PHONE_RE = /\+?\d[\d ()\-]{7,}\d/g
 
 async function detectPiiRectsFromPdf(pdfBytes: Uint8Array) {
-  const loadingTask = pdfjs.getDocument({ data: pdfBytes })
+  const loadingTask = pdfjs.getDocument({ data: pdfBytes, disableWorker: true })
   const pdf = await loadingTask.promise
   const result: {[pi:number]: any[]} = {}
   for (let pi = 0; pi < pdf.numPages; pi++) {
