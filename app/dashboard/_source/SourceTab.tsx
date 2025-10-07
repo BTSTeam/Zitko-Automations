@@ -4,15 +4,39 @@ import { useEffect, useState } from 'react'
 
 type SourceMode = 'candidates' | 'companies'
 
+// Shows a full-cover overlay message
+function DownOverlay() {
+  return (
+    <div className="absolute inset-0 z-50 grid place-items-center bg-white/90 backdrop-blur-sm">
+      <div className="text-center px-6">
+        <div className="text-6xl mb-4">🛠️</div>
+        <h3 className="text-xl font-semibold mb-2">
+          Sourcing Tool is down due to technical difficulties
+        </h3>
+        <p className="text-gray-600 text-sm">
+          Please check back later.
+        </p>
+      </div>
+    </div>
+  )
+}
+
 export default function SourceTab({ mode }: { mode: SourceMode }) {
+  // Toggle overlay via env var (set to "1" or "true")
+  const isDown =
+    (process.env.NEXT_PUBLIC_SOURCING_DOWN || '').toLowerCase() === '1' ||
+    (process.env.NEXT_PUBLIC_SOURCING_DOWN || '').toLowerCase() === 'true'
+
   if (mode === 'companies') {
     return (
-      <div className="card p-6">
+      <div className="card p-6 relative">
         <div className="text-center py-16">
           <div className="text-6xl mb-4">🏗️</div>
           <h3 className="text-xl font-semibold mb-2">Building In Process…</h3>
           <p className="text-gray-600">This Companies sourcing page will host a similar embedded form soon.</p>
         </div>
+
+        {isDown && <DownOverlay />}
       </div>
     )
   }
@@ -42,10 +66,19 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
   }, [formId])
 
   return (
-    <div className="card p-6">
+    <div className="card p-6 relative">
       <div className="mb-4 flex items-center justify-between">
         <p className="m-0">Complete the form below to source relevant candidates directly to your email inbox.</p>
-        {hasUrl && <button className="btn btn-brand" onClick={refreshForm} title="Reload form">Refresh</button>}
+        {hasUrl && (
+          <button
+            className="btn btn-brand"
+            onClick={refreshForm}
+            title="Reload form"
+            disabled={isDown}
+          >
+            Refresh
+          </button>
+        )}
       </div>
 
       {!hasUrl ? (
@@ -58,7 +91,7 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
           <p className="text-xs break-all">Example: https://form.jotform.com/123456789012345</p>
         </div>
       ) : (
-        <div className="rounded-2xl overflow-hidden border max-w-4xl mx-auto"> {/* constrain width */}
+        <div className="rounded-2xl overflow-hidden border max-w-4xl mx-auto">
           <iframe
             key={iframeKey}
             id={formId ? `JotFormIFrame-${formId}` : 'JotFormIFrame'}
@@ -72,6 +105,8 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
           />
         </div>
       )}
+
+      {isDown && <DownOverlay />}
     </div>
   )
 }
