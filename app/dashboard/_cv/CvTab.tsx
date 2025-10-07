@@ -1062,17 +1062,17 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                   try {
                     // 1) Paint out selected rects
                     const redacted = await applySalesRedactions(salesPdfBytes, piiRects, hiddenIds)
-                    // 2) Bake branding on top of redactions
-                    const arrBuf = redacted.buffer.slice(
-                      redacted.byteOffset,
-                      redacted.byteOffset + redacted.byteLength
-                    )
-                    const redactedBlob = new Blob([arrBuf], { type: 'application/pdf' })
+                    
+                    // 2) Copy into a fresh, safe ArrayBuffer (avoids SharedArrayBuffer union)
+                    const safeBuf = new ArrayBuffer(redacted.byteLength)
+                    new Uint8Array(safeBuf).set(redacted)
+                    
+                    // 3) Bake branding, then preview & set upload blob
+                    const redactedBlob = new Blob([safeBuf], { type: 'application/pdf' })
                     const bakedBlob = await bakeHeaderFooter(redactedBlob)
-                    // 3) Preview + set as final upload blob
                     setSalesDocBlob(bakedBlob)
                     if (salesDocUrl) URL.revokeObjectURL(salesDocUrl)
-                    const url2 = URL.createObjectURL(bakedBlob)
+                    setSalesDocUrl(URL.createObjectURL(bakedBlob))
                     setSalesDocUrl(url2)
                   } catch (err:any) {
                     setSalesErr(err?.message || 'Failed to apply edits')
