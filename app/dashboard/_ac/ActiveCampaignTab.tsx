@@ -8,6 +8,10 @@ type Tag = { id: number; tag: string }
 
 const TP_USER_ID = process.env.NEXT_PUBLIC_VINCERE_TALENTPOOL_USER_ID || '29018'
 
+// ===== Password Gate (UI-only) =====
+const TAB_PW = (process.env.ACTIVE_CAMPAIGN_TAB_PASSWORD || 'letmein').trim()
+const UNLOCK_KEY = 'acTabUnlocked'
+
 // ==== Preview / pagination tuning (UI only) ====
 const SAMPLE_PREVIEW_LIMIT = 50 // import job still processes all on the server
 
@@ -30,7 +34,38 @@ type JobProgress = {
 }
 
 export default function ActiveCampaignTab() {
-  // Talent pools
+  // ===== Gate state =====
+  const [unlocked, setUnlocked] = useState<boolean>(false)
+  const [pw, setPw] = useState('')
+  const [pwError, setPwError] = useState<string>('')
+
+  useEffect(() => {
+    try {
+      const saved = typeof window !== 'undefined' ? sessionStorage.getItem(UNLOCK_KEY) : null
+      if (saved === 'true') setUnlocked(true)
+    } catch {
+      // ignore
+    }
+  }, [])
+
+  function tryUnlock(e?: React.FormEvent) {
+    e?.preventDefault()
+    // Empty password env means "disable gate"
+    if (!TAB_PW) {
+      setUnlocked(true)
+      try { sessionStorage.setItem(UNLOCK_KEY, 'true') } catch {}
+      return
+    }
+    if (pw.trim() === TAB_PW) {
+      setUnlocked(true)
+      setPwError('')
+      try { sessionStorage.setItem(UNLOCK_KEY, 'true') } catch {}
+    } else {
+      setPwError('Incorrect password. Access denied.')
+    }
+  }
+
+  // ===== Existing tab state =====
   const [pools, setPools] = useState<Pool[]>([])
   const [poolId, setPoolId] = useState<string>('')
 
@@ -67,6 +102,7 @@ export default function ActiveCampaignTab() {
 
   // On tab mount: fetch Talent Pools and AC tags
   useEffect(() => {
+    if (!unlocked) return
     fetch('/api/vincere/talentpools/user', { cache: 'no-store' })
       .then(async (r) => {
         const used = r.headers.get('x-vincere-userid') || ''
@@ -112,7 +148,7 @@ export default function ActiveCampaignTab() {
         setTags(filtered)
       })
       .catch(() => setTags([]))
-  }, [])
+  }, [unlocked]) // only load once unlocked
 
   async function retrievePoolCandidates() {
     setMessage('')
@@ -272,6 +308,55 @@ export default function ActiveCampaignTab() {
   const RING_THICKNESS = 28 // px (thicker than before)
   const pctDeg = Math.max(0, Math.min(360, Math.round((percent / 100) * 360)))
 
+  // ===== Gate UI (render early if locked) =====
+  if (!unlocked) {
+    return (
+      <div className="relative min-h-[60vh]">
+        <div className="absolute inset-0 grid place-items-center bg-white">
+          <form
+            onSubmit={tryUnlock}
+            className="w-full max-w-sm rounded-2xl border bg-white p-6 shadow-sm"
+          >
+            <div className="text-center mb-4">
+              <div className="text-4xl">🔒</div>
+              <h2 className="mt-2 text-lg font-semibold">Restricted Area</h2>
+              <p className="text-sm text-gray-600">Enter the password to access ActiveCampaign tools.</p>
+            </div>
+
+            <label className="grid gap-1">
+              <span className="text-sm font-medium">Password</span>
+              <input
+                type="password"
+                className={`rounded-xl border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#001961] ${pwError ? 'border-red-500' : ''}`}
+                value={pw}
+                onChange={(e) => {
+                  setPw(e.target.value)
+                  if (pwError) setPwError('')
+                }}
+                placeholder="••••••••"
+                autoFocus
+              />
+            </label>
+
+            {pwError && <div className="mt-2 text-sm text-red-600">{pwError}</div>}
+
+            <button
+              type="submit"
+              className="mt-4 w-full rounded-full px-5 py-3 font-medium !bg-[#001961] !text-white hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#001961]"
+            >
+              Unlock
+            </button>
+
+            <p className="mt-3 text-xs text-gray-500">
+              Tip: set <code className="bg-gray-100 px-1 py-0.5 rounded">ACTIVE_CAMPAIGN_TAB_PASSWORD</code> in your env.
+            </p>
+          </form>
+        </div>
+      </div>
+    )
+  }
+
+  // ===== Normal tab UI (unchanged) =====
   return (
     <div className="grid gap-6">
       {/* TOP PANEL: Controls (white card) */}
@@ -373,7 +458,7 @@ export default function ActiveCampaignTab() {
 
       {/* PROGRESS PANEL (no table) */}
       <div className="rounded-2xl border bg-white p-6">
-        {/* Header — replaced: show only Tagging line, in dark blue */}
+        {/* Header — show only Tagging line, in dark blue */}
         <div className="text-[#001961] font-semibold text-lg">
           Tagging candidates as <span className="font-normal text-gray-600">“{tagName || '—'}”</span>
         </div>
@@ -393,7 +478,7 @@ export default function ActiveCampaignTab() {
                 filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.06))',
               }}
             />
-            {/* Inner plate (for subtle depth) */}
+            {/* Inner plate */}
             <div
               className="absolute rounded-full bg-white"
               style={{
