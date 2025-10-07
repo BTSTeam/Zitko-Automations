@@ -9,7 +9,8 @@ type Tag = { id: number; tag: string }
 const TP_USER_ID = process.env.NEXT_PUBLIC_VINCERE_TALENTPOOL_USER_ID || '29018'
 
 // ===== Password Gate (UI-only) =====
-const TAB_PW = (process.env.ACTIVE_CAMPAIGN_TAB_PASSWORD || 'letmein').trim()
+const TAB_PW =
+  ((process.env.ACTIVE_CAMPAIGN_TAB_PASSWORD ?? '').trim() || 'letmein')
 const UNLOCK_KEY = 'acTabUnlocked'
 
 // ==== Preview / pagination tuning (UI only) ====
@@ -346,10 +347,6 @@ export default function ActiveCampaignTab() {
             >
               Unlock
             </button>
-
-            <p className="mt-3 text-xs text-gray-500">
-              Tip: set <code className="bg-gray-100 px-1 py-0.5 rounded">ACTIVE_CAMPAIGN_TAB_PASSWORD</code> in your env.
-            </p>
           </form>
         </div>
       </div>
