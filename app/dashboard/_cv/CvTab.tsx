@@ -1063,7 +1063,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                     // 1) Paint out selected rects
                     const redacted = await applySalesRedactions(salesPdfBytes, piiRects, hiddenIds)
                     
-                    // 2) Copy into a fresh, safe ArrayBuffer (avoids SharedArrayBuffer union)
+                    // 2) Copy into a fresh ArrayBuffer (avoid SharedArrayBuffer union)
                     const safeBuf = new ArrayBuffer(redacted.byteLength)
                     new Uint8Array(safeBuf).set(redacted)
                     
@@ -1073,7 +1073,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                     setSalesDocBlob(bakedBlob)
                     if (salesDocUrl) URL.revokeObjectURL(salesDocUrl)
                     setSalesDocUrl(URL.createObjectURL(bakedBlob))
-                    setSalesDocUrl(url2)
                   } catch (err:any) {
                     setSalesErr(err?.message || 'Failed to apply edits')
                   }
