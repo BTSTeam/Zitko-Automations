@@ -7,8 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "postinstall": "mkdir -p public && (cp node_modules/pdfjs-dist/build/pdf.worker.min.js public/pdf.worker.min.js || cp node_modules/pdfjs-dist/build/pdf.worker.min.mjs public/pdf.worker.min.js)"
+    "postinstall": "mkdir -p public && cp node_modules/pdfjs-dist/build/pdf.worker.min.mjs public/pdf.worker.min.mjs"
   },
+  "engines": { "node": "20.x" },
   "dependencies": {
     "@upstash/redis": "^1.31.6",
     "@vercel/blob": "^0.24.0",
@@ -23,7 +24,7 @@
     "react": "18.2.0",
     "react-dom": "18.2.0",
     "sanitize-html": "^2.13.0",
-    "pdfjs-dist": "^4.2.67"
+    "pdfjs-dist": "3.11.174"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
