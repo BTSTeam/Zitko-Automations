@@ -1005,18 +1005,21 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                 const range = [e.start, e.end].filter(Boolean).join(' to ')
                 return (
                   <div className="cv-entry">
+                    {/* Row: title/company (left) + dates (right) */}
                     <div className="flex justify-between">
                       <div>
                         <div className="font-medium">{e.title || 'Role'}</div>
                         <div className="text-[11px] text-gray-500">{e.company}</div>
-                        {e.description?.trim() && (
-                          <div className="text-[12px] mt-1 whitespace-pre-wrap">
-                            {e.description}
-                          </div>
-                        )}
                       </div>
                       <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
                     </div>
+        
+                    {/* Full-width description below the row */}
+                    {e.description?.trim() && (
+                      <div className="text-[12px] mt-1 whitespace-pre-wrap">
+                        {e.description}
+                      </div>
+                    )}
                   </div>
                 )
               })()}
@@ -1028,81 +1031,21 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                 const range = [e.start, e.end].filter(Boolean).join(' to ')
                 return (
                   <div key={i} className="cv-entry">
+                    {/* Row: title/company (left) + dates (right) */}
                     <div className="flex justify-between">
                       <div>
                         <div className="font-medium">{e.title || 'Role'}</div>
                         <div className="text-[11px] text-gray-500">{e.company}</div>
-                        {e.description?.trim() && (
-                          <div className="text-[12px] mt-1 whitespace-pre-wrap">
-                            {e.description}
-                          </div>
-                        )}
                       </div>
                       <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
                     </div>
-                  </div>
-                )
-              })}
-            </div>
-          </>
-        )}
-
-
-        {/* Education & Qualifications (header + first entry stay together) */}
-        {form.education.length === 0 ? (
-          <div className="cv-headpair">
-            <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
-              Education & Qualifications
-            </h2>
-            <div className="text-gray-500 text-[12px]">No education yet.</div>
-          </div>
-        ) : (
-          <>
-            <div className="cv-headpair">
-              <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
-                Education & Qualifications
-              </h2>
-              {(() => {
-                const e = form.education[0]
-                const range = [e.start, e.end].filter(Boolean).join(' to ')
-                const showInstitutionLine =
-                  !!e.institution &&
-                  !!e.course &&
-                  e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
-                return (
-                  <div className="cv-entry">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <div className="font-medium">{e.course || e.institution || 'Course'}</div>
-                        {showInstitutionLine && (
-                          <div className="text-[11px] text-gray-500">{e.institution}</div>
-                        )}
+        
+                    {/* Full-width description below the row */}
+                    {e.description?.trim() && (
+                      <div className="text-[12px] mt-1 whitespace-pre-wrap">
+                        {e.description}
                       </div>
-                      <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
-                    </div>
-                  </div>
-                )
-              })()}
-            </div>
-
-            <div className="space-y-3">
-              {form.education.slice(1).map((e, i) => {
-                const range = [e.start, e.end].filter(Boolean).join(' to ')
-                const showInstitutionLine =
-                  !!e.institution &&
-                  !!e.course &&
-                  e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
-                return (
-                  <div key={i} className="cv-entry">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <div className="font-medium">{e.course || e.institution || 'Course'}</div>
-                        {showInstitutionLine && (
-                          <div className="text-[11px] text-gray-500">{e.institution}</div>
-                        )}
-                      </div>
-                      <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
-                    </div>
+                    )}
                   </div>
                 )
               })}
@@ -1324,16 +1267,15 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                 </button>
               </div>
             </div>
-
+          
             {open.core && (
               <div className="grid gap-3 mt-3">
                 <label className="grid gap-1">
                   <span className="text-[11px] text-gray-500">Name</span>
                   <input
-                    className={`input ${prefill.name ? 'text-[11px]' : ''}`}
+                    className="input text-[11px]"
                     value={form.name}
                     onChange={e => {
-                      clearPrefill('name')
                       setField('name', e.target.value)
                       setCandidateName(e.target.value)
                     }}
@@ -1343,16 +1285,16 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                 <label className="grid gap-1">
                   <span className="text-[11px] text-gray-500">Location</span>
                   <input
-                    className={`input ${prefill.location ? 'text-[11px]' : ''}`}
+                    className="input text-[11px]"
                     value={form.location}
-                    onChange={e => { clearPrefill('location'); setField('location', e.target.value) }}
+                    onChange={e => { setField('location', e.target.value) }}
                     disabled={loading}
                   />
                 </label>
               </div>
             )}
           </section>
-
+          
           {/* Profile */}
           <section>
             <div className="flex items-center justify-between">
@@ -1374,7 +1316,13 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                     Generate
                   </button>
                   <div className="border-t border-gray-200 my-2 sm:my-0 sm:mx-2 sm:border-t-0 sm:border-l sm:h-6" />
-                  <input className="input flex-1 min-w-[160px]" placeholder="Job ID" value={jobId} onChange={e => setJobId(e.target.value)} disabled={loading} />
+                  <input
+                    className="input flex-1 min-w-[160px] text-[11px]"
+                    placeholder="Job ID"
+                    value={jobId}
+                    onChange={e => setJobId(e.target.value)}
+                    disabled={loading}
+                  />
                   <button
                     type="button"
                     className="btn btn-grey text-[11px] !px-3 !py-1.5 w-36 whitespace-nowrap"
@@ -1385,20 +1333,20 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                     Generate for Job
                   </button>
                 </div>
-
+          
                 <label className="grid gap-1">
                   <span className="text-[11px] text-gray-500">Profile</span>
                   <textarea
-                    className={`input min-h-[160px] ${prefill.profile ? '!text-[11px]' : ''}`}
+                    className="input min-h-[160px] text-[11px]"
                     value={form.profile}
-                    onChange={e => { /* keep small even when editing */ setField('profile', e.target.value) }}
+                    onChange={e => { setField('profile', e.target.value) }}
                     disabled={loading}
                   />
                 </label>
               </div>
             )}
           </section>
-
+          
           {/* Key Skills */}
           <section>
             <div className="flex items-center justify-between">
@@ -1411,27 +1359,29 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
               <label className="grid gap-1 mt-3">
                 <span className="text-[11px] text-gray-500">Key Skills (comma or newline)</span>
                 <textarea
-                  className={`input min-h-[100px] ${prefill.keySkills ? 'text-[11px]' : ''}`}
+                  className="input min-h-[100px] text-[11px]"
                   value={form.keySkills}
-                  onChange={e => { clearPrefill('keySkills'); setField('keySkills', e.target.value) }}
+                  onChange={e => { setField('keySkills', e.target.value) }}
                   disabled={loading}
                 />
               </label>
             )}
           </section>
-
+          
           {/* Employment */}
           <section>
             <div className="flex items-center justify-between">
               <h3 className="font-semibold text-sm">Employment History</h3>
               <div className="flex items-center gap-3">
-                <button type="button" className="text-[11px] text-gray-500 underline" onClick={addEmployment} disabled={loading}>Add role</button>
+                <button type="button" className="text-[11px] text-gray-500 underline" onClick={addEmployment} disabled={loading}>
+                  Add role
+                </button>
                 <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('work')}>
                   {open.work ? 'Hide' : 'Show'}
                 </button>
               </div>
             </div>
-
+          
             {open.work && (
               <div className="grid gap-3 mt-3">
                 {form.employment.length === 0 ? (
@@ -1442,10 +1392,9 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                       <label className="grid gap-1">
                         <span className="text-[11px] text-gray-500">Title</span>
                         <input
-                          className={`input ${prefill.employment?.[i]?.title ? 'text-[11px]' : ''}`}
+                          className="input text-[11px]"
                           value={e.title || ''}
                           onChange={ev => {
-                            clearPrefill(`employment.${i}.title`)
                             const v = ev.target.value
                             setForm(prev => { const copy = structuredClone(prev); copy.employment[i].title = v; return copy })
                           }}
@@ -1455,10 +1404,9 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                         <label className="grid gap-1">
                           <span className="text-[11px] text-gray-500">Company</span>
                           <input
-                            className={`input ${prefill.employment?.[i]?.company ? 'text-[11px]' : ''}`}
+                            className="input text-[11px]"
                             value={e.company || ''}
                             onChange={ev => {
-                              clearPrefill(`employment.${i}.company`)
                               const v = ev.target.value
                               setForm(prev => { const copy = structuredClone(prev); copy.employment[i].company = v; return copy })
                             }}
@@ -1468,10 +1416,9 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                           <label className="grid gap-1">
                             <span className="text-[11px] text-gray-500">Start</span>
                             <input
-                              className={`input ${prefill.employment?.[i]?.start ? 'text-[11px]' : ''}`}
+                              className="input text-[11px]"
                               value={e.start || ''}
                               onChange={ev => {
-                                clearPrefill(`employment.${i}.start`)
                                 const v = ev.target.value
                                 setForm(prev => { const copy = structuredClone(prev); copy.employment[i].start = v; return copy })
                               }}
@@ -1480,10 +1427,9 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                           <label className="grid gap-1">
                             <span className="text-[11px] text-gray-500">End</span>
                             <input
-                              className={`input ${prefill.employment?.[i]?.end ? 'text-[11px]' : ''}`}
+                              className="input text-[11px]"
                               value={e.end || ''}
                               onChange={ev => {
-                                clearPrefill(`employment.${i}.end`)
                                 const v = ev.target.value
                                 setForm(prev => { const copy = structuredClone(prev); copy.employment[i].end = v; return copy })
                               }}
@@ -1494,10 +1440,9 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                       <label className="grid gap-1">
                         <span className="text-[11px] text-gray-500">Description</span>
                         <textarea
-                          className={`input min-h-[80px] ${prefill.employment?.[i]?.description ? 'text-[11px]' : ''}`}
+                          className="input min-h-[80px] text-[11px]"
                           value={e.description || ''}
                           onChange={ev => {
-                            clearPrefill(`employment.${i}.description`)
                             const v = ev.target.value
                             setForm(prev => { const copy = structuredClone(prev); copy.employment[i].description = v; return copy })
                           }}
@@ -1509,7 +1454,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
               </div>
             )}
           </section>
-
+          
           {/* Education */}
           <section>
             <div className="flex items-center justify-between">
@@ -1518,7 +1463,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                 {open.education ? 'Hide' : 'Show'}
               </button>
             </div>
-
+          
             {open.education && (
               <div className="grid gap-3 mt-3">
                 {form.education.length === 0 ? (
@@ -1532,14 +1477,16 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                           <div className="text-[11px] text-gray-500">{e.institution}</div>
                         )}
                       </div>
-                      <div className="text-[11px] text-gray-500 whitespace-nowrap">{[e.start, e.end].filter(Boolean).join(' to ')}</div>
+                      <div className="text-[11px] text-gray-500 whitespace-nowrap">
+                        {[e.start, e.end].filter(Boolean).join(' to ')}
+                      </div>
                     </div>
                   ))
                 )}
               </div>
             )}
           </section>
-
+          
           {/* Additional */}
           <section>
             <div className="flex items-center justify-between">
@@ -1548,7 +1495,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                 {open.extra ? 'Hide' : 'Show'}
               </button>
             </div>
-
+          
             {open.extra && (
               <div className="text-[12px] grid gap-1 mt-3">
                 <div>Driving License: {form.additional.drivingLicense || '—'}</div>
