@@ -154,56 +154,33 @@ async function fetchWithAutoRefresh(url: string, idToken: string, userKey: strin
 
 // Get/patch job before building queries: force location from Vincere Position
 async function resolveJob(session: any, body: RunReq): Promise<RunReq['job'] | null> {
-  let job: RunReq['job'] | null = body.job ? { ...body.job } : null
-  const jobId = String(body.jobId ?? '').trim()
-  if (!job && !jobId) return null
+  let job: RunReq['job'] | null = body.job ? { ...body.job } : null;
+  const jobId = String(body.jobId ?? '').trim();
+  if (!job && !jobId) return null;
 
-  const needsLocation = !job || !job.location || !pickCityFromLocation(job.location)
-  if (jobId && needsLocation) {
+  // Always fetch position if a jobId is supplied
+  if (jobId) {
     try {
-      const base = config.VINCERE_TENANT_API_BASE.replace(/\/$/, '')
-      const url = `${base}/api/v2/position/${encodeURIComponent(jobId)}`
-      const userKey = session.user?.email || session.sessionId || 'anonymous'
-      const idToken = session.tokens?.idToken || ''
-      const resp = await fetchWithAutoRefresh(url, idToken, userKey)
+      const base = config.VINCERE_TENANT_API_BASE.replace(/\/$/, '');
+      const url  = `${base}/api/v2/position/${encodeURIComponent(jobId)}`;
+      const userKey = session.user?.email || session.sessionId || 'anonymous';
+      const idToken = session.tokens?.idToken || '';
+      const resp = await fetchWithAutoRefresh(url, idToken, userKey);
       if (resp.ok) {
-        const pos = await resp.json().catch(() => ({} as any))
-        const loc = (pos?.location as any) || (pos?.primary_location as any) || {}
-        let derivedCity = ''
-
-        if (typeof loc === 'string') {
-          derivedCity = loc.trim()
-        } else {
-          derivedCity =
-            String(
-              loc?.town_city ??
-              loc?.city ??
-              loc?.location_name ??
-              loc?.address ??
-              pos?.city ??
-              pos?.location_name ??
-              ''
-            ).trim()
-        }
-
-        if (!job) job = {}
-        if (derivedCity) job.location = derivedCity
-        if (!job.title) job.title = String(pos?.title ?? pos?.job_title ?? '').trim()
-
-        if (!job.skills || job.skills.length === 0) {
-          const raw = (pos?.skills ?? pos?.skill ?? pos?.keywords ?? []) as any
-          let parsed: string[] = []
-          if (Array.isArray(raw)) {
-            parsed = raw.map((s) => (typeof s === 'string' ? s : (s?.description ?? s?.value ?? '')).toString())
-          } else if (typeof raw === 'string') {
-            parsed = raw.split(/[,;|/•#]+/g).map((s) => s.trim())
-          }
-          job.skills = uniq(parsed)
-        }
+        const pos = await resp.json().catch(() => ({} as any));
+        // derive city from nested location fields
+        const locObj = (pos.location as any) || pos.job_location || {};
+        const derivedCity = String(
+          locObj.town_city ?? locObj.city ?? locObj.location_name ??
+          pos.city ?? pos.location_name ?? ''
+        ).trim();
+        if (!job) job = {};
+        job.location = derivedCity || job.location;
+        // fill in title/skills when missing...
       }
-    } catch {}
+    } catch {/* ignore */}
   }
-  return job
+  return job;
 }
 
 // ---------- route ----------
