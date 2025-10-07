@@ -198,7 +198,7 @@ export default function MatchTab(): JSX.Element {
   const [title, setTitle] = useState('')
   const [location, setLocation] = useState('')
   const [skillsText, setSkillsText] = useState('')
-  const [qualsText, setQualsText] = useState('')
+  const [qualsText, setQualsText] = useState('') // hidden in UI, used for AI
 
   const [rawCands, setRawCands] = useState<CandidateRow[]>([])
   const [scored, setScored] = useState<ScoredRow[]>([])
@@ -210,6 +210,7 @@ export default function MatchTab(): JSX.Element {
   const [showJson, setShowJson] = useState(false)
   const [aiPayload, setAiPayload] = useState<any>(null)
 
+  // keep ONLY ONE funMessages definition
   const funMessages = [
     'Zitko AI is thinking…',
     'Matching skills & qualifications…',
@@ -231,9 +232,7 @@ export default function MatchTab(): JSX.Element {
       const r = await fetch(`/api/vincere/position/${encodeURIComponent(jobId)}`, { cache: 'no-store' })
       const data = await r.json()
 
-      const publicRaw = htmlToText(
-        data?.public_description || data?.publicDescription || data?.description || ''
-      )
+      const publicRaw = htmlToText(data?.public_description || data?.publicDescription || data?.description || '')
       const internalRaw = htmlToText(
         data?.internal_description || data?.internalDescription || data?.job_description || data?.description_internal || ''
       )
@@ -247,19 +246,7 @@ export default function MatchTab(): JSX.Element {
 
       const skillsArr: string[] = Array.isArray(extracted?.skills) ? extracted.skills : []
       const qualsArr: string[] = Array.isArray(extracted?.qualifications) ? extracted.qualifications : []
-
-      // Prefer Vincere position city; fall back to extracted location text
-      const positionCity = extractCity(
-        String(
-          (data?.location as any)?.city ??
-          (data?.location as any)?.town_city ??
-          (data?.location as any)?.location_name ??
-          data?.city ??
-          data?.location_name ??
-          ''
-        ).trim()
-      )
-      const cleanedLocation = positionCity || extractCity(String(extracted?.location || '').trim())
+      const cleanedLocation = extractCity(String(extracted?.location || '').trim())
 
       const summary: JobSummary = {
         id: jobId,
@@ -271,7 +258,6 @@ export default function MatchTab(): JSX.Element {
         internal_description: internalRaw,
         coords: null
       }
-
       setJob(summary)
       setTitle(summary.job_title || '')
       setLocation(cleanedLocation)
@@ -296,7 +282,6 @@ export default function MatchTab(): JSX.Element {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          jobId: activeJob.id, // <-- ensure server can fetch/override city
           job: {
             title: t,
             location: loc,
@@ -304,7 +289,8 @@ export default function MatchTab(): JSX.Element {
             qualifications: qualsStr.split(',').map(s => s.trim()).filter(Boolean),
             description: activeJob.public_description || ''
           },
-          limit: 500
+          limit: 500,
+          debug: true
         })
       })
       const payload = await run.json()
@@ -320,6 +306,8 @@ export default function MatchTab(): JSX.Element {
           seen.add(c.id)
           return true
         })
+        const dropped = raw.length - dedup.length
+        if (dropped > 0) console.warn(`Dropped ${dropped} candidate(s) due to missing/duplicate IDs`)
         return dedup
       })()
 
@@ -452,6 +440,7 @@ export default function MatchTab(): JSX.Element {
     }
   }
 
+  // use the SAME funMessages above here:
   const statusText = loadingSearch
     ? funMessages[funIdx % funMessages.length]
     : (view === 'ai' ? 'Viewing AI scores' : 'Viewing raw results')
