@@ -1,20 +1,20 @@
 {
   "compilerOptions": {
-    "target": "es2017",
+    "target": "es2017",                 // was "es5"
     "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": false,
     "skipLibCheck": true,
     "strict": false,
     "noEmit": true,
     "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true,
     "module": "esnext",
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "preserve",
     "incremental": true,
-    "downlevelIteration": true,
+
+    "downlevelIteration": true,         // add this for safety
     "baseUrl": ".",
     "paths": {
       "@/*": ["*"],
@@ -24,7 +24,7 @@
       "@/types/*": ["types/*"],
       "@/public/*": ["public/*"]
     },
-    "plugins": [{ "name": "next" }]
+    "plugins": [{ "name": "next" }]     // Next added this automatically during build
   },
   "include": [
     "next-env.d.ts",
@@ -33,5 +33,5 @@
     ".next/types/**/*.ts",
     "types/**/*.d.ts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules"]           // Next added this automatically during build
 }
