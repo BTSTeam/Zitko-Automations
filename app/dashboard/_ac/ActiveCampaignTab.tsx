@@ -48,33 +48,22 @@ export default function ActiveCampaignTab() {
   const [pw, setPw] = useState('')
   const [pwError, setPwError] = useState<string>('')
 
-  useEffect(() => {
-    try {
-      const saved = typeof window !== 'undefined' ? sessionStorage.getItem(UNLOCK_KEY) : null
-      if (saved === 'true') setUnlocked(true)
-    } catch {
-      // ignore
-    }
-  }, [])
-
   function tryUnlock(e?: React.FormEvent) {
-    e?.preventDefault()
+  e?.preventDefault()
 
-    // If not configured, fail clearly (prevents hidden fallback confusion)
-    if (!TAB_PW) {
-      setPwError('Password is not configured on this deployment.')
-      return
-    }
-
-    const typed = pw.trim()
-    if (typed === TAB_PW) {
-      setUnlocked(true)
-      setPwError('')
-      try { sessionStorage.setItem(UNLOCK_KEY, 'true') } catch {}
-    } else {
-      setPwError('Incorrect password. Access denied.')
-    }
+  if (!TAB_PW) {
+    setPwError('Password is not configured on this deployment.')
+    return
   }
+
+  const typed = pw.trim()
+  if (typed === TAB_PW) {
+    setUnlocked(true)
+    setPwError('')
+  } else {
+    setPwError('Incorrect password. Access denied.')
+  }
+}
 
   // ===== Existing tab state =====
   const [pools, setPools] = useState<Pool[]>([])
