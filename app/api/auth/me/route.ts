@@ -7,7 +7,7 @@ import { getSession } from '@/lib/session'
 import { ensureSeedAdmin, getUserByEmail } from '@/lib/users'
 
 export async function GET() {
-  ensureSeedAdmin()
+  await ensureSeedAdmin()
   const session = await getSession()
   const email = session.user?.email ?? null
 
@@ -16,7 +16,7 @@ export async function GET() {
   let name: string | null = null
 
   if (email) {
-    const u = getUserByEmail(email)
+    const u = await getUserByEmail(email)
     if (u) {
       role = u.role
       active = u.active
