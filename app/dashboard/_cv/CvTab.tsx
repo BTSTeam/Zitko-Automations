@@ -2,7 +2,6 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
-import * as pdfjs from 'pdfjs-dist/legacy/build/pdf'
 
 /**
  * CvTab.tsx — full file (prefill font shrinking in editor only)
@@ -149,86 +148,6 @@ async function bakeHeaderFooter(input: Blob): Promise<Blob> {
     console.warn('Baking header/footer failed, using original PDF', err)
     return input
   }
-}
-
-// ===== Sales PDF text detection (emails / phones via PDF.js) =====
-// ===== Sales PDF text detection (emails / phones via PDF.js) =====
-const EMAIL_RE = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/ig
-const PHONE_RE = /\+?\d[\d ()\-]{7,}\d/g
-
-async function detectPiiRectsFromPdf(pdfBytes: Uint8Array) {
-  // use the worker if available; otherwise fall back to sync mode
-  const loadingTask = pdfjs.getDocument({ data: pdfBytes /*, disableWorker: false*/ })
-  const pdf = await loadingTask.promise
-  const result: Record<number, any[]> = {}
-
-  for (let pi = 0; pi < pdf.numPages; pi++) {
-    const page = await pdf.getPage(pi + 1)
-
-    // viewport == page coordinate space (points), origin bottom-left, handles rotation
-    const viewport = page.getViewport({ scale: 1 })
-    const content = await page.getTextContent()
-
-    const rects: any[] = []
-    for (const it of content.items as any[]) {
-      const str = String(it?.str ?? '')
-      if (!str) continue
-
-      // it.transform = [a, b, c, d, e, f]  (text matrix * viewport transform)
-      const [a, b, c, d, e, f] = it.transform || [1, 0, 0, 1, 0, 0]
-
-      // Width/height in page space. Height is the glyph box magnitude (handles rotation).
-      const w = Math.hypot(a, b) || it.width || 0
-      const h = Math.hypot(c, d) || (it.height ?? 0)
-
-      // (e, f) is the baseline origin. Shift down by h * 0.2 to cover descenders a bit,
-      // and use that as the rectangle's lower-left corner.
-      const x = e
-      const y = f - h * 0.2
-
-      // One coarse rect per text item that *contains* an email/phone match.
-      let m: RegExpExecArray | null
-
-      EMAIL_RE.lastIndex = 0
-      while ((m = EMAIL_RE.exec(str))) {
-        rects.push({ x, y, w, h, kind: 'email', text: m[0], id: `p${pi}-e-${x}-${y}-${m.index}` })
-      }
-
-      PHONE_RE.lastIndex = 0
-      while ((m = PHONE_RE.exec(str))) {
-        rects.push({ x, y, w, h, kind: 'phone', text: m[0], id: `p${pi}-p-${x}-${y}-${m.index}` })
-      }
-    }
-    result[pi] = rects
-  }
-  return result
-}
-
-import { PDFDocument as _PDFDoc, rgb as _rgb } from 'pdf-lib' // alias to avoid shadowing
-
-async function applySalesRedactions(originalBytes: Uint8Array, rectMap: {[pi:number]: any[]}, hidden: Set<string>): Promise<Uint8Array> {
-  const pdfDoc = await _PDFDoc.load(originalBytes, { ignoreEncryption: true })
-  const pages = pdfDoc.getPages()
-
-  for (const [piStr, rects] of Object.entries(rectMap)) {
-    const pi = Number(piStr)
-    const page = pages[pi]
-    if (!page) continue
-
-    for (const r of rects) {
-      if (!hidden.has(r.id)) continue
-      page.drawRectangle({
-        x: r.x,
-        y: r.y,
-        width: r.w,
-        height: r.h,
-        color: _rgb(1,1,1), // paint-out in white (your CV background)
-        borderWidth: 0,
-      })
-    }
-  }
-  const out = await pdfDoc.save()
-  return new Uint8Array(out)
 }
 
 // ---------- helpers for education/work mapping ----------
@@ -463,9 +382,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   const [dragOver, setDragOver] = useState<boolean>(false)
   const [salesDocBlob, setSalesDocBlob] = useState<Blob | null>(null)  // baked PDF blob (for upload+preview)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
-  const [salesPdfBytes, setSalesPdfBytes] = useState<Uint8Array | null>(null)
-  const [piiRects, setPiiRects] = useState<{[pageIndex: number]: {x:number,y:number,w:number,h:number, kind:'email'|'phone', text:string, id:string}[]}>({})
-  const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set())
 
   function resetSalesState() {
     setSalesErr(null)
@@ -476,9 +392,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     setSalesDocBlob(null)
     setProcessing(false)
     setDragOver(false)
-    setSalesPdfBytes(null)
-    setPiiRects({})
-    setHiddenIds(new Set())
   }
 
   function resetAllForTemplate(t: TemplateKey | null) {
@@ -829,14 +742,14 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   async function handleFile(f: File) {
     setSalesErr(null)
     if (salesDocUrl) URL.revokeObjectURL(salesDocUrl)
-  
+
     const isPdfFile = f.type?.includes('pdf') || /\.pdf$/i.test(f.name)
     const isDocx    = f.type?.includes('officedocument.wordprocessingml.document') || /\.docx$/i.test(f.name)
-  
+
     try {
       setProcessing(true)
       let sourcePdf: Blob | null = null
-  
+
       if (isDocx) {
         const fd = new FormData()
         fd.append('file', f, f.name)
@@ -859,27 +772,18 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         setSalesErr('Preview only supports PDF (DOCX will auto-convert). This file type will not preview.')
         return
       }
-  
-      // Keep original bytes for accurate redactions later
-      const rawBytes = new Uint8Array(await (sourcePdf as Blob).arrayBuffer())
-      setSalesPdfBytes(rawBytes)
-  
-      // Detect emails/phones (rectangles in PDF coordinates)
-      const rectMap = await detectPiiRectsFromPdf(rawBytes)
-      setPiiRects(rectMap)
-      setHiddenIds(new Set()) // none hidden yet
-  
-      // Bake header/footer NOW so preview is branded
+
+      // 🔥 Bake header/footer for preview AND upload
       const baked = await bakeHeaderFooter(sourcePdf)
-  
-      // Preview baked file
+
+      // preview baked file
       const url = URL.createObjectURL(baked)
       setSalesDocUrl(url)
       setSalesDocName(isDocx ? f.name.replace(/\.docx$/i, '.pdf') : f.name)
       setSalesDocType('application/pdf')
-  
-      // Do NOT set salesDocBlob yet; only set after user clicks "Save edits"
-      setSalesDocBlob(null)
+
+      // store baked blob for upload
+      setSalesDocBlob(baked)
     } catch (e: any) {
       setSalesErr(e?.message || 'Failed to process file')
     } finally {
@@ -1011,91 +915,8 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       return (
         <div className="p-4">
           <SalesViewerCard />
-    
-          {/* Sales detection / toggle panel */}
-          <div className="mt-2 p-2 rounded bg-gray-50 border text-[12px]">
-            <div className="flex items-center justify-between">
-              <div className="font-medium">Detected contact details</div>
-              <button
-                type="button"
-                className="px-2 py-1 border rounded"
-                onClick={() => {
-                  const all = Object.values(piiRects).flat()
-                  const next = new Set(hiddenIds)
-                  const anyOff = all.some(r => !hiddenIds.has(r.id))
-                  if (anyOff) all.forEach(r => next.add(r.id)); else next.clear()
-                  setHiddenIds(next)
-                }}
-              >
-                {(() => {
-                  const all = Object.values(piiRects).flat()
-                  const count = all.length
-                  const on = [...hiddenIds].length
-                  return on < count ? 'Hide All' : 'Show All'
-                })()}
-              </button>
-            </div>
-    
-            <div className="mt-2 grid gap-1 max-h-40 overflow-auto">
-              {Object.keys(piiRects).length === 0 && (
-                <div className="text-gray-500">No emails/phones detected.</div>
-              )}
-              {Object.entries(piiRects).map(([pi, rects]) => (
-                <div key={pi}>
-                  <div className="text-gray-500">Page {Number(pi)+1}</div>
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {rects.map(r => (
-                      <button
-                        key={r.id}
-                        type="button"
-                        className={`px-2 py-1 rounded border ${hiddenIds.has(r.id) ? 'bg-orange-100 border-orange-300' : 'bg-white'}`}
-                        onClick={() => {
-                          const next = new Set(hiddenIds)
-                          if (next.has(r.id)) next.delete(r.id); else next.add(r.id)
-                          setHiddenIds(next)
-                        }}
-                        title={r.text}
-                      >
-                        {r.kind === 'email' ? 'Email' : 'Phone'}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-    
-            <div className="mt-2 flex gap-2">
-              <button
-                type="button"
-                className="px-3 py-1 rounded bg-black text-white disabled:opacity-50"
-                disabled={!salesPdfBytes}
-                onClick={async () => {
-                  if (!salesPdfBytes) return
-                  try {
-                    // 1) Paint out selected rects
-                    const redacted = await applySalesRedactions(salesPdfBytes, piiRects, hiddenIds)
-                    
-                    // 2) Copy into a fresh ArrayBuffer (avoid SharedArrayBuffer union)
-                    const safeBuf = new ArrayBuffer(redacted.byteLength)
-                    new Uint8Array(safeBuf).set(redacted)
-                    
-                    // 3) Bake branding, then preview & set upload blob
-                    const redactedBlob = new Blob([safeBuf], { type: 'application/pdf' })
-                    const bakedBlob = await bakeHeaderFooter(redactedBlob)
-                    setSalesDocBlob(bakedBlob)
-                    if (salesDocUrl) URL.revokeObjectURL(salesDocUrl)
-                    setSalesDocUrl(URL.createObjectURL(bakedBlob))
-                  } catch (err:any) {
-                    setSalesErr(err?.message || 'Failed to apply edits')
-                  }
-                }}
-              >
-                Save edits (apply & bake)
-              </button>
-              <div className="text-gray-500 self-center">
-                After saving, the preview and upload will match exactly.
-              </div>
-            </div>
+          <div className="px-1 pt-2 text-[11px] text-gray-500">
+            Preview shows branding; uploaded file will match this exactly.
           </div>
         </div>
       )
