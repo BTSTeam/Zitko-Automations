@@ -3,11 +3,14 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
 import * as pdfjs from 'pdfjs-dist'
-const workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString()
+
+// Use classic UMD worker (not .mjs)
+const workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.js', import.meta.url).toString()
 
 if (typeof window !== 'undefined') {
   (pdfjs as any).GlobalWorkerOptions.workerSrc = workerSrc
 }
+
 
 /**
  * CvTab.tsx — full file (prefill font shrinking in editor only)
@@ -157,36 +160,48 @@ async function bakeHeaderFooter(input: Blob): Promise<Blob> {
 }
 
 // ===== Sales PDF text detection (emails / phones via PDF.js) =====
+// ===== Sales PDF text detection (emails / phones via PDF.js) =====
 const EMAIL_RE = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/ig
 const PHONE_RE = /\+?\d[\d ()\-]{7,}\d/g
 
 async function detectPiiRectsFromPdf(pdfBytes: Uint8Array) {
-  const loadingTask = pdfjs.getDocument({ data: pdfBytes, disableWorker: true })
+  // use the worker if available; otherwise fall back to sync mode
+  const loadingTask = pdfjs.getDocument({ data: pdfBytes /*, disableWorker: false*/ })
   const pdf = await loadingTask.promise
-  const result: {[pi:number]: any[]} = {}
+  const result: Record<number, any[]> = {}
+
   for (let pi = 0; pi < pdf.numPages; pi++) {
     const page = await pdf.getPage(pi + 1)
-    const viewport = page.getViewport({ scale: 1 }) // PDF point space
-    const textContent = await page.getTextContent()
-    const items = textContent.items as any[]
+
+    // viewport == page coordinate space (points), origin bottom-left, handles rotation
+    const viewport = page.getViewport({ scale: 1 })
+    const content = await page.getTextContent()
 
     const rects: any[] = []
-    for (const it of items) {
+    for (const it of content.items as any[]) {
       const str = String(it?.str ?? '')
       if (!str) continue
 
-      // PDF.js gives bottom-left coords at transform[4], transform[5]
-      const x = it.transform[4]
-      const y = it.transform[5]
-      const w = it.width
-      const h = it.height
+      // it.transform = [a, b, c, d, e, f]  (text matrix * viewport transform)
+      const [a, b, c, d, e, f] = it.transform || [1, 0, 0, 1, 0, 0]
 
-      // Match spans for emails/phones (coarse — one rect per item match)
+      // Width/height in page space. Height is the glyph box magnitude (handles rotation).
+      const w = Math.hypot(a, b) || it.width || 0
+      const h = Math.hypot(c, d) || (it.height ?? 0)
+
+      // (e, f) is the baseline origin. Shift down by h * 0.2 to cover descenders a bit,
+      // and use that as the rectangle's lower-left corner.
+      const x = e
+      const y = f - h * 0.2
+
+      // One coarse rect per text item that *contains* an email/phone match.
       let m: RegExpExecArray | null
+
       EMAIL_RE.lastIndex = 0
       while ((m = EMAIL_RE.exec(str))) {
         rects.push({ x, y, w, h, kind: 'email', text: m[0], id: `p${pi}-e-${x}-${y}-${m.index}` })
       }
+
       PHONE_RE.lastIndex = 0
       while ((m = PHONE_RE.exec(str))) {
         rects.push({ x, y, w, h, kind: 'phone', text: m[0], id: `p${pi}-p-${x}-${y}-${m.index}` })
