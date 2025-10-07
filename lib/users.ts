@@ -55,14 +55,14 @@ export async function verifyPassword(user: User, plain: string) {
 }
 
 export async function getUserByEmail(email: string): Promise<User | null> {
-  const id = await redis.get<string | null>(EMAIL_IDX(email))
-  if (!id) return null
+  const id = await redis.get(EMAIL_IDX(email))
+  if (typeof id !== 'string' || !id) return null
   const data = await redis.hgetall<Record<string, string>>(USER_KEY(id))
   return hydrateUser(data)
 }
 
 export async function listUsers(): Promise<User[]> {
-  const ids = await redis.smembers<string>(ALL_IDS_KEY)
+  const ids = (await redis.smembers(ALL_IDS_KEY)) as string[]
   if (!ids?.length) return []
   const users: User[] = []
   for (const id of ids) {
@@ -70,7 +70,6 @@ export async function listUsers(): Promise<User[]> {
     const u = hydrateUser(data)
     if (u) users.push(u)
   }
-  // order by createdAt desc (newest first) to match previous behavior
   users.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
   return users
 }
