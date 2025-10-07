@@ -36,39 +36,34 @@ export default function ClientShell(): JSX.Element {
     return () => document.removeEventListener('click', onClick)
   }, [])
 
-  // central welcome block
   const WelcomeBlock = () => (
-    <section className="min-h-[50vh] grid place-items-center px-6">
+    // Fill the available content height and center perfectly
+    <section className="h-full grid place-items-center px-6">
       <div className="text-center select-none">
-        {/* W E L C O M E */}
         <h1
           className="font-semibold uppercase"
           style={{
-            color: '#3B3E44',         // Zitko dark gray
+            color: '#3B3E44',
             letterSpacing: '0.5em',
             fontSize: 'clamp(2.25rem, 6vw, 6rem)',
           }}
         >
           WELCOME
         </h1>
-
-        {/* > ALPHA TEST < */}
         <p
           className="mt-3 font-semibold uppercase"
           style={{
-            color: '#F7941D',         // Zitko orange
+            color: '#F7941D',
             letterSpacing: '0.25em',
             fontSize: 'clamp(0.875rem, 2.2vw, 1.25rem)',
           }}
         >
           &gt; ALPHA TEST &lt;
         </p>
-
-        {/* helper text */}
         <p
           className="mt-4"
           style={{
-            color: '#9CA3AF',         // light gray
+            color: '#9CA3AF',
             fontSize: 'clamp(0.8rem, 1.8vw, 1rem)',
           }}
         >
@@ -78,16 +73,21 @@ export default function ClientShell(): JSX.Element {
     </section>
   )
 
+  // helper to only show active style when not on welcome
+  const active = (k: TabKey) => (!showWelcome && tab === k ? 'tab-active' : '')
+
   return (
-    <div className="grid gap-6">
-      {/* Top bar: left group (three tabs), right-aligned Active Campaign */}
-      <div className="flex items-center justify-between mb-6">
+    {/* Make the whole area fill the viewport (minus your header). 
+        Tweak the 120px if your header is taller/shorter. */}
+    <div className="flex flex-col gap-6 min-h-[calc(100vh-120px)]">
+      {/* Top bar */}
+      <div className="flex items-center justify-between">
         {/* Left cluster */}
         <div className="flex gap-2">
           {/* Match */}
           <button
             onClick={() => { setTab('match'); setShowWelcome(false) }}
-            className={`tab ${tab === 'match' ? 'tab-active' : ''}`}
+            className={`tab ${active('match')}`}
           >
             Candidate Matching
           </button>
@@ -96,7 +96,7 @@ export default function ClientShell(): JSX.Element {
           <div className="relative" data-sourcing-root>
             <button
               onClick={() => setSourceOpen(v => !v)}
-              className={`tab ${tab === 'source' ? 'tab-active' : ''}`}
+              className={`tab ${active('source')}`}
               title="Sourcing"
             >
               Sourcing
@@ -124,7 +124,7 @@ export default function ClientShell(): JSX.Element {
           <div className="relative" data-cv-root>
             <button
               onClick={() => setCvOpen(v => !v)}
-              className={`tab ${tab === 'cv' ? 'tab-active' : ''}`}
+              className={`tab ${active('cv')}`}
               title="CV Formatting"
             >
               CV Formatting
@@ -154,26 +154,27 @@ export default function ClientShell(): JSX.Element {
           <button
             onClick={() => { setTab('ac'); setShowWelcome(false) }}
             title="Active Campaign"
-            aria-selected={tab === 'ac'}
-            // Force our AC blue + white when active, ignore default tab-active style
-            className={`tab ${tab === 'ac' ? '!bg-[#001961] !text-white !border-transparent hover:opacity-95 shadow-sm' : ''}`}
+            aria-selected={!showWelcome && tab === 'ac'}
+            className={`tab ${!showWelcome && tab === 'ac' ? '!bg-[#001961] !text-white !border-transparent hover:opacity-95 shadow-sm' : ''}`}
           >
             Active Campaign
           </button>
         </div>
       </div>
 
-      {/* Content */}
-      {showWelcome ? (
-        <WelcomeBlock />
-      ) : (
-        <>
-          {tab === 'match' && <MatchTab />}
-          {tab === 'source' && <SourceTab mode={sourceMode} />}
-          {tab === 'cv' && <CvTab templateFromShell={cvTemplate} />}
-          {tab === 'ac' && <ActiveCampaignTab />}
-        </>
-      )}
+      {/* Content area grows to fill height; welcome centers inside it */}
+      <div className="flex-1">
+        {showWelcome ? (
+          <WelcomeBlock />
+        ) : (
+          <>
+            {tab === 'match' && <MatchTab />}
+            {tab === 'source' && <SourceTab mode={sourceMode} />}
+            {tab === 'cv' && <CvTab templateFromShell={cvTemplate} />}
+            {tab === 'ac' && <ActiveCampaignTab />}
+          </>
+        )}
+      </div>
     </div>
   )
 }
