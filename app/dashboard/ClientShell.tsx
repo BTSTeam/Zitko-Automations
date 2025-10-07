@@ -12,6 +12,9 @@ type TabKey = 'match' | 'source' | 'cv' | 'ac'
 type SourceMode = 'candidates' | 'companies'
 type CvTemplate = 'standard' | 'sales'
 
+// 🔒 Toggle to re-enable later
+const DISABLE_SOURCING = true
+
 export default function ClientShell(): JSX.Element {
   const [tab, setTab] = useState<TabKey>('match')
   const [showWelcome, setShowWelcome] = useState<boolean>(true)
@@ -74,17 +77,22 @@ export default function ClientShell(): JSX.Element {
               Candidate Matching
             </button>
 
-            {/* Sourcing dropdown */}
+            {/* Sourcing dropdown (temporarily disabled) */}
             <div className="relative" data-sourcing-root>
               <button
-                onClick={() => setSourceOpen(v => !v)}
-                className={`tab ${active('source')}`}
-                title="Sourcing"
+                onClick={(e) => { 
+                  if (DISABLE_SOURCING) { e.preventDefault(); e.stopPropagation(); return }
+                  setSourceOpen(v => !v)
+                }}
+                className={`tab ${!DISABLE_SOURCING ? active('source') : ''} ${DISABLE_SOURCING ? 'opacity-50 cursor-not-allowed' : ''}`}
+                title={DISABLE_SOURCING ? 'Sourcing (temporarily disabled)' : 'Sourcing'}
+                disabled={DISABLE_SOURCING}
+                aria-disabled={DISABLE_SOURCING}
               >
                 Sourcing
               </button>
 
-              {sourceOpen && (
+              {!DISABLE_SOURCING && sourceOpen && (
                 <div className="absolute left-1/2 -translate-x-1/2 mt-2 w-44 rounded-xl border bg-white shadow-lg overflow-hidden z-10">
                   <button
                     className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${sourceMode==='candidates' ? 'font-medium' : ''}`}
