@@ -1,5 +1,6 @@
 // lib/users.ts
 import crypto from 'crypto'
+import { redis } from './redis'
 
 export type Role = 'Admin' | 'User'
 export type User = {
@@ -18,127 +19,175 @@ export type User = {
   createdAt: string
 }
 
-// In-memory store (persists per server instance). We'll swap to Postgres later.
-const GLOBAL_KEY = '__zitko_users__'
-const g = globalThis as any
-if (!g[GLOBAL_KEY]) g[GLOBAL_KEY] = new Map<string, User>()
-const store: Map<string, User> = g[GLOBAL_KEY]
+// ---------------- Keys & helpers ----------------
+const ALL_IDS_KEY = 'users:all' // Set of all user ids
+const USER_KEY = (id: string) => `user:${id}` // Hash per user
+const EMAIL_IDX = (email: string) => `user:email:${email.toLowerCase().trim()}` // String => id
 
 function sha256(input: string) {
   return crypto.createHash('sha256').update(input).digest('hex')
 }
 
-export function verifyPassword(user: User, plain: string) {
+// Convert HGETALL result to User
+function hydrateUser(obj: Record<string, string | number | null> | null): User | null {
+  if (!obj) return null
+  return {
+    id: String(obj.id ?? ''),
+    email: String(obj.email ?? ''),
+    name: obj.name ? String(obj.name) : undefined,
+    role: (obj.role as Role) ?? 'User',
+    active: String(obj.active ?? 'true') === 'true',
+    workPhone:
+      obj.workPhone === null ||
+      obj.workPhone === 'null' ||
+      String(obj.workPhone ?? '').trim() === ''
+        ? null
+        : String(obj.workPhone),
+    passwordHash: String(obj.passwordHash ?? ''),
+    salt: String(obj.salt ?? ''),
+    createdAt: String(obj.createdAt ?? new Date().toISOString()),
+  }
+}
+
+export async function verifyPassword(user: User, plain: string) {
   const hash = sha256(user.salt + plain)
   return hash === user.passwordHash
 }
 
-export function getUserByEmail(email: string) {
-  email = email.toLowerCase().trim()
-  for (const u of store.values()) {
-    if (u.email.toLowerCase() === email) return u
+export async function getUserByEmail(email: string): Promise<User | null> {
+  const id = await redis.get<string | null>(EMAIL_IDX(email))
+  if (!id) return null
+  const data = await redis.hgetall<Record<string, string>>(USER_KEY(id))
+  return hydrateUser(data)
+}
+
+export async function listUsers(): Promise<User[]> {
+  const ids = await redis.smembers<string>(ALL_IDS_KEY)
+  if (!ids?.length) return []
+  const users: User[] = []
+  for (const id of ids) {
+    const data = await redis.hgetall<Record<string, string>>(USER_KEY(id))
+    const u = hydrateUser(data)
+    if (u) users.push(u)
   }
-  return null
+  // order by createdAt desc (newest first) to match previous behavior
+  users.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  return users
 }
 
-export function listUsers(): User[] {
-  // order by createdAt desc
-  return Array.from(store.values()).sort((a, b) =>
-    b.createdAt.localeCompare(a.createdAt)
-  )
-}
-
-export function createUser(input: {
+export async function createUser(input: {
   email: string
   name?: string
   role?: Role
   password: string
   workPhone?: string | null
-}): User {
-  const email = input.email.toLowerCase().trim()
+}): Promise<User> {
+  const email = (input.email ?? '').toLowerCase().trim()
   if (!email) throw new Error('Email is required')
-  if (getUserByEmail(email)) throw new Error('Email already exists')
   if (!input.password) throw new Error('Password is required')
+
+  // Reserve email -> id (NX ensures uniqueness)
+  const id = crypto.randomUUID()
+  const reserved = await redis.set(EMAIL_IDX(email), id, { nx: true })
+  if (reserved !== 'OK') {
+    throw new Error('Email already exists')
+  }
 
   const salt = crypto.randomBytes(16).toString('hex')
   const passwordHash = sha256(salt + input.password)
 
-  // normalize work phone: empty string => null; undefined => leave undefined
+  // normalize work phone: empty string => null; undefined => null
   const normalizedWorkPhone =
     typeof input.workPhone === 'undefined'
-      ? undefined
+      ? null
       : (input.workPhone ?? '').trim() === ''
-        ? null
-        : (input.workPhone ?? '').trim()
+      ? null
+      : (input.workPhone ?? '').trim()
 
   const user: User = {
-    id: crypto.randomUUID(),
+    id,
     email,
     name: input.name?.trim(),
     role: input.role ?? 'User',
     active: true,
-    workPhone: normalizedWorkPhone ?? null,
+    workPhone: normalizedWorkPhone,
     passwordHash,
     salt,
     createdAt: new Date().toISOString(),
   }
-  store.set(user.id, user)
+
+  // Save user and index
+  await Promise.all([
+    redis.hset(USER_KEY(id), user as any),
+    redis.sadd(ALL_IDS_KEY, id),
+  ])
+
   return user
 }
 
-export function updateUser(
+export async function updateUser(
   id: string,
   patch: Partial<Pick<User, 'name' | 'role' | 'active' | 'workPhone'>> & { password?: string }
-): User {
-  const u = store.get(id)
-  if (!u) throw new Error('User not found')
+): Promise<User> {
+  const key = USER_KEY(id)
+  const current = hydrateUser(await redis.hgetall<Record<string, string>>(key))
+  if (!current) throw new Error('User not found')
 
-  if (typeof patch.name !== 'undefined') u.name = patch.name?.trim()
-  if (typeof patch.role !== 'undefined') u.role = patch.role
-  if (typeof patch.active !== 'undefined') u.active = !!patch.active
+  // Email is immutable here (keeps EMAIL_IDX simple & safe)
+  const next: User = { ...current }
+
+  if (typeof patch.name !== 'undefined') next.name = patch.name?.trim()
+  if (typeof patch.role !== 'undefined') next.role = patch.role
+  if (typeof patch.active !== 'undefined') next.active = !!patch.active
 
   if (typeof patch.workPhone !== 'undefined') {
-    // allow clearing with null or empty string
-    if (patch.workPhone === null) {
-      u.workPhone = null
-    } else {
+    if (patch.workPhone === null) next.workPhone = null
+    else {
       const trimmed = patch.workPhone?.trim() ?? ''
-      u.workPhone = trimmed === '' ? null : trimmed
+      next.workPhone = trimmed === '' ? null : trimmed
     }
   }
 
   if (typeof patch.password === 'string' && patch.password.length > 0) {
     const salt = crypto.randomBytes(16).toString('hex')
     const passwordHash = sha256(salt + patch.password)
-    u.salt = salt
-    u.passwordHash = passwordHash
+    next.salt = salt
+    next.passwordHash = passwordHash
   }
 
-  store.set(u.id, u)
-  return u
+  await redis.hset(key, next as any)
+  return next
 }
 
-export function deleteUser(id: string) {
-  store.delete(id)
+export async function deleteUser(id: string): Promise<void> {
+  const key = USER_KEY(id)
+  const current = hydrateUser(await redis.hgetall<Record<string, string>>(key))
+  if (!current) return
+
+  await Promise.all([
+    redis.del(EMAIL_IDX(current.email)),
+    redis.del(key),
+    redis.srem(ALL_IDS_KEY, id),
+  ])
 }
 
 // Seed a default admin if store is empty (so you’re never locked out)
-export function ensureSeedAdmin() {
-  if (store.size > 0) return
+export async function ensureSeedAdmin() {
+  const count = await redis.scard(ALL_IDS_KEY)
+  if ((count ?? 0) > 0) return
+
   const email = 'stephenr@zitko.co.uk'
   const password = 'Arlojuan1.'
-  const salt = crypto.randomBytes(16).toString('hex')
-  const passwordHash = sha256(salt + password)
-  const user: User = {
-    id: crypto.randomUUID(),
-    email,
-    name: 'Stephen Rosamond',
-    role: 'Admin',
-    active: true,
-    workPhone: null,
-    passwordHash,
-    salt,
-    createdAt: new Date().toISOString(),
+
+  try {
+    await createUser({
+      email,
+      name: 'Stephen Rosamond',
+      role: 'Admin',
+      password,
+      workPhone: null,
+    })
+  } catch {
+    // if it already exists, ignore
   }
-  store.set(user.id, user)
 }
