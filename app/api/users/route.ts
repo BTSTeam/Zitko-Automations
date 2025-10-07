@@ -19,11 +19,11 @@ function sanitize(u: User) {
 }
 
 async function requireAdmin() {
-  ensureSeedAdmin()
+  await ensureSeedAdmin()
   const session = await getSession()
   const email = session.user?.email
   if (!email) return null
-  const me = getUserByEmail(email)
+  const me = await getUserByEmail(email)
   if (!me || me.role !== 'Admin' || !me.active) return null
   return me
 }
@@ -31,7 +31,8 @@ async function requireAdmin() {
 export async function GET() {
   const me = await requireAdmin()
   if (!me) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  return NextResponse.json(listUsers().map(sanitize))
+  const users = await listUsers()
+  return NextResponse.json(users.map(sanitize))
 }
 
 export async function POST(req: NextRequest) {
@@ -55,7 +56,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const u = createUser({ email, name, role, password, workPhone })
+    const u = await createUser({ email, name, role, password, workPhone })
     return NextResponse.json(sanitize(u), { status: 201 })
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Create failed' }, { status: 400 })
