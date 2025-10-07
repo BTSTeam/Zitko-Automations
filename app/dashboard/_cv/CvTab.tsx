@@ -3,6 +3,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
 import * as pdfjs from 'pdfjs-dist'
+import workerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
+
+if (typeof window !== 'undefined') {
+  (pdfjs as any).GlobalWorkerOptions.workerSrc = workerSrc
+}
 
 /**
  * CvTab.tsx — full file (prefill font shrinking in editor only)
