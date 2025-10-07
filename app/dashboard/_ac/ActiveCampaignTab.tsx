@@ -17,7 +17,7 @@ function normalizeEnvPw(s: string | undefined | null) {
   }
   return t
 }
-const RAW_ENV = process.env.NEXT_PUBLIC_ACTIVE_CAMPAIGN_TAB_PASSWORD ?? ''
+const RAW_ENV = process.env.NEXT_PUBLIC_ACTIVE_CAMPAIGN_TAB ?? ''
 const TAB_PW = normalizeEnvPw(RAW_ENV) // no fallback; fail clearly if unset
 const UNLOCK_KEY = 'acTabUnlocked'
 
