@@ -198,7 +198,7 @@ export default function MatchTab(): JSX.Element {
   const [title, setTitle] = useState('')
   const [location, setLocation] = useState('')
   const [skillsText, setSkillsText] = useState('')
-  const [qualsText, setQualsText] = useState('') // hidden in UI, used for AI
+  const [qualsText, setQualsText] = useState('')
 
   const [rawCands, setRawCands] = useState<CandidateRow[]>([])
   const [scored, setScored] = useState<ScoredRow[]>([])
@@ -210,7 +210,6 @@ export default function MatchTab(): JSX.Element {
   const [showJson, setShowJson] = useState(false)
   const [aiPayload, setAiPayload] = useState<any>(null)
 
-  // keep ONLY ONE funMessages definition
   const funMessages = [
     'Zitko AI is thinking…',
     'Matching skills & qualifications…',
@@ -226,65 +225,65 @@ export default function MatchTab(): JSX.Element {
   }, [loadingSearch])
 
   const retrieveJob = async (): Promise<JobSummary | null> => {
-  if (!jobId) return null;
-  setScored([]); setRawCands([]); setServerCount(null); setServerQuery(null);
-  try {
-    const r = await fetch(`/api/vincere/position/${encodeURIComponent(jobId)}`, { cache: 'no-store' });
-    const data = await r.json();
+    if (!jobId) return null
+    setScored([]); setRawCands([]); setServerCount(null); setServerQuery(null)
+    try {
+      const r = await fetch(`/api/vincere/position/${encodeURIComponent(jobId)}`, { cache: 'no-store' })
+      const data = await r.json()
 
-    const publicRaw = htmlToText(
-      data?.public_description || data?.publicDescription || data?.description || ''
-    );
-    const internalRaw = htmlToText(
-      data?.internal_description || data?.internalDescription || data?.job_description || data?.description_internal || ''
-    );
+      const publicRaw = htmlToText(
+        data?.public_description || data?.publicDescription || data?.description || ''
+      )
+      const internalRaw = htmlToText(
+        data?.internal_description || data?.internalDescription || data?.job_description || data?.description_internal || ''
+      )
 
-    const extractResp = await fetch('/api/job/extract', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ publicDescription: publicRaw, internalDescription: internalRaw })
-    });
-    const extracted = await extractResp.json();
+      const extractResp = await fetch('/api/job/extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ publicDescription: publicRaw, internalDescription: internalRaw })
+      })
+      const extracted = await extractResp.json()
 
-    const skillsArr: string[] = Array.isArray(extracted?.skills) ? extracted.skills : [];
-    const qualsArr: string[] = Array.isArray(extracted?.qualifications) ? extracted.qualifications : [];
+      const skillsArr: string[] = Array.isArray(extracted?.skills) ? extracted.skills : []
+      const qualsArr: string[] = Array.isArray(extracted?.qualifications) ? extracted.qualifications : []
 
-    // Prefer the city from Vincere’s position record. Fall back to extracted location.
-    const positionCity = extractCity(
-      String(
-        (data?.location as any)?.city ??
-        (data?.location as any)?.town_city ??
-        (data?.location as any)?.location_name ??
-        data?.city ??
-        data?.location_name ??
-        ''
-      ).trim()
-    );
-    const cleanedLocation = positionCity || extractCity(String(extracted?.location || '').trim());
+      // Prefer Vincere position city; fall back to extracted location text
+      const positionCity = extractCity(
+        String(
+          (data?.location as any)?.city ??
+          (data?.location as any)?.town_city ??
+          (data?.location as any)?.location_name ??
+          data?.city ??
+          data?.location_name ??
+          ''
+        ).trim()
+      )
+      const cleanedLocation = positionCity || extractCity(String(extracted?.location || '').trim())
 
-    const summary: JobSummary = {
-      id: jobId,
-      job_title: String(extracted?.title || '').trim(),
-      location: cleanedLocation,
-      skills: skillsArr,
-      qualifications: qualsArr,
-      public_description: publicRaw,
-      internal_description: internalRaw,
-      coords: null
-    };
+      const summary: JobSummary = {
+        id: jobId,
+        job_title: String(extracted?.title || '').trim(),
+        location: cleanedLocation,
+        skills: skillsArr,
+        qualifications: qualsArr,
+        public_description: publicRaw,
+        internal_description: internalRaw,
+        coords: null
+      }
 
-    setJob(summary);
-    setTitle(summary.job_title || '');
-    setLocation(cleanedLocation);
-    setSkillsText(skillsArr.join(', '));
-    setQualsText(qualsArr.join(', '));
-    return summary;
-  } catch (e) {
-    console.error(e);
-    alert('Failed to retrieve or extract job details.');
-    return null;
+      setJob(summary)
+      setTitle(summary.job_title || '')
+      setLocation(cleanedLocation)
+      setSkillsText(skillsArr.join(', '))
+      setQualsText(qualsArr.join(', '))
+      return summary
+    } catch (e) {
+      console.error(e)
+      alert('Failed to retrieve or extract job details.')
+      return null
+    }
   }
-};
 
   const runSearch = async (input?: { job: JobSummary; title: string; location: string; skillsText: string; qualsText: string }) => {
     const active = input ?? (job ? { job, title, location, skillsText, qualsText } : null)
@@ -297,6 +296,7 @@ export default function MatchTab(): JSX.Element {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          jobId: activeJob.id, // <-- ensure server can fetch/override city
           job: {
             title: t,
             location: loc,
@@ -304,8 +304,7 @@ export default function MatchTab(): JSX.Element {
             qualifications: qualsStr.split(',').map(s => s.trim()).filter(Boolean),
             description: activeJob.public_description || ''
           },
-          limit: 500,
-          debug: true
+          limit: 500
         })
       })
       const payload = await run.json()
@@ -321,8 +320,6 @@ export default function MatchTab(): JSX.Element {
           seen.add(c.id)
           return true
         })
-        const dropped = raw.length - dedup.length
-        if (dropped > 0) console.warn(`Dropped ${dropped} candidate(s) due to missing/duplicate IDs`)
         return dedup
       })()
 
@@ -455,7 +452,6 @@ export default function MatchTab(): JSX.Element {
     }
   }
 
-  // use the SAME funMessages above here:
   const statusText = loadingSearch
     ? funMessages[funIdx % funMessages.length]
     : (view === 'ai' ? 'Viewing AI scores' : 'Viewing raw results')
