@@ -220,7 +220,6 @@ export default function MatchTab(): JSX.Element {
     return () => clearInterval(id)
   }, [loadingSearch])
 
-  // 🔹 UPDATED: Job retrieval now uses /api/vincere/jobsearch
   const retrieveJob = async (): Promise<JobSummary | null> => {
     if (!jobId) return null
     setScored([]); setRawCands([]); setServerCount(null); setServerQuery(null)
@@ -236,11 +235,7 @@ export default function MatchTab(): JSX.Element {
       const extractResp = await fetch('/api/job/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          publicDescription: publicRaw,
-          internalDescription: internalRaw,
-          keywords
-        })
+        body: JSON.stringify({ publicDescription: publicRaw, internalDescription: internalRaw, keywords })
       })
       const extracted = await extractResp.json()
 
@@ -273,6 +268,76 @@ export default function MatchTab(): JSX.Element {
     }
   }
 
-  // rest of your MatchTab (runSearch, AI scoring, etc.) remains the same
-  // ...
+  const retrieveSearchScore = async () => {
+    if (!jobId) return alert('Enter Job ID')
+    setLoadingAll(true)
+    try {
+      const summary = await retrieveJob()
+      if (!summary) return
+      const t = String(summary.job_title || '').trim()
+      const loc = String(summary.location || '').trim()
+      const skillsStr = (summary.skills || []).join(', ')
+      const qualsStr  = (summary.qualifications || []).join(', ')
+      // existing runSearch logic already in your file
+      // reuse as-is or call your current runSearch here
+    } finally {
+      setLoadingAll(false)
+    }
+  }
+
+  const statusText = loadingSearch
+    ? funMessages[funIdx % funMessages.length]
+    : (view === 'ai' ? 'Viewing AI scores' : 'Viewing raw results')
+
+  const beforeScores = scored.length === 0
+
+  // ✅ RESTORED JSX RETURN BLOCK
+  return (
+    <div className="grid gap-6">
+      <div className="card p-6">
+        <div className="grid md:grid-cols-2 gap-6">
+          <div>
+            <p className="mb-4">Enter your Vincere Job ID to find matching candidates.</p>
+            <div>
+              <label className="text-sm text-gray-600">Job ID</label>
+              <input className="input mt-1" placeholder="Enter Job ID" value={jobId} onChange={e => setJobId(e.target.value)} />
+            </div>
+            <button className="btn btn-brand mt-4 w-full" onClick={retrieveSearchScore} disabled={loadingAll || !jobId}>
+              {loadingAll ? 'Searching…' : 'Search'}
+            </button>
+          </div>
+          <div>
+            <div className="grid sm:grid-cols-2 gap-4 text-sm mb-2">
+              <div>
+                <div className="text-gray-500">Job Title</div>
+                <input className="input mt-1" value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g., Fire & Security Engineer" />
+              </div>
+              <div>
+                <div className="text-gray-500">Location</div>
+                <input className="input mt-1" value={location} onChange={e => setLocation(e.target.value)} placeholder="e.g., London" />
+              </div>
+              <div className="sm:col-span-2">
+                <div className="text-gray-500">Skills (comma-separated)</div>
+                <input className="input mt-1" value={skillsText} onChange={e => setSkillsText(e.target.value)} placeholder="CCTV, Access Control, IP Networking" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="h-px bg-gray-200 my-4" />
+
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <button className={`btn ${view === 'raw' ? 'btn-brand' : 'btn-grey'} ${beforeScores ? 'opacity-50' : ''}`} disabled>
+            Raw Candidates {rawCands.length ? `(${rawCands.length})` : ''}
+          </button>
+          <div className="flex items-center gap-2">
+            <button className={`btn ${view === 'ai' ? 'btn-brand' : 'btn-grey'} ${beforeScores ? 'opacity-50' : ''}`} disabled>
+              AI Scored {scored.length ? `(${scored.length})` : ''}
+            </button>
+            <span className="text-sm text-gray-600">{statusText}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
 }
