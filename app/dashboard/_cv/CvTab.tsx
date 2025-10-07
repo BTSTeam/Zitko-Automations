@@ -435,6 +435,14 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [templateFromShell])
 
+  // (in ClientShell.tsx, inside the component, after your first useEffect)
+useEffect(() => {
+  (async () => {
+    const pdfjs = await import('pdfjs-dist/legacy/build/pdf')
+    ;(pdfjs as any).GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js'
+  })()
+}, [])
+
   function toggle(k: keyof OpenState) {
     setOpen(s => ({ ...s, [k]: !s[k] }))
   }
