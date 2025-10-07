@@ -862,13 +862,22 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         const pageIndex = Number(pi)
         const page = pages[pageIndex]
         if (!page || !covers?.length) return
+      
         const { width, height } = page.getSize()
+      
+        // Expand each box slightly (~2pt) to avoid anti-alias seams
+        const MARGIN_PT = 2
+        const mx = MARGIN_PT / width
+        const my = MARGIN_PT / height
+      
         covers.forEach(c => {
           page.drawRectangle({
-            x: c.x * width,
-            y: c.y * height,
-            width: c.w * width,
-            height: c.h * height,
+            // scale X normally (0..1 → page width)
+            x: (c.x - mx) * width,
+            // flip Y from top-left canvas to bottom-left PDF, then pad
+            y: height - (c.y + c.h + my) * height,
+            width: (c.w + mx * 2) * width,
+            height: (c.h + my * 2) * height,
             color: rgb(1, 1, 1),
             borderWidth: 0,
           })
