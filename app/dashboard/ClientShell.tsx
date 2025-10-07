@@ -32,6 +32,18 @@ export default function ClientShell(): JSX.Element {
     return () => document.removeEventListener('click', onClick)
   }, [])
 
+  // PDF.js worker setup (runs once in browser)
+  useEffect(() => {
+    (async () => {
+      try {
+        const pdfjs = await import('pdfjs-dist/legacy/build/pdf')
+        ;(pdfjs as any).GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
+      } catch (e) {
+        console.error('PDF.js worker init failed', e)
+      }
+    })()
+  }, [])
+
   const WelcomeBlock = () => (
     <section className="h-full grid place-items-center px-6">
       <div className="text-center select-none">
