@@ -9,8 +9,16 @@ type Tag = { id: number; tag: string }
 const TP_USER_ID = process.env.NEXT_PUBLIC_VINCERE_TALENTPOOL_USER_ID || '29018'
 
 // ===== Password Gate (UI-only) =====
-const TAB_PW =
-  ((process.env.ACTIVE_CAMPAIGN_TAB_PASSWORD ?? '').trim() || 'letmein')
+// Read ONLY the public env (client bundle). Strip accidental wrapping quotes pasted in env UI.
+function normalizeEnvPw(s: string | undefined | null) {
+  const t = String(s ?? '').trim()
+  if ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith("'") && t.endsWith("'"))) {
+    return t.slice(1, -1)
+  }
+  return t
+}
+const RAW_ENV = process.env.ACTIVE_CAMPAIGN_TAB_PASSWORD
+const TAB_PW = normalizeEnvPw(RAW_ENV) // no fallback; fail clearly if unset
 const UNLOCK_KEY = 'acTabUnlocked'
 
 // ==== Preview / pagination tuning (UI only) ====
@@ -51,13 +59,15 @@ export default function ActiveCampaignTab() {
 
   function tryUnlock(e?: React.FormEvent) {
     e?.preventDefault()
-    // Empty password env means "disable gate"
+
+    // If not configured, fail clearly (prevents hidden fallback confusion)
     if (!TAB_PW) {
-      setUnlocked(true)
-      try { sessionStorage.setItem(UNLOCK_KEY, 'true') } catch {}
+      setPwError('Password is not configured on this deployment.')
       return
     }
-    if (pw.trim() === TAB_PW) {
+
+    const typed = pw.trim()
+    if (typed === TAB_PW) {
       setUnlocked(true)
       setPwError('')
       try { sessionStorage.setItem(UNLOCK_KEY, 'true') } catch {}
@@ -101,7 +111,7 @@ export default function ActiveCampaignTab() {
     }
   }, [tagName, poolId])
 
-  // On tab mount: fetch Talent Pools and AC tags
+  // On tab mount: fetch Talent Pools and AC tags (only once unlocked)
   useEffect(() => {
     if (!unlocked) return
     fetch('/api/vincere/talentpools/user', { cache: 'no-store' })
@@ -347,6 +357,12 @@ export default function ActiveCampaignTab() {
             >
               Unlock
             </button>
+
+            {process.env.NODE_ENV !== 'production' && (
+              <p className="mt-1 text-[11px] text-gray-400">
+                Debug: env detected = {TAB_PW ? 'yes' : 'no'}; length = {TAB_PW.length}
+              </p>
+            )}
           </form>
         </div>
       </div>
