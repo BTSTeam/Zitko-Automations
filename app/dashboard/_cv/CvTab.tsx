@@ -1053,6 +1053,68 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
           </>
         )}
 
+        {/* Education & Qualifications (header + first entry stay together) */}
+{form.education.length === 0 ? (
+  <div className="cv-headpair">
+    <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+      Education & Qualifications
+    </h2>
+    <div className="text-gray-500 text-[12px]">No education yet.</div>
+  </div>
+) : (
+  <>
+    <div className="cv-headpair">
+      <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+        Education & Qualifications
+      </h2>
+      {(() => {
+        const e = form.education[0]
+        const range = [e.start, e.end].filter(Boolean).join(' to ')
+        const showInstitutionLine =
+          !!e.institution &&
+          !!e.course &&
+          e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
+        return (
+          <div className="cv-entry">
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="font-medium">{e.course || e.institution || 'Course'}</div>
+                {showInstitutionLine && (
+                  <div className="text-[11px] text-gray-500">{e.institution}</div>
+                )}
+              </div>
+              <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
+            </div>
+          </div>
+        )
+      })()}
+    </div>
+
+    <div className="space-y-3">
+      {form.education.slice(1).map((e, i) => {
+        const range = [e.start, e.end].filter(Boolean).join(' to ')
+        const showInstitutionLine =
+          !!e.institution &&
+          !!e.course &&
+          e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
+        return (
+          <div key={i} className="cv-entry">
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="font-medium">{e.course || e.institution || 'Course'}</div>
+                {showInstitutionLine && (
+                  <div className="text-[11px] text-gray-500">{e.institution}</div>
+                )}
+              </div>
+              <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  </>
+)}
+
         {/* Additional Information (keep header with content) */}
         <div className="cv-headpair">
           <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
