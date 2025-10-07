@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
-import * as pdfjs from 'pdfjs-dist/build/pdf'
+import * as pdfjs from 'pdfjs-dist'
 
 /**
  * CvTab.tsx — full file (prefill font shrinking in editor only)
