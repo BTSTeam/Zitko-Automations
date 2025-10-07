@@ -48,69 +48,49 @@ async function fetchWithAutoRefresh(url: string, idToken: string, userKey: strin
 // ---------- main ----------
 export async function GET(req: NextRequest) {
   try {
-    requiredEnv()
-    const { searchParams } = new URL(req.url)
-    const jobId = searchParams.get('id')
+    requiredEnv();
+    const { searchParams } = new URL(req.url);
+    const jobId = searchParams.get('id');
     if (!jobId) {
-      return NextResponse.json({ error: 'Missing job ID' }, { status: 400 })
+      return NextResponse.json({ error: 'Missing job ID' }, { status: 400 });
     }
 
-    const session = await getSession()
-    const idToken = session.tokens?.idToken || ''
-    const userKey = session.user?.email || session.sessionId || 'anonymous'
+    const session = await getSession();
+    const idToken = session.tokens?.idToken || '';
+    const userKey = session.user?.email || session.sessionId || 'anonymous';
     if (!idToken) {
-      return NextResponse.json({ error: 'Not connected to Vincere.' }, { status: 401 })
+      return NextResponse.json({ error: 'Not connected to Vincere.' }, { status: 401 });
     }
 
-    const base = config.VINCERE_TENANT_API_BASE.replace(/\/$/, '')
-    const matrixVars = encodeURIComponent(buildMatrixVars())
-    const query = encodeForVincereQuery(`id:${jobId}`)
-    const url = `${base}/api/v2/position/search/${matrixVars}?q=${query}&limit=1`
+    const base = config.VINCERE_TENANT_API_BASE.replace(/\/$/, '');
+    const matrixVars = 'fl=id,job_title,public_description,internal_description,keywords,location;sort=created_date desc';
+    const query = encodeForVincereQuery(`id:${jobId}`);
+    const url = `${base}/api/v2/job/search/${matrixVars}?q=${query}&limit=1`;
 
-    const resp = await fetchWithAutoRefresh(url, idToken, userKey)
-    const text = await resp.text()
+    const resp = await fetchWithAutoRefresh(url, idToken, userKey);
+    const text = await resp.text();
     if (!resp.ok) {
-      return NextResponse.json({ error: 'Vincere position search failed', detail: text }, { status: resp.status })
+      return NextResponse.json({ error: 'Vincere job search failed', detail: text }, { status: resp.status });
     }
 
-    let json: any = {}
-    try {
-      json = JSON.parse(text)
-    } catch {
-      return NextResponse.json({ error: 'Invalid JSON from Vincere' }, { status: 500 })
-    }
-
-    const items =
-      json?.result?.items ||
-      json?.data ||
-      json?.items ||
-      []
-
+    const json = JSON.parse(text);
+    const items = json?.result?.items || json?.data || json?.items || [];
     if (!Array.isArray(items) || items.length === 0) {
-      return NextResponse.json({ error: 'Job not found for this ID' }, { status: 404 })
+      return NextResponse.json({ error: 'Job not found for this ID' }, { status: 404 });
     }
 
-    const job = items[0]
-
-    const job_title =
-      job?.job_title ||
-      job?.title ||
-      ''
-    const public_description =
-      job?.public_description ||
-      job?.description ||
-      ''
-    const internal_description =
-      job?.internal_description ||
-      job?.job_description_internal ||
-      ''
-    const location =
-      (typeof job?.location === 'string' ? job.location : job?.location?.location_name || job?.location?.city) || ''
+    const job = items[0];
+    const job_title = job?.job_title || '';
+    const public_description = job?.public_description || '';
+    const internal_description = job?.internal_description || '';
+    const location = typeof job?.location === 'string'
+      ? job.location
+      : job?.location?.location_name || job?.location?.city || '';
     const keywords = Array.isArray(job?.keywords)
       ? job.keywords.map((k: any) => (typeof k === 'string' ? k : k?.value || '')).filter(Boolean)
       : typeof job?.keywords === 'string'
         ? job.keywords.split(/[,;|/]+/g).map((s: string) => s.trim()).filter(Boolean)
-        : []
+        : [];
 
     return NextResponse.json({
       id: job?.id || jobId,
@@ -119,8 +99,9 @@ export async function GET(req: NextRequest) {
       internal_description,
       location: location.trim(),
       keywords,
-    })
+    });
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message || 'Unexpected error' }, { status: 500 })
+    return NextResponse.json({ error: e?.message || 'Unexpected error' }, { status: 500 });
   }
 }
+
