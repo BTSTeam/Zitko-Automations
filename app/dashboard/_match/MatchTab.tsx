@@ -226,50 +226,65 @@ export default function MatchTab(): JSX.Element {
   }, [loadingSearch])
 
   const retrieveJob = async (): Promise<JobSummary | null> => {
-    if (!jobId) return null
-    setScored([]); setRawCands([]); setServerCount(null); setServerQuery(null)
-    try {
-      const r = await fetch(`/api/vincere/position/${encodeURIComponent(jobId)}`, { cache: 'no-store' })
-      const data = await r.json()
+  if (!jobId) return null;
+  setScored([]); setRawCands([]); setServerCount(null); setServerQuery(null);
+  try {
+    const r = await fetch(`/api/vincere/position/${encodeURIComponent(jobId)}`, { cache: 'no-store' });
+    const data = await r.json();
 
-      const publicRaw = htmlToText(data?.public_description || data?.publicDescription || data?.description || '')
-      const internalRaw = htmlToText(
-        data?.internal_description || data?.internalDescription || data?.job_description || data?.description_internal || ''
-      )
+    const publicRaw = htmlToText(
+      data?.public_description || data?.publicDescription || data?.description || ''
+    );
+    const internalRaw = htmlToText(
+      data?.internal_description || data?.internalDescription || data?.job_description || data?.description_internal || ''
+    );
 
-      const extractResp = await fetch('/api/job/extract', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ publicDescription: publicRaw, internalDescription: internalRaw })
-      })
-      const extracted = await extractResp.json()
+    const extractResp = await fetch('/api/job/extract', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ publicDescription: publicRaw, internalDescription: internalRaw })
+    });
+    const extracted = await extractResp.json();
 
-      const skillsArr: string[] = Array.isArray(extracted?.skills) ? extracted.skills : []
-      const qualsArr: string[] = Array.isArray(extracted?.qualifications) ? extracted.qualifications : []
-      const cleanedLocation = extractCity(String(extracted?.location || '').trim())
+    const skillsArr: string[] = Array.isArray(extracted?.skills) ? extracted.skills : [];
+    const qualsArr: string[] = Array.isArray(extracted?.qualifications) ? extracted.qualifications : [];
 
-      const summary: JobSummary = {
-        id: jobId,
-        job_title: String(extracted?.title || '').trim(),
-        location: cleanedLocation,
-        skills: skillsArr,
-        qualifications: qualsArr,
-        public_description: publicRaw,
-        internal_description: internalRaw,
-        coords: null
-      }
-      setJob(summary)
-      setTitle(summary.job_title || '')
-      setLocation(cleanedLocation)
-      setSkillsText(skillsArr.join(', '))
-      setQualsText(qualsArr.join(', '))
-      return summary
-    } catch (e) {
-      console.error(e)
-      alert('Failed to retrieve or extract job details.')
-      return null
-    }
+    // Prefer the city from Vincere’s position record. Fall back to extracted location.
+    const positionCity = extractCity(
+      String(
+        (data?.location as any)?.city ??
+        (data?.location as any)?.town_city ??
+        (data?.location as any)?.location_name ??
+        data?.city ??
+        data?.location_name ??
+        ''
+      ).trim()
+    );
+    const cleanedLocation = positionCity || extractCity(String(extracted?.location || '').trim());
+
+    const summary: JobSummary = {
+      id: jobId,
+      job_title: String(extracted?.title || '').trim(),
+      location: cleanedLocation,
+      skills: skillsArr,
+      qualifications: qualsArr,
+      public_description: publicRaw,
+      internal_description: internalRaw,
+      coords: null
+    };
+
+    setJob(summary);
+    setTitle(summary.job_title || '');
+    setLocation(cleanedLocation);
+    setSkillsText(skillsArr.join(', '));
+    setQualsText(qualsArr.join(', '));
+    return summary;
+  } catch (e) {
+    console.error(e);
+    alert('Failed to retrieve or extract job details.');
+    return null;
   }
+};
 
   const runSearch = async (input?: { job: JobSummary; title: string; location: string; skillsText: string; qualsText: string }) => {
     const active = input ?? (job ? { job, title, location, skillsText, qualsText } : null)
