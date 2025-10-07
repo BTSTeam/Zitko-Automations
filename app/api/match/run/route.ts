@@ -48,7 +48,6 @@ function pickCityFromLocation(loc?: string) {
   return s
 }
 
-// Encode like cURL: encode everything, then convert spaces to '+'
 function encodeForVincereQuery(q: string) {
   return encodeURIComponent(q).replace(/%20/g, '+')
 }
@@ -113,7 +112,7 @@ function buildPartialTitleVariants(fullTitle?: string): string[] {
   if (words.length >= 1) variants.push(words[words.length - 1])
   const seen = new Set<string>()
   const out: string[] = []
-  for (const v of variants.map((s) => s.trim()).filter(Boolean)) {
+  for (const v of variants.map(s => s.trim()).filter(Boolean)) {
     const k = v.toLowerCase()
     if (!seen.has(k) && k !== t.toLowerCase()) {
       seen.add(k)
@@ -123,7 +122,6 @@ function buildPartialTitleVariants(fullTitle?: string): string[] {
   return out
 }
 
-// Candidate field list
 function buildMatrixVars() {
   return 'fl=id,first_name,last_name,current_location,current_city,current_job_title,linkedin,skill,edu_qualification,edu_degree,edu_course,edu_institution,edu_training;sort=created_date asc'
 }
@@ -152,35 +150,49 @@ async function fetchWithAutoRefresh(url: string, idToken: string, userKey: strin
   return resp
 }
 
-// Get/patch job before building queries: force location from Vincere Position
+// Always fetch the Position when jobId is present, and override job.location with the Vincere city
 async function resolveJob(session: any, body: RunReq): Promise<RunReq['job'] | null> {
-  let job: RunReq['job'] | null = body.job ? { ...body.job } : null;
-  const jobId = String(body.jobId ?? '').trim();
-  if (!job && !jobId) return null;
+  let job: RunReq['job'] | null = body.job ? { ...body.job } : null
+  const jobId = String(body.jobId ?? '').trim()
+  if (!job && !jobId) return null
 
-  // Always fetch position if a jobId is supplied
   if (jobId) {
     try {
-      const base = config.VINCERE_TENANT_API_BASE.replace(/\/$/, '');
-      const url  = `${base}/api/v2/position/${encodeURIComponent(jobId)}`;
-      const userKey = session.user?.email || session.sessionId || 'anonymous';
-      const idToken = session.tokens?.idToken || '';
-      const resp = await fetchWithAutoRefresh(url, idToken, userKey);
+      const base = config.VINCERE_TENANT_API_BASE.replace(/\/$/, '')
+      const url  = `${base}/api/v2/position/${encodeURIComponent(jobId)}`
+      const userKey = session.user?.email || session.sessionId || 'anonymous'
+      const idToken = session.tokens?.idToken || ''
+      const resp = await fetchWithAutoRefresh(url, idToken, userKey)
       if (resp.ok) {
-        const pos = await resp.json().catch(() => ({} as any));
-        // derive city from nested location fields
-        const locObj = (pos.location as any) || pos.job_location || {};
+        const pos = await resp.json().catch(() => ({} as any))
+        const locObj = (pos?.location as any) || pos?.job_location || {}
         const derivedCity = String(
-          locObj.town_city ?? locObj.city ?? locObj.location_name ??
-          pos.city ?? pos.location_name ?? ''
-        ).trim();
-        if (!job) job = {};
-        job.location = derivedCity || job.location;
-        // fill in title/skills when missing...
+          locObj?.town_city ??
+          locObj?.city ??
+          locObj?.location_name ??
+          pos?.city ??
+          pos?.location_name ??
+          ''
+        ).trim()
+
+        if (!job) job = {}
+        if (derivedCity) job.location = derivedCity
+        if (!job.title) job.title = String(pos?.title ?? pos?.job_title ?? '').trim()
+
+        if (!job.skills || job.skills.length === 0) {
+          const raw = (pos?.skills ?? pos?.skill ?? pos?.keywords ?? []) as any
+          let parsed: string[] = []
+          if (Array.isArray(raw)) {
+            parsed = raw.map((s) => (typeof s === 'string' ? s : (s?.description ?? s?.value ?? '')).toString())
+          } else if (typeof raw === 'string') {
+            parsed = raw.split(/[,;|/•#]+/g).map((s) => s.trim())
+          }
+          job.skills = uniq(parsed)
+        }
       }
-    } catch {/* ignore */}
+    } catch {}
   }
-  return job;
+  return job
 }
 
 // ---------- route ----------
