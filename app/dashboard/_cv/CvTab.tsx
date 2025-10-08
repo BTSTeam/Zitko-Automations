@@ -466,6 +466,13 @@ function clearPrefill(_path: string) {
     }))
   }
 
+  function addEducation() {
+    setForm(prev => ({
+      ...prev,
+      education: [...prev.education, { course: '', institution: '', start: '', end: '' }],
+    }))
+  }
+  
   // ========== AI profile (Standard) ==========
   async function generateProfile() {
     try {
@@ -1047,70 +1054,78 @@ function clearPrefill(_path: string) {
 
 
         {/* Education & Qualifications (header + first entry stay together) */}
-        {form.education.length === 0 ? (
-          <div className="cv-headpair">
-            <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
-              Education & Qualifications
-            </h2>
-            <div className="text-gray-500 text-[12px]">No education yet.</div>
-          </div>
-        ) : (
-          <>
-            <div className="cv-headpair">
-              <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
-                Education & Qualifications
-              </h2>
-              {(() => {
-                const e = form.education[0]
-                const range = [e.start, e.end].filter(Boolean).join(' to ')
-                const showInstitutionLine =
-                  !!e.institution &&
-                  !!e.course &&
-                  e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
-                return (
-                  <div className="cv-entry">
-                    <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-4 items-start">
-                      <div className="min-w-0">
-                        <div className="font-medium">{e.course || e.institution || 'Course'}</div>
-                        {showInstitutionLine && (
-                          <div className="text-[11px] text-gray-500">{e.institution}</div>
-                        )}
-                      </div>
-                      <div className="text-[11px] text-gray-500 whitespace-nowrap text-right shrink-0">
-                        {range}
-                      </div>
+        {(() => {
+          // Only show entries that have at least one non-empty field
+          const eduPreview = (form.education || []).filter(e =>
+            [e.course, e.institution, e.start, e.end].some(v => String(v || '').trim())
+          )
+        
+          if (eduPreview.length === 0) {
+            return (
+              <div className="cv-headpair">
+                <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+                  Education & Qualifications
+                </h2>
+                <div className="text-gray-500 text-[12px]">No education yet.</div>
+              </div>
+            )
+          }
+        
+          const first = eduPreview[0]
+          const firstRange = [first.start, first.end].filter(Boolean).join(' to ')
+          const firstShowInstitution =
+            !!first.institution &&
+            !!first.course &&
+            first.course.trim().toLowerCase() !== first.institution.trim().toLowerCase()
+        
+          return (
+            <>
+              <div className="cv-headpair">
+                <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+                  Education & Qualifications
+                </h2>
+                <div className="cv-entry">
+                  <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-4 items-start">
+                    <div className="min-w-0">
+                      <div className="font-medium">{first.course?.trim() || first.institution?.trim() || ''}</div>
+                      {firstShowInstitution && (
+                        <div className="text-[11px] text-gray-500">{first.institution}</div>
+                      )}
+                    </div>
+                    <div className="text-[11px] text-gray-500 whitespace-nowrap text-right shrink-0">
+                      {firstRange}
                     </div>
                   </div>
-                )
-              })()}
-            </div>
-
-            <div className="space-y-3">
-              {form.education.slice(1).map((e, i) => {
-                const range = [e.start, e.end].filter(Boolean).join(' to ')
-                const showInstitutionLine =
-                  !!e.institution &&
-                  !!e.course &&
-                  e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
-                return (
-                  <div key={i} className="cv-entry">
-                    <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-4 items-start">
-                      <div className="min-w-0">
-                        <div className="font-medium">{e.course || e.institution || 'Course'}</div>
-                        {showInstitutionLine && (
-                          <div className="text-[11px] text-gray-500">{e.institution}</div>
-                        )}
-                      </div>
-                      <div className="text-[11px] text-gray-500 whitespace-nowrap text-right shrink-0">
-                        {range}
+                </div>
+              </div>
+        
+              <div className="space-y-3">
+                {eduPreview.slice(1).map((e, i) => {
+                  const range = [e.start, e.end].filter(Boolean).join(' to ')
+                  const showInstitutionLine =
+                    !!e.institution &&
+                    !!e.course &&
+                    e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
+                  return (
+                    <div key={i} className="cv-entry">
+                      <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-4 items-start">
+                        <div className="min-w-0">
+                          <div className="font-medium">{e.course?.trim() || e.institution?.trim() || ''}</div>
+                          {showInstitutionLine && (
+                            <div className="text-[11px] text-gray-500">{e.institution}</div>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-gray-500 whitespace-nowrap text-right shrink-0">
+                          {range}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )
-              })}
-            </div>
-          </>
-        )}
+                  )
+                })}
+              </div>
+            </>
+          )
+        })()}
 
         {/* Additional Information (keep header with content) */}
         <div className="cv-headpair">
@@ -1515,11 +1530,25 @@ function clearPrefill(_path: string) {
           {/* Education */}
           <section>
             <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-sm">Education & Qualifications</h3>
-              <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('education')}>
+            <h3 className="font-semibold text-sm">Education & Qualifications</h3>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                className="text-[11px] text-gray-500 underline"
+                onClick={addEducation}
+                disabled={loading}
+              >
+                Add qualification
+              </button>
+              <button
+                type="button"
+                className="text-[11px] text-gray-500 underline"
+                onClick={() => toggle('education')}
+              >
                 {open.education ? 'Hide' : 'Show'}
               </button>
             </div>
+          </div>
 
             {open.education && (
             <div className="grid gap-3 mt-3">
