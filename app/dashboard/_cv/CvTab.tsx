@@ -1544,7 +1544,7 @@ function clearPrefill(_path: string) {
                       <label className="grid gap-1">
                         <span className="text-[11px] text-gray-500">Institution</span>
                         <input
-                          className="input"
+                          className="input text-[11px]"
                           value={e.institution || ''}
                           onChange={(ev) => {
                             const v = ev.target.value
@@ -1568,7 +1568,7 @@ function clearPrefill(_path: string) {
                         <label className="grid gap-1">
                           <span className="text-[11px] text-gray-500">End</span>
                           <input
-                            className="input"
+                            className="input text-[11px]"
                             value={e.end || ''}
                             onChange={(ev) => {
                               const v = ev.target.value
