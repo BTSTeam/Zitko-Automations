@@ -921,7 +921,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         </div>
       )
     }
-
+  
     // Standard (editor preview) — attach ref for DOM→PDF
     return (
       <div
@@ -932,9 +932,9 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
           <div />
           <img src="/zitko-full-logo.png" alt="Zitko" className="h-10" />
         </div>
-
+  
         <h1 className="text-2xl font-bold mt-5">Curriculum Vitae</h1>
-
+  
         <div className="mt-2 text-[12px] text-gray-800 space-y-0.5">
           <div>
             <span className="font-semibold">Name:</span>{' '}
@@ -945,14 +945,14 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
             {form.location ? `${form.location}` : '—'}
           </div>
         </div>
-
+  
         <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
           Profile
         </h2>
         <div className="whitespace-pre-wrap text-[12px]">
           {form.profile?.trim() ? form.profile : 'No Profile yet'}
         </div>
-
+  
         <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
           Key Skills
         </h2>
@@ -961,13 +961,13 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
             const items = (form.keySkills || '')
               .split(/\r?\n|,\s*/).map(s => s.trim())
               .filter(Boolean)
-
+  
             if (items.length === 0) return 'No Key Skills yet'
-
+  
             const mid = Math.ceil(items.length / 2)
             const col1 = items.slice(0, mid)
             const col2 = items.slice(mid)
-
+  
             return (
               <div className="grid grid-cols-2 gap-x-6">
                 <div className="space-y-1">
@@ -984,7 +984,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
             )
           })()}
         </div>
-
+  
         {/* Employment History (header + first entry stay together) */}
         {form.employment.length === 0 ? (
           <div className="cv-headpair">
@@ -1005,40 +1005,54 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                 const range = [e.start, e.end].filter(Boolean).join(' to ')
                 return (
                   <div className="cv-entry">
-                    <div className="flex justify-between">
+                    <div className="grid grid-cols-[1fr_auto] gap-x-4">
+                      {/* Left (title + company) */}
                       <div>
                         <div className="font-medium">{e.title || 'Role'}</div>
                         <div className="text-[11px] text-gray-500">{e.company}</div>
-                        {e.description?.trim() && (
-                          <div className="text-[12px] mt-1 whitespace-pre-wrap">
-                            {e.description}
-                          </div>
-                        )}
                       </div>
-                      <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
+  
+                      {/* Right (fixed date gutter) */}
+                      <div className="cv-date text-[11px] text-gray-500 whitespace-nowrap">
+                        {range}
+                      </div>
+  
+                      {/* Full-width description under both columns */}
+                      {e.description?.trim() && (
+                        <div className="col-span-2 text-[12px] mt-1 whitespace-pre-wrap">
+                          {e.description}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )
               })()}
             </div>
-        
+  
             {/* Subsequent entries with a bit more vertical spacing */}
             <div className="space-y-4">
               {form.employment.slice(1).map((e, i) => {
                 const range = [e.start, e.end].filter(Boolean).join(' to ')
                 return (
                   <div key={i} className="cv-entry">
-                    <div className="flex justify-between">
+                    <div className="grid grid-cols-[1fr_auto] gap-x-4">
+                      {/* Left (title + company) */}
                       <div>
                         <div className="font-medium">{e.title || 'Role'}</div>
                         <div className="text-[11px] text-gray-500">{e.company}</div>
-                        {e.description?.trim() && (
-                          <div className="text-[12px] mt-1 whitespace-pre-wrap">
-                            {e.description}
-                          </div>
-                        )}
                       </div>
-                      <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
+  
+                      {/* Right (fixed date gutter) */}
+                      <div className="cv-date text-[11px] text-gray-500 whitespace-nowrap">
+                        {range}
+                      </div>
+  
+                      {/* Full-width description under both columns */}
+                      {e.description?.trim() && (
+                        <div className="col-span-2 text-[12px] mt-1 whitespace-pre-wrap">
+                          {e.description}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )
@@ -1046,8 +1060,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
             </div>
           </>
         )}
-
-
+  
         {/* Education & Qualifications (header + first entry stay together) */}
         {form.education.length === 0 ? (
           <div className="cv-headpair">
@@ -1071,20 +1084,25 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                   e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
                 return (
                   <div className="cv-entry">
-                    <div className="flex items-start justify-between">
+                    <div className="grid grid-cols-[1fr_auto] gap-x-4">
+                      {/* Left (course + optional institution) */}
                       <div>
                         <div className="font-medium">{e.course || e.institution || 'Course'}</div>
                         {showInstitutionLine && (
                           <div className="text-[11px] text-gray-500">{e.institution}</div>
                         )}
                       </div>
-                      <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
+  
+                      {/* Right (fixed date gutter) */}
+                      <div className="cv-date text-[11px] text-gray-500 whitespace-nowrap">
+                        {range}
+                      </div>
                     </div>
                   </div>
                 )
               })()}
             </div>
-
+  
             <div className="space-y-3">
               {form.education.slice(1).map((e, i) => {
                 const range = [e.start, e.end].filter(Boolean).join(' to ')
@@ -1094,14 +1112,19 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                   e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
                 return (
                   <div key={i} className="cv-entry">
-                    <div className="flex items-start justify-between">
+                    <div className="grid grid-cols-[1fr_auto] gap-x-4">
+                      {/* Left (course + optional institution) */}
                       <div>
                         <div className="font-medium">{e.course || e.institution || 'Course'}</div>
                         {showInstitutionLine && (
                           <div className="text-[11px] text-gray-500">{e.institution}</div>
                         )}
                       </div>
-                      <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
+  
+                      {/* Right (fixed date gutter) */}
+                      <div className="cv-date text-[11px] text-gray-500 whitespace-nowrap">
+                        {range}
+                      </div>
                     </div>
                   </div>
                 )
@@ -1109,7 +1132,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
             </div>
           </>
         )}
-
+  
         {/* Additional Information (keep header with content) */}
         <div className="cv-headpair">
           <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
@@ -1124,7 +1147,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
             <div>Financial History: {form.additional.financialHistory || '—'}</div>
           </div>
         </div>
-
+  
         {/* Footer */}
         <div
           ref={footerRef}
@@ -1140,405 +1163,419 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
   // ========== render ==========
   return (
-  <div className="grid gap-4">
-    {/* Minimal print + PDF styles + prefill-only editor sizing */}
-    <style jsx global>{`
-      @media print {
-        @page { size: A4; margin: 12mm; }
-
-        /* A4 content container; makes footer stick to bottom of last page */
-        .cv-standard-page {
-          width: 100%;
-          display: flex;
-          flex-direction: column;
-          min-height: calc(297mm - 24mm); /* page height minus top+bottom margins */
+    <div className="grid gap-4">
+      {/* Minimal print + PDF styles + prefill-only editor sizing */}
+      <style jsx global>{`
+        /* keep date column pinned on screen preview too */
+        .cv-date { justify-self: end; text-align: right; }
+  
+        @media print {
+          @page { size: A4; margin: 12mm; }
+  
+          /* also ensure it's respected in print */
+          .cv-date { justify-self: end; text-align: right; }
+  
+          /* A4 content container; makes footer stick to bottom of last page */
+          .cv-standard-page {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            min-height: calc(297mm - 24mm); /* page height minus top+bottom margins */
+          }
+  
+          /* keep each job/education entry intact (no splitting across pages) */
+          .cv-entry { break-inside: avoid; page-break-inside: avoid; }
+  
+          /* keep section header with the FIRST entry only */
+          .cv-headpair { break-inside: avoid; page-break-inside: avoid; }
+  
+          /* prevent headings from being orphaned/split */
+          .cv-standard-page h1,
+          .cv-standard-page h2 { break-inside: avoid; page-break-inside: avoid; }
+  
+          /* footer pinned to bottom; never creates a blank page */
+          .cv-footer {
+            margin-top: auto;
+            break-inside: avoid;
+            page-break-inside: avoid;
+            page-break-before: auto;
+            page-break-after: auto;
+          }
         }
-
-        /* keep each job/education entry intact (no splitting across pages) */
-        .cv-entry { break-inside: avoid; page-break-inside: avoid; }
-
-        /* keep section header with the FIRST entry only */
+  
+        /* Also help in on-screen preview */
+        .cv-entry,
         .cv-headpair { break-inside: avoid; page-break-inside: avoid; }
-
-        /* prevent headings from being orphaned/split */
-        .cv-standard-page h1,
-        .cv-standard-page h2 { break-inside: avoid; page-break-inside: avoid; }
-
-        /* footer pinned to bottom; never creates a blank page */
-        .cv-footer {
-          margin-top: auto;
-          break-inside: avoid;
-          page-break-inside: avoid;
-          page-break-before: auto;
-          page-break-after: auto;
-        }
-      }
-
-      /* Also help in on-screen preview */
-      .cv-entry,
-      .cv-headpair { break-inside: avoid; page-break-inside: avoid; }
-    `}</style>
-
-    <div className="card p-4">
-      {!templateFromShell && (
-        <div className="grid sm:grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={() => resetAllForTemplate('standard')}
-            className={`btn w-full ${template === 'standard' ? 'btn-brand' : 'btn-grey'}`}
-          >
-            Standard
-          </button>
-
-          <button
-            type="button"
-            onClick={() => resetAllForTemplate('sales')}
-            className={`btn w-full ${template === 'sales' ? 'btn-brand' : 'btn-grey'}`}
-            title="Sales template: import a CV (PDF/DOCX)"
-          >
-            Sales
-          </button>
-        </div>
-      )}
-
-      {/* Top controls: Standard vs Sales */}
-      {template === 'standard' && (
-        <div className="grid sm:grid-cols-[1fr_auto_auto] gap-2 mt-4">
-          <input
-            className="input"
-            placeholder="Enter Candidate ID"
-            value={candidateId}
-            onChange={e => setCandidateId(e.target.value)}
-            disabled={loading}
-            autoComplete="off"
-          />
-          <button
-            className="btn btn-brand"
-            onClick={fetchData}
-            disabled={loading || !candidateId}
-            title="Retrieve Candidate"
-          >
-            {loading ? 'Fetching…' : 'Retrieve Candidate'}
-          </button>
-
-          {/* Upload (Standard) */}
-          <button
-            type="button"
-            className="btn btn-grey"
-            disabled={!candidateId}
-            onClick={() => {
-              const defaultName = `${(candidateName || form.name || 'CV').replace(/\s+/g, '')}_Standard.pdf`
-              setUploadFileName(defaultName)
-              setUploadContext('standard')
-              setUploadErr(null)
-              setUploadSuccess(null)
-              setShowUploadModal(true)
-            }}
-            title="Export the right panel CV to PDF and upload to Vincere"
-          >
-            Upload
-          </button>
-        </div>
-      )}
-
-      {template === 'sales' && (
-        <>
-          {/* Hidden input */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            onChange={onUploadChange}
-            className="hidden"
-          />
-
-          {/* Faux input + buttons */}
-          <div
-            className="grid sm:grid-cols-[1fr_auto_auto] gap-2 mt-4"
-            onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={onDrop}
-          >
-            <div
-              className={`input flex items-center justify-between cursor-pointer ${dragOver ? 'ring-2 ring-[#F7941D]/50' : ''}`}
-              title="Import or drag a file here"
-              onClick={onClickUpload}
-            >
-              <span className={`text-gray-400 select-none ${salesDocName ? '!text-gray-700 truncate' : ''}`}>
-                {salesDocName ? salesDocName : 'Import or drag a file here'}
-              </span>
-            </div>
-
+      `}</style>
+  
+      <div className="card p-4">
+        {!templateFromShell && (
+          <div className="grid sm:grid-cols-2 gap-2">
             <button
               type="button"
-              className="btn btn-brand"
-              onClick={onClickUpload}
-              disabled={processing}
-              title="Import a PDF or Word (DOC/DOCX) document"
+              onClick={() => resetAllForTemplate('standard')}
+              className={`btn w-full ${template === 'standard' ? 'btn-brand' : 'btn-grey'}`}
             >
-              {processing ? 'Processing…' : 'Import CV'}
+              Standard
             </button>
-
-            {/* Upload (Sales) */}
+  
+            <button
+              type="button"
+              onClick={() => resetAllForTemplate('sales')}
+              className={`btn w-full ${template === 'sales' ? 'btn-brand' : 'btn-grey'}`}
+              title="Sales template: import a CV (PDF/DOCX)"
+            >
+              Sales
+            </button>
+          </div>
+        )}
+  
+        {/* Top controls: Standard vs Sales */}
+        {template === 'standard' && (
+          <div className="grid sm:grid-cols-[1fr_auto_auto] gap-2 mt-4">
+            <input
+              className="input"
+              placeholder="Enter Candidate ID"
+              value={candidateId}
+              onChange={e => setCandidateId(e.target.value)}
+              disabled={loading}
+              autoComplete="off"
+            />
+            <button
+              className="btn btn-brand"
+              onClick={fetchData}
+              disabled={loading || !candidateId}
+              title="Retrieve Candidate"
+            >
+              {loading ? 'Fetching…' : 'Retrieve Candidate'}
+            </button>
+  
+            {/* Upload (Standard) */}
             <button
               type="button"
               className="btn btn-grey"
-              disabled={!salesDocUrl}
+              disabled={!candidateId}
               onClick={() => {
-                const baseName = (candidateName || form.name || 'CV').replace(/\s+/g, '')
-                const defaultName = salesDocName?.trim()
-                  ? salesDocName.replace(/\.(doc|docx)$/i, '.pdf')
-                  : `${baseName}_Sales.pdf`
+                const defaultName = `${(candidateName || form.name || 'CV').replace(/\s+/g, '')}_Standard.pdf`
                 setUploadFileName(defaultName)
-                setUploadContext('sales')
-                setUploadCandidateId(candidateId || '') // prefill if available, editable in modal
+                setUploadContext('standard')
                 setUploadErr(null)
                 setUploadSuccess(null)
                 setShowUploadModal(true)
               }}
-              title="Upload the imported file to Vincere"
+              title="Export the right panel CV to PDF and upload to Vincere"
             >
               Upload
             </button>
           </div>
-
-          {salesErr && <div className="mt-3 text-xs text-red-600">{String(salesErr).slice(0, 300)}</div>}
-        </>
-      )}
-
-      {error && <div className="mt-3 text-xs text-red-600">{String(error).slice(0, 300)}</div>}
-    </div>
-
-    {/* CONTENT GRID */}
-    <div className={`grid gap-4 ${template === 'sales' ? '' : 'md:grid-cols-2'}`}>
-      {template === 'standard' && (
-        <div className="card p-4 space-y-4">
-          {/* Standard editor */}
-          {/* Core */}
-          <section>
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-sm">Core Details</h3>
-              <div className="flex items-center gap-3">
-                <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('core')}>
-                  {open.core ? 'Hide' : 'Show'}
-                </button>
+        )}
+  
+        {template === 'sales' && (
+          <>
+            {/* Hidden input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              onChange={onUploadChange}
+              className="hidden"
+            />
+  
+            {/* Faux input + buttons */}
+            <div
+              className="grid sm:grid-cols-[1fr_auto_auto] gap-2 mt-4"
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={onDrop}
+            >
+              <div
+                className={`input flex items-center justify-between cursor-pointer ${dragOver ? 'ring-2 ring-[#F7941D]/50' : ''}`}
+                title="Import or drag a file here"
+                onClick={onClickUpload}
+              >
+                <span className={`text-gray-400 select-none ${salesDocName ? '!text-gray-700 truncate' : ''}`}>
+                  {salesDocName ? salesDocName : 'Import or drag a file here'}
+                </span>
               </div>
-            </div>
-
-            {open.core && (
-              <div className="grid gap-3 mt-3">
-                <label className="grid gap-1">
-                  <span className="text-[11px] text-gray-500">Name</span>
-                  <input
-                    className={`input ${prefill.name ? 'text-[11px]' : ''}`}
-                    value={form.name}
-                    onChange={e => {
-                      clearPrefill('name')
-                      setField('name', e.target.value)
-                      setCandidateName(e.target.value)
-                    }}
-                    disabled={loading}
-                  />
-                </label>
-                <label className="grid gap-1">
-                  <span className="text-[11px] text-gray-500">Location</span>
-                  <input
-                    className={`input ${prefill.location ? 'text-[11px]' : ''}`}
-                    value={form.location}
-                    onChange={e => { clearPrefill('location'); setField('location', e.target.value) }}
-                    disabled={loading}
-                  />
-                </label>
-              </div>
-            )}
-          </section>
-
-          {/* Profile */}
-          <section>
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-sm">Profile</h3>
-              <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('profile')}>
-                {open.profile ? 'Hide' : 'Show'}
+  
+              <button
+                type="button"
+                className="btn btn-brand"
+                onClick={onClickUpload}
+                disabled={processing}
+                title="Import a PDF or Word (DOC/DOCX) document"
+              >
+                {processing ? 'Processing…' : 'Import CV'}
+              </button>
+  
+              {/* Upload (Sales) */}
+              <button
+                type="button"
+                className="btn btn-grey"
+                disabled={!salesDocUrl}
+                onClick={() => {
+                  const baseName = (candidateName || form.name || 'CV').replace(/\s+/g, '')
+                  const defaultName = salesDocName?.trim()
+                    ? salesDocName.replace(/\.(doc|docx)$/i, '.pdf')
+                    : `${baseName}_Sales.pdf`
+                  setUploadFileName(defaultName)
+                  setUploadContext('sales')
+                  setUploadCandidateId(candidateId || '') // prefill if available, editable in modal
+                  setUploadErr(null)
+                  setUploadSuccess(null)
+                  setShowUploadModal(true)
+                }}
+                title="Upload the imported file to Vincere"
+              >
+                Upload
               </button>
             </div>
-            {open.profile && (
-              <div className="mt-3">
-                <div className="flex flex-col sm:flex-row gap-2 mb-3 items-stretch sm:items-center">
-                  <button
-                    type="button"
-                    className="btn btn-grey text-[11px] !px-3 !py-1.5 w-36 whitespace-nowrap"
-                    disabled={loading || !rawCandidate}
-                    onClick={generateProfile}
-                    title={!rawCandidate ? 'Retrieve a candidate first' : 'Generate profile from candidate data'}
-                  >
-                    Generate
-                  </button>
-                  <div className="border-t border-gray-200 my-2 sm:my-0 sm:mx-2 sm:border-t-0 sm:border-l sm:h-6" />
-                  <input className="input flex-1 min-w-[160px]" placeholder="Job ID" value={jobId} onChange={e => setJobId(e.target.value)} disabled={loading} />
-                  <button
-                    type="button"
-                    className="btn btn-grey text-[11px] !px-3 !py-1.5 w-36 whitespace-nowrap"
-                    disabled={loading || !rawCandidate || !jobId}
-                    onClick={generateJobProfile}
-                    title={!jobId ? 'Enter a Job ID' : 'Generate job-tailored profile'}
-                  >
-                    Generate for Job
+  
+            {salesErr && <div className="mt-3 text-xs text-red-600">{String(salesErr).slice(0, 300)}</div>}
+          </>
+        )}
+  
+        {error && <div className="mt-3 text-xs text-red-600">{String(error).slice(0, 300)}</div>}
+      </div>
+  
+      {/* CONTENT GRID */}
+      <div className={`grid gap-4 ${template === 'sales' ? '' : 'md:grid-cols-2'}`}>
+        {template === 'standard' && (
+          <div className="card p-4 space-y-4">
+            {/* Standard editor */}
+            {/* Core */}
+            <section>
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-sm">Core Details</h3>
+                <div className="flex items-center gap-3">
+                  <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('core')}>
+                    {open.core ? 'Hide' : 'Show'}
                   </button>
                 </div>
-
-                <label className="grid gap-1">
-                  <span className="text-[11px] text-gray-500">Profile</span>
+              </div>
+  
+              {open.core && (
+                <div className="grid gap-3 mt-3">
+                  <label className="grid gap-1">
+                    <span className="text-[11px] text-gray-500">Name</span>
+                    <input
+                      className={`input ${prefill.name ? 'text-[11px]' : ''}`}
+                      value={form.name}
+                      onChange={e => {
+                        clearPrefill('name')
+                        setField('name', e.target.value)
+                        setCandidateName(e.target.value)
+                      }}
+                      disabled={loading}
+                    />
+                  </label>
+                  <label className="grid gap-1">
+                    <span className="text-[11px] text-gray-500">Location</span>
+                    <input
+                      className={`input ${prefill.location ? 'text-[11px]' : ''}`}
+                      value={form.location}
+                      onChange={e => { clearPrefill('location'); setField('location', e.target.value) }}
+                      disabled={loading}
+                    />
+                  </label>
+                </div>
+              )}
+            </section>
+  
+            {/* Profile */}
+            <section>
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-sm">Profile</h3>
+                <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('profile')}>
+                  {open.profile ? 'Hide' : 'Show'}
+                </button>
+              </div>
+              {open.profile && (
+                <div className="mt-3">
+                  <div className="flex flex-col sm:flex-row gap-2 mb-3 items-stretch sm:items-center">
+                    <button
+                      type="button"
+                      className="btn btn-grey text-[11px] !px-3 !py-1.5 w-36 whitespace-nowrap"
+                      disabled={loading || !rawCandidate}
+                      onClick={generateProfile}
+                      title={!rawCandidate ? 'Retrieve a candidate first' : 'Generate profile from candidate data'}
+                    >
+                      Generate
+                    </button>
+                    <div className="border-t border-gray-200 my-2 sm:my-0 sm:mx-2 sm:border-t-0 sm:border-l sm:h-6" />
+                    <input className="input flex-1 min-w-[160px]" placeholder="Job ID" value={jobId} onChange={e => setJobId(e.target.value)} disabled={loading} />
+                    <button
+                      type="button"
+                      className="btn btn-grey text-[11px] !px-3 !py-1.5 w-36 whitespace-nowrap"
+                      disabled={loading || !rawCandidate || !jobId}
+                      onClick={generateJobProfile}
+                      title={!jobId ? 'Enter a Job ID' : 'Generate job-tailored profile'}
+                    >
+                      Generate for Job
+                    </button>
+                  </div>
+  
+                  <label className="grid gap-1">
+                    <span className="text-[11px] text-gray-500">Profile</span>
+                    <textarea
+                      className={`input min-h-[160px] ${prefill.profile ? '!text-[11px]' : ''}`}
+                      value={form.profile}
+                      onChange={e => { /* keep small even when editing */ setField('profile', e.target.value) }}
+                      disabled={loading}
+                    />
+                  </label>
+                </div>
+              )}
+            </section>
+  
+            {/* Key Skills */}
+            <section>
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-sm">Key Skills</h3>
+                <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('skills')}>
+                  {open.skills ? 'Hide' : 'Show'}
+                </button>
+              </div>
+              {open.skills && (
+                <label className="grid gap-1 mt-3">
+                  <span className="text-[11px] text-gray-500">Key Skills (comma or newline)</span>
                   <textarea
-                    className={`input min-h-[160px] ${prefill.profile ? '!text-[11px]' : ''}`}
-                    value={form.profile}
-                    onChange={e => { /* keep small even when editing */ setField('profile', e.target.value) }}
+                    className={`input min-h-[100px] ${prefill.keySkills ? 'text-[11px]' : ''}`}
+                    value={form.keySkills}
+                    onChange={e => { clearPrefill('keySkills'); setField('keySkills', e.target.value) }}
                     disabled={loading}
                   />
                 </label>
+              )}
+            </section>
+  
+            {/* Employment */}
+            <section>
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-sm">Employment History</h3>
+                <div className="flex items-center gap-3">
+                  <button type="button" className="text-[11px] text-gray-500 underline" onClick={addEmployment} disabled={loading}>Add role</button>
+                  <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('work')}>
+                    {open.work ? 'Hide' : 'Show'}
+                  </button>
+                </div>
               </div>
-            )}
-          </section>
-
-          {/* Key Skills */}
-          <section>
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-sm">Key Skills</h3>
-              <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('skills')}>
-                {open.skills ? 'Hide' : 'Show'}
-              </button>
-            </div>
-            {open.skills && (
-              <label className="grid gap-1 mt-3">
-                <span className="text-[11px] text-gray-500">Key Skills (comma or newline)</span>
-                <textarea
-                  className={`input min-h-[100px] ${prefill.keySkills ? 'text-[11px]' : ''}`}
-                  value={form.keySkills}
-                  onChange={e => { clearPrefill('keySkills'); setField('keySkills', e.target.value) }}
-                  disabled={loading}
-                />
-              </label>
-            )}
-          </section>
-
-          {/* Employment */}
-          <section>
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-sm">Employment History</h3>
-              <div className="flex items-center gap-3">
-                <button type="button" className="text-[11px] text-gray-500 underline" onClick={addEmployment} disabled={loading}>Add role</button>
-                <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('work')}>
-                  {open.work ? 'Hide' : 'Show'}
-                </button>
-              </div>
-            </div>
-
-            {open.work && (
-              <div className="grid gap-3 mt-3">
-                {form.employment.length === 0 ? (
-                  <div className="text-[12px] text-gray-500">No employment history yet.</div>
-                ) : (
-                  form.employment.map((e, i) => (
-                    <div key={i} className="border rounded-xl p-3 grid gap-2">
-                      <label className="grid gap-1">
-                        <span className="text-[11px] text-gray-500">Title</span>
-                        <input
-                          className={`input ${prefill.employment?.[i]?.title ? 'text-[11px]' : ''}`}
-                          value={e.title || ''}
-                          onChange={ev => {
-                            clearPrefill(`employment.${i}.title`)
-                            const v = ev.target.value
-                            setForm(prev => { const copy = structuredClone(prev); copy.employment[i].title = v; return copy })
-                          }}
-                        />
-                      </label>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+  
+              {open.work && (
+                <div className="grid gap-3 mt-3">
+                  {form.employment.length === 0 ? (
+                    <div className="text-[12px] text-gray-500">No employment history yet.</div>
+                  ) : (
+                    form.employment.map((e, i) => (
+                      <div key={i} className="border rounded-xl p-3 grid gap-2">
                         <label className="grid gap-1">
-                          <span className="text-[11px] text-gray-500">Company</span>
+                          <span className="text-[11px] text-gray-500">Title</span>
                           <input
-                            className={`input ${prefill.employment?.[i]?.company ? 'text-[11px]' : ''}`}
-                            value={e.company || ''}
+                            className={`input ${prefill.employment?.[i]?.title ? 'text-[11px]' : ''}`}
+                            value={e.title || ''}
                             onChange={ev => {
-                              clearPrefill(`employment.${i}.company`)
+                              clearPrefill(`employment.${i}.title`)
                               const v = ev.target.value
-                              setForm(prev => { const copy = structuredClone(prev); copy.employment[i].company = v; return copy })
+                              setForm(prev => { const copy = structuredClone(prev); copy.employment[i].title = v; return copy })
                             }}
                           />
                         </label>
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <label className="grid gap-1">
-                            <span className="text-[11px] text-gray-500">Start</span>
+                            <span className="text-[11px] text-gray-500">Company</span>
                             <input
-                              className={`input ${prefill.employment?.[i]?.start ? 'text-[11px]' : ''}`}
-                              value={e.start || ''}
+                              className={`input ${prefill.employment?.[i]?.company ? 'text-[11px]' : ''}`}
+                              value={e.company || ''}
                               onChange={ev => {
-                                clearPrefill(`employment.${i}.start`)
+                                clearPrefill(`employment.${i}.company`)
                                 const v = ev.target.value
-                                setForm(prev => { const copy = structuredClone(prev); copy.employment[i].start = v; return copy })
+                                setForm(prev => { const copy = structuredClone(prev); copy.employment[i].company = v; return copy })
                               }}
                             />
                           </label>
-                          <label className="grid gap-1">
-                            <span className="text-[11px] text-gray-500">End</span>
-                            <input
-                              className={`input ${prefill.employment?.[i]?.end ? 'text-[11px]' : ''}`}
-                              value={e.end || ''}
-                              onChange={ev => {
-                                clearPrefill(`employment.${i}.end`)
-                                const v = ev.target.value
-                                setForm(prev => { const copy = structuredClone(prev); copy.employment[i].end = v; return copy })
-                              }}
-                            />
-                          </label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <label className="grid gap-1">
+                              <span className="text-[11px] text-gray-500">Start</span>
+                              <input
+                                className={`input ${prefill.employment?.[i]?.start ? 'text-[11px]' : ''}`}
+                                value={e.start || ''}
+                                onChange={ev => {
+                                  clearPrefill(`employment.${i}.start`)
+                                  const v = ev.target.value
+                                  setForm(prev => { const copy = structuredClone(prev); copy.employment[i].start = v; return copy })
+                                }}
+                              />
+                            </label>
+                            <label className="grid gap-1">
+                              <span className="text-[11px] text-gray-500">End</span>
+                              <input
+                                className={`input ${prefill.employment?.[i]?.end ? 'text-[11px]' : ''}`}
+                                value={e.end || ''}
+                                onChange={ev => {
+                                  clearPrefill(`employment.${i}.end`)
+                                  const v = ev.target.value
+                                  setForm(prev => { const copy = structuredClone(prev); copy.employment[i].end = v; return copy })
+                                }}
+                              />
+                            </label>
+                          </div>
                         </div>
+                        <label className="grid gap-1">
+                          <span className="text-[11px] text-gray-500">Description</span>
+                          <textarea
+                            className={`input min-h-[80px] ${prefill.employment?.[i]?.description ? 'text-[11px]' : ''}`}
+                            value={e.description || ''}
+                            onChange={ev => {
+                              clearPrefill(`employment.${i}.description`)
+                              const v = ev.target.value
+                              setForm(prev => { const copy = structuredClone(prev); copy.employment[i].description = v; return copy })
+                            }}
+                          />
+                        </label>
                       </div>
-                      <label className="grid gap-1">
-                        <span className="text-[11px] text-gray-500">Description</span>
-                        <textarea
-                          className={`input min-h-[80px] ${prefill.employment?.[i]?.description ? 'text-[11px]' : ''}`}
-                          value={e.description || ''}
-                          onChange={ev => {
-                            clearPrefill(`employment.${i}.description`)
-                            const v = ev.target.value
-                            setForm(prev => { const copy = structuredClone(prev); copy.employment[i].description = v; return copy })
-                          }}
-                        />
-                      </label>
-                    </div>
-                  ))
-                )}
+                    ))
+                  )}
+                </div>
+              )}
+            </section>
+  
+            {/* Education */}
+            <section>
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-sm">Education & Qualifications</h3>
+                <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('education')}>
+                  {open.education ? 'Hide' : 'Show'}
+                </button>
               </div>
-            )}
-          </section>
-
-          {/* Education */}
-          <section>
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-sm">Education & Qualifications</h3>
-              <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('education')}>
-                {open.education ? 'Hide' : 'Show'}
-              </button>
-            </div>
-
-            {open.education && (
-              <div className="grid gap-3 mt-3">
-                {form.education.length === 0 ? (
-                  <div className="text-[12px] text-gray-500">No education yet.</div>
-                ) : (
-                  form.education.map((e, i) => (
-                    <div key={i} className="flex items-start justify-between">
-                      <div className="grid gap-0.5">
-                        <div className="font-medium">{e.course || e.institution || 'Course'}</div>
-                        {!!e.institution && !!e.course && e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase() && (
-                          <div className="text-[11px] text-gray-500">{e.institution}</div>
-                        )}
+  
+              {open.education && (
+                <div className="grid gap-3 mt-3">
+                  {form.education.length === 0 ? (
+                    <div className="text-[12px] text-gray-500">No education yet.</div>
+                  ) : (
+                    form.education.map((e, i) => (
+                      <div key={i} className="flex items-start justify-between">
+                        <div className="grid gap-0.5">
+                          <div className="font-medium">{e.course || e.institution || 'Course'}</div>
+                          {!!e.institution && !!e.course && e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase() && (
+                            <div className="text-[11px] text-gray-500">{e.institution}</div>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-gray-500 whitespace-nowrap">{[e.start, e.end].filter(Boolean).join(' to ')}</div>
                       </div>
-                      <div className="text-[11px] text-gray-500 whitespace-nowrap">{[e.start, e.end].filter(Boolean).join(' to ')}</div>
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
-          </section>
+                    ))
+                  )}
+                </div>
+              )}
+            </section>
+          </div>
+        )}
+  
+        {/* RIGHT: preview always renders here; on Sales it's full-width */}
+        <div className="card p-0 overflow-hidden">
+          <CVTemplatePreview />
+        </div>
+      </div>
 
           {/* Additional */}
           <section>
