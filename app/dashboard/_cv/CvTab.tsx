@@ -1165,7 +1165,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 return (
   <div className="grid gap-4">
     {/* Minimal print + PDF styles + prefill-only editor sizing */}
-    <style jsx global>{String.raw`
+    <style jsx global>{`
       /* ======== Layout helpers to keep date gutter fixed ======== */
       /* Two-column grid: flexible left text + fixed right date column */
       .cv-grid {
