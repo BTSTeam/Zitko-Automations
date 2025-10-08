@@ -1380,18 +1380,17 @@ return (
                   <div className="flex flex-col sm:flex-row gap-2 mb-3 items-stretch sm:items-center">
                     <button
                       type="button"
-                      className="btn btn-grey !text-[14px] !px-3.5 !py-2 w-40 whitespace-nowrap""
+                      className="btn btn-grey !text-[14px] !px-3.5 !py-2 w-40 whitespace-nowrap"
                       disabled={loading || !rawCandidate}
                       onClick={generateProfile}
                       title={!rawCandidate ? 'Retrieve a candidate first' : 'Generate profile from candidate data'}
                     >
                       Generate
                     </button>
-                    <div className="border-t border-gray-200 my-2 sm:my-0 sm:mx-2 sm:border-t-0 sm:border-l sm:h-6" />
-                    <input className="input flex-1 min-w-[160px]" placeholder="Job ID" value={jobId} onChange={e => setJobId(e.target.value)} disabled={loading} />
+                    
                     <button
                       type="button"
-                      className="btn btn-grey !text-[14px] !px-3.5 !py-2 w-40 whitespace-nowrap""
+                      className="btn btn-grey !text-[14px] !px-3.5 !py-2 w-40 whitespace-nowrap"
                       disabled={loading || !rawCandidate || !jobId}
                       onClick={generateJobProfile}
                       title={!jobId ? 'Enter a Job ID' : 'Generate job-tailored profile'}
