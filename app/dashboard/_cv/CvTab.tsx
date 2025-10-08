@@ -1321,7 +1321,6 @@ return (
         )}
   
         {error && <div className="mt-3 text-xs text-red-600">{String(error).slice(0, 300)}</div>}
-      </div>
   
       {/* CONTENT GRID */}
       <div className={`grid gap-4 ${template === 'sales' ? '' : 'md:grid-cols-2'}`}>
@@ -1559,7 +1558,6 @@ return (
         <div className="card p-0 overflow-hidden">
           <CVTemplatePreview />
         </div>
-      </div>
 
           {/* Additional */}
           <section>
@@ -1649,7 +1647,6 @@ return (
             </div>
           </section>
         </div>
-      )}
 
     {/* ===== Upload modal ===== */}
     {showUploadModal && (
