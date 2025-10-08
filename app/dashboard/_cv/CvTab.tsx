@@ -995,19 +995,22 @@ function clearPrefill(_path: string) {
                 const range = [e.start, e.end].filter(Boolean).join(' to ')
                 return (
                   <div className="cv-entry">
-                    <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-4 items-start">
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-4">
+                      {/* Row 1: left content + fixed date on the right */}
                       <div className="min-w-0">
                         <div className="font-medium">{e.title || 'Role'}</div>
                         <div className="text-[11px] text-gray-500">{e.company}</div>
-                        {e.description?.trim() && (
-                          <div className="text-[12px] mt-1 whitespace-pre-wrap break-words">
-                            {e.description}
-                          </div>
-                        )}
                       </div>
                       <div className="text-[11px] text-gray-500 whitespace-nowrap text-right shrink-0">
                         {range}
                       </div>
+                  
+                      {/* Row 2: description spans full width */}
+                      {e.description?.trim() && (
+                        <div className="text-[12px] mt-1 whitespace-pre-wrap break-words col-span-2">
+                          {e.description}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )
@@ -1020,19 +1023,22 @@ function clearPrefill(_path: string) {
                 const range = [e.start, e.end].filter(Boolean).join(' to ')
                 return (
                   <div key={i} className="cv-entry">
-                    <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-4 items-start">
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-4">
+                      {/* Row 1 */}
                       <div className="min-w-0">
                         <div className="font-medium">{e.title || 'Role'}</div>
                         <div className="text-[11px] text-gray-500">{e.company}</div>
-                        {e.description?.trim() && (
-                          <div className="text-[12px] mt-1 whitespace-pre-wrap break-words">
-                            {e.description}
-                          </div>
-                        )}
                       </div>
                       <div className="text-[11px] text-gray-500 whitespace-nowrap text-right shrink-0">
                         {range}
                       </div>
+                  
+                      {/* Row 2 */}
+                      {e.description?.trim() && (
+                        <div className="text-[12px] mt-1 whitespace-pre-wrap break-words col-span-2">
+                          {e.description}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )
@@ -1518,24 +1524,67 @@ function clearPrefill(_path: string) {
             </div>
 
             {open.education && (
-              <div className="grid gap-3 mt-3">
-                {form.education.length === 0 ? (
-                  <div className="text-[12px] text-gray-500">No education yet.</div>
-                ) : (
-                  form.education.map((e, i) => (
-                    <div key={i} className="flex items-start justify-between">
-                      <div className="grid gap-0.5">
-                        <div className="font-medium">{e.course || e.institution || 'Course'}</div>
-                        {!!e.institution && !!e.course && e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase() && (
-                          <div className="text-[11px] text-gray-500">{e.institution}</div>
-                        )}
+            <div className="grid gap-3 mt-3">
+              {form.education.length === 0 ? (
+                <div className="text-[12px] text-gray-500">No education yet.</div>
+              ) : (
+                form.education.map((e, i) => (
+                  <div key={i} className="border rounded-xl p-3 grid gap-2">
+                    <label className="grid gap-1">
+                      <span className="text-[11px] text-gray-500">Course</span>
+                      <input
+                        className="input"
+                        value={e.course || ''}
+                        onChange={(ev) => {
+                          const v = ev.target.value
+                          setForm(prev => { const copy = structuredClone(prev); copy.education[i].course = v; return copy })
+                        }}
+                      />
+                    </label>
+          
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <label className="grid gap-1">
+                        <span className="text-[11px] text-gray-500">Institution</span>
+                        <input
+                          className="input"
+                          value={e.institution || ''}
+                          onChange={(ev) => {
+                            const v = ev.target.value
+                            setForm(prev => { const copy = structuredClone(prev); copy.education[i].institution = v; return copy })
+                          }}
+                        />
+                      </label>
+          
+                      <div className="grid grid-cols-2 gap-2">
+                        <label className="grid gap-1">
+                          <span className="text-[11px] text-gray-500">Start</span>
+                          <input
+                            className="input"
+                            value={e.start || ''}
+                            onChange={(ev) => {
+                              const v = ev.target.value
+                              setForm(prev => { const copy = structuredClone(prev); copy.education[i].start = v; return copy })
+                            }}
+                          />
+                        </label>
+                        <label className="grid gap-1">
+                          <span className="text-[11px] text-gray-500">End</span>
+                          <input
+                            className="input"
+                            value={e.end || ''}
+                            onChange={(ev) => {
+                              const v = ev.target.value
+                              setForm(prev => { const copy = structuredClone(prev); copy.education[i].end = v; return copy })
+                            }}
+                          />
+                        </label>
                       </div>
-                      <div className="text-[11px] text-gray-500 whitespace-nowrap">{[e.start, e.end].filter(Boolean).join(' to ')}</div>
                     </div>
-                  ))
-                )}
-              </div>
-            )}
+                  </div>
+                ))
+              )}
+            </div>
+          )}
           </section>
 
           {/* Additional */}
@@ -1548,15 +1597,62 @@ function clearPrefill(_path: string) {
             </div>
 
             {open.extra && (
-              <div className="text-[12px] grid gap-1 mt-3">
-                <div>Driving License: {form.additional.drivingLicense || '—'}</div>
-                <div>Nationality: {form.additional.nationality || '—'}</div>
-                <div>Availability: {form.additional.availability || '—'}</div>
-                <div>Health: {form.additional.health || '—'}</div>
-                <div>Criminal Record: {form.additional.criminalRecord || '—'}</div>
-                <div>Financial History: {form.additional.financialHistory || '—'}</div>
-              </div>
-            )}
+            <div className="grid gap-3 mt-3">
+              <label className="grid gap-1">
+                <span className="text-[11px] text-gray-500">Driving License</span>
+                <input
+                  className="input"
+                  value={form.additional.drivingLicense}
+                  onChange={(e) => setForm(prev => ({ ...prev, additional: { ...prev.additional, drivingLicense: e.target.value } }))}
+                />
+              </label>
+          
+              <label className="grid gap-1">
+                <span className="text-[11px] text-gray-500">Nationality</span>
+                <input
+                  className="input"
+                  value={form.additional.nationality}
+                  onChange={(e) => setForm(prev => ({ ...prev, additional: { ...prev.additional, nationality: e.target.value } }))}
+                />
+              </label>
+          
+              <label className="grid gap-1">
+                <span className="text-[11px] text-gray-500">Availability</span>
+                <input
+                  className="input"
+                  value={form.additional.availability}
+                  onChange={(e) => setForm(prev => ({ ...prev, additional: { ...prev.additional, availability: e.target.value } }))}
+                />
+              </label>
+          
+              <label className="grid gap-1">
+                <span className="text-[11px] text-gray-500">Health</span>
+                <input
+                  className="input"
+                  value={form.additional.health}
+                  onChange={(e) => setForm(prev => ({ ...prev, additional: { ...prev.additional, health: e.target.value } }))}
+                />
+              </label>
+          
+              <label className="grid gap-1">
+                <span className="text-[11px] text-gray-500">Criminal Record</span>
+                <input
+                  className="input"
+                  value={form.additional.criminalRecord}
+                  onChange={(e) => setForm(prev => ({ ...prev, additional: { ...prev.additional, criminalRecord: e.target.value } }))}
+                />
+              </label>
+          
+              <label className="grid gap-1">
+                <span className="text-[11px] text-gray-500">Financial History</span>
+                <input
+                  className="input"
+                  value={form.additional.financialHistory}
+                  onChange={(e) => setForm(prev => ({ ...prev, additional: { ...prev.additional, financialHistory: e.target.value } }))}
+                />
+              </label>
+            </div>
+          )}
           </section>
 
           {/* Debug: Raw JSON */}
