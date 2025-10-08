@@ -210,6 +210,44 @@ export default function MatchTab(): JSX.Element {
   const [showJson, setShowJson] = useState(false)
   const [aiPayload, setAiPayload] = useState<any>(null)
 
+  // Reset everything so user can start again
+  const resetAll = () => {
+    setJobId('')
+    setJob(null)
+    setTitle('')
+    setLocation('')
+    setSkillsText('')
+    setQualsText('')
+    setRawCands([])
+    setScored([])
+    setServerCount(null)
+    setServerQuery(null)
+    setAiPayload(null)
+    setView('raw')
+    setLoadingAll(false)
+    setLoadingSearch(false)
+  }
+
+  // Save the *manual* location and re-run analysis
+  const onSaveAndResend = async () => {
+    if (!job) {
+      alert('Search first, then adjust the location and click Save & Resend.')
+      return
+    }
+    // persist the manual override in local state
+    const updated: JobSummary = { ...job, location: location?.trim() || '' }
+    setJob(updated)
+
+    // re-run with exact same title/skills/quals, but NEW location
+    await runSearch({
+      job: updated,
+      title: (title ?? '').trim(),
+      location: (location ?? '').trim(),
+      skillsText: skillsText,        // keep skills for analysis (UI hidden)
+      qualsText:  qualsText
+    })
+  }
+
   // keep ONLY ONE funMessages definition
   const funMessages = [
     'Zitko AI is thinking…',
@@ -448,58 +486,111 @@ export default function MatchTab(): JSX.Element {
 
   return (
     <div className="grid gap-6">
-      <div className="card p-6">
-        <div className="grid md:grid-cols-2 gap-6">
-          <div>
-            <p className="mb-4">Enter your Vincere Job ID to find matching candidates.</p>
-            <div>
-              <label className="text-sm text-gray-600">Job ID</label>
-              <input className="input mt-1" placeholder="Enter Job ID" value={jobId} onChange={e=>setJobId(e.target.value)} />
-            </div>
-            <button className="btn btn-brand mt-4 w-full" onClick={retrieveSearchScore} disabled={loadingAll || !jobId}>
+      {/* FIRST PANEL (updated) */}
+      <div className="card p-6 relative">
+        {/* Header with title + refresh */}
+        <div className="flex items-start justify-between gap-4">
+          <p className="mb-4 font-medium">
+            Enter your Vincere Job ID to find matching candidates.
+          </p>
+          <button
+            type="button"
+            className="text-gray-500 hover:text-gray-800"
+            onClick={resetAll}
+            title="Refresh & clear all fields"
+            aria-label="Refresh"
+          >
+            ↻
+          </button>
+        </div>
+
+        {/* Single-column stack so Title & Location align with Job ID */}
+        <div className="grid gap-4">
+          {/* Job ID (label removed; placeholder used) */}
+          <input
+            className="input"
+            placeholder="Job ID"
+            value={jobId}
+            onChange={e=>setJobId(e.target.value)}
+          />
+
+          {/* Job Title (label removed; placeholder used) */}
+          <input
+            className="input"
+            placeholder="Job Title (e.g., Fire & Security Engineer)"
+            value={title}
+            onChange={e=>setTitle(e.target.value)}
+          />
+
+          {/* Location (label removed; placeholder used) */}
+          <input
+            className="input"
+            placeholder="Location (e.g., London)"
+            value={location}
+            onChange={e=>setLocation(e.target.value)}
+          />
+
+          {/* Buttons inline */}
+          <div className="flex flex-col sm:flex-row gap-3">
+            <button
+              className="btn btn-brand sm:flex-1"
+              onClick={retrieveSearchScore}
+              disabled={loadingAll || !jobId}
+            >
               {loadingAll ? 'Searching…' : 'Search'}
             </button>
-          </div>
-          <div>
-            <div className="grid sm:grid-cols-2 gap-4 text-sm mb-2">
-              <div>
-                <div className="text-gray-500">Job Title</div>
-                <input className="input mt-1" value={title} onChange={e=>setTitle(e.target.value)} placeholder="e.g., Fire & Security Engineer" />
-              </div>
-              <div>
-                <div className="text-gray-500">Location</div>
-                <input className="input mt-1" value={location} onChange={e=>setLocation(e.target.value)} placeholder="e.g., London" />
-              </div>
-              <div className="sm:col-span-2">
-                <div className="text-gray-500">Skills (comma-separated)</div>
-                <input className="input mt-1" value={skillsText} onChange={e=>setSkillsText(e.target.value)} placeholder="CCTV, Access Control, IP Networking" />
-              </div>
-            </div>
+
+            <button
+              className="btn btn-grey sm:flex-1"
+              onClick={onSaveAndResend}
+              disabled={!job}
+              title="Save the manual location and re-run analysis"
+            >
+              Save &amp; Resend
+            </button>
           </div>
         </div>
 
         <div className="h-px bg-gray-200 my-4" />
 
+        {/* Controls row (unchanged) */}
         <div className="mt-2 flex flex-wrap items-center gap-3">
-          <button className={`btn ${view==='raw' ? 'btn-brand' : 'btn-grey'} ${beforeScores ? 'opacity-50' : ''}`} onClick={() => setView('raw')} disabled={rawCands.length === 0}>
+          <button
+            className={`btn ${view==='raw' ? 'btn-brand' : 'btn-grey'} ${beforeScores ? 'opacity-50' : ''}`}
+            onClick={() => setView('raw')}
+            disabled={rawCands.length === 0}
+          >
             Raw Candidates {rawCands.length ? `(${rawCands.length})` : ''}
           </button>
           <div className="flex items-center gap-2">
-            <button className={`btn ${view==='ai' ? 'btn-brand' : 'btn-grey'} ${beforeScores ? 'opacity-50' : ''}`} onClick={() => setView('ai')} disabled={scored.length === 0}>
+            <button
+              className={`btn ${view==='ai' ? 'btn-brand' : 'btn-grey'} ${beforeScores ? 'opacity-50' : ''}`}
+              onClick={() => setView('ai')}
+              disabled={scored.length === 0}
+            >
               AI Scored {scored.length ? `(${scored.length})` : ''}
             </button>
             <span className="text-sm text-gray-600">{statusText}</span>
           </div>
-          {serverQuery && <div className="ml-0 md:ml-4 text-xs text-gray-500">q: <code className="break-all">{serverQuery}</code></div>}
+          {serverQuery && (
+            <div className="ml-0 md:ml-4 text-xs text-gray-500">
+              q: <code className="break-all">{serverQuery}</code>
+            </div>
+          )}
           <div className="ml-auto">
-            <button className="btn btn-grey !px-3 !py-1 !text-xs !h-8 rounded-md" onClick={() => setShowJson(true)} disabled={!aiPayload}
-              title={aiPayload ? 'Show the exact JSON sent to ChatGPT (location excluded from scoring)' : 'Run a search & scoring first'}>
+            <button
+              className="btn btn-grey !px-3 !py-1 !text-xs !h-8 rounded-md"
+              onClick={() => setShowJson(true)}
+              disabled={!aiPayload}
+              title={aiPayload ? 'Show the exact JSON sent to ChatGPT (location excluded from scoring)' : 'Run a search & scoring first'}
+            >
               Show JSON
             </button>
           </div>
         </div>
       </div>
 
+      {/* RESULTS */}
       <div className="flex flex-col gap-3">
         {view === 'ai' ? (
           scored.length > 0
@@ -536,6 +627,7 @@ export default function MatchTab(): JSX.Element {
         )}
       </div>
 
+      {/* JSON MODAL */}
       <Modal open={showJson} onClose={() => setShowJson(false)} title="JSON sent to ChatGPT">
         {!aiPayload ? (
           <div className="text-sm text-gray-500">No payload available yet. Run a search & scoring first.</div>
