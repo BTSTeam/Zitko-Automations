@@ -1005,21 +1005,21 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                 const range = [e.start, e.end].filter(Boolean).join(' to ')
                 return (
                   <div className="cv-entry">
-                    <div className="grid grid-cols-[1fr_auto] gap-x-4">
+                    <div className="cv-grid">
                       {/* Left (title + company) */}
-                      <div>
+                      <div className="cv-left">
                         <div className="font-medium">{e.title || 'Role'}</div>
                         <div className="text-[11px] text-gray-500">{e.company}</div>
                       </div>
-  
+                  
                       {/* Right (fixed date gutter) */}
-                      <div className="cv-date text-[11px] text-gray-500 whitespace-nowrap">
+                      <div className="cv-date text-[11px] text-gray-500">
                         {range}
                       </div>
-  
+                  
                       {/* Full-width description under both columns */}
                       {e.description?.trim() && (
-                        <div className="col-span-2 text-[12px] mt-1 whitespace-pre-wrap">
+                        <div className="cv-desc col-span-2 text-[12px] mt-1 whitespace-pre-wrap">
                           {e.description}
                         </div>
                       )}
@@ -1034,22 +1034,22 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
               {form.employment.slice(1).map((e, i) => {
                 const range = [e.start, e.end].filter(Boolean).join(' to ')
                 return (
-                  <div key={i} className="cv-entry">
-                    <div className="grid grid-cols-[1fr_auto] gap-x-4">
+                  <div className="cv-entry">
+                    <div className="cv-grid">
                       {/* Left (title + company) */}
-                      <div>
+                      <div className="cv-left">
                         <div className="font-medium">{e.title || 'Role'}</div>
                         <div className="text-[11px] text-gray-500">{e.company}</div>
                       </div>
-  
+                  
                       {/* Right (fixed date gutter) */}
-                      <div className="cv-date text-[11px] text-gray-500 whitespace-nowrap">
+                      <div className="cv-date text-[11px] text-gray-500">
                         {range}
                       </div>
-  
+                  
                       {/* Full-width description under both columns */}
                       {e.description?.trim() && (
-                        <div className="col-span-2 text-[12px] mt-1 whitespace-pre-wrap">
+                        <div className="cv-desc col-span-2 text-[12px] mt-1 whitespace-pre-wrap">
                           {e.description}
                         </div>
                       )}
@@ -1084,17 +1084,17 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                   e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
                 return (
                   <div className="cv-entry">
-                    <div className="grid grid-cols-[1fr_auto] gap-x-4">
+                    <div className="cv-grid">
                       {/* Left (course + optional institution) */}
-                      <div>
+                      <div className="cv-left">
                         <div className="font-medium">{e.course || e.institution || 'Course'}</div>
                         {showInstitutionLine && (
                           <div className="text-[11px] text-gray-500">{e.institution}</div>
                         )}
                       </div>
-  
+                  
                       {/* Right (fixed date gutter) */}
-                      <div className="cv-date text-[11px] text-gray-500 whitespace-nowrap">
+                      <div className="cv-date text-[11px] text-gray-500">
                         {range}
                       </div>
                     </div>
@@ -1111,18 +1111,18 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                   !!e.course &&
                   e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
                 return (
-                  <div key={i} className="cv-entry">
-                    <div className="grid grid-cols-[1fr_auto] gap-x-4">
+                  <div className="cv-entry">
+                    <div className="cv-grid">
                       {/* Left (course + optional institution) */}
-                      <div>
+                      <div className="cv-left">
                         <div className="font-medium">{e.course || e.institution || 'Course'}</div>
                         {showInstitutionLine && (
                           <div className="text-[11px] text-gray-500">{e.institution}</div>
                         )}
                       </div>
-  
+                  
                       {/* Right (fixed date gutter) */}
-                      <div className="cv-date text-[11px] text-gray-500 whitespace-nowrap">
+                      <div className="cv-date text-[11px] text-gray-500">
                         {range}
                       </div>
                     </div>
@@ -1166,47 +1166,58 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     <div className="grid gap-4">
       {/* Minimal print + PDF styles + prefill-only editor sizing */}
       <style jsx global>{`
-        /* keep date column pinned on screen preview too */
-        .cv-date { justify-self: end; text-align: right; }
-  
-        @media print {
-          @page { size: A4; margin: 12mm; }
-  
-          /* also ensure it's respected in print */
-          .cv-date { justify-self: end; text-align: right; }
-  
-          /* A4 content container; makes footer stick to bottom of last page */
-          .cv-standard-page {
-            width: 100%;
-            display: flex;
-            flex-direction: column;
-            min-height: calc(297mm - 24mm); /* page height minus top+bottom margins */
-          }
-  
-          /* keep each job/education entry intact (no splitting across pages) */
-          .cv-entry { break-inside: avoid; page-break-inside: avoid; }
-  
-          /* keep section header with the FIRST entry only */
-          .cv-headpair { break-inside: avoid; page-break-inside: avoid; }
-  
-          /* prevent headings from being orphaned/split */
-          .cv-standard-page h1,
-          .cv-standard-page h2 { break-inside: avoid; page-break-inside: avoid; }
-  
-          /* footer pinned to bottom; never creates a blank page */
-          .cv-footer {
-            margin-top: auto;
-            break-inside: avoid;
-            page-break-inside: avoid;
-            page-break-before: auto;
-            page-break-after: auto;
-          }
+      /* ======== Layout helpers to keep date gutter fixed ======== */
+      /* Two-column grid: flexible left text + fixed right date column */
+      .cv-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 120px; /* 120px pinned gutter */
+        column-gap: 1rem; /* ~16px */
+      }
+      .cv-left {
+        min-width: 0;                 /* allow wrapping instead of pushing the date */
+        overflow-wrap: anywhere;      /* wrap very long words/urls */
+        word-break: break-word;       /* older browsers */
+      }
+      .cv-desc {
+        overflow-wrap: anywhere;
+        word-break: break-word;
+      }
+      .cv-date {
+        justify-self: end;
+        text-align: right;
+        white-space: nowrap;
+      }
+    
+      @media print {
+        @page { size: A4; margin: 12mm; }
+    
+        .cv-standard-page {
+          width: 100%;
+          display: flex;
+          flex-direction: column;
+          min-height: calc(297mm - 24mm);
         }
-  
-        /* Also help in on-screen preview */
+    
         .cv-entry,
         .cv-headpair { break-inside: avoid; page-break-inside: avoid; }
-      `}</style>
+    
+        .cv-standard-page h1,
+        .cv-standard-page h2 { break-inside: avoid; page-break-inside: avoid; }
+    
+        .cv-footer {
+          margin-top: auto;
+          break-inside: avoid;
+          page-break-inside: avoid;
+          page-break-before: auto;
+          page-break-after: auto;
+        }
+      }
+    
+      /* Also help in on-screen preview */
+      .cv-entry,
+      .cv-headpair { break-inside: avoid; page-break-inside: avoid; }
+    `}</style>
+
   
       <div className="card p-4">
         {!templateFromShell && (
@@ -1395,7 +1406,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                   <div className="flex flex-col sm:flex-row gap-2 mb-3 items-stretch sm:items-center">
                     <button
                       type="button"
-                      className="btn btn-grey text-[11px] !px-3 !py-1.5 w-36 whitespace-nowrap"
+                      className="btn btn-grey !text-[14px] !px-3.5 !py-2 w-40 whitespace-nowrap""
                       disabled={loading || !rawCandidate}
                       onClick={generateProfile}
                       title={!rawCandidate ? 'Retrieve a candidate first' : 'Generate profile from candidate data'}
@@ -1406,7 +1417,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                     <input className="input flex-1 min-w-[160px]" placeholder="Job ID" value={jobId} onChange={e => setJobId(e.target.value)} disabled={loading} />
                     <button
                       type="button"
-                      className="btn btn-grey text-[11px] !px-3 !py-1.5 w-36 whitespace-nowrap"
+                      className="btn btn-grey !text-[14px] !px-3.5 !py-2 w-40 whitespace-nowrap""
                       disabled={loading || !rawCandidate || !jobId}
                       onClick={generateJobProfile}
                       title={!jobId ? 'Enter a Job ID' : 'Generate job-tailored profile'}
