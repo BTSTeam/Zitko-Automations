@@ -1478,13 +1478,24 @@ function clearPrefill(_path: string) {
             <div className="flex items-center justify-between">
               <h3 className="font-semibold text-sm">Employment History</h3>
               <div className="flex items-center gap-3">
-                <button type="button" className="text-[11px] text-gray-500 underline" onClick={addEmployment} disabled={loading}>Add role</button>
-                <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('work')}>
+                <button
+                  type="button"
+                  className="text-[11px] text-gray-500 underline"
+                  onClick={addEmployment}
+                  disabled={loading}
+                >
+                  Add role
+                </button>
+                <button
+                  type="button"
+                  className="text-[11px] text-gray-500 underline"
+                  onClick={() => toggle('work')}
+                >
                   {open.work ? 'Hide' : 'Show'}
                 </button>
               </div>
             </div>
-
+          
             {open.work && (
               <div className="grid gap-3 mt-3">
                 {form.employment.length === 0 ? (
@@ -1501,7 +1512,7 @@ function clearPrefill(_path: string) {
                       >
                         Remove role
                       </button>
-                  
+          
                       <label className="grid gap-1">
                         <span className="text-[11px] text-gray-500">Title</span>
                         <input
@@ -1510,11 +1521,15 @@ function clearPrefill(_path: string) {
                           onChange={ev => {
                             clearPrefill(`employment.${i}.title`)
                             const v = ev.target.value
-                            setForm(prev => { const copy = structuredClone(prev); copy.employment[i].title = v; return copy })
+                            setForm(prev => {
+                              const copy = structuredClone(prev)
+                              copy.employment[i].title = v
+                              return copy
+                            })
                           }}
                         />
                       </label>
-                  
+          
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         <label className="grid gap-1">
                           <span className="text-[11px] text-gray-500">Company</span>
@@ -1524,7 +1539,11 @@ function clearPrefill(_path: string) {
                             onChange={ev => {
                               clearPrefill(`employment.${i}.company`)
                               const v = ev.target.value
-                              setForm(prev => { const copy = structuredClone(prev); copy.employment[i].company = v; return copy })
+                              setForm(prev => {
+                                const copy = structuredClone(prev)
+                                copy.employment[i].company = v
+                                return copy
+                              })
                             }}
                           />
                         </label>
@@ -1537,7 +1556,11 @@ function clearPrefill(_path: string) {
                               onChange={ev => {
                                 clearPrefill(`employment.${i}.start`)
                                 const v = ev.target.value
-                                setForm(prev => { const copy = structuredClone(prev); copy.employment[i].start = v; return copy })
+                                setForm(prev => {
+                                  const copy = structuredClone(prev)
+                                  copy.employment[i].start = v
+                                  return copy
+                                })
                               }}
                             />
                           </label>
@@ -1549,13 +1572,17 @@ function clearPrefill(_path: string) {
                               onChange={ev => {
                                 clearPrefill(`employment.${i}.end`)
                                 const v = ev.target.value
-                                setForm(prev => { const copy = structuredClone(prev); copy.employment[i].end = v; return copy })
+                                setForm(prev => {
+                                  const copy = structuredClone(prev)
+                                  copy.employment[i].end = v
+                                  return copy
+                                })
                               }}
                             />
                           </label>
                         </div>
                       </div>
-                  
+          
                       <label className="grid gap-1">
                         <span className="text-[11px] text-gray-500">Description</span>
                         <textarea
@@ -1564,108 +1591,132 @@ function clearPrefill(_path: string) {
                           onChange={ev => {
                             clearPrefill(`employment.${i}.description`)
                             const v = ev.target.value
-                            setForm(prev => { const copy = structuredClone(prev); copy.employment[i].description = v; return copy })
+                            setForm(prev => {
+                              const copy = structuredClone(prev)
+                              copy.employment[i].description = v
+                              return copy
+                            })
                           }}
                         />
                       </label>
                     </div>
                   ))
+                )}
+              </div>
+            )}
+          </section>
 
           {/* Education */}
           <section>
             <div className="flex items-center justify-between">
-            <h3 className="font-semibold text-sm">Education & Qualifications</h3>
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                className="text-[11px] text-gray-500 underline"
-                onClick={addEducation}
-                disabled={loading}
-              >
-                Add qualification
-              </button>
-              <button
-                type="button"
-                className="text-[11px] text-gray-500 underline"
-                onClick={() => toggle('education')}
-              >
-                {open.education ? 'Hide' : 'Show'}
-              </button>
+              <h3 className="font-semibold text-sm">Education & Qualifications</h3>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  className="text-[11px] text-gray-500 underline"
+                  onClick={addEducation}
+                  disabled={loading}
+                >
+                  Add qualification
+                </button>
+                <button
+                  type="button"
+                  className="text-[11px] text-gray-500 underline"
+                  onClick={() => toggle('education')}
+                >
+                  {open.education ? 'Hide' : 'Show'}
+                </button>
+              </div>
             </div>
-          </div>
-
+          
             {open.education && (
-            <div className="grid gap-3 mt-3">
-              {form.education.length === 0 ? (
-                <div className="text-[12px] text-gray-500">No education yet.</div>
-              ) : (
-                form.education.map((e, i) => (
-                  <div key={i} className="border rounded-xl p-3 grid gap-2 relative">
-                    {/* remove button */}
-                    <button
-                      type="button"
-                      className="absolute right-2 top-2 text-[11px] text-gray-500 underline"
-                      onClick={() => removeEducation(i)}
-                      title="Remove this qualification"
-                    >
-                      Remove qualification
-                    </button>
-                
-                    <label className="grid gap-1">
-                      <span className="text-[11px] text-gray-500">Institution</span>
-                      <input
-                        className="input text-[11px]"
-                        value={e.course || ''}
-                        onChange={(ev) => {
-                          const v = ev.target.value
-                          setForm(prev => { const copy = structuredClone(prev); copy.education[i].course = v; return copy })
-                        }}
-                      />
-                    </label>
-                
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="grid gap-3 mt-3">
+                {form.education.length === 0 ? (
+                  <div className="text-[12px] text-gray-500">No education yet.</div>
+                ) : (
+                  form.education.map((e, i) => (
+                    <div key={i} className="border rounded-xl p-3 grid gap-2 relative">
+                      {/* remove button */}
+                      <button
+                        type="button"
+                        className="absolute right-2 top-2 text-[11px] text-gray-500 underline"
+                        onClick={() => removeEducation(i)}
+                        title="Remove this qualification"
+                      >
+                        Remove qualification
+                      </button>
+          
                       <label className="grid gap-1">
-                        <span className="text-[11px] text-gray-500">Description</span>
+                        <span className="text-[11px] text-gray-500">Institution</span>
                         <input
                           className="input text-[11px]"
-                          value={e.institution || ''}
+                          value={e.course || ''}
                           onChange={(ev) => {
                             const v = ev.target.value
-                            setForm(prev => { const copy = structuredClone(prev); copy.education[i].institution = v; return copy })
+                            setForm(prev => {
+                              const copy = structuredClone(prev)
+                              copy.education[i].course = v
+                              return copy
+                            })
                           }}
                         />
                       </label>
-                
-                      <div className="grid grid-cols-2 gap-2">
+          
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         <label className="grid gap-1">
-                          <span className="text-[11px] text-gray-500">Start</span>
+                          <span className="text-[11px] text-gray-500">Description</span>
                           <input
                             className="input text-[11px]"
-                            value={e.start || ''}
+                            value={e.institution || ''}
                             onChange={(ev) => {
                               const v = ev.target.value
-                              setForm(prev => { const copy = structuredClone(prev); copy.education[i].start = v; return copy })
+                              setForm(prev => {
+                                const copy = structuredClone(prev)
+                                copy.education[i].institution = v
+                                return copy
+                              })
                             }}
                           />
                         </label>
-                        <label className="grid gap-1">
-                          <span className="text-[11px] text-gray-500">End</span>
-                          <input
-                            className="input text-[11px]"
-                            value={e.end || ''}
-                            onChange={(ev) => {
-                              const v = ev.target.value
-                              setForm(prev => { const copy = structuredClone(prev); copy.education[i].end = v; return copy })
-                            }}
-                          />
-                        </label>
+          
+                        <div className="grid grid-cols-2 gap-2">
+                          <label className="grid gap-1">
+                            <span className="text-[11px] text-gray-500">Start</span>
+                            <input
+                              className="input text-[11px]"
+                              value={e.start || ''}
+                              onChange={(ev) => {
+                                const v = ev.target.value
+                                setForm(prev => {
+                                  const copy = structuredClone(prev)
+                                  copy.education[i].start = v
+                                  return copy
+                                })
+                              }}
+                            />
+                          </label>
+                          <label className="grid gap-1">
+                            <span className="text-[11px] text-gray-500">End</span>
+                            <input
+                              className="input text-[11px]"
+                              value={e.end || ''}
+                              onChange={(ev) => {
+                                const v = ev.target.value
+                                setForm(prev => {
+                                  const copy = structuredClone(prev)
+                                  copy.education[i].end = v
+                                  return copy
+                                })
+                              }}
+                            />
+                          </label>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))
-              )}
-            </div>
-          )}
+                  ))
+                )}
+              </div>
+            )}
           </section>
 
           {/* Additional */}
