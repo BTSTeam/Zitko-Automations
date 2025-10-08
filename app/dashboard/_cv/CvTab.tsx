@@ -222,27 +222,17 @@ function mapWorkExperiences(list: any[]): Employment[] {
 function mapEducation(list: any[]): Education[] {
   if (!Array.isArray(list)) return []
   return list.map(e => {
-    const qualsRaw = e?.qualificications ?? e?.qualifications ?? e?.qualification
-    const toArr = (v: any) =>
-      Array.isArray(v) ? v.filter(Boolean).map(String)
-        : typeof v === 'string' ? v.split(/[,;]\s*/).filter(Boolean)
-          : []
+    // Course = Institution name from API
+    const course = (e?.school_name || e?.institution || e?.school || '').toString().trim()
 
-    const quals = toArr(qualsRaw)
-    const training = toArr(e?.training)
-    const honors = toArr(e?.honors)
-
-    const mainTitle = (e?.degree_name && String(e.degree_name)) || (quals[0] || '')
-    const extras = [...quals.slice(1), ...training, ...honors]
-    let course = extras.length ? `${mainTitle}`.trim() + ` (${extras.join(' • ')})` : `${mainTitle}`.trim()
-
-    const institution = e?.school_name || e?.institution || e?.school || ''
-    if (!course) course = institution
+    // Institution field = Description (cleaned rich text)
+    const descriptionRaw = e?.description ?? ''
+    const institution = cleanRichTextToPlain(descriptionRaw)
 
     const start = formatDate(e?.start_date || e?.from_date || e?.start) || ''
     const end = formatDate(e?.end_date || e?.to_date || e?.end) || ''
 
-    return { course: course || '', institution, start, end }
+    return { course, institution, start, end }
   })
 }
 
@@ -1073,51 +1063,56 @@ function clearPrefill(_path: string) {
         
           const first = eduPreview[0]
           const firstRange = [first.start, first.end].filter(Boolean).join(' to ')
-          const firstShowInstitution =
-            !!first.institution &&
-            !!first.course &&
-            first.course.trim().toLowerCase() !== first.institution.trim().toLowerCase()
         
           return (
             <>
-              <div className="cv-headpair">
+              {/* Header + first entry (kept together) */}
+              <div className="cv-headpair mb-3">
                 <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
                   Education & Qualifications
                 </h2>
+        
                 <div className="cv-entry">
-                  <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-4 items-start">
+                  <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2">
+                    {/* Row 1: Institution name (from course) + dates */}
                     <div className="min-w-0">
-                      <div className="font-medium">{first.course?.trim() || first.institution?.trim() || ''}</div>
-                      {firstShowInstitution && (
-                        <div className="text-[11px] text-gray-500">{first.institution}</div>
-                      )}
+                      <div className="font-medium">{(first.course || '').trim()}</div>
                     </div>
                     <div className="text-[11px] text-gray-500 whitespace-nowrap text-right shrink-0">
                       {firstRange}
                     </div>
+        
+                    {/* Row 2: Description (from institution) spans full width and wraps */}
+                    {!!(first.institution && first.institution.trim()) && (
+                      <div className="text-[12px] whitespace-pre-wrap break-words col-span-2">
+                        {first.institution}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
         
+              {/* Remaining entries */}
               <div className="space-y-3">
                 {eduPreview.slice(1).map((e, i) => {
                   const range = [e.start, e.end].filter(Boolean).join(' to ')
-                  const showInstitutionLine =
-                    !!e.institution &&
-                    !!e.course &&
-                    e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
                   return (
                     <div key={i} className="cv-entry">
-                      <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-4 items-start">
+                      <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2">
+                        {/* Row 1 */}
                         <div className="min-w-0">
-                          <div className="font-medium">{e.course?.trim() || e.institution?.trim() || ''}</div>
-                          {showInstitutionLine && (
-                            <div className="text-[11px] text-gray-500">{e.institution}</div>
-                          )}
+                          <div className="font-medium">{(e.course || '').trim()}</div>
                         </div>
                         <div className="text-[11px] text-gray-500 whitespace-nowrap text-right shrink-0">
                           {range}
                         </div>
+        
+                        {/* Row 2: Description */}
+                        {!!(e.institution && e.institution.trim()) && (
+                          <div className="text-[12px] whitespace-pre-wrap break-words col-span-2">
+                            {e.institution}
+                          </div>
+                        )}
                       </div>
                     </div>
                   )
@@ -1558,7 +1553,7 @@ function clearPrefill(_path: string) {
                 form.education.map((e, i) => (
                   <div key={i} className="border rounded-xl p-3 grid gap-2">
                     <label className="grid gap-1">
-                      <span className="text-[11px] text-gray-500">Course</span>
+                      <span className="text-[11px] text-gray-500">Institution</span>
                       <input
                         className="input text-[11px]"
                         value={e.course || ''}
@@ -1571,7 +1566,7 @@ function clearPrefill(_path: string) {
           
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <label className="grid gap-1">
-                        <span className="text-[11px] text-gray-500">Institution</span>
+                        <span className="text-[11px] text-gray-500">Description</span>
                         <input
                           className="input text-[11px]"
                           value={e.institution || ''}
