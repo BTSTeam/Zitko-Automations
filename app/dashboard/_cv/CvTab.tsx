@@ -995,7 +995,7 @@ function clearPrefill(_path: string) {
                 const range = [e.start, e.end].filter(Boolean).join(' to ')
                 return (
                   <div className="cv-entry">
-                    <div className="grid grid-cols-[1fr_auto] gap-4 items-start">
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-4 items-start">
                       <div className="min-w-0">
                         <div className="font-medium">{e.title || 'Role'}</div>
                         <div className="text-[11px] text-gray-500">{e.company}</div>
@@ -1020,7 +1020,7 @@ function clearPrefill(_path: string) {
                 const range = [e.start, e.end].filter(Boolean).join(' to ')
                 return (
                   <div key={i} className="cv-entry">
-                    <div className="grid grid-cols-[1fr_auto] gap-4 items-start">
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-4 items-start">
                       <div className="min-w-0">
                         <div className="font-medium">{e.title || 'Role'}</div>
                         <div className="text-[11px] text-gray-500">{e.company}</div>
@@ -1065,7 +1065,7 @@ function clearPrefill(_path: string) {
                   e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
                 return (
                   <div className="cv-entry">
-                    <div className="grid grid-cols-[1fr_auto] gap-4 items-start">
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-4 items-start">
                       <div className="min-w-0">
                         <div className="font-medium">{e.course || e.institution || 'Course'}</div>
                         {showInstitutionLine && (
@@ -1090,7 +1090,7 @@ function clearPrefill(_path: string) {
                   e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
                 return (
                   <div key={i} className="cv-entry">
-                    <div className="grid grid-cols-[1fr_auto] gap-4 items-start">
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-4 items-start">
                       <div className="min-w-0">
                         <div className="font-medium">{e.course || e.institution || 'Course'}</div>
                         {showInstitutionLine && (
