@@ -456,11 +456,32 @@ function clearPrefill(_path: string) {
     }))
   }
 
+  function removeEmployment(index: number) {
+    setForm(prev => {
+      const copy = structuredClone(prev)
+      copy.employment.splice(index, 1)
+      return copy
+    })
+    setPrefill(prev => {
+      const pf = structuredClone(prev)
+      if (Array.isArray(pf.employment)) pf.employment.splice(index, 1)
+      return pf
+    })
+  }
+
   function addEducation() {
     setForm(prev => ({
       ...prev,
       education: [...prev.education, { course: '', institution: '', start: '', end: '' }],
     }))
+  }
+
+  function removeEducation(index: number) {
+    setForm(prev => {
+      const copy = structuredClone(prev)
+      copy.education.splice(index, 1)
+      return copy
+    })
   }
   
   // ========== AI profile (Standard) ==========
@@ -972,76 +993,96 @@ function clearPrefill(_path: string) {
           })()}
         </div>
 
-        {/* Employment History (header + first entry stay together) */}
-        {form.employment.length === 0 ? (
-          <div className="cv-headpair">
-            <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
-              Employment History
-            </h2>
-            <div className="text-gray-500 text-[12px]">No employment history yet.</div>
-          </div>
-        ) : (
-          <>
-            {/* First entry stays paired with header, plus bottom margin for gap */}
-            <div className="cv-headpair mb-4 md:mb-6">
-              <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
-                Employment History
-              </h2>
-              {(() => {
-                const e = form.employment[0]
-                const range = [e.start, e.end].filter(Boolean).join(' to ')
-                return (
-                  <div className="cv-entry">
-                    <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2">
-                      {/* Row 1 */}
-                      <div className="min-w-0">
-                        <div className="font-medium">{e.title || 'Role'}</div>
-                        <div className="text-[11px] text-gray-500">{e.company}</div>
-                      </div>
-                      <div className="text-[11px] text-gray-500 whitespace-nowrap text-right shrink-0">
-                        {range}
-                      </div>
-                  
-                      {/* Row 2 */}
-                      {e.description?.trim() && (
-                        <div className="text-[12px] mt-0 whitespace-pre-wrap break-words col-span-2">
-                          {e.description}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )
-              })()}
-            </div>
+        {/* Employment History (header + first entry stay together, blanks hidden) */}
+        {(() => {
+          // Only show roles that have at least ONE non-empty field
+          const empPreview = (form.employment || []).filter(e =>
+            [e.title, e.company, e.start, e.end, e.description].some(v => String(v || '').trim())
+          )
         
-            {/* Subsequent entries with a bit more vertical spacing */}
-            <div className="space-y-4">
-              {form.employment.slice(1).map((e, i) => {
-                const range = [e.start, e.end].filter(Boolean).join(' to ')
-                return (
-                  <div key={i} className="cv-entry">
-                    <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2">
-                      <div className="min-w-0">
-                        <div className="font-medium">{e.title || 'Role'}</div>
-                        <div className="text-[11px] text-gray-500">{e.company}</div>
-                      </div>
-                      <div className="text-[11px] text-gray-500 whitespace-nowrap text-right shrink-0">
-                        {range}
-                      </div>
-                  
-                      {e.description?.trim() && (
-                        <div className="text-[12px] mt-0 whitespace-pre-wrap break-words col-span-2">
-                          {e.description}
-                        </div>
+          if (empPreview.length === 0) {
+            return (
+              <div className="cv-headpair">
+                <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+                  Employment History
+                </h2>
+                <div className="text-gray-500 text-[12px]">No employment history yet.</div>
+              </div>
+            )
+          }
+        
+          const first = empPreview[0]
+          const firstRange = [first.start, first.end].filter(Boolean).join(' to ')
+        
+          return (
+            <>
+              {/* Header + first entry */}
+              <div className="cv-headpair mb-4 md:mb-6">
+                <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+                  Employment History
+                </h2>
+        
+                <div className="cv-entry">
+                  <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2">
+                    <div className="min-w-0">
+                      {!!(first.title && first.title.trim()) && (
+                        <div className="font-medium">{first.title}</div>
+                      )}
+                      {!!(first.company && first.company.trim()) && (
+                        <div className="text-[11px] text-gray-500">{first.company}</div>
                       )}
                     </div>
+        
+                    {!!firstRange && (
+                      <div className="text-[11px] text-gray-500 whitespace-nowrap text-right shrink-0">
+                        {firstRange}
+                      </div>
+                    )}
+        
+                    {!!(first.description && first.description.trim()) && (
+                      <div className="text-[12px] mt-0 whitespace-pre-wrap break-words col-span-2">
+                        {first.description}
+                      </div>
+                    )}
                   </div>
-                )
-              })}
-            </div>
-          </>
-        )}
-
+                </div>
+              </div>
+        
+              {/* Remaining entries */}
+              <div className="space-y-4">
+                {empPreview.slice(1).map((e, i) => {
+                  const range = [e.start, e.end].filter(Boolean).join(' to ')
+                  return (
+                    <div key={i} className="cv-entry">
+                      <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2">
+                        <div className="min-w-0">
+                          {!!(e.title && e.title.trim()) && (
+                            <div className="font-medium">{e.title}</div>
+                          )}
+                          {!!(e.company && e.company.trim()) && (
+                            <div className="text-[11px] text-gray-500">{e.company}</div>
+                          )}
+                        </div>
+        
+                        {!!range && (
+                          <div className="text-[11px] text-gray-500 whitespace-nowrap text-right shrink-0">
+                            {range}
+                          </div>
+                        )}
+        
+                        {!!(e.description && e.description.trim()) && (
+                          <div className="text-[12px] mt-0 whitespace-pre-wrap break-words col-span-2">
+                            {e.description}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </>
+          )
+        })()}
 
         {/* Education & Qualifications (header + first entry stay together) */}
         {(() => {
@@ -1450,7 +1491,17 @@ function clearPrefill(_path: string) {
                   <div className="text-[12px] text-gray-500">No employment history yet.</div>
                 ) : (
                   form.employment.map((e, i) => (
-                    <div key={i} className="border rounded-xl p-3 grid gap-2">
+                    <div key={i} className="border rounded-xl p-3 grid gap-2 relative">
+                      {/* remove button */}
+                      <button
+                        type="button"
+                        className="absolute right-2 top-2 text-[11px] text-gray-500 underline"
+                        onClick={() => removeEmployment(i)}
+                        title="Remove this role"
+                      >
+                        Remove role
+                      </button>
+                  
                       <label className="grid gap-1">
                         <span className="text-[11px] text-gray-500">Title</span>
                         <input
@@ -1463,6 +1514,7 @@ function clearPrefill(_path: string) {
                           }}
                         />
                       </label>
+                  
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         <label className="grid gap-1">
                           <span className="text-[11px] text-gray-500">Company</span>
@@ -1503,6 +1555,7 @@ function clearPrefill(_path: string) {
                           </label>
                         </div>
                       </div>
+                  
                       <label className="grid gap-1">
                         <span className="text-[11px] text-gray-500">Description</span>
                         <textarea
@@ -1517,10 +1570,6 @@ function clearPrefill(_path: string) {
                       </label>
                     </div>
                   ))
-                )}
-              </div>
-            )}
-          </section>
 
           {/* Education */}
           <section>
@@ -1551,7 +1600,17 @@ function clearPrefill(_path: string) {
                 <div className="text-[12px] text-gray-500">No education yet.</div>
               ) : (
                 form.education.map((e, i) => (
-                  <div key={i} className="border rounded-xl p-3 grid gap-2">
+                  <div key={i} className="border rounded-xl p-3 grid gap-2 relative">
+                    {/* remove button */}
+                    <button
+                      type="button"
+                      className="absolute right-2 top-2 text-[11px] text-gray-500 underline"
+                      onClick={() => removeEducation(i)}
+                      title="Remove this qualification"
+                    >
+                      Remove qualification
+                    </button>
+                
                     <label className="grid gap-1">
                       <span className="text-[11px] text-gray-500">Institution</span>
                       <input
@@ -1563,7 +1622,7 @@ function clearPrefill(_path: string) {
                         }}
                       />
                     </label>
-          
+                
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <label className="grid gap-1">
                         <span className="text-[11px] text-gray-500">Description</span>
@@ -1576,7 +1635,7 @@ function clearPrefill(_path: string) {
                           }}
                         />
                       </label>
-          
+                
                       <div className="grid grid-cols-2 gap-2">
                         <label className="grid gap-1">
                           <span className="text-[11px] text-gray-500">Start</span>
