@@ -450,20 +450,10 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     })
   }
 
-  /* Clear prefill flag for a specific path when the user edits */
-  function clearPrefill(path: string) {
-    setPrefill(prev => {
-      const clone = structuredClone(prev) as any
-      const seg = path.split('.')
-      let cur = clone
-      for (let i = 0; i < seg.length - 1; i++) cur = cur[seg[i]]
-      // Only clear if field exists
-      if (cur && Object.prototype.hasOwnProperty.call(cur, seg[seg.length - 1])) {
-        cur[seg[seg.length - 1]] = false
-      }
-      return clone
-    })
-  }
+  /* Keep prefill flag sticky so the editor font stays small even after edits */
+function clearPrefill(_path: string) {
+  // Intentionally a no-op. Calls remain for future flexibility.
+}
 
   function addEmployment() {
     setForm(prev => ({
@@ -1005,17 +995,19 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                 const range = [e.start, e.end].filter(Boolean).join(' to ')
                 return (
                   <div className="cv-entry">
-                    <div className="flex justify-between">
-                      <div>
+                    <div className="grid grid-cols-[1fr_auto] gap-4 items-start">
+                      <div className="min-w-0">
                         <div className="font-medium">{e.title || 'Role'}</div>
                         <div className="text-[11px] text-gray-500">{e.company}</div>
                         {e.description?.trim() && (
-                          <div className="text-[12px] mt-1 whitespace-pre-wrap">
+                          <div className="text-[12px] mt-1 whitespace-pre-wrap break-words">
                             {e.description}
                           </div>
                         )}
                       </div>
-                      <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
+                      <div className="text-[11px] text-gray-500 whitespace-nowrap text-right shrink-0">
+                        {range}
+                      </div>
                     </div>
                   </div>
                 )
@@ -1028,17 +1020,19 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                 const range = [e.start, e.end].filter(Boolean).join(' to ')
                 return (
                   <div key={i} className="cv-entry">
-                    <div className="flex justify-between">
-                      <div>
+                    <div className="grid grid-cols-[1fr_auto] gap-4 items-start">
+                      <div className="min-w-0">
                         <div className="font-medium">{e.title || 'Role'}</div>
                         <div className="text-[11px] text-gray-500">{e.company}</div>
                         {e.description?.trim() && (
-                          <div className="text-[12px] mt-1 whitespace-pre-wrap">
+                          <div className="text-[12px] mt-1 whitespace-pre-wrap break-words">
                             {e.description}
                           </div>
                         )}
                       </div>
-                      <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
+                      <div className="text-[11px] text-gray-500 whitespace-nowrap text-right shrink-0">
+                        {range}
+                      </div>
                     </div>
                   </div>
                 )
@@ -1071,14 +1065,16 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                   e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
                 return (
                   <div className="cv-entry">
-                    <div className="flex items-start justify-between">
-                      <div>
+                    <div className="grid grid-cols-[1fr_auto] gap-4 items-start">
+                      <div className="min-w-0">
                         <div className="font-medium">{e.course || e.institution || 'Course'}</div>
                         {showInstitutionLine && (
                           <div className="text-[11px] text-gray-500">{e.institution}</div>
                         )}
                       </div>
-                      <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
+                      <div className="text-[11px] text-gray-500 whitespace-nowrap text-right shrink-0">
+                        {range}
+                      </div>
                     </div>
                   </div>
                 )
@@ -1094,14 +1090,16 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                   e.course.trim().toLowerCase() !== e.institution.trim().toLowerCase()
                 return (
                   <div key={i} className="cv-entry">
-                    <div className="flex items-start justify-between">
-                      <div>
+                    <div className="grid grid-cols-[1fr_auto] gap-4 items-start">
+                      <div className="min-w-0">
                         <div className="font-medium">{e.course || e.institution || 'Course'}</div>
                         {showInstitutionLine && (
                           <div className="text-[11px] text-gray-500">{e.institution}</div>
                         )}
                       </div>
-                      <div className="text-[11px] text-gray-500 whitespace-nowrap">{range}</div>
+                      <div className="text-[11px] text-gray-500 whitespace-nowrap text-right shrink-0">
+                        {range}
+                      </div>
                     </div>
                   </div>
                 )
