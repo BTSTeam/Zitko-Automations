@@ -1162,10 +1162,10 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   }
 
   // ========== render ==========
-  return (
-    <div className="grid gap-4">
-      {/* Minimal print + PDF styles + prefill-only editor sizing */}
-      <style jsx global>{`
+return (
+  <div className="grid gap-4">
+    {/* Minimal print + PDF styles + prefill-only editor sizing */}
+    <style jsx global>{String.raw`
       /* ======== Layout helpers to keep date gutter fixed ======== */
       /* Two-column grid: flexible left text + fixed right date column */
       .cv-grid {
@@ -1187,23 +1187,21 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
         text-align: right;
         white-space: nowrap;
       }
-    
+
       @media print {
         @page { size: A4; margin: 12mm; }
-    
+
         .cv-standard-page {
           width: 100%;
           display: flex;
           flex-direction: column;
           min-height: calc(297mm - 24mm);
         }
-    
-        .cv-entry,
-        .cv-headpair { break-inside: avoid; page-break-inside: avoid; }
-    
-        .cv-standard-page h1,
-        .cv-standard-page h2 { break-inside: avoid; page-break-inside: avoid; }
-    
+
+        .cv-entry, .cv-headpair { break-inside: avoid; page-break-inside: avoid; }
+
+        .cv-standard-page h1, .cv-standard-page h2 { break-inside: avoid; page-break-inside: avoid; }
+
         .cv-footer {
           margin-top: auto;
           break-inside: avoid;
@@ -1212,34 +1210,10 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
           page-break-after: auto;
         }
       }
-    
-      /* Also help in on-screen preview */
-      .cv-entry,
-      .cv-headpair { break-inside: avoid; page-break-inside: avoid; }
-    `}</style>
 
-  
-      <div className="card p-4">
-        {!templateFromShell && (
-          <div className="grid sm:grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => resetAllForTemplate('standard')}
-              className={`btn w-full ${template === 'standard' ? 'btn-brand' : 'btn-grey'}`}
-            >
-              Standard
-            </button>
-  
-            <button
-              type="button"
-              onClick={() => resetAllForTemplate('sales')}
-              className={`btn w-full ${template === 'sales' ? 'btn-brand' : 'btn-grey'}`}
-              title="Sales template: import a CV (PDF/DOCX)"
-            >
-              Sales
-            </button>
-          </div>
-        )}
+      /* Also help in on-screen preview */
+      .cv-entry, .cv-headpair { break-inside: avoid; page-break-inside: avoid; }
+    `}</style>
   
         {/* Top controls: Standard vs Sales */}
         {template === 'standard' && (
@@ -1677,12 +1651,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
           </section>
         </div>
       )}
-
-      {/* RIGHT: preview always renders here; on Sales it's full-width */}
-      <div className="card p-0 overflow-hidden">
-        <CVTemplatePreview />
-      </div>
-    </div>
 
     {/* ===== Upload modal ===== */}
     {showUploadModal && (
