@@ -504,34 +504,34 @@ export default function MatchTab(): JSX.Element {
           </button>
         </div>
 
-        {/* Single-column stack so Title & Location align with Job ID */}
-        <div className="grid gap-4">
-          {/* Job ID (label removed; placeholder used) */}
+        {/* Three inputs on one row (md+) */}
+        <div className="grid gap-4 md:grid-cols-3">
+          {/* Job ID */}
           <input
             className="input"
             placeholder="Job ID"
             value={jobId}
             onChange={e=>setJobId(e.target.value)}
           />
-
-          {/* Job Title (label removed; placeholder used) */}
+        
+          {/* Job Title */}
           <input
             className="input"
             placeholder="Job Title (e.g., Fire & Security Engineer)"
             value={title}
             onChange={e=>setTitle(e.target.value)}
           />
-
-          {/* Location (label removed; placeholder used) */}
+        
+          {/* Location */}
           <input
             className="input"
             placeholder="Location (e.g., London)"
             value={location}
             onChange={e=>setLocation(e.target.value)}
           />
-
-          {/* Buttons inline */}
-          <div className="flex flex-col sm:flex-row gap-3">
+        
+          {/* Buttons inline under inputs */}
+          <div className="md:col-span-3 flex flex-col sm:flex-row gap-3">
             <button
               className="btn btn-brand sm:flex-1"
               onClick={retrieveSearchScore}
@@ -539,7 +539,7 @@ export default function MatchTab(): JSX.Element {
             >
               {loadingAll ? 'Searching…' : 'Search'}
             </button>
-
+        
             <button
               className="btn btn-grey sm:flex-1"
               onClick={onSaveAndResend}
@@ -551,25 +551,40 @@ export default function MatchTab(): JSX.Element {
           </div>
         </div>
 
+
         <div className="h-px bg-gray-200 my-4" />
 
         {/* Controls row (unchanged) */}
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <button
-            className={`btn ${view==='raw' ? 'btn-brand' : 'btn-grey'} ${beforeScores ? 'opacity-50' : ''}`}
+            className={[
+              'px-1 py-1 text-lg font-semibold rounded-none border-b-2 transition-colors',
+              view === 'raw'
+                ? 'border-gray-800 text-gray-900'
+                : 'border-transparent text-gray-400 hover:text-gray-600',
+              beforeScores || rawCands.length === 0 ? 'opacity-50 pointer-events-none' : ''
+            ].join(' ')}
             onClick={() => setView('raw')}
             disabled={rawCands.length === 0}
           >
             Raw Candidates {rawCands.length ? `(${rawCands.length})` : ''}
           </button>
+          
           <div className="flex items-center gap-2">
             <button
-              className={`btn ${view==='ai' ? 'btn-brand' : 'btn-grey'} ${beforeScores ? 'opacity-50' : ''}`}
+              className={[
+                'px-1 py-1 text-lg font-semibold rounded-none border-b-2 transition-colors',
+                view === 'ai'
+                  ? 'border-gray-800 text-gray-900'
+                  : 'border-transparent text-gray-400 hover:text-gray-600',
+                beforeScores || scored.length === 0 ? 'opacity-50 pointer-events-none' : ''
+              ].join(' ')}
               onClick={() => setView('ai')}
               disabled={scored.length === 0}
             >
               AI Scored {scored.length ? `(${scored.length})` : ''}
             </button>
+          
             <span className="text-sm text-gray-600">{statusText}</span>
           </div>
           {serverQuery && (
