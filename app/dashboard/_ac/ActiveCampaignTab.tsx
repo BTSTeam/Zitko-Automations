@@ -9,7 +9,6 @@ type Tag = { id: number; tag: string }
 const TP_USER_ID = process.env.NEXT_PUBLIC_VINCERE_TALENTPOOL_USER_ID || '29018'
 
 // ===== Password Gate (UI-only) =====
-// Read ONLY the public env (client bundle). Strip accidental wrapping quotes pasted in env UI.
 function normalizeEnvPw(s: string | undefined | null) {
   const t = String(s ?? '').trim()
   if ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith("'") && t.endsWith("'"))) {
@@ -18,11 +17,11 @@ function normalizeEnvPw(s: string | undefined | null) {
   return t
 }
 const RAW_ENV = process.env.NEXT_PUBLIC_ACTIVE_CAMPAIGN_TAB ?? ''
-const TAB_PW = normalizeEnvPw(RAW_ENV) // no fallback; fail clearly if unset
+const TAB_PW = normalizeEnvPw(RAW_ENV)
 const UNLOCK_KEY = 'acTabUnlocked'
 
 // ==== Preview / pagination tuning (UI only) ====
-const SAMPLE_PREVIEW_LIMIT = 50 // import job still processes all on the server
+const SAMPLE_PREVIEW_LIMIT = 50
 
 type JobStatus = 'running' | 'done' | 'error' | 'not-found'
 type JobProgress = {
@@ -49,21 +48,21 @@ export default function ActiveCampaignTab() {
   const [pwError, setPwError] = useState<string>('')
 
   function tryUnlock(e?: React.FormEvent) {
-  e?.preventDefault()
+    e?.preventDefault()
 
-  if (!TAB_PW) {
-    setPwError('Password is not configured on this deployment.')
-    return
-  }
+    if (!TAB_PW) {
+      setPwError('Password is not configured on this deployment.')
+      return
+    }
 
-  const typed = pw.trim()
-  if (typed === TAB_PW) {
-    setUnlocked(true)
-    setPwError('')
-  } else {
-    setPwError('Incorrect password. Access denied.')
+    const typed = pw.trim()
+    if (typed === TAB_PW) {
+      setUnlocked(true)
+      setPwError('')
+    } else {
+      setPwError('Incorrect password. Access denied.')
+    }
   }
-}
 
   // ===== Existing tab state =====
   const [pools, setPools] = useState<Pool[]>([])
@@ -77,9 +76,10 @@ export default function ActiveCampaignTab() {
   // True pool size
   const [poolTotal, setPoolTotal] = useState<number | null>(null)
 
-  // Tags
+  // Tags & List
   const [tags, setTags] = useState<Tag[]>([])
   const [tagName, setTagName] = useState('')
+  const [listName, setListName] = useState('')
 
   // Send button state
   type SendState = 'idle' | 'starting' | 'sending' | 'success' | 'error'
@@ -98,7 +98,7 @@ export default function ActiveCampaignTab() {
       esRef.current.close()
       esRef.current = null
     }
-  }, [tagName, poolId])
+  }, [tagName, listName, poolId])
 
   // On tab mount: fetch Talent Pools and AC tags (only once unlocked)
   useEffect(() => {
@@ -158,10 +158,9 @@ export default function ActiveCampaignTab() {
     }
     setLoading(true)
     try {
-      // Request a small preview sample and (where supported) have the server return total
       const qs = new URLSearchParams({
-        limit: String(SAMPLE_PREVIEW_LIMIT), // new param
-        rows: String(SAMPLE_PREVIEW_LIMIT),  // legacy param (B/C)
+        limit: String(SAMPLE_PREVIEW_LIMIT),
+        rows: String(SAMPLE_PREVIEW_LIMIT),
       }).toString()
 
       const res = await fetch(
@@ -179,7 +178,6 @@ export default function ActiveCampaignTab() {
       const rows: Candidate[] = Array.isArray(data?.candidates) ? data.candidates : []
       setCandidates(rows)
 
-      // Try meta/header first…
       const headerTotalStr = res.headers.get('x-vincere-total')
       const headerTotal =
         headerTotalStr && headerTotalStr.trim() !== '' ? Number(headerTotalStr) : NaN
@@ -192,7 +190,6 @@ export default function ActiveCampaignTab() {
 
       setPoolTotal(total)
 
-      // …then ALWAYS call the count endpoint to guarantee a total
       try {
         const cRes = await fetch(
           `/api/vincere/talentpool/${encodeURIComponent(poolId)}/count`,
@@ -211,7 +208,7 @@ export default function ActiveCampaignTab() {
           if (t2 != null) setPoolTotal(t2)
         }
       } catch {
-        // ignore; leave poolTotal as-is
+        // ignore
       }
 
       if (!rows.length) setMessage('No candidates found in this pool.')
@@ -224,29 +221,51 @@ export default function ActiveCampaignTab() {
     }
   }
 
-  // Enable send when there's a tag and selected pool (preview not required)
-  const acEnabled = tagName.trim().length > 0 && poolId !== ''
+  // Enable send when tag OR list is provided, and a pool is selected
+  const acEnabled =
+    (tagName.trim().length > 0 || listName.trim().length > 0) &&
+    poolId !== ''
 
   async function sendToActiveCampaign() {
     setMessage('')
     setSendState('starting')
 
     const effectiveTag = tagName.trim()
-    if (!effectiveTag) {
+    const effectiveList = listName.trim()
+
+    if (!effectiveTag && !effectiveList) {
       setSendState('error')
-      setMessage('Select a Tag')
+      setMessage('Specify a Tag or List')
       return
     }
 
     try {
-      // Start background job (server paginates whole pool)
+      // Create list if needed
+      let createdListId: number | null = null
+      if (effectiveList) {
+        const lr = await fetch('/api/activecampaign/lists', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: effectiveList }),
+        })
+        const lj = await lr.json()
+        if (!lr.ok || !lj?.id) {
+          setSendState('error')
+          setMessage(lj?.error || `Failed to create list (${lr.status}).`)
+          return
+        }
+        createdListId = Number(lj.id)
+      }
+
+      // Start background job
       const res = await fetch('/api/activecampaign/import-pool/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           poolId,
           userId: TP_USER_ID,
-          tagName: effectiveTag,
+          tagName: effectiveTag || undefined,
+          listId: createdListId ?? undefined,
           rows: 200,
           max: 100000,
           chunk: 25,
@@ -262,7 +281,7 @@ export default function ActiveCampaignTab() {
 
       setSendState('sending')
 
-      // open SSE for live progress
+      // open SSE
       if (esRef.current) esRef.current.close()
       const es = new EventSource(`/api/activecampaign/import-pool/progress/${data.jobId}`)
       esRef.current = es
@@ -271,7 +290,7 @@ export default function ActiveCampaignTab() {
         const payload: JobProgress = JSON.parse(evt.data || '{}')
         setProgress(payload)
         if (payload.status === 'done') {
-          setSendState('success') // shows ✓
+          setSendState('success')
           es.close()
           esRef.current = null
         } else if (payload.status === 'error' || payload.status === 'not-found') {
@@ -304,8 +323,8 @@ export default function ActiveCampaignTab() {
     typeof n === 'number' ? new Intl.NumberFormat().format(n) : '—'
 
   // ====== Circular progress (thicker ring) ======
-  const RING_SIZE = 360 // px
-  const RING_THICKNESS = 28 // px
+  const RING_SIZE = 360
+  const RING_THICKNESS = 28
   const pctDeg = Math.max(0, Math.min(360, Math.round((percent / 100) * 360)))
 
   // ===== Gate UI (render early if locked) =====
@@ -358,12 +377,53 @@ export default function ActiveCampaignTab() {
     )
   }
 
-  // ===== Normal tab UI (unchanged) =====
+  // ===== Normal tab UI =====
   return (
     <div className="grid gap-6">
       {/* TOP PANEL: Controls (white card) */}
       <div className="rounded-2xl border bg-white p-4">
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-3">
+          {/* AC Tag */}
+          <label className="grid gap-1">
+            <span className="text-sm font-medium">Active Campaign Tag</span>
+            <div className="relative">
+              <select
+                value={tagName}
+                onChange={(e) => setTagName(e.target.value)}
+                className="w-full rounded-xl border px-3 py-2 appearance-none pr-9 focus:outline-none focus:ring-2 focus:ring-[#001961]"
+              >
+                <option value="" disabled>
+                  Select a tag
+                </option>
+                {tags.map((t) => (
+                  <option key={t.id} value={t.tag}>
+                    {t.tag}
+                  </option>
+                ))}
+              </select>
+              <svg
+                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.116l3.71-2.885a.75.75 0 1 1 .92 1.18l-4.2 3.265a.75.75 0 0 1-.92 0L5.25 8.39a.75.75 0 0 1-.02-1.18z" />
+              </svg>
+            </div>
+          </label>
+
+          {/* AC List */}
+          <label className="grid gap-1">
+            <span className="text-sm font-medium">Active Campaign List</span>
+            <input
+              type="text"
+              placeholder="New list name"
+              className="w-full rounded-xl border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#001961]"
+              value={listName}
+              onChange={(e) => setListName(e.target.value)}
+            />
+          </label>
+
           {/* Talent Pool */}
           <label className="grid gap-1">
             <span className="text-sm font-medium">Talent Pool</span>
@@ -395,35 +455,6 @@ export default function ActiveCampaignTab() {
               </svg>
             </div>
           </label>
-
-          {/* AC Tag */}
-          <label className="grid gap-1">
-            <span className="text-sm font-medium">Active Campaign Tag</span>
-            <div className="relative">
-              <select
-                value={tagName}
-                onChange={(e) => setTagName(e.target.value)}
-                className="w-full rounded-xl border px-3 py-2 appearance-none pr-9 focus:outline-none focus:ring-2 focus:ring-[#001961]"
-              >
-                <option value="" disabled>
-                  Select a tag
-                </option>
-                {tags.map((t) => (
-                  <option key={t.id} value={t.tag}>
-                    {t.tag}
-                  </option>
-                ))}
-              </select>
-              <svg
-                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500"
-                viewBox="0 0 20 20"
-                fill="currentColor"
-                aria-hidden="true"
-              >
-                <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.116l3.71-2.885a.75.75 0 1 1 .92 1.18l-4.2 3.265a.75.75 0 0 1-.92 0L5.25 8.39a.75.75 0 0 1-.02-1.18z" />
-              </svg>
-            </div>
-          </label>
         </div>
 
         {/* Actions */}
@@ -441,9 +472,9 @@ export default function ActiveCampaignTab() {
 
           <button
             onClick={sendToActiveCampaign}
-            disabled={!(tagName.trim().length > 0 && poolId !== '') || isSending}
+            disabled={!acEnabled || isSending}
             className={`ml-auto rounded-full px-5 py-3 font-medium shadow-sm transition 
-              ${tagName.trim().length > 0 && poolId !== '' && !isSending
+              ${acEnabled && !isSending
                 ? '!bg-[#001961] !text-white hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#001961]'
                 : 'bg-gray-100 text-gray-500 cursor-not-allowed'}`}
             aria-live="polite"
@@ -458,19 +489,33 @@ export default function ActiveCampaignTab() {
         )}
       </div>
 
-      {/* PROGRESS PANEL (no table) */}
+      {/* PROGRESS PANEL */}
       <div className="rounded-2xl border bg-white p-6">
-        {/* Header — show only Tagging line, in dark blue */}
+        {/* Header — dynamic for tag/list */}
         <div className="text-[#001961] font-semibold text-lg">
-          Tagging candidates as <span className="font-normal text-gray-600">“{tagName || '—'}”</span>
+          {tagName.trim() && listName.trim() ? (
+            <>
+              Tagging candidates as{' '}
+              <span className="font-normal text-gray-600">“{tagName.trim()}”</span> and adding to list{' '}
+              <span className="font-normal text-gray-600">“{listName.trim()}”</span>
+            </>
+          ) : tagName.trim() ? (
+            <>
+              Tagging candidates as{' '}
+              <span className="font-normal text-gray-600">“{tagName.trim()}”</span>
+            </>
+          ) : listName.trim() ? (
+            <>
+              Adding candidates to list{' '}
+              <span className="font-normal text-gray-600">“{listName.trim()}”</span>
+            </>
+          ) : (
+            <>No tag or list specified</>
+          )}
         </div>
 
         <div className="mt-6 flex items-center justify-center">
-          <div
-            className="relative"
-            style={{ width: RING_SIZE, height: RING_SIZE }}
-          >
-            {/* Track + progress via conic-gradient + mask for thickness */}
+          <div className="relative" style={{ width: RING_SIZE, height: RING_SIZE }}>
             <div
               className="absolute inset-0 rounded-full"
               style={{
@@ -480,7 +525,6 @@ export default function ActiveCampaignTab() {
                 filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.06))',
               }}
             />
-            {/* Inner plate */}
             <div
               className="absolute rounded-full bg-white"
               style={{
@@ -488,7 +532,6 @@ export default function ActiveCampaignTab() {
                 boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.05)',
               }}
             />
-            {/* Center labels */}
             <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
               <div className="text-xs text-gray-500">
                 {fmt(sent)} of {fmt(denominator)}
@@ -498,7 +541,6 @@ export default function ActiveCampaignTab() {
           </div>
         </div>
 
-        {/* Error state (if any) */}
         {progress?.status === 'error' && (
           <div className="mt-4 text-sm text-red-600">
             {progress?.error || 'Import failed'}
