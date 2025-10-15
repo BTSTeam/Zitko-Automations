@@ -15,7 +15,8 @@ type Job = {
   status: JobStatus
   poolId: string
   userId: string
-  tagName: string
+  tagName?: string
+  listId?: number | null
   startedAt: number
   updatedAt: number
   totals: {
@@ -78,15 +79,28 @@ export async function POST(req: NextRequest) {
   const {
     poolId,
     userId,
-    tagName,
+    tagName = '',
+    listId,
     rows = 200, // ignored now
     max = 100000,
     chunk = 250,
     pauseMs = 250,
   } = await req.json().catch(() => ({}))
 
-  if (!poolId || !userId || !tagName) {
-    return NextResponse.json({ error: 'poolId, userId, tagName are required' }, { status: 400 })
+  // Must have poolId + userId AND at least one of tagName or listId
+  const hasTag = String(tagName || '').trim().length > 0
+  const listIdNum =
+    listId === 0 || listId === '0'
+      ? 0
+      : listId != null && !Number.isNaN(Number(listId))
+      ? Number(listId)
+      : null
+
+  if (!poolId || !userId || (!hasTag && listIdNum == null)) {
+    return NextResponse.json(
+      { error: 'poolId, userId and at least one of tagName or listId are required' },
+      { status: 400 },
+    )
   }
 
   // create job
@@ -95,7 +109,8 @@ export async function POST(req: NextRequest) {
     status: 'running',
     poolId,
     userId,
-    tagName,
+    tagName: hasTag ? String(tagName).trim() : undefined,
+    listId: listIdNum ?? null,
     startedAt: Date.now(),
     updatedAt: Date.now(),
     totals: {
@@ -138,9 +153,7 @@ export async function POST(req: NextRequest) {
         })
 
       // helper to refresh token once on 401/403
-      const withRefresh = async <T>(
-        fn: () => Promise<Response>
-      ): Promise<Response> => {
+      const withRefresh = async <T>(fn: () => Promise<Response>): Promise<Response> => {
         let res = await fn()
         if (res.status === 401 || res.status === 403) {
           const ok = await refreshIdToken(userKey)
@@ -171,10 +184,7 @@ export async function POST(req: NextRequest) {
           throw new Error(`Vincere getCandidates (total) failed (${res.status}) ${t}`)
         }
         const j = await res.json().catch(() => ({}))
-        total =
-          typeof j?.totalElements === 'number'
-            ? j.totalElements
-            : null
+        total = typeof j?.totalElements === 'number' ? j.totalElements : null
         job.totals.poolTotal = total
         job.updatedAt = Date.now()
       }
@@ -194,7 +204,8 @@ export async function POST(req: NextRequest) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             candidates: batch,
-            tagName,
+            tagName: hasTag ? job.tagName : undefined,
+            listIds: job.listId != null ? [job.listId] : [],
             excludeAutomations: true,
           }),
         })
@@ -208,7 +219,7 @@ export async function POST(req: NextRequest) {
 
       while (!last && job.totals.valid < max && sliceIndex < 400) {
         const url = `${BASE}/talentpool/${encodeURIComponent(poolId)}/user/${encodeURIComponent(
-          userId
+          userId,
         )}/candidates?index=${sliceIndex}`
 
         const res = await withRefresh(() => doGet(url))
