@@ -46,11 +46,11 @@ export default function ActiveCampaignHtmlTab() {
             className="w-full max-w-sm rounded-2xl border bg-white p-6 shadow-sm"
           >
             <div className="text-center mb-4">
+              <div className="text-4xl">🔒</div>
               <h2 className="mt-2 text-lg font-semibold">Restricted Area</h2>
-              <p className="text-sm text-gray-600">
-                Enter the password to access ActiveCampaign tools.
-              </p>
+              <p className="text-sm text-gray-600">Enter the password to access ActiveCampaign tools.</p>
             </div>
+            
             <label className="grid gap-1">
               <span className="text-sm font-medium">Password</span>
               <input
