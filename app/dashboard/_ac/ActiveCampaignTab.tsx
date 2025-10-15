@@ -339,7 +339,7 @@ export default function ActiveCampaignTab() {
             <div className="text-center mb-4">
               <div className="text-4xl">🔒</div>
               <h2 className="mt-2 text-lg font-semibold">Restricted Area</h2>
-              <p className="text-sm text-gray-600">Enter the password to access ActiveCampaign tools.</p>
+              <p className="text-sm text-gray-600">Enter the password to access Active Campaign tools.</p>
             </div>
 
             <label className="grid gap-1">
