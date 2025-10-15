@@ -383,47 +383,6 @@ export default function ActiveCampaignTab() {
       {/* TOP PANEL: Controls (white card) */}
       <div className="rounded-2xl border bg-white p-4">
         <div className="grid gap-4 md:grid-cols-3">
-          {/* AC Tag */}
-          <label className="grid gap-1">
-            <span className="text-sm font-medium">Active Campaign Tag</span>
-            <div className="relative">
-              <select
-                value={tagName}
-                onChange={(e) => setTagName(e.target.value)}
-                className="w-full rounded-xl border px-3 py-2 appearance-none pr-9 focus:outline-none focus:ring-2 focus:ring-[#001961]"
-              >
-                <option value="" disabled>
-                  Select a tag
-                </option>
-                {tags.map((t) => (
-                  <option key={t.id} value={t.tag}>
-                    {t.tag}
-                  </option>
-                ))}
-              </select>
-              <svg
-                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500"
-                viewBox="0 0 20 20"
-                fill="currentColor"
-                aria-hidden="true"
-              >
-                <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.116l3.71-2.885a.75.75 0 1 1 .92 1.18l-4.2 3.265a.75.75 0 0 1-.92 0L5.25 8.39a.75.75 0 0 1-.02-1.18z" />
-              </svg>
-            </div>
-          </label>
-
-          {/* AC List */}
-          <label className="grid gap-1">
-            <span className="text-sm font-medium">Active Campaign List</span>
-            <input
-              type="text"
-              placeholder="New list name"
-              className="w-full rounded-xl border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#001961]"
-              value={listName}
-              onChange={(e) => setListName(e.target.value)}
-            />
-          </label>
-
           {/* Talent Pool */}
           <label className="grid gap-1">
             <span className="text-sm font-medium">Talent Pool</span>
@@ -434,22 +393,51 @@ export default function ActiveCampaignTab() {
                 className="w-full rounded-xl border px-3 py-2 appearance-none pr-9 focus:outline-none focus:ring-2 focus:ring-[#001961]"
               >
                 {pools.length === 0 ? (
-                  <option value="" disabled>
-                    No Talent Pools
-                  </option>
+                  <option value="" disabled>No Talent Pools</option>
                 ) : (
                   pools.map((p) => (
-                    <option key={`${p.id}`} value={`${p.id}`}>
-                      {p.name}
-                    </option>
+                    <option key={`${p.id}`} value={`${p.id}`}>{p.name}</option>
                   ))
                 )}
               </select>
               <svg
                 className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500"
-                viewBox="0 0 20 20"
-                fill="currentColor"
-                aria-hidden="true"
+                viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"
+              >
+                <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.116l3.71-2.885a.75.75 0 1 1 .92 1.18l-4.2 3.265a.75.75 0 0 1-.92 0L5.25 8.39a.75.75 0 0 1-.02-1.18z" />
+              </svg>
+            </div>
+          </label>
+      
+          {/* Active Campaign List */}
+          <label className="grid gap-1">
+            <span className="text-sm font-medium">Active Campaign List</span>
+            <input
+              type="text"
+              placeholder="New list name"
+              className="w-full rounded-xl border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#001961]"
+              value={listName}
+              onChange={(e) => setListName(e.target.value)}
+            />
+          </label>
+      
+          {/* Active Campaign Tag */}
+          <label className="grid gap-1">
+            <span className="text-sm font-medium">Active Campaign Tag</span>
+            <div className="relative">
+              <select
+                value={tagName}
+                onChange={(e) => setTagName(e.target.value)}
+                className="w-full rounded-xl border px-3 py-2 appearance-none pr-9 focus:outline-none focus:ring-2 focus:ring-[#001961]"
+              >
+                <option value="" disabled>Select a tag</option>
+                {tags.map((t) => (
+                  <option key={t.id} value={t.tag}>{t.tag}</option>
+                ))}
+              </select>
+              <svg
+                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500"
+                viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"
               >
                 <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.116l3.71-2.885a.75.75 0 1 1 .92 1.18l-4.2 3.265a.75.75 0 0 1-.92 0L5.25 8.39a.75.75 0 0 1-.02-1.18z" />
               </svg>
