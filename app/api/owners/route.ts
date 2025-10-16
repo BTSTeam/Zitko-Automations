@@ -24,7 +24,7 @@ export async function GET() {
           ''
         ).trim(),
         email: String(u.email ?? ''),
-        phone: String(u.phone ?? u.phoneNumber ?? ''),
+        phone: String(u.workPhone ?? u.phone ?? u.phoneNumber ?? ''),
       }));
 
     return NextResponse.json({ owners });
