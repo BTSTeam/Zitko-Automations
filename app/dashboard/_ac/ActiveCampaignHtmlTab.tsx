@@ -97,13 +97,23 @@ export default function ActiveCampaignHtmlTab() {
       return `
 <td align="left" class="esd-block-text es-p10t es-p30r es-p30l" bgcolor="#333333" style="padding-bottom:20px;">
   <p style="color:#ff9a42;font-size:16px;"><strong>${safe(j.title || '(No Title)')}</strong></p>
-  <p style="color:#ffffff;font-size:15px;margin-top:4px;"><b>Location:</b> ${safe(j.location)}</p>
-  <p style="color:#ffffff;font-size:15px;margin-top:4px;"><b>Salary:</b> ${safe(j.salary)}</p>
-  <div style="margin-top:10px;margin-bottom:10px;">
+
+  <p style="font-size:15px;margin-top:4px;">
+    <b><span style="color:#ff9a42;">Location:</span></b>
+    <span style="color:#ffffff;"> ${safe(j.location)}</span>
+  </p>
+
+  <p style="font-size:15px;margin-top:4px;">
+    <b><span style="color:#ff9a42;">Salary:</span></b>
+    <span style="color:#ffffff;"> ${safe(j.salary)}</span>
+  </p>
+
+  <div style="margin-top:12px;margin-bottom:12px;">
     <ul style="margin:0;padding-left:20px;list-style-type:disc;">
       ${benefits}
     </ul>
   </div>
+
   <p style="color:#ffffff;font-size:15px;margin-top:10px;">
     <strong><span style="color:#ff9a42;">Contact:</span>
       <span style="color:#f5f5f7;"> ${safe(j.ownerName)} | ${safe(j.ownerEmail)} | ${safe(j.ownerPhone)}</span>
