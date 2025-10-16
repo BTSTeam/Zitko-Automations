@@ -107,15 +107,10 @@ export default function ActiveCampaignHtmlTab() {
     return jobs.map(j => {
       const benefits = [j.benefit1, j.benefit2, j.benefit3]
         .filter(Boolean)
-        .map(
-          b =>
-            `<li style="color:#ffffff;font-size:16px;margin:0 0 6px 0;padding:0;"><p style="color:#ffffff;margin:0;">${safe(
-              b
-            )}</p></li>`
-        )
+        .map(b => `<li style="color:#ffffff;font-size:16px;line-height:1.4;margin:0 0 6px 0;">${safe(b)}</li>`)
         .join('\n')
 
-      return `
+  return `
 <tr>
   <td align="left" bgcolor="#333333" style="padding:20px 30px;">
     <p style="color:#ff9a42;font-size:16px;margin:0 0 6px 0;"><strong>${safe(j.title || '(No Title)')}</strong></p>
@@ -137,7 +132,7 @@ export default function ActiveCampaignHtmlTab() {
     <p style="font-size:15px;margin:0;">
       <span style="color:#ff9a42;font-weight:bold;">Contact:</span>
       <span style="color:#f5f5f7;font-weight:normal;">
-        ${safe(j.ownerName)} | ${safe(j.ownerEmail)} | ${safe(j.ownerPhone)}
+        ${safe(j.ownerName)}&nbsp;|&nbsp;${safe(j.ownerEmail)}&nbsp;|&nbsp;${safe(j.ownerPhone)}
       </span>
     </p>
   </td>
@@ -145,16 +140,13 @@ export default function ActiveCampaignHtmlTab() {
     })
   }, [jobs])
 
-  const combinedHtml = useMemo(
-    () => `<table width="100%" border="0" cellspacing="0" cellpadding="0">\n${htmlBlocks.join('\n')}\n</table>`,
-    [htmlBlocks]
-  )
+  const rowsHtml = useMemo(() => htmlBlocks.join('\n'), [htmlBlocks])
 
   function copyHtml() {
-    if (!combinedHtml) return
+    if (!rowsHtml) return
     navigator.clipboard
-      .writeText(combinedHtml)
-      .then(() => alert('HTML code copied to clipboard.'))
+      .writeText(rowsHtml)
+      .then(() => alert('HTML rows copied. Paste between <!-- PASTE START/END -->'))
       .catch(() => alert('Failed to copy.'))
   }
 
@@ -336,11 +328,15 @@ export default function ActiveCampaignHtmlTab() {
         <div className="border rounded-xl p-4">
           <h3 className="font-semibold mb-3">HTML Preview</h3>
           <div className="rounded-md border bg-[#3B3E44] text-white p-3 min-h-[240px] overflow-x-auto">
-            <div dangerouslySetInnerHTML={{ __html: combinedHtml }} />
-          </div>
+          <div
+            dangerouslySetInnerHTML={{
+              __html: `<table width="100%" cellspacing="0" cellpadding="0">${rowsHtml}</table>`
+            }}
+          />
+        </div>
           <button
             onClick={copyHtml}
-            disabled={!combinedHtml}
+            disabled={!rowsHtml}
             className="mt-4 rounded-full px-5 py-3 font-medium !bg-[#F7941D] !text-white hover:opacity-95 disabled:opacity-50"
           >
             Copy Code
