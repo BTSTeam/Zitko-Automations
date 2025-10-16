@@ -41,15 +41,12 @@ function safe(s: string) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
+// fallback email/phone scrape if summarize route doesn’t return those
 function extractEmailPhoneFallback(text: string) {
   const emailMatch = text.match(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i)
-  // Permissive phone grab (handles +, spaces, (), -). Keeps the longest sensible chunk.
   const phoneCandidates = (text.match(/(\+?\d[\d\s().-]{7,}\d)/g) || []).map(s => s.trim())
   const phoneBest = phoneCandidates.sort((a, b) => b.length - a.length)[0]
-  return {
-    email: emailMatch?.[0] ?? '',
-    phone: phoneBest ?? ''
-  }
+  return { email: emailMatch?.[0] ?? '', phone: phoneBest ?? '' }
 }
 
 /* ============================ Component ============================ */
@@ -60,7 +57,7 @@ export default function ActiveCampaignHtmlTab() {
 
   const [jobs, setJobs] = useState<EditableJob[]>([EMPTY_JOB()])
 
-  // NEW: Job ID inputs + loading state
+  // Job ID inputs + loading state
   const [jobIds, setJobIds] = useState<string[]>(Array(8).fill(''))
   const [loadingJobs, setLoadingJobs] = useState(false)
 
@@ -85,7 +82,7 @@ export default function ActiveCampaignHtmlTab() {
     setJobs(prev => prev.filter((_, i) => i !== idx))
   }
 
-  // NEW: Retrieve multiple jobs by IDs → Vincere position → summarize via ChatGPT
+  // Retrieve positions by ID → summarize via ChatGPT
   async function retrieveJobs() {
     const ids = jobIds.map(s => s.trim()).filter(Boolean)
     if (ids.length === 0) return
@@ -94,14 +91,13 @@ export default function ActiveCampaignHtmlTab() {
     const collected: EditableJob[] = []
     for (const id of ids) {
       try {
-        // 1) Get the position from Vincere (same endpoint used by Matching tab)
+        // 1) Vincere position
         const r = await fetch(`/api/vincere/position/${encodeURIComponent(id)}`, { cache: 'no-store' })
         const data = await r.json()
-
         const publicDesc: string =
           data?.public_description || data?.publicDescription || data?.description || ''
 
-        // 2) Summarize into title/location/salary/benefits/contact
+        // 2) Summarize
         const ai = await fetch('/api/job/summarize', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -109,11 +105,9 @@ export default function ActiveCampaignHtmlTab() {
         })
 
         let extracted: any = {}
-        if (ai.ok) {
-          extracted = await ai.json()
-        }
+        if (ai.ok) extracted = await ai.json()
 
-        // Fallback parsing if summarize route doesn’t return contact fields
+        // fallback email/phone if missing
         let contactEmail = String(extracted?.contactEmail ?? '').trim()
         let contactPhone = String(extracted?.contactPhone ?? '').trim()
         if (!contactEmail || !contactPhone) {
@@ -151,7 +145,6 @@ export default function ActiveCampaignHtmlTab() {
         .map(b => `<li style="color:#ffffff;font-size:16px;line-height:1.4;margin:0 0 6px 0;">${safe(b)}</li>`)
         .join('\n')
 
-      // NOTE: bgcolor was #333333; changed to #3B3E44 to match preview background
       const contactBits = [safe(j.contactEmail), safe(j.contactPhone)].filter(Boolean).join(' | ')
 
       return `
@@ -230,7 +223,7 @@ export default function ActiveCampaignHtmlTab() {
         </div>
       </div>
     )
-  } // ✅ closes if (!unlocked)
+  }
 
   return (
     <div className="rounded-2xl border bg-white p-6">
@@ -270,36 +263,83 @@ export default function ActiveCampaignHtmlTab() {
               <summary className="cursor-pointer select-none font-medium">
                 {job.title ? job.title : `Job ${i + 1}`}
               </summary>
-              ...
+
+              {jobs.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => removeJob(i)}
+                  className="absolute top-2 right-3 text-xs text-red-500 underline"
+                  title="Remove this job"
+                >
+                  Remove
+                </button>
+              )}
+
               <div className="mt-3 grid gap-2">
                 {/* Job Title */}
                 <label className="text-xs text-gray-500">Job Title</label>
                 <input
                   className="rounded-md border px-3 py-2 text-sm"
-                  ...
+                  value={job.title}
+                  onChange={e => updateJob(i, { title: e.target.value })}
+                  placeholder="Job Title"
                 />
+
                 {/* Location */}
                 <label className="text-xs text-gray-500">Location</label>
                 <input
                   className="rounded-md border px-3 py-2 text-sm"
-                  ...
+                  value={job.location}
+                  onChange={e => updateJob(i, { location: e.target.value })}
+                  placeholder="Location"
                 />
+
                 {/* Salary */}
                 <label className="text-xs text-gray-500">Salary</label>
                 <input
                   className="rounded-md border px-3 py-2 text-sm"
-                  ...
+                  value={job.salary}
+                  onChange={e => updateJob(i, { salary: e.target.value })}
+                  placeholder="Salary"
                 />
+
                 {/* Benefits */}
                 <label className="text-xs text-gray-500">Benefits (Top 3)</label>
-                <input className="rounded-md border px-3 py-2 text-sm" ... />
-                <input className="rounded-md border px-3 py-2 text-sm" ... />
-                <input className="rounded-md border px-3 py-2 text-sm" ... />
-        
+                <input
+                  className="rounded-md border px-3 py-2 text-sm"
+                  value={job.benefit1}
+                  onChange={e => updateJob(i, { benefit1: e.target.value })}
+                  placeholder="Benefit 1"
+                />
+                <input
+                  className="rounded-md border px-3 py-2 text-sm"
+                  value={job.benefit2}
+                  onChange={e => updateJob(i, { benefit2: e.target.value })}
+                  placeholder="Benefit 2"
+                />
+                <input
+                  className="rounded-md border px-3 py-2 text-sm"
+                  value={job.benefit3}
+                  onChange={e => updateJob(i, { benefit3: e.target.value })}
+                  placeholder="Benefit 3"
+                />
+
                 {/* CONTACT (extracted) */}
                 <label className="text-xs text-gray-500 mt-2">Contact</label>
-                <input className="rounded-md border px-3 py-2 text-sm" ... />
-                <input className="rounded-md border px-3 py-2 text-sm" ... />
+                <input
+                  className="rounded-md border px-3 py-2 text-sm"
+                  value={job.contactEmail}
+                  onChange={e => updateJob(i, { contactEmail: e.target.value })}
+                  placeholder="Email"
+                  inputMode="email"
+                />
+                <input
+                  className="rounded-md border px-3 py-2 text-sm"
+                  value={job.contactPhone}
+                  onChange={e => updateJob(i, { contactPhone: e.target.value })}
+                  placeholder="Phone"
+                  inputMode="tel"
+                />
               </div>
             </details>
           ))}
@@ -317,7 +357,7 @@ export default function ActiveCampaignHtmlTab() {
               Copy Code
             </button>
           </div>
-        
+
           <div className="rounded-md bg-transparent p-3 min-h-[240px] overflow-x-auto">
             <div
               dangerouslySetInnerHTML={{
