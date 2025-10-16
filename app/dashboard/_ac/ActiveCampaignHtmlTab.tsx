@@ -20,13 +20,9 @@ type EditableJob = {
   benefit1: string
   benefit2: string
   benefit3: string
-  ownerId: string
-  ownerName: string
-  ownerEmail: string
-  ownerPhone: string
+  contactEmail: string
+  contactPhone: string
 }
-
-type Owner = { id: string; name: string; email: string; phone: string }
 
 /* ============================ Helpers ============================ */
 const EMPTY_JOB = (): EditableJob => ({
@@ -37,14 +33,23 @@ const EMPTY_JOB = (): EditableJob => ({
   benefit1: '',
   benefit2: '',
   benefit3: '',
-  ownerId: '',
-  ownerName: '',
-  ownerEmail: '',
-  ownerPhone: '',
+  contactEmail: '',
+  contactPhone: '',
 })
 
 function safe(s: string) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+function extractEmailPhoneFallback(text: string) {
+  const emailMatch = text.match(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i)
+  // Permissive phone grab (handles +, spaces, (), -). Keeps the longest sensible chunk.
+  const phoneCandidates = (text.match(/(\+?\d[\d\s().-]{7,}\d)/g) || []).map(s => s.trim())
+  const phoneBest = phoneCandidates.sort((a, b) => b.length - a.length)[0]
+  return {
+    email: emailMatch?.[0] ?? '',
+    phone: phoneBest ?? ''
+  }
 }
 
 /* ============================ Component ============================ */
@@ -52,20 +57,12 @@ export default function ActiveCampaignHtmlTab() {
   const [unlocked, setUnlocked] = useState(false)
   const [pw, setPw] = useState('')
   const [pwError, setPwError] = useState('')
+
   const [jobs, setJobs] = useState<EditableJob[]>([EMPTY_JOB()])
-  const [owners, setOwners] = useState<Owner[]>([])
 
   // NEW: Job ID inputs + loading state
   const [jobIds, setJobIds] = useState<string[]>(Array(8).fill(''))
   const [loadingJobs, setLoadingJobs] = useState(false)
-
-  // Fetch owners once from /api/owners (backed by lib/users.ts)
-  useEffect(() => {
-    fetch('/api/owners')
-      .then(r => (r.ok ? r.json() : Promise.reject()))
-      .then(data => setOwners(Array.isArray(data?.owners) ? data.owners : []))
-      .catch(() => setOwners([]))
-  }, [])
 
   /* ---------------- Password logic ---------------- */
   function tryUnlock(e?: React.FormEvent) {
@@ -84,26 +81,8 @@ export default function ActiveCampaignHtmlTab() {
     })
   }
 
-  function addJob() {
-    setJobs(prev => [...prev, EMPTY_JOB()])
-  }
   function removeJob(idx: number) {
     setJobs(prev => prev.filter((_, i) => i !== idx))
-  }
-
-  // When owner is selected, auto-fill name/email/phone from directory
-  function onPickOwner(idx: number, ownerId: string) {
-    const picked = owners.find(o => o.id === ownerId)
-    if (!picked) {
-      updateJob(idx, { ownerId: '', ownerName: '', ownerEmail: '', ownerPhone: '' })
-      return
-    }
-    updateJob(idx, {
-      ownerId: picked.id,
-      ownerName: picked.name,
-      ownerEmail: picked.email,
-      ownerPhone: picked.phone,
-    })
   }
 
   // NEW: Retrieve multiple jobs by IDs → Vincere position → summarize via ChatGPT
@@ -122,18 +101,26 @@ export default function ActiveCampaignHtmlTab() {
         const publicDesc: string =
           data?.public_description || data?.publicDescription || data?.description || ''
 
-        // 2) Summarize into title/location/salary/benefits
+        // 2) Summarize into title/location/salary/benefits/contact
         const ai = await fetch('/api/job/summarize', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ description: publicDesc }),
         })
-        if (!ai.ok) {
-          const detail = await ai.text().catch(() => '')
-          console.error('Summarize failed', detail)
-          throw new Error('Summarize failed')
+
+        let extracted: any = {}
+        if (ai.ok) {
+          extracted = await ai.json()
         }
-        const extracted = await ai.json()
+
+        // Fallback parsing if summarize route doesn’t return contact fields
+        let contactEmail = String(extracted?.contactEmail ?? '').trim()
+        let contactPhone = String(extracted?.contactPhone ?? '').trim()
+        if (!contactEmail || !contactPhone) {
+          const fb = extractEmailPhoneFallback(publicDesc)
+          contactEmail = contactEmail || fb.email
+          contactPhone = contactPhone || fb.phone
+        }
 
         collected.push({
           id,
@@ -143,10 +130,8 @@ export default function ActiveCampaignHtmlTab() {
           benefit1: extracted?.benefits?.[0] ?? '',
           benefit2: extracted?.benefits?.[1] ?? '',
           benefit3: extracted?.benefits?.[2] ?? '',
-          ownerId: '',
-          ownerName: '',
-          ownerEmail: '',
-          ownerPhone: '',
+          contactEmail,
+          contactPhone,
         })
       } catch (err) {
         console.error(err)
@@ -166,9 +151,12 @@ export default function ActiveCampaignHtmlTab() {
         .map(b => `<li style="color:#ffffff;font-size:16px;line-height:1.4;margin:0 0 6px 0;">${safe(b)}</li>`)
         .join('\n')
 
+      // NOTE: bgcolor was #333333; changed to #3B3E44 to match preview background
+      const contactBits = [safe(j.contactEmail), safe(j.contactPhone)].filter(Boolean).join(' | ')
+
       return `
 <tr>
-  <td align="left" bgcolor="#333333" style="padding:20px 30px;">
+  <td align="left" bgcolor="#3B3E44" style="padding:20px 30px;">
     <p style="color:#ff9a42;font-size:16px;margin:0 0 6px 0;"><strong>${safe(j.title || '(No Title)')}</strong></p>
 
     <p style="font-size:15px;margin:0 0 4px 0;">
@@ -188,7 +176,7 @@ export default function ActiveCampaignHtmlTab() {
     <p style="font-size:15px;margin:0;">
       <span style="color:#ff9a42;font-weight:bold;">Contact:</span>
       <span style="color:#f5f5f7;font-weight:normal;">
-        ${safe(j.ownerName)}&nbsp;|&nbsp;${safe(j.ownerEmail)}&nbsp;|&nbsp;${safe(j.ownerPhone)}
+        ${contactBits}
       </span>
     </p>
   </td>
@@ -221,9 +209,7 @@ export default function ActiveCampaignHtmlTab() {
               <span className="text-sm font-medium">Password</span>
               <input
                 type="password"
-                className={`rounded-xl border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#001961] ${
-                  pwError ? 'border-red-500' : ''
-                }`}
+                className={`rounded-xl border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#001961] ${pwError ? 'border-red-500' : ''}`}
                 value={pw}
                 onChange={e => {
                   setPw(e.target.value)
@@ -250,7 +236,7 @@ export default function ActiveCampaignHtmlTab() {
     <div className="rounded-2xl border bg-white p-6">
       <h2 className="text-lg font-semibold mb-4">HTML Builder</h2>
 
-      {/* NEW: Job ID Input Strip (8 fields + Retrieve) */}
+      {/* Job ID Input Strip (8 fields + Retrieve) */}
       <div className="mb-4">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {jobIds.map((val, idx) => (
@@ -278,17 +264,10 @@ export default function ActiveCampaignHtmlTab() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* LEFT: Job editor */}
-        <div className="border rounded-xl p-4 space-y-8">
-          <button
-            onClick={addJob}
-            className="w-full rounded-full px-5 py-2 font-medium !bg-[#001961] !text-white hover:opacity-95"
-          >
-            + Add Job
-          </button>
-
+        <div className="border rounded-xl p-4 space-y-6">
           {jobs.map((job, i) => (
-            <details key={job.id} className="border rounded-lg bg-gray-50 p-3 relative" open={i === 0}>
-              <summary className="cursor-pointer select-none font-medium">
+            <details key={job.id} className="border rounded-lg bg-[#3B3E44] p-3 relative" open={i === 0}>
+              <summary className="cursor-pointer select-none font-medium text-white">
                 {job.title ? job.title : `Job ${i + 1}`}
               </summary>
 
@@ -296,7 +275,7 @@ export default function ActiveCampaignHtmlTab() {
                 <button
                   type="button"
                   onClick={() => removeJob(i)}
-                  className="absolute top-2 right-3 text-xs text-red-500 underline"
+                  className="absolute top-2 right-3 text-xs text-red-300 underline"
                   title="Remove this job"
                 >
                   Remove
@@ -305,99 +284,66 @@ export default function ActiveCampaignHtmlTab() {
 
               <div className="mt-3 grid gap-2">
                 {/* Job Title */}
-                <label className="text-xs text-gray-500">Job Title</label>
+                <label className="text-xs text-gray-200">Job Title</label>
                 <input
-                  className="rounded-md border px-3 py-2 text-sm"
+                  className="rounded-md border px-3 py-2 text-sm bg-white"
                   value={job.title}
                   onChange={e => updateJob(i, { title: e.target.value })}
                   placeholder="Job Title"
                 />
 
                 {/* Location */}
-                <label className="text-xs text-gray-500">Location</label>
+                <label className="text-xs text-gray-200">Location</label>
                 <input
-                  className="rounded-md border px-3 py-2 text-sm"
+                  className="rounded-md border px-3 py-2 text-sm bg-white"
                   value={job.location}
                   onChange={e => updateJob(i, { location: e.target.value })}
                   placeholder="Location"
                 />
 
                 {/* Salary */}
-                <label className="text-xs text-gray-500">Salary</label>
+                <label className="text-xs text-gray-200">Salary</label>
                 <input
-                  className="rounded-md border px-3 py-2 text-sm"
+                  className="rounded-md border px-3 py-2 text-sm bg-white"
                   value={job.salary}
                   onChange={e => updateJob(i, { salary: e.target.value })}
                   placeholder="Salary"
                 />
 
                 {/* Benefits */}
-                <label className="text-xs text-gray-500">Benefits (Top 3)</label>
+                <label className="text-xs text-gray-200">Benefits (Top 3)</label>
                 <input
-                  className="rounded-md border px-3 py-2 text-sm"
+                  className="rounded-md border px-3 py-2 text-sm bg-white"
                   value={job.benefit1}
                   onChange={e => updateJob(i, { benefit1: e.target.value })}
                   placeholder="Benefit 1"
                 />
                 <input
-                  className="rounded-md border px-3 py-2 text-sm"
+                  className="rounded-md border px-3 py-2 text-sm bg-white"
                   value={job.benefit2}
                   onChange={e => updateJob(i, { benefit2: e.target.value })}
                   placeholder="Benefit 2"
                 />
                 <input
-                  className="rounded-md border px-3 py-2 text-sm"
+                  className="rounded-md border px-3 py-2 text-sm bg-white"
                   value={job.benefit3}
                   onChange={e => updateJob(i, { benefit3: e.target.value })}
                   placeholder="Benefit 3"
                 />
 
-                {/* ---------------- CONTACT SECTION ---------------- */}
-                <label className="text-xs text-gray-500 mt-2">Contact</label>
-
-                {/* NAME + nested Select Recruiter */}
-                <div className="flex items-end gap-3">
-                  <label className="flex-1 grid gap-1">
-                    <span className="sr-only">Name</span>
-                    <input
-                      className="rounded-md border px-3 py-2 text-sm"
-                      value={job.ownerName}
-                      onChange={e => updateJob(i, { ownerName: e.target.value })}
-                      placeholder="Name"
-                    />
-                  </label>
-
-                  <label className="grid gap-1 w-[52%] md:w-[44%]">
-                    <span className="sr-only">Select Recruiter</span>
-                    <select
-                      className="rounded-md border px-3 py-2 text-sm"
-                      value={job.ownerId}
-                      onChange={e => onPickOwner(i, e.target.value)}
-                      title="Select Recruiter"
-                    >
-                      <option value="">Select recruiter…</option>
-                      {owners.map(o => (
-                        <option key={o.id} value={o.id}>
-                          {o.name || o.email}
-                          {o.phone ? ` — ${o.phone}` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-
-                {/* Email & Phone */}
+                {/* CONTACT (extracted) */}
+                <label className="text-xs text-gray-200 mt-2">Contact</label>
                 <input
-                  className="rounded-md border px-3 py-2 text-sm"
-                  value={job.ownerEmail}
-                  onChange={e => updateJob(i, { ownerEmail: e.target.value })}
+                  className="rounded-md border px-3 py-2 text-sm bg-white"
+                  value={job.contactEmail}
+                  onChange={e => updateJob(i, { contactEmail: e.target.value })}
                   placeholder="Email"
                   inputMode="email"
                 />
                 <input
-                  className="rounded-md border px-3 py-2 text-sm"
-                  value={job.ownerPhone}
-                  onChange={e => updateJob(i, { ownerPhone: e.target.value })}
+                  className="rounded-md border px-3 py-2 text-sm bg-white"
+                  value={job.contactPhone}
+                  onChange={e => updateJob(i, { contactPhone: e.target.value })}
                   placeholder="Phone"
                   inputMode="tel"
                 />
@@ -408,21 +354,25 @@ export default function ActiveCampaignHtmlTab() {
 
         {/* RIGHT: HTML preview */}
         <div className="border rounded-xl p-4">
-          <h3 className="font-semibold mb-3">HTML Preview</h3>
-          <div className="rounded-md border bg-[#3B3E44] text-white p-3 min-h-[240px] overflow-x-auto">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold">HTML Preview</h3>
+            <button
+              onClick={copyHtml}
+              disabled={!rowsHtml}
+              className="rounded-full px-4 py-2 text-sm font-medium !bg-[#F7941D] !text-white hover:opacity-95 disabled:opacity-50"
+            >
+              Copy Code
+            </button>
+          </div>
+
+          {/* Remove border so the dark matches cleanly */}
+          <div className="rounded-md bg-[#3B3E44] text-white p-3 min-h-[240px] overflow-x-auto">
             <div
               dangerouslySetInnerHTML={{
                 __html: `<table width="100%" cellspacing="0" cellpadding="0">${rowsHtml}</table>`
               }}
             />
           </div>
-          <button
-            onClick={copyHtml}
-            disabled={!rowsHtml}
-            className="mt-4 rounded-full px-5 py-3 font-medium !bg-[#F7941D] !text-white hover:opacity-95 disabled:opacity-50"
-          >
-            Copy Code
-          </button>
         </div>
       </div>
     </div>
