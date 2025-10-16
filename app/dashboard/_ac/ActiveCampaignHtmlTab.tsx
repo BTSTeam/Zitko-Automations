@@ -266,94 +266,47 @@ export default function ActiveCampaignHtmlTab() {
         {/* LEFT: Job editor */}
         <div className="border rounded-xl p-4 space-y-6">
           {jobs.map((job, i) => (
-            <details key={job.id} className="border rounded-lg bg-[#3B3E44] p-3 relative" open={i === 0}>
-              <summary className="cursor-pointer select-none font-medium text-white">
+            <details key={job.id} className="border rounded-lg bg-gray-50 p-3 relative" open={i === 0}>
+              <summary className="cursor-pointer select-none font-medium">
                 {job.title ? job.title : `Job ${i + 1}`}
               </summary>
-
-              {jobs.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => removeJob(i)}
-                  className="absolute top-2 right-3 text-xs text-red-300 underline"
-                  title="Remove this job"
-                >
-                  Remove
-                </button>
-              )}
-
+              ...
               <div className="mt-3 grid gap-2">
                 {/* Job Title */}
-                <label className="text-xs text-gray-200">Job Title</label>
+                <label className="text-xs text-gray-500">Job Title</label>
                 <input
-                  className="rounded-md border px-3 py-2 text-sm bg-white"
-                  value={job.title}
-                  onChange={e => updateJob(i, { title: e.target.value })}
-                  placeholder="Job Title"
+                  className="rounded-md border px-3 py-2 text-sm"
+                  ...
                 />
-
                 {/* Location */}
-                <label className="text-xs text-gray-200">Location</label>
+                <label className="text-xs text-gray-500">Location</label>
                 <input
-                  className="rounded-md border px-3 py-2 text-sm bg-white"
-                  value={job.location}
-                  onChange={e => updateJob(i, { location: e.target.value })}
-                  placeholder="Location"
+                  className="rounded-md border px-3 py-2 text-sm"
+                  ...
                 />
-
                 {/* Salary */}
-                <label className="text-xs text-gray-200">Salary</label>
+                <label className="text-xs text-gray-500">Salary</label>
                 <input
-                  className="rounded-md border px-3 py-2 text-sm bg-white"
-                  value={job.salary}
-                  onChange={e => updateJob(i, { salary: e.target.value })}
-                  placeholder="Salary"
+                  className="rounded-md border px-3 py-2 text-sm"
+                  ...
                 />
-
                 {/* Benefits */}
-                <label className="text-xs text-gray-200">Benefits (Top 3)</label>
-                <input
-                  className="rounded-md border px-3 py-2 text-sm bg-white"
-                  value={job.benefit1}
-                  onChange={e => updateJob(i, { benefit1: e.target.value })}
-                  placeholder="Benefit 1"
-                />
-                <input
-                  className="rounded-md border px-3 py-2 text-sm bg-white"
-                  value={job.benefit2}
-                  onChange={e => updateJob(i, { benefit2: e.target.value })}
-                  placeholder="Benefit 2"
-                />
-                <input
-                  className="rounded-md border px-3 py-2 text-sm bg-white"
-                  value={job.benefit3}
-                  onChange={e => updateJob(i, { benefit3: e.target.value })}
-                  placeholder="Benefit 3"
-                />
-
+                <label className="text-xs text-gray-500">Benefits (Top 3)</label>
+                <input className="rounded-md border px-3 py-2 text-sm" ... />
+                <input className="rounded-md border px-3 py-2 text-sm" ... />
+                <input className="rounded-md border px-3 py-2 text-sm" ... />
+        
                 {/* CONTACT (extracted) */}
-                <label className="text-xs text-gray-200 mt-2">Contact</label>
-                <input
-                  className="rounded-md border px-3 py-2 text-sm bg-white"
-                  value={job.contactEmail}
-                  onChange={e => updateJob(i, { contactEmail: e.target.value })}
-                  placeholder="Email"
-                  inputMode="email"
-                />
-                <input
-                  className="rounded-md border px-3 py-2 text-sm bg-white"
-                  value={job.contactPhone}
-                  onChange={e => updateJob(i, { contactPhone: e.target.value })}
-                  placeholder="Phone"
-                  inputMode="tel"
-                />
+                <label className="text-xs text-gray-500 mt-2">Contact</label>
+                <input className="rounded-md border px-3 py-2 text-sm" ... />
+                <input className="rounded-md border px-3 py-2 text-sm" ... />
               </div>
             </details>
           ))}
         </div>
 
         {/* RIGHT: HTML preview */}
-        <div className="border rounded-xl p-4">
+        <div className="border rounded-xl p-4 bg-[#3B3E44] text-white">
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-semibold">HTML Preview</h3>
             <button
@@ -364,9 +317,8 @@ export default function ActiveCampaignHtmlTab() {
               Copy Code
             </button>
           </div>
-
-          {/* Remove border so the dark matches cleanly */}
-          <div className="rounded-md bg-[#3B3E44] text-white p-3 min-h-[240px] overflow-x-auto">
+        
+          <div className="rounded-md bg-transparent p-3 min-h-[240px] overflow-x-auto">
             <div
               dangerouslySetInnerHTML={{
                 __html: `<table width="100%" cellspacing="0" cellpadding="0">${rowsHtml}</table>`
