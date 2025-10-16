@@ -86,14 +86,14 @@ export default function ActiveCampaignHtmlTab() {
   return jobs.map((j) => {
     // UPDATED benefits markup (no extra margins on <p>, bullets indented via ul padding)
     const benefits = [j.benefit1, j.benefit2, j.benefit3]
-      .filter(Boolean)
-      .map(
-        (b) =>
-          `<li style="color:#ffffff;font-size:16px;"><p style="color:#ffffff;margin:0;">${safe(
-            b
-          )}</p></li>`
-      )
-      .join('\n')
+    .filter(Boolean)
+    .map(
+      (b) =>
+        `<li style="color:#ffffff;font-size:16px;margin:0 0 6px 0; padding:0;"><p style="color:#ffffff;margin:0;">${safe(
+          b
+        )}</p></li>`
+    )
+    .join('\n')
 
     // UPDATED row with inline left/right padding 30px for alignment
     return `
@@ -111,7 +111,7 @@ export default function ActiveCampaignHtmlTab() {
       <span style="color:#ffffff;"> ${safe(j.salary)}</span>
     </p>
 
-    <ul style="margin:0 0 12px 0;padding:0 0 0 20px;list-style-type:disc;">
+    <ul style="margin:0 0 12px 0; padding:0 0 0 36px; list-style-type:disc; list-style-position:outside; mso-padding-left-alt:36px;">
       ${benefits}
     </ul>
 
