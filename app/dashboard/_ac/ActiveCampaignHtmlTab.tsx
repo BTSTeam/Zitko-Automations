@@ -29,10 +29,11 @@ type VincereJob = {
   id?: string
   job_title?: string
   formatted_salary_to?: string
-  location?: string
+  location?: any
   internal_description?: string
   public_description?: string
   owners?: VincereOwner[] | VincereOwner
+  raw?: any
 }
 
 type EditableJob = {
@@ -60,6 +61,36 @@ const EMPTY_EDITABLE = (id = ''): EditableJob => ({
   ownerEmail: '',
   ownerPhone: '',
 })
+
+/* ============================ Normalizers ============================ */
+function normalizeOwner(owners?: VincereOwner[] | VincereOwner) {
+  const arr = Array.isArray(owners) ? owners : owners ? [owners] : []
+  const o = arr[0] || {}
+  const name = (o.full_name || o.name || '').trim()
+  const email = (o.email || o.email_address || '').trim()
+  const phone = (o.phone || o.phone_number || o.mobile || '').trim()
+  return { name, email, phone }
+}
+
+function normalizeLocation(loc?: any, raw?: any) {
+  if (typeof loc === 'string') return loc
+  if (loc && typeof loc === 'object') {
+    const composed =
+      loc.city ||
+      loc.name ||
+      [loc.town, loc.city, loc.state, loc.country].filter(Boolean).join(', ')
+    if (composed) return String(composed)
+  }
+  if (raw && typeof raw === 'object') {
+    const rloc =
+      raw.location?.city ||
+      raw.location?.name ||
+      raw.location ||
+      raw?.summary_location
+    if (typeof rloc === 'string') return rloc
+  }
+  return ''
+}
 
 /* ============================ Component ============================ */
 export default function ActiveCampaignHtmlTab() {
@@ -139,43 +170,38 @@ export default function ActiveCampaignHtmlTab() {
       const { jobs: serverJobs } = await fetchJobs(ids)
       const next: Record<string, EditableJob> = { ...jobs }
 
-      // for each job, call benefits + map owners
       for (const j of serverJobs) {
         const id = String(j.id ?? '')
         if (!id) continue
 
-        const owners = Array.isArray(j.owners) ? j.owners : j.owners ? [j.owners] : []
-        const firstOwner = owners[0] ?? {}
-        const ownerName = (firstOwner.full_name || firstOwner.name || '').trim()
+        const { name: ownerName0, email: ownerEmail0, phone: ownerPhone0 } = normalizeOwner(j.owners)
+        let ownerName = ownerName0
+        let ownerEmail = ownerEmail0
+        let ownerPhone = ownerPhone0
 
-        // If the job already gives email/phone, prefer that; otherwise call owner lookup
-        let ownerEmail = (firstOwner.email || firstOwner.email_address || '').trim()
-        let ownerPhone = (firstOwner.phone || firstOwner.phone_number || firstOwner.mobile || '').trim()
         if (ownerName && (!ownerEmail || !ownerPhone)) {
           const looked = await lookupOwner(ownerName)
           ownerEmail = ownerEmail || looked.email
           ownerPhone = ownerPhone || looked.phone
         }
 
-        // Get benefits from both descriptions (top 3)
         const { benefits } = await getBenefits(j.internal_description ?? '', j.public_description ?? '')
 
         next[id] = {
           id,
           title: j.job_title ?? '',
           salary: j.formatted_salary_to ?? '',
-          location: j.location ?? '',
+          location: normalizeLocation(j.location, j.raw),
           benefit1: benefits[0] ?? '',
           benefit2: benefits[1] ?? '',
           benefit3: benefits[2] ?? '',
-          ownerName: ownerName,
-          ownerEmail: ownerEmail,
-          ownerPhone: ownerPhone,
+          ownerName: ownerName || '',
+          ownerEmail: ownerEmail || '',
+          ownerPhone: ownerPhone || '',
         }
       }
 
       setJobs(next)
-      // Open the first populated accordion by default
       const firstIdx = jobIds.findIndex((x) => x.trim() && next[x.trim()])
       setOpenIdx(firstIdx >= 0 ? firstIdx : null)
     } catch (e: any) {
@@ -187,7 +213,10 @@ export default function ActiveCampaignHtmlTab() {
 
   /* ---------------- HTML Output ---------------- */
   function safe(s: string) {
-    return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    return String(s ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
   }
 
   const htmlBlocks: string[] = useMemo(() => {
@@ -195,9 +224,10 @@ export default function ActiveCampaignHtmlTab() {
     for (const id of jobIds.map((x) => x.trim()).filter(Boolean)) {
       const j = jobs[id]
       if (!j) continue
-      const benefits = [j.benefit1, j.benefit2, j.benefit3].filter(Boolean).map((b) =>
-        `<li style="color: #ffffff; font-size: 16px;"><p style="color: #ffffff;">${safe(b)}</p></li>`
-      ).join('\n        ')
+      const benefits = [j.benefit1, j.benefit2, j.benefit3]
+        .filter(Boolean)
+        .map((b) => `<li style="color: #ffffff; font-size: 16px;"><p style="color: #ffffff;">${safe(b)}</p></li>`)
+        .join('\n        ')
 
       const block = `
 <td align="left" class="esd-block-text es-p10t es-p30r es-p30l" bgcolor="#333333" style="padding-bottom:14px;">
@@ -224,9 +254,12 @@ export default function ActiveCampaignHtmlTab() {
 
   function copyHtml() {
     if (!combinedHtml) return
-    navigator.clipboard.writeText(combinedHtml).then(() => {
-      alert('HTML code copied to clipboard.')
-    }).catch(() => alert('Failed to copy.'))
+    navigator.clipboard
+      .writeText(combinedHtml)
+      .then(() => {
+        alert('HTML code copied to clipboard.')
+      })
+      .catch(() => alert('Failed to copy.'))
   }
 
   /* ---------------- UI ---------------- */
@@ -245,7 +278,9 @@ export default function ActiveCampaignHtmlTab() {
               <span className="text-sm font-medium">Password</span>
               <input
                 type="password"
-                className={`rounded-xl border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#001961] ${pwError ? 'border-red-500' : ''}`}
+                className={`rounded-xl border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#001961] ${
+                  pwError ? 'border-red-500' : ''
+                }`}
                 value={pw}
                 onChange={(e) => {
                   setPw(e.target.value)
@@ -281,7 +316,6 @@ export default function ActiveCampaignHtmlTab() {
           <div className="grid grid-cols-1 gap-3">
             {jobIds.map((v, i) => (
               <div key={i} className="grid gap-2">
-                <label className="text-sm text-gray-600">Job ID #{i + 1}</label>
                 <input
                   className="rounded-lg border px-3 py-2 text-sm"
                   value={v}
@@ -290,7 +324,7 @@ export default function ActiveCampaignHtmlTab() {
                     copy[i] = e.target.value
                     setJobIds(copy)
                   }}
-                  placeholder="e.g. 12345"
+                  placeholder={`Job ID #${i + 1}`}
                 />
 
                 {/* Collapsible editor for this ID (shown if data exists) */}
@@ -317,26 +351,65 @@ export default function ActiveCampaignHtmlTab() {
                         return (
                           <>
                             <label className="text-xs text-gray-500">Job Title</label>
-                            <input className="rounded-md border px-3 py-2 text-sm" value={j.title} onChange={(e) => update({ title: e.target.value })} />
+                            <input
+                              className="rounded-md border px-3 py-2 text-sm"
+                              value={j.title}
+                              onChange={(e) => update({ title: e.target.value })}
+                            />
 
                             <label className="text-xs text-gray-500">Salary</label>
-                            <input className="rounded-md border px-3 py-2 text-sm" value={j.salary} onChange={(e) => update({ salary: e.target.value })} />
+                            <input
+                              className="rounded-md border px-3 py-2 text-sm"
+                              value={j.salary}
+                              onChange={(e) => update({ salary: e.target.value })}
+                            />
 
                             <label className="text-xs text-gray-500">Location</label>
-                            <input className="rounded-md border px-3 py-2 text-sm" value={j.location} onChange={(e) => update({ location: e.target.value })} />
+                            <input
+                              className="rounded-md border px-3 py-2 text-sm"
+                              value={j.location}
+                              onChange={(e) => update({ location: e.target.value })}
+                            />
 
                             <div className="grid grid-cols-1 gap-2">
                               <label className="text-xs text-gray-500">Benefits (Top 3)</label>
-                              <input className="rounded-md border px-3 py-2 text-sm" value={j.benefit1} onChange={(e) => update({ benefit1: e.target.value })} />
-                              <input className="rounded-md border px-3 py-2 text-sm" value={j.benefit2} onChange={(e) => update({ benefit2: e.target.value })} />
-                              <input className="rounded-md border px-3 py-2 text-sm" value={j.benefit3} onChange={(e) => update({ benefit3: e.target.value })} />
+                              <input
+                                className="rounded-md border px-3 py-2 text-sm"
+                                value={j.benefit1}
+                                onChange={(e) => update({ benefit1: e.target.value })}
+                              />
+                              <input
+                                className="rounded-md border px-3 py-2 text-sm"
+                                value={j.benefit2}
+                                onChange={(e) => update({ benefit2: e.target.value })}
+                              />
+                              <input
+                                className="rounded-md border px-3 py-2 text-sm"
+                                value={j.benefit3}
+                                onChange={(e) => update({ benefit3: e.target.value })}
+                              />
                             </div>
 
                             <div className="grid grid-cols-1 gap-2">
                               <label className="text-xs text-gray-500">Recruiter (Owner)</label>
-                              <input className="rounded-md border px-3 py-2 text-sm" placeholder="Name" value={j.ownerName} onChange={(e) => update({ ownerName: e.target.value })} />
-                              <input className="rounded-md border px-3 py-2 text-sm" placeholder="Email" value={j.ownerEmail} onChange={(e) => update({ ownerEmail: e.target.value })} />
-                              <input className="rounded-md border px-3 py-2 text-sm" placeholder="Phone" value={j.ownerPhone} onChange={(e) => update({ ownerPhone: e.target.value })} />
+                              <input
+                                className="rounded-md border px-3 py-2 text-sm"
+                                placeholder="Name"
+                                value={j.ownerName}
+                                onChange={(e) => update({ ownerName: e.target.value })}
+                              />
+                              <input
+                                className="rounded-md border px-3 py-2 text-sm"
+                                placeholder="Email"
+                                value={j.ownerEmail}
+                                onChange={(e) => update({ ownerEmail: e.target.value })}
+                              />
+                              <input
+                                className="rounded-md border px-3 py-2 text-sm"
+                                placeholder="Phone"
+                                value={j.ownerPhone}
+                                onChange={(e) => update({ ownerPhone: e.target.value })}
+                              />
                             </div>
                           </>
                         )
@@ -362,9 +435,9 @@ export default function ActiveCampaignHtmlTab() {
         {/* Right panel — Live HTML preview + copy */}
         <div className="border rounded-xl p-4">
           <h3 className="font-semibold mb-3">HTML Preview</h3>
-          <div className="rounded-md border bg-gray-50 p-3 min-h-[240px]">
+          <div className="rounded-md border bg-[#3B3E44] text-white p-3 min-h-[240px]">
             {htmlBlocks.length === 0 ? (
-              <div className="text-sm text-gray-500">No HTML generated yet.</div>
+              <div className="text-sm opacity-80">No HTML generated yet.</div>
             ) : (
               <table className="w-full">
                 <tbody>
