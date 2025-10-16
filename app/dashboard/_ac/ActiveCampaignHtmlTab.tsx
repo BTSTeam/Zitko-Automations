@@ -186,13 +186,17 @@ export default function ActiveCampaignHtmlTab() {
               />
             </label>
             {pwError && <div className="mt-2 text-sm text-red-600">{pwError}</div>}
-            <button type="submit" className="mt-4 w-full rounded-full px-5 py-3 font-medium !bg-[#001961] !text-white hover:opacity-95">
+            <button
+              type="submit"
+              className="mt-4 w-full rounded-full px-5 py-3 font-medium !bg-[#001961] !text-white hover:opacity-95"
+            >
               Unlock
             </button>
           </form>
         </div>
       </div>
     )
+  } // ✅ closes if (!unlocked)
 
   return (
     <div className="rounded-2xl border bg-white p-6">
@@ -201,7 +205,10 @@ export default function ActiveCampaignHtmlTab() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* LEFT: Job editor */}
         <div className="border rounded-xl p-4 space-y-8">
-          <button onClick={addJob} className="w-full rounded-full px-5 py-2 font-medium !bg-[#001961] !text-white hover:opacity-95">
+          <button
+            onClick={addJob}
+            className="w-full rounded-full px-5 py-2 font-medium !bg-[#001961] !text-white hover:opacity-95"
+          >
             + Add Job
           </button>
 
@@ -223,103 +230,107 @@ export default function ActiveCampaignHtmlTab() {
               )}
 
               <div className="mt-3 grid gap-2">
-              {/* Job Title */}
-              <label className="text-xs text-gray-500">Job Title</label>
-              <input
-                className="rounded-md border px-3 py-2 text-sm"
-                value={job.title}
-                onChange={e => updateJob(i, { title: e.target.value })}
-                placeholder="Job Title"
-              />
-            
-              {/* Location */}
-              <label className="text-xs text-gray-500">Location</label>
-              <input
-                className="rounded-md border px-3 py-2 text-sm"
-                value={job.location}
-                onChange={e => updateJob(i, { location: e.target.value })}
-                placeholder="Location"
-              />
-            
-              {/* Salary */}
-              <label className="text-xs text-gray-500">Salary</label>
-              <input
-                className="rounded-md border px-3 py-2 text-sm"
-                value={job.salary}
-                onChange={e => updateJob(i, { salary: e.target.value })}
-                placeholder="Salary"
-              />
-            
-              {/* Benefits */}
-              <label className="text-xs text-gray-500">Benefits (Top 3)</label>
-              <input
-                className="rounded-md border px-3 py-2 text-sm"
-                value={job.benefit1}
-                onChange={e => updateJob(i, { benefit1: e.target.value })}
-                placeholder="Benefit 1"
-              />
-              <input
-                className="rounded-md border px-3 py-2 text-sm"
-                value={job.benefit2}
-                onChange={e => updateJob(i, { benefit2: e.target.value })}
-                placeholder="Benefit 2"
-              />
-              <input
-                className="rounded-md border px-3 py-2 text-sm"
-                value={job.benefit3}
-                onChange={e => updateJob(i, { benefit3: e.target.value })}
-                placeholder="Benefit 3"
-              />
-            
-              {/* ---------------- CONTACT SECTION ---------------- */}
-              <label className="text-xs text-gray-500 mt-2">Contact</label>
-            
-              {/* NAME + nested Select Recruiter */}
-              <div className="flex items-end gap-3">
-                <label className="flex-1 grid gap-1">
-                  <span className="sr-only">Name</span>
-                  <input
-                    className="rounded-md border px-3 py-2 text-sm"
-                    value={job.ownerName}
-                    onChange={e => updateJob(i, { ownerName: e.target.value })}
-                    placeholder="Name"
-                  />
-                </label>
-            
-                <label className="grid gap-1 w-[52%] md:w-[44%]">
-                  <span className="sr-only">Select Recruiter</span>
-                  <select
-                    className="rounded-md border px-3 py-2 text-sm"
-                    value={job.ownerId}
-                    onChange={(e) => onPickOwner(i, e.target.value)}
-                    title="Select Recruiter"
-                  >
-                    <option value="">Select recruiter…</option>
-                    {owners.map(o => (
-                      <option key={o.id} value={o.id}>
-                        {o.name || o.email}{o.phone ? ` — ${o.phone}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                {/* Job Title */}
+                <label className="text-xs text-gray-500">Job Title</label>
+                <input
+                  className="rounded-md border px-3 py-2 text-sm"
+                  value={job.title}
+                  onChange={e => updateJob(i, { title: e.target.value })}
+                  placeholder="Job Title"
+                />
+
+                {/* Location */}
+                <label className="text-xs text-gray-500">Location</label>
+                <input
+                  className="rounded-md border px-3 py-2 text-sm"
+                  value={job.location}
+                  onChange={e => updateJob(i, { location: e.target.value })}
+                  placeholder="Location"
+                />
+
+                {/* Salary */}
+                <label className="text-xs text-gray-500">Salary</label>
+                <input
+                  className="rounded-md border px-3 py-2 text-sm"
+                  value={job.salary}
+                  onChange={e => updateJob(i, { salary: e.target.value })}
+                  placeholder="Salary"
+                />
+
+                {/* Benefits */}
+                <label className="text-xs text-gray-500">Benefits (Top 3)</label>
+                <input
+                  className="rounded-md border px-3 py-2 text-sm"
+                  value={job.benefit1}
+                  onChange={e => updateJob(i, { benefit1: e.target.value })}
+                  placeholder="Benefit 1"
+                />
+                <input
+                  className="rounded-md border px-3 py-2 text-sm"
+                  value={job.benefit2}
+                  onChange={e => updateJob(i, { benefit2: e.target.value })}
+                  placeholder="Benefit 2"
+                />
+                <input
+                  className="rounded-md border px-3 py-2 text-sm"
+                  value={job.benefit3}
+                  onChange={e => updateJob(i, { benefit3: e.target.value })}
+                  placeholder="Benefit 3"
+                />
+
+                {/* ---------------- CONTACT SECTION ---------------- */}
+                <label className="text-xs text-gray-500 mt-2">Contact</label>
+
+                {/* NAME + nested Select Recruiter */}
+                <div className="flex items-end gap-3">
+                  <label className="flex-1 grid gap-1">
+                    <span className="sr-only">Name</span>
+                    <input
+                      className="rounded-md border px-3 py-2 text-sm"
+                      value={job.ownerName}
+                      onChange={e => updateJob(i, { ownerName: e.target.value })}
+                      placeholder="Name"
+                    />
+                  </label>
+
+                  <label className="grid gap-1 w-[52%] md:w-[44%]">
+                    <span className="sr-only">Select Recruiter</span>
+                    <select
+                      className="rounded-md border px-3 py-2 text-sm"
+                      value={job.ownerId}
+                      onChange={e => onPickOwner(i, e.target.value)}
+                      title="Select Recruiter"
+                    >
+                      <option value="">Select recruiter…</option>
+                      {owners.map(o => (
+                        <option key={o.id} value={o.id}>
+                          {o.name || o.email}
+                          {o.phone ? ` — ${o.phone}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                {/* Email & Phone */}
+                <input
+                  className="rounded-md border px-3 py-2 text-sm"
+                  value={job.ownerEmail}
+                  onChange={e => updateJob(i, { ownerEmail: e.target.value })}
+                  placeholder="Email"
+                  inputMode="email"
+                />
+                <input
+                  className="rounded-md border px-3 py-2 text-sm"
+                  value={job.ownerPhone}
+                  onChange={e => updateJob(i, { ownerPhone: e.target.value })}
+                  placeholder="Phone"
+                  inputMode="tel"
+                />
               </div>
-            
-              {/* Email & Phone (auto-filled when recruiter selected, still editable) */}
-              <input
-                className="rounded-md border px-3 py-2 text-sm"
-                value={job.ownerEmail}
-                onChange={e => updateJob(i, { ownerEmail: e.target.value })}
-                placeholder="Email"
-                inputMode="email"
-              />
-              <input
-                className="rounded-md border px-3 py-2 text-sm"
-                value={job.ownerPhone}
-                onChange={e => updateJob(i, { ownerPhone: e.target.value })}
-                placeholder="Phone"
-                inputMode="tel"
-              />
-            </div>
+            </details>
+          ))}
+        </div>
 
         {/* RIGHT: HTML preview */}
         <div className="border rounded-xl p-4">
