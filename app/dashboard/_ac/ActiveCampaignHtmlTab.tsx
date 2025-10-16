@@ -20,7 +20,7 @@ type EditableJob = {
   benefit1: string
   benefit2: string
   benefit3: string
-  ownerId: string        // <— NEW: track selected owner id
+  ownerId: string
   ownerName: string
   ownerEmail: string
   ownerPhone: string
@@ -80,22 +80,11 @@ export default function ActiveCampaignHtmlTab() {
     })
   }
 
-  function addJob() { setJobs(prev => [...prev, EMPTY_JOB()]) } // add below previous
-  function removeJob(idx: number) { setJobs(prev => prev.filter((_, i) => i !== idx)) }
-
-  // When owner is selected, auto-fill name/email/phone from directory
-  function onPickOwner(idx: number, ownerId: string) {
-    const picked = owners.find(o => o.id === ownerId)
-    if (!picked) {
-      updateJob(idx, { ownerId: '', ownerName: '', ownerEmail: '', ownerPhone: '' })
-      return
-    }
-    updateJob(idx, {
-      ownerId: picked.id,
-      ownerName: picked.name,
-      ownerEmail: picked.email,
-      ownerPhone: picked.phone,
-    })
+  function addJob() {
+    setJobs(prev => [...prev, EMPTY_JOB()])
+  }
+  function removeJob(idx: number) {
+    setJobs(prev => prev.filter((_, i) => i !== idx))
   }
 
   /* ---------------- HTML generation ---------------- */
@@ -103,7 +92,12 @@ export default function ActiveCampaignHtmlTab() {
     return jobs.map(j => {
       const benefits = [j.benefit1, j.benefit2, j.benefit3]
         .filter(Boolean)
-        .map(b => `<li style="color:#ffffff;font-size:16px;margin:0 0 6px 0;padding:0;"><p style="color:#ffffff;margin:0;">${safe(b)}</p></li>`)
+        .map(
+          b =>
+            `<li style="color:#ffffff;font-size:16px;margin:0 0 6px 0;padding:0;"><p style="color:#ffffff;margin:0;">${safe(
+              b
+            )}</p></li>`
+        )
         .join('\n')
 
       return `
@@ -164,9 +158,14 @@ export default function ActiveCampaignHtmlTab() {
               <span className="text-sm font-medium">Password</span>
               <input
                 type="password"
-                className={`rounded-xl border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#001961] ${pwError ? 'border-red-500' : ''}`}
+                className={`rounded-xl border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#001961] ${
+                  pwError ? 'border-red-500' : ''
+                }`}
                 value={pw}
-                onChange={(e) => { setPw(e.target.value); if (pwError) setPwError('') }}
+                onChange={e => {
+                  setPw(e.target.value)
+                  if (pwError) setPwError('')
+                }}
                 placeholder="••••••••"
                 autoFocus
               />
@@ -194,42 +193,78 @@ export default function ActiveCampaignHtmlTab() {
 
           {jobs.map((job, i) => (
             <details key={job.id} className="border rounded-lg bg-gray-50 p-3 relative" open={i === 0}>
-              <summary className="cursor-pointer select-none font-medium">{job.title ? job.title : `Job ${i + 1}`}</summary>
+              <summary className="cursor-pointer select-none font-medium">
+                {job.title ? job.title : `Job ${i + 1}`}
+              </summary>
+
               {jobs.length > 1 && (
-                <button onClick={() => removeJob(i)} className="absolute top-2 right-3 text-xs text-red-500 underline">
+                <button
+                  type="button"
+                  onClick={() => removeJob(i)}
+                  className="absolute top-2 right-3 text-xs text-red-500 underline"
+                  title="Remove this job"
+                >
                   Remove
                 </button>
               )}
 
               <div className="mt-3 grid gap-2">
                 <label className="text-xs text-gray-500">Job Title</label>
-                <input className="rounded-md border px-3 py-2 text-sm" value={job.title} onChange={(e) => updateJob(i, { title: e.target.value })} placeholder="Job Title" />
+                <input
+                  className="rounded-md border px-3 py-2 text-sm"
+                  value={job.title}
+                  onChange={e => updateJob(i, { title: e.target.value })}
+                  placeholder="Job Title"
+                />
 
                 <label className="text-xs text-gray-500">Location</label>
-                <input className="rounded-md border px-3 py-2 text-sm" value={job.location} onChange={(e) => updateJob(i, { location: e.target.value })} placeholder="Location" />
+                <input
+                  className="rounded-md border px-3 py-2 text-sm"
+                  value={job.location}
+                  onChange={e => updateJob(i, { location: e.target.value })}
+                  placeholder="Location"
+                />
 
                 <label className="text-xs text-gray-500">Salary</label>
-                <input className="rounded-md border px-3 py-2 text-sm" value={job.salary} onChange={(e) => updateJob(i, { salary: e.target.value })} placeholder="Salary" />
+                <input
+                  className="rounded-md border px-3 py-2 text-sm"
+                  value={job.salary}
+                  onChange={e => updateJob(i, { salary: e.target.value })}
+                  placeholder="Salary"
+                />
 
                 <label className="text-xs text-gray-500">Benefits (Top 3)</label>
-                <input className="rounded-md border px-3 py-2 text-sm" value={job.benefit1} onChange={(e) => updateJob(i, { benefit1: e.target.value })} placeholder="Benefit 1" />
-                <input className="rounded-md border px-3 py-2 text-sm" value={job.benefit2} onChange={(e) => updateJob(i, { benefit2: e.target.value })} placeholder="Benefit 2" />
-                <input className="rounded-md border px-3 py-2 text-sm" value={job.benefit3} onChange={(e) => updateJob(i, { benefit3: e.target.value })} placeholder="Benefit 3" />
+                <input
+                  className="rounded-md border px-3 py-2 text-sm"
+                  value={job.benefit1}
+                  onChange={e => updateJob(i, { benefit1: e.target.value })}
+                  placeholder="Benefit 1"
+                />
+                <input
+                  className="rounded-md border px-3 py-2 text-sm"
+                  value={job.benefit2}
+                  onChange={e => updateJob(i, { benefit2: e.target.value })}
+                  placeholder="Benefit 2"
+                />
+                <input
+                  className="rounded-md border px-3 py-2 text-sm"
+                  value={job.benefit3}
+                  onChange={e => updateJob(i, { benefit3: e.target.value })}
+                  placeholder="Benefit 3"
+                />
 
                 <label className="text-xs text-gray-500">Recruiter (Owner)</label>
-
-                {/* Name input with dropdown (datalist) */}
                 <input
                   list="ownerOptions"
                   className="rounded-md border px-3 py-2 text-sm"
                   value={job.ownerName}
-                  onChange={(e) => {
+                  onChange={e => {
                     const name = e.target.value
                     // set name immediately
                     updateJob(i, { ownerName: name })
-                
+
                     // if name matches a known owner, auto-fill email/phone and set ownerId
-                    const picked = owners.find((o) => o.name.toLowerCase() === name.toLowerCase())
+                    const picked = owners.find(o => o.name.toLowerCase() === name.toLowerCase())
                     if (picked) {
                       updateJob(i, {
                         ownerId: picked.id,
@@ -244,26 +279,33 @@ export default function ActiveCampaignHtmlTab() {
                   }}
                   placeholder="Start typing a name…"
                 />
-                
+
                 <datalist id="ownerOptions">
-                  {owners.map((o) => (
-                    <option key={o.id} value={o.name}>{o.email}{o.phone ? ` | ${o.phone}` : ''}</option>
+                  {owners.map(o => (
+                    <option key={o.id} value={o.name}>
+                      {o.email}
+                      {o.phone ? ` | ${o.phone}` : ''}
+                    </option>
                   ))}
                 </datalist>
-                
+
                 {/* Auto-filled but still editable */}
                 <input
                   className="rounded-md border px-3 py-2 text-sm"
                   value={job.ownerEmail}
-                  onChange={(e) => updateJob(i, { ownerEmail: e.target.value })}
+                  onChange={e => updateJob(i, { ownerEmail: e.target.value })}
                   placeholder="Email"
                 />
                 <input
                   className="rounded-md border px-3 py-2 text-sm"
                   value={job.ownerPhone}
-                  onChange={(e) => updateJob(i, { ownerPhone: e.target.value })}
+                  onChange={e => updateJob(i, { ownerPhone: e.target.value })}
                   placeholder="Phone"
                 />
+              </div>
+            </details>
+          ))}
+        </div>
 
         {/* RIGHT: HTML preview */}
         <div className="border rounded-xl p-4">
@@ -271,7 +313,11 @@ export default function ActiveCampaignHtmlTab() {
           <div className="rounded-md border bg-[#3B3E44] text-white p-3 min-h-[240px] overflow-x-auto">
             <div dangerouslySetInnerHTML={{ __html: combinedHtml }} />
           </div>
-          <button onClick={copyHtml} disabled={!combinedHtml} className="mt-4 rounded-full px-5 py-3 font-medium !bg-[#F7941D] !text-white hover:opacity-95 disabled:opacity-50">
+          <button
+            onClick={copyHtml}
+            disabled={!combinedHtml}
+            className="mt-4 rounded-full px-5 py-3 font-medium !bg-[#F7941D] !text-white hover:opacity-95 disabled:opacity-50"
+          >
             Copy Code
           </button>
         </div>
