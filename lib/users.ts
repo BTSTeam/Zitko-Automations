@@ -190,3 +190,28 @@ export async function ensureSeedAdmin() {
     // if it already exists, ignore
   }
 }
+
+// ---- Lightweight "owners" projection (non-breaking addition) ----
+export type OwnerLite = {
+  id: string
+  name: string
+  email: string
+  phone: string
+}
+
+/**
+ * Returns active users as owner records for UI pickers.
+ * Non-breaking: reuses listUsers(), doesn't modify existing structures.
+ */
+export async function listOwners(): Promise<OwnerLite[]> {
+  const users = await listUsers()
+  return users
+    .filter(u => u.active) // only active users
+    .map(u => ({
+      id: String(u.id),
+      name: String(u.name ?? u.email ?? '').trim(),
+      email: String(u.email ?? ''),
+      phone: String(u.workPhone ?? ''), // map workPhone -> phone
+    }))
+}
+
