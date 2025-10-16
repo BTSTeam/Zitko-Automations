@@ -20,7 +20,7 @@ type BuildReq =
   | { kind: 'byIds'; jobIds: string[] }
   | {
       kind: 'search'
-      matrix_vars: string // e.g. fl=id,job_title,location,formatted_salary_to,public_description,internal_description,owners;sort=created_date desc
+      matrix_vars: string // e.g. fl=id,job_title,location,formatted_salary_to,description,public_description,internal_description,owners;sort=created_date desc
       q?: string
       fq?: string
       start?: number
@@ -32,6 +32,7 @@ type VincereJob = {
   job_title?: string
   location?: any
   formatted_salary_to?: string
+  description?: string
   public_description?: string
   internal_description?: string
   owners?: Array<{ id?: string; name?: string }>
@@ -57,6 +58,7 @@ function pickLocationText(loc: any) {
 
 function pickDescription(j: VincereJob) {
   return (
+    (j.description || '').trim() ||
     (j.public_description || '').trim() ||
     (j.internal_description || '').trim() ||
     ''
@@ -70,16 +72,30 @@ function escapeHtml(s: string) {
     .replace(/>/g, '&gt;')
 }
 
-// Try to read your in-memory users without hard failing if shape differs
+/** 
+ * FIX: make dynamic import type-safe/loose to satisfy TS on Vercel.
+ * Also check both named export and default export shapes.
+ */
 async function fetchLocalUsers(): Promise<any[]> {
   try {
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
-    const mod = await import('@/lib/users')
-    const arr =
+    const mod = (await import('@/lib/users')) as unknown as {
+      users?: any[]
+      listUsers?: () => Promise<any[]>
+      default?: {
+        users?: any[]
+        listUsers?: () => Promise<any[]>
+      }
+    }
+
+    const fromNamed =
       (Array.isArray(mod?.users) && mod.users) ||
-      (typeof mod?.listUsers === 'function' && (await mod.listUsers())) ||
-      []
+      (typeof mod?.listUsers === 'function' && (await mod.listUsers()))
+
+    const fromDefault =
+      (Array.isArray(mod?.default?.users) && mod.default.users) ||
+      (typeof mod?.default?.listUsers === 'function' && (await mod.default.listUsers()))
+
+    const arr = fromNamed || fromDefault || []
     return Array.isArray(arr) ? arr : []
   } catch {
     return []
