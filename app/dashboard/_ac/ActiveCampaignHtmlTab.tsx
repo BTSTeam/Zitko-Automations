@@ -96,7 +96,7 @@ export default function ActiveCampaignHtmlTab() {
 
       return `
 <td align="left" class="esd-block-text es-p10t es-p30r es-p30l" bgcolor="#333333" style="padding-bottom:14px;">
-  <p style="color:#ff9a42;font-size:16px;"><b>Job Title:</b> ${safe(j.jobTitle)}</p>
+  <p style="color:#ff9a42;font-size:16px;"><b>Job Title:</b> ${safe(j.title)}</p>
   <p style="color:#ff9a42;font-size:16px;"><b>Location:</b> ${safe(j.location)}</p>
   <p style="color:#ff9a42;font-size:16px;"><b>Salary:</b> ${safe(j.salary)}</p>
   <ul>${benefits}</ul>
