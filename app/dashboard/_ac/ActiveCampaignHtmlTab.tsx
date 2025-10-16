@@ -87,6 +87,21 @@ export default function ActiveCampaignHtmlTab() {
     setJobs(prev => prev.filter((_, i) => i !== idx))
   }
 
+  // When owner is selected, auto-fill name/email/phone from directory
+  function onPickOwner(idx: number, ownerId: string) {
+    const picked = owners.find(o => o.id === ownerId)
+    if (!picked) {
+      updateJob(idx, { ownerId: '', ownerName: '', ownerEmail: '', ownerPhone: '' })
+      return
+    }
+    updateJob(idx, {
+      ownerId: picked.id,
+      ownerName: picked.name,
+      ownerEmail: picked.email,
+      ownerPhone: picked.phone,
+    })
+  }
+
   /* ---------------- HTML generation ---------------- */
   const htmlBlocks = useMemo(() => {
     return jobs.map(j => {
@@ -233,6 +248,41 @@ export default function ActiveCampaignHtmlTab() {
                   placeholder="Salary"
                 />
 
+                <label className="text-xs text-gray-500">Recruiter (Owner)</label>
+                {/* Reliable owner selection by ID */}
+                <select
+                  className="rounded-md border px-3 py-2 text-sm"
+                  value={job.ownerId}
+                  onChange={e => onPickOwner(i, e.target.value)}
+                >
+                  <option value="">— Select recruiter —</option>
+                  {owners.map(o => (
+                    <option key={o.id} value={o.id}>
+                      {o.name} — {o.email}{o.phone ? ` — ${o.phone}` : ''}
+                    </option>
+                  ))}
+                </select>
+
+                {/* Auto-filled but editable */}
+                <input
+                  className="rounded-md border px-3 py-2 text-sm"
+                  value={job.ownerName}
+                  onChange={e => updateJob(i, { ownerName: e.target.value })}
+                  placeholder="Name (auto-fills when you select above)"
+                />
+                <input
+                  className="rounded-md border px-3 py-2 text-sm"
+                  value={job.ownerEmail}
+                  onChange={e => updateJob(i, { ownerEmail: e.target.value })}
+                  placeholder="Email"
+                />
+                <input
+                  className="rounded-md border px-3 py-2 text-sm"
+                  value={job.ownerPhone}
+                  onChange={e => updateJob(i, { ownerPhone: e.target.value })}
+                  placeholder="Phone"
+                />
+
                 <label className="text-xs text-gray-500">Benefits (Top 3)</label>
                 <input
                   className="rounded-md border px-3 py-2 text-sm"
@@ -251,56 +301,6 @@ export default function ActiveCampaignHtmlTab() {
                   value={job.benefit3}
                   onChange={e => updateJob(i, { benefit3: e.target.value })}
                   placeholder="Benefit 3"
-                />
-
-                <label className="text-xs text-gray-500">Recruiter (Owner)</label>
-                <input
-                  list="ownerOptions"
-                  className="rounded-md border px-3 py-2 text-sm"
-                  value={job.ownerName}
-                  onChange={e => {
-                    const name = e.target.value
-                    // set name immediately
-                    updateJob(i, { ownerName: name })
-
-                    // if name matches a known owner, auto-fill email/phone and set ownerId
-                    const picked = owners.find(o => o.name.toLowerCase() === name.toLowerCase())
-                    if (picked) {
-                      updateJob(i, {
-                        ownerId: picked.id,
-                        ownerName: picked.name,
-                        ownerEmail: picked.email,
-                        ownerPhone: picked.phone,
-                      })
-                    } else {
-                      // free-typed / custom
-                      updateJob(i, { ownerId: '' })
-                    }
-                  }}
-                  placeholder="Start typing a name…"
-                />
-
-                <datalist id="ownerOptions">
-                  {owners.map(o => (
-                    <option key={o.id} value={o.name}>
-                      {o.email}
-                      {o.phone ? ` | ${o.phone}` : ''}
-                    </option>
-                  ))}
-                </datalist>
-
-                {/* Auto-filled but still editable */}
-                <input
-                  className="rounded-md border px-3 py-2 text-sm"
-                  value={job.ownerEmail}
-                  onChange={e => updateJob(i, { ownerEmail: e.target.value })}
-                  placeholder="Email"
-                />
-                <input
-                  className="rounded-md border px-3 py-2 text-sm"
-                  value={job.ownerPhone}
-                  onChange={e => updateJob(i, { ownerPhone: e.target.value })}
-                  placeholder="Phone"
                 />
               </div>
             </details>
