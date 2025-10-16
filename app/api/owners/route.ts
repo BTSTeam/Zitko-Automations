@@ -1,19 +1,19 @@
 // app/api/owners/route.ts
-export const dynamic = 'force-dynamic'   // always fresh from user store
-export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
-import { NextResponse } from 'next/server'
-import { getUsers } from '@/lib/users' // adjust if your export name differs
+import { NextResponse } from 'next/server';
+// Import listUsers instead of getUsers.  lib/users.ts does not export getUsers.
+import { listUsers } from '@/lib/users';
 
-type Owner = { id: string; name: string; email: string; phone: string }
+type Owner = { id: string; name: string; email: string; phone: string };
 
 export async function GET() {
   try {
-    // getUsers should return your user management list
-    const users = await getUsers()
+    // listUsers returns an array of user records
+    const users = await listUsers();
 
     const owners: Owner[] = (users ?? [])
-      // tweak this predicate if you use different flags/roles
       .filter((u: any) => u?.active !== false)
       .map((u: any) => ({
         id: String(u.id ?? u._id ?? u.email ?? crypto.randomUUID()),
@@ -25,11 +25,11 @@ export async function GET() {
         ).trim(),
         email: String(u.email ?? ''),
         phone: String(u.phone ?? u.phoneNumber ?? ''),
-      }))
+      }));
 
-    return NextResponse.json({ owners })
+    return NextResponse.json({ owners });
   } catch (err) {
-    // Don’t fail the page—return empty list
-    return NextResponse.json({ owners: [] }, { status: 200 })
+    // Don’t fail the page—return an empty list on error
+    return NextResponse.json({ owners: [] }, { status: 200 });
   }
 }
