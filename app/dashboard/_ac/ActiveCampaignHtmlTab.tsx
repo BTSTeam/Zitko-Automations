@@ -193,7 +193,6 @@ export default function ActiveCampaignHtmlTab() {
         </div>
       </div>
     )
-  }
 
   return (
     <div className="rounded-2xl border bg-white p-6">
