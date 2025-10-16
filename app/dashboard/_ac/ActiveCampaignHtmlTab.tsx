@@ -55,6 +55,10 @@ export default function ActiveCampaignHtmlTab() {
   const [jobs, setJobs] = useState<EditableJob[]>([EMPTY_JOB()])
   const [owners, setOwners] = useState<Owner[]>([])
 
+  // NEW: Job ID inputs + loading state
+  const [jobIds, setJobIds] = useState<string[]>(Array(8).fill(''))
+  const [loadingJobs, setLoadingJobs] = useState(false)
+
   // Fetch owners once from /api/owners (backed by lib/users.ts)
   useEffect(() => {
     fetch('/api/owners')
@@ -102,6 +106,58 @@ export default function ActiveCampaignHtmlTab() {
     })
   }
 
+  // NEW: Retrieve multiple jobs by IDs → Vincere position → summarize via ChatGPT
+  async function retrieveJobs() {
+    const ids = jobIds.map(s => s.trim()).filter(Boolean)
+    if (ids.length === 0) return
+    setLoadingJobs(true)
+
+    const collected: EditableJob[] = []
+    for (const id of ids) {
+      try {
+        // 1) Get the position from Vincere (same endpoint used by Matching tab)
+        const r = await fetch(`/api/vincere/position/${encodeURIComponent(id)}`, { cache: 'no-store' })
+        const data = await r.json()
+
+        const publicDesc: string =
+          data?.public_description || data?.publicDescription || data?.description || ''
+
+        // 2) Summarize into title/location/salary/benefits
+        const ai = await fetch('/api/job/summarize', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ description: publicDesc }),
+        })
+        if (!ai.ok) {
+          const detail = await ai.text().catch(() => '')
+          console.error('Summarize failed', detail)
+          throw new Error('Summarize failed')
+        }
+        const extracted = await ai.json()
+
+        collected.push({
+          id,
+          title: String(extracted?.title ?? '').trim(),
+          location: String(extracted?.location ?? '').trim(),
+          salary: String(extracted?.salary ?? '').trim(),
+          benefit1: extracted?.benefits?.[0] ?? '',
+          benefit2: extracted?.benefits?.[1] ?? '',
+          benefit3: extracted?.benefits?.[2] ?? '',
+          ownerId: '',
+          ownerName: '',
+          ownerEmail: '',
+          ownerPhone: '',
+        })
+      } catch (err) {
+        console.error(err)
+        alert(`Failed to retrieve or summarize job ${id}`)
+      }
+    }
+
+    setJobs(collected.length > 0 ? collected : [EMPTY_JOB()])
+    setLoadingJobs(false)
+  }
+
   /* ---------------- HTML generation ---------------- */
   const htmlBlocks = useMemo(() => {
     return jobs.map(j => {
@@ -110,7 +166,7 @@ export default function ActiveCampaignHtmlTab() {
         .map(b => `<li style="color:#ffffff;font-size:16px;line-height:1.4;margin:0 0 6px 0;">${safe(b)}</li>`)
         .join('\n')
 
-  return `
+      return `
 <tr>
   <td align="left" bgcolor="#333333" style="padding:20px 30px;">
     <p style="color:#ff9a42;font-size:16px;margin:0 0 6px 0;"><strong>${safe(j.title || '(No Title)')}</strong></p>
@@ -193,6 +249,32 @@ export default function ActiveCampaignHtmlTab() {
   return (
     <div className="rounded-2xl border bg-white p-6">
       <h2 className="text-lg font-semibold mb-4">HTML Builder</h2>
+
+      {/* NEW: Job ID Input Strip (8 fields + Retrieve) */}
+      <div className="mb-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {jobIds.map((val, idx) => (
+            <input
+              key={idx}
+              className="rounded-md border px-3 py-2 text-sm"
+              placeholder={`Job ID ${idx + 1}`}
+              value={val}
+              onChange={e => {
+                const copy = [...jobIds]
+                copy[idx] = e.target.value
+                setJobIds(copy)
+              }}
+            />
+          ))}
+        </div>
+        <button
+          onClick={retrieveJobs}
+          className="mt-3 w-full rounded-full px-5 py-2 font-medium !bg-[#001961] !text-white hover:opacity-95 disabled:opacity-50"
+          disabled={loadingJobs || jobIds.every(id => !id.trim())}
+        >
+          {loadingJobs ? 'Retrieving…' : 'Retrieve'}
+        </button>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* LEFT: Job editor */}
@@ -328,12 +410,12 @@ export default function ActiveCampaignHtmlTab() {
         <div className="border rounded-xl p-4">
           <h3 className="font-semibold mb-3">HTML Preview</h3>
           <div className="rounded-md border bg-[#3B3E44] text-white p-3 min-h-[240px] overflow-x-auto">
-          <div
-            dangerouslySetInnerHTML={{
-              __html: `<table width="100%" cellspacing="0" cellpadding="0">${rowsHtml}</table>`
-            }}
-          />
-        </div>
+            <div
+              dangerouslySetInnerHTML={{
+                __html: `<table width="100%" cellspacing="0" cellpadding="0">${rowsHtml}</table>`
+              }}
+            />
+          </div>
           <button
             onClick={copyHtml}
             disabled={!rowsHtml}
