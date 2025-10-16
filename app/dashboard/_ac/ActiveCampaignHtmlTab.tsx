@@ -95,35 +95,43 @@ export default function ActiveCampaignHtmlTab() {
         .join('\n')
 
       return `
-<td align="left" class="esd-block-text es-p10t es-p30r es-p30l" bgcolor="#333333" style="padding-bottom:20px;">
-  <p style="color:#ff9a42;font-size:16px;"><strong>${safe(j.title || '(No Title)')}</strong></p>
+<tr>
+  <td align="left" class="esd-block-text es-p10t es-p30r es-p30l" bgcolor="#333333" style="padding:20px 0;">
+    <p style="color:#ff9a42;font-size:16px;"><strong>${safe(j.title || '(No Title)')}</strong></p>
 
-  <p style="font-size:15px;margin-top:4px;">
-    <b><span style="color:#ff9a42;">Location:</span></b>
-    <span style="color:#ffffff;"> ${safe(j.location)}</span>
-  </p>
+    <p style="font-size:15px;margin-top:4px;">
+      <b><span style="color:#ff9a42;">Location:</span></b>
+      <span style="color:#ffffff;"> ${safe(j.location)}</span>
+    </p>
 
-  <p style="font-size:15px;margin-top:4px;">
-    <b><span style="color:#ff9a42;">Salary:</span></b>
-    <span style="color:#ffffff;"> ${safe(j.salary)}</span>
-  </p>
+    <p style="font-size:15px;margin-top:4px;">
+      <b><span style="color:#ff9a42;">Salary:</span></b>
+      <span style="color:#ffffff;"> ${safe(j.salary)}</span>
+    </p>
 
-  <div style="margin-top:12px;margin-bottom:12px;">
-    <ul style="margin:0;padding-left:20px;list-style-type:disc;">
-      ${benefits}
-    </ul>
-  </div>
+    <div style="margin-top:12px;margin-bottom:12px;">
+      <ul style="margin:0;padding-left:20px;list-style-type:disc;">
+        ${benefits}
+      </ul>
+    </div>
 
-  <p style="color:#ffffff;font-size:15px;margin-top:10px;">
-    <strong><span style="color:#ff9a42;">Contact:</span>
-      <span style="color:#f5f5f7;"> ${safe(j.ownerName)} | ${safe(j.ownerEmail)} | ${safe(j.ownerPhone)}</span>
-    </strong>
-  </p>
-</td>`.trim()
+    <p style="font-size:15px;margin-top:10px;">
+      <span style="color:#ff9a42;font-weight:bold;">Contact:</span>
+      <span style="color:#f5f5f7;font-weight:normal;">
+        ${safe(j.ownerName)} | ${safe(j.ownerEmail)} | ${safe(j.ownerPhone)}
+      </span>
+    </p>
+  </td>
+</tr>`.trim()
     })
   }, [jobs])
 
-  const combinedHtml = useMemo(() => htmlBlocks.join('\n\n'), [htmlBlocks])
+  const combinedHtml = useMemo(
+    () => `<table width="100%" border="0" cellspacing="0" cellpadding="0">\n${htmlBlocks.join(
+      '\n'
+    )}\n</table>`,
+    [htmlBlocks]
+  )
 
   function copyHtml() {
     if (!combinedHtml) return
@@ -273,21 +281,11 @@ export default function ActiveCampaignHtmlTab() {
         {/* RIGHT: HTML preview */}
         <div className="border rounded-xl p-4">
           <h3 className="font-semibold mb-3">HTML Preview</h3>
-          <div className="rounded-md border bg-[#3B3E44] text-white p-3 min-h-[240px]">
+          <div className="rounded-md border bg-[#3B3E44] text-white p-3 min-h-[240px] overflow-x-auto">
             {jobs.length === 0 ? (
               <div className="text-sm opacity-80">No jobs yet.</div>
             ) : (
-              <table className="w-full">
-                <tbody>
-                  {htmlBlocks.map((h, idx) => (
-                    <tr key={idx}>
-                      <td className="align-top pb-6">
-                        <div dangerouslySetInnerHTML={{ __html: h }} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div dangerouslySetInnerHTML={{ __html: combinedHtml }} />
             )}
           </div>
 
