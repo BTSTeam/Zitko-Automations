@@ -74,7 +74,7 @@ export default function ActiveCampaignHtmlTab() {
   }
 
   function addJob() {
-    setJobs(prev => [EMPTY_JOB(), ...prev])
+    setJobs(prev => [...prev, EMPTY_JOB()]) // add below previous
   }
 
   function removeJob(idx: number) {
@@ -88,19 +88,23 @@ export default function ActiveCampaignHtmlTab() {
         .filter(Boolean)
         .map(
           b =>
-            `<li style="color:#ffffff;font-size:16px;"><p style="color:#ffffff;">${safe(
+            `<li style="color:#ffffff;font-size:16px;margin-left:20px;"><p style="color:#ffffff;">${safe(
               b
             )}</p></li>`
         )
         .join('\n')
 
       return `
-<td align="left" class="esd-block-text es-p10t es-p30r es-p30l" bgcolor="#333333" style="padding-bottom:14px;">
-  <p style="color:#ff9a42;font-size:16px;"><b>Job Title:</b> ${safe(j.title)}</p>
-  <p style="color:#ff9a42;font-size:16px;"><b>Location:</b> ${safe(j.location)}</p>
-  <p style="color:#ff9a42;font-size:16px;"><b>Salary:</b> ${safe(j.salary)}</p>
-  <ul>${benefits}</ul>
-  <p style="color:#ffffff;font-size:15px;">
+<td align="left" class="esd-block-text es-p10t es-p30r es-p30l" bgcolor="#333333" style="padding-bottom:20px;">
+  <p style="color:#ff9a42;font-size:16px;"><strong>${safe(j.title || '(No Title)')}</strong></p>
+  <p style="color:#ffffff;font-size:15px;margin-top:4px;"><b>Location:</b> ${safe(j.location)}</p>
+  <p style="color:#ffffff;font-size:15px;margin-top:4px;"><b>Salary:</b> ${safe(j.salary)}</p>
+  <div style="margin-top:10px;margin-bottom:10px;">
+    <ul style="margin:0;padding-left:20px;list-style-type:disc;">
+      ${benefits}
+    </ul>
+  </div>
+  <p style="color:#ffffff;font-size:15px;margin-top:10px;">
     <strong><span style="color:#ff9a42;">Contact:</span>
       <span style="color:#f5f5f7;"> ${safe(j.ownerName)} | ${safe(j.ownerEmail)} | ${safe(j.ownerPhone)}</span>
     </strong>
@@ -166,7 +170,7 @@ export default function ActiveCampaignHtmlTab() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* LEFT: Job editor */}
-        <div className="border rounded-xl p-4 space-y-6">
+        <div className="border rounded-xl p-4 space-y-8">
           <button
             onClick={addJob}
             className="w-full rounded-full px-5 py-2 font-medium !bg-[#001961] !text-white hover:opacity-95"
@@ -175,16 +179,19 @@ export default function ActiveCampaignHtmlTab() {
           </button>
 
           {jobs.map((job, i) => (
-            <div key={job.id} className="border rounded-lg bg-gray-50 p-3 relative">
+            <details key={job.id} className="border rounded-lg bg-gray-50 p-3 relative" open={i === 0}>
+              <summary className="cursor-pointer select-none font-medium">
+                {job.title ? job.title : `Job ${i + 1}`}
+              </summary>
               {jobs.length > 1 && (
                 <button
                   onClick={() => removeJob(i)}
-                  className="absolute top-2 right-2 text-xs text-red-500 underline"
+                  className="absolute top-2 right-3 text-xs text-red-500 underline"
                 >
                   Remove
                 </button>
               )}
-              <div className="grid gap-2">
+              <div className="mt-3 grid gap-2">
                 <label className="text-xs text-gray-500">Job Title</label>
                 <input
                   className="rounded-md border px-3 py-2 text-sm"
@@ -249,7 +256,7 @@ export default function ActiveCampaignHtmlTab() {
                   placeholder="Phone"
                 />
               </div>
-            </div>
+            </details>
           ))}
         </div>
 
@@ -264,7 +271,7 @@ export default function ActiveCampaignHtmlTab() {
                 <tbody>
                   {htmlBlocks.map((h, idx) => (
                     <tr key={idx}>
-                      <td className="align-top">
+                      <td className="align-top pb-6">
                         <div dangerouslySetInnerHTML={{ __html: h }} />
                       </td>
                     </tr>
