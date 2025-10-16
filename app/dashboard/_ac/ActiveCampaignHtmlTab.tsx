@@ -83,39 +83,39 @@ export default function ActiveCampaignHtmlTab() {
 
   /* ---------------- HTML generation ---------------- */
   const htmlBlocks = useMemo(() => {
-    return jobs.map(j => {
-      const benefits = [j.benefit1, j.benefit2, j.benefit3]
-        .filter(Boolean)
-        .map(
-          b =>
-            `<li style="color:#ffffff;font-size:16px;margin-left:20px;"><p style="color:#ffffff;">${safe(
-              b
-            )}</p></li>`
-        )
-        .join('\n')
+  return jobs.map((j) => {
+    // UPDATED benefits markup (no extra margins on <p>, bullets indented via ul padding)
+    const benefits = [j.benefit1, j.benefit2, j.benefit3]
+      .filter(Boolean)
+      .map(
+        (b) =>
+          `<li style="color:#ffffff;font-size:16px;"><p style="color:#ffffff;margin:0;">${safe(
+            b
+          )}</p></li>`
+      )
+      .join('\n')
 
-      return `
+    // UPDATED row with inline left/right padding 30px for alignment
+    return `
 <tr>
-  <td align="left" class="esd-block-text es-p10t es-p30r es-p30l" bgcolor="#333333" style="padding:20px 0;">
-    <p style="color:#ff9a42;font-size:16px;"><strong>${safe(j.title || '(No Title)')}</strong></p>
+  <td align="left" bgcolor="#333333" style="padding:20px 30px;">
+    <p style="color:#ff9a42;font-size:16px;margin:0 0 6px 0;"><strong>${safe(j.title || '(No Title)')}</strong></p>
 
-    <p style="font-size:15px;margin-top:4px;">
+    <p style="font-size:15px;margin:0 0 4px 0;">
       <b><span style="color:#ff9a42;">Location:</span></b>
       <span style="color:#ffffff;"> ${safe(j.location)}</span>
     </p>
 
-    <p style="font-size:15px;margin-top:4px;">
+    <p style="font-size:15px;margin:0 0 10px 0;">
       <b><span style="color:#ff9a42;">Salary:</span></b>
       <span style="color:#ffffff;"> ${safe(j.salary)}</span>
     </p>
 
-    <div style="margin-top:12px;margin-bottom:12px;">
-      <ul style="margin:0;padding-left:20px;list-style-type:disc;">
-        ${benefits}
-      </ul>
-    </div>
+    <ul style="margin:0 0 12px 0;padding:0 0 0 20px;list-style-type:disc;">
+      ${benefits}
+    </ul>
 
-    <p style="font-size:15px;margin-top:10px;">
+    <p style="font-size:15px;margin:0;">
       <span style="color:#ff9a42;font-weight:bold;">Contact:</span>
       <span style="color:#f5f5f7;font-weight:normal;">
         ${safe(j.ownerName)} | ${safe(j.ownerEmail)} | ${safe(j.ownerPhone)}
@@ -123,8 +123,8 @@ export default function ActiveCampaignHtmlTab() {
     </p>
   </td>
 </tr>`.trim()
-    })
-  }, [jobs])
+  })
+}, [jobs])
 
   const combinedHtml = useMemo(
     () => `<table width="100%" border="0" cellspacing="0" cellpadding="0">\n${htmlBlocks.join(
@@ -281,9 +281,9 @@ export default function ActiveCampaignHtmlTab() {
         {/* RIGHT: HTML preview */}
         <div className="border rounded-xl p-4">
           <h3 className="font-semibold mb-3">HTML Preview</h3>
-          <div className="rounded-md border bg-[#3B3E44] text-white p-3 min-h-[240px] overflow-x-auto">
+          <div className="rounded-md border bg-[#f5f5f7] text-white p-3 min-h-[240px] overflow-x-auto">
             {jobs.length === 0 ? (
-              <div className="text-sm opacity-80">No jobs yet.</div>
+              <div className="text-sm opacity-80">Job Title</div>
             ) : (
               <div dangerouslySetInnerHTML={{ __html: combinedHtml }} />
             )}
