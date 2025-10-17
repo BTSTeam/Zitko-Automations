@@ -15,8 +15,18 @@ type ResultItem = {
   linkedin_url?: string
 }
 
-export default function SourceTab() {
-  const [mode, setMode] = useState<SourceMode>('candidates')
+type SourceTabProps = {
+  /** Optional external control of the tab's mode (e.g., from ClientShell) */
+  mode?: SourceMode
+}
+
+export default function SourceTab({ mode: propMode }: SourceTabProps) {
+  // If a prop is provided, sync local state to it; otherwise default to 'candidates'
+  const [mode, setMode] = useState<SourceMode>(propMode ?? 'candidates')
+  useEffect(() => {
+    if (propMode && propMode !== mode) setMode(propMode)
+  }, [propMode]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const [empType, setEmpType] = useState<EmpType>('permanent')
 
   // Single search panel state
