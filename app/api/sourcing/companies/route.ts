@@ -21,9 +21,7 @@ type PostBody = {
 
 function arr(v: unknown): string[] {
   if (!Array.isArray(v)) return []
-  return v
-    .map((x) => (typeof x === 'string' ? x.trim() : ''))
-    .filter(Boolean)
+  return v.map((x) => (typeof x === 'string' ? x.trim() : '')).filter(Boolean)
 }
 
 function capInt(n: unknown, min = 1, max = 50, def = 50) {
@@ -80,53 +78,28 @@ async function apolloCompaniesSearch(input: {
     return NextResponse.json({ error: 'Missing APOLLO_API_KEY' }, { status: 500 })
   }
 
-  const {
-    locations,
-    keywords,
-    marketSegments,
-    jobPostings,
-    rapidGrowth,
-    limit,
-  } = input
+  const { locations, keywords, marketSegments, jobPostings, rapidGrowth, limit } = input
 
-  // Apollo Mixed Companies endpoint
   const url = 'https://api.apollo.io/api/v1/mixed_companies/search'
 
-  // Apollo's filters vary by account; we rely on broad q_keywords and common flags.
-  // - organization_locations[] (broad)
-  // - q_keywords (broad match)
-  // - has_job_postings (boolean)
-  // - growth signals are product-dependent; provide a permissive knob `rapidGrowth`.
   const body: any = {
     page: 1,
     per_page: limit,
     organization_locations: locations.length ? locations : undefined,
     q_keywords: keywords.length ? keywords.join(' ') : undefined,
-    // Some Apollo tenants support explicit segments; we keep segments as a soft filter by text
-    // by appending to keywords if not directly supported.
-    // If your tenant supports a dedicated param, wire it here:
-    // organization_market_segments: marketSegments.length ? marketSegments : undefined,
     display_edu_and_exp: false,
   }
 
-  // Coerce segments into keyword space if present (soft filter)
   if (marketSegments.length) {
     const segBlob = marketSegments.join(' ')
     body.q_keywords = body.q_keywords ? `${body.q_keywords} ${segBlob}` : segBlob
   }
 
-  if (jobPostings) {
-    body.has_job_postings = true
-  }
+  if (jobPostings) body.has_job_postings = true
+  if (rapidGrowth) body.use_growth_signal = true
 
-  // Rapid growth is not a consistent public flag; approximate via growth signal if available.
-  if (rapidGrowth) {
-    // Some orgs use `use_growth_signal` or similar feature toggles in the search body.
-    // We set a hint flag; if unsupported, Apollo will ignore it.
-    body.use_growth_signal = true
-  }
-
-  const resp = await fetch(url, {
+  // Try Bearer, then fallback to api_key-in-body on 401
+  let resp = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -135,6 +108,18 @@ async function apolloCompaniesSearch(input: {
     },
     body: JSON.stringify(body),
   })
+
+  if (resp.status === 401) {
+    const bodyWithKey = { ...body, api_key: apiKey }
+    resp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store',
+      },
+      body: JSON.stringify(bodyWithKey),
+    })
+  }
 
   if (!resp.ok) {
     const t = await resp.text().catch(() => '')
@@ -145,10 +130,8 @@ async function apolloCompaniesSearch(input: {
   }
 
   const json = (await resp.json()) as any
-  // Apollo mixed companies payload typically has `organizations`
   const orgs: ApolloCompany[] = Array.isArray(json?.organizations) ? json.organizations : []
 
-  // Normalize core fields
   const mapped = orgs.map((o) => ({
     _raw: o,
     id: o.id,
@@ -188,11 +171,12 @@ async function apolloPeopleForCompanyDomain(domain: string, limit = 10) {
     per_page: limit,
     organization_domains: [domain],
     person_titles: targetTitles,
-    contact_email_status: ['verified'] as string[], // ✅ filter at source
+    contact_email_status: ['verified'] as string[], // ✅ verified only
     display_edu_and_exp: false,
   }
 
-  const resp = await fetch(url, {
+  // Try Bearer, then fallback to api_key-in-body on 401
+  let resp = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -201,6 +185,18 @@ async function apolloPeopleForCompanyDomain(domain: string, limit = 10) {
     },
     body: JSON.stringify(body),
   })
+
+  if (resp.status === 401) {
+    const bodyWithKey = { ...body, api_key: apiKey }
+    resp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store',
+      },
+      body: JSON.stringify(bodyWithKey),
+    })
+  }
 
   if (!resp.ok) return []
 
@@ -246,7 +242,6 @@ async function vincereCompanyExists(args: {
   const { name, domain, idToken } = args
   if (!name && !domain) return false
 
-  // Build a permissive q clause: name:"..." OR domain:"..."
   const clauses: string[] = []
   if (name) clauses.push(`name:"${name.replace(/"/g, '\\"')}"`)
   if (domain) clauses.push(`domain:"${domain.replace(/"/g, '\\"')}"`)
@@ -269,7 +264,6 @@ async function vincereCompanyExists(args: {
   })
 
   if (!resp.ok) {
-    // On error, treat as not found (but log it)
     console.error('Vincere company search error', resp.status, await resp.text().catch(() => ''))
     return false
   }
@@ -316,7 +310,6 @@ export async function POST(req: NextRequest) {
     // 2) Dedupe with Vincere (name OR domain)
     const idToken = await ensureVincereToken()
     if (!idToken) {
-      // If unable to dedupe, still return with flag so UI can indicate not-deduped
       return NextResponse.json(
         {
           results: companies.map((c) => ({ ...c, contacts: [] })),
