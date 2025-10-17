@@ -43,20 +43,65 @@ function safe(s: string) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
+function stripTags(html: string) {
+  return String(html ?? '').replace(/<[^>]*>/g, ' ')
+}
+
 // fallback email/phone scrape if summarize route doesn’t return those
-function extractEmailPhoneFallback(text: string) {
+function extractEmailPhoneFallback(textOrHtml: string) {
+  const text = stripTags(textOrHtml)
   const emailMatch = text.match(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i)
   const phoneCandidates = (text.match(/(\+?\d[\d\s().-]{7,}\d)/g) || []).map(s => s.trim())
   const phoneBest = phoneCandidates.sort((a, b) => b.length - a.length)[0]
   return { email: emailMatch?.[0] ?? '', phone: phoneBest ?? '' }
 }
 
-// NEW: try to infer a contact name near the email/phone or via label
-function extractContactNameFallback(text: string, email: string, phone: string) {
-  // Labels like "Contact: Jane Doe" / "Recruiter - John Smith"
-  const byLabel = text.match(
-    /(?:contact|recruiter|hiring manager)[:\s-]+([A-Z][\w'’-]+(?:\s+[A-Z][\w'’-]+){0,2})/i
-  )
+/**
+ * Extract a name found immediately before the email in common AC/Vincere markup, e.g.:
+ *  "<br>Craig — <strong><a>craig@zitko.co.uk</a></strong> / <strong>07851 517928</strong>"
+ * Also handles hyphen/ndashes, optional <strong> wrapping the name, and light variations.
+ */
+function extractNameBeforeEmailFromHtml(html: string): string {
+  const patterns: RegExp[] = [
+    // <br>Name — <strong><a>email</a></strong> / <strong>phone</strong>
+    /<br[^>]*>\s*([A-Za-z][\w'’\-]+(?:\s+[A-Za-z][\w'’\-]+){0,3})\s*[—–-]\s*<strong>\s*<a[^>]*>[^<@]+@[^<]+<\/a>\s*<\/strong>/i,
+    // <br><strong>Name</strong> — <a>email</a>
+    /<br[^>]*>\s*<strong>\s*([A-Za-z][\w'’\-]+(?:\s+[A-Za-z][\w'’\-]+){0,3})\s*<\/strong>\s*[—–-]\s*<a[^>]*>[^<@]+@[^<]+<\/a>/i,
+    // Contact: Name — <strong><a>email</a></strong>
+    /contact[:\s-]*([A-Za-z][\w'’\-]+(?:\s+[A-Za-z][\w'’\-]+){0,3})\s*[—–-]\s*<strong>\s*<a[^>]*>[^<@]+@[^<]+<\/a>\s*<\/strong>/i,
+    // Fallback: (name) ... <a>email</a> with a dash or pipe between
+    />\s*([A-Za-z][\w'’\-]+(?:\s+[A-Za-z][\w'’\-]+){0,3})\s*(?:[—–\-|])\s*<a[^>]*>[^<@]+@[^<]+<\/a>/i,
+  ]
+
+  for (const rx of patterns) {
+    const m = html.match(rx)
+    if (m?.[1]) return m[1].trim()
+  }
+
+  // Last-chance heuristic: look ~120 chars before the first email and grab the last Proper-Cased token sequence
+  const email = (html.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i) || [])[0]
+  if (email) {
+    const i = html.indexOf(email)
+    if (i > -1) {
+      const left = stripTags(html.slice(Math.max(0, i - 140), i))
+      const m2 = left.match(/([A-Z][\w'’\-]+(?:\s+[A-Z][\w'’\-]+){0,3})\s*$/)
+      if (m2?.[1]) return m2[1].trim()
+    }
+  }
+  return ''
+}
+
+// NEW: unified contact extraction (prefers HTML pattern → then heuristics)
+function extractContactNameFallback(textOrHtml: string, email: string, phone: string) {
+  const html = String(textOrHtml ?? '')
+
+  // Try HTML-targeted patterns first (covers your "<br>Craig — <strong><a>... pattern")
+  const fromHtml = extractNameBeforeEmailFromHtml(html)
+  if (fromHtml) return fromHtml
+
+  // Label-based plain-text pattern
+  const text = stripTags(html)
+  const byLabel = text.match(/(?:contact|recruiter|hiring manager)[:\s-]+([A-Z][\w'’-]+(?:\s+[A-Z][\w'’-]+){0,2})/i)
   if (byLabel?.[1]) return byLabel[1].trim()
 
   // A few words before the email
@@ -149,7 +194,7 @@ export default function ActiveCampaignHtmlTab() {
           contactPhone = contactPhone || fb.phone
         }
 
-        // contact name from summarize or fallback heuristics
+        // contact name from summarize or robust HTML-aware fallback
         let contactName = String(extracted?.contactName ?? '').trim()
         if (!contactName) {
           contactName = extractContactNameFallback(publicDesc, contactEmail, contactPhone)
