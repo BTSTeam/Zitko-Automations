@@ -20,6 +20,7 @@ type EditableJob = {
   benefit1: string
   benefit2: string
   benefit3: string
+  contactName: string
   contactEmail: string
   contactPhone: string
 }
@@ -33,6 +34,7 @@ const EMPTY_JOB = (): EditableJob => ({
   benefit1: '',
   benefit2: '',
   benefit3: '',
+  contactName: '',
   contactEmail: '',
   contactPhone: '',
 })
@@ -47,6 +49,37 @@ function extractEmailPhoneFallback(text: string) {
   const phoneCandidates = (text.match(/(\+?\d[\d\s().-]{7,}\d)/g) || []).map(s => s.trim())
   const phoneBest = phoneCandidates.sort((a, b) => b.length - a.length)[0]
   return { email: emailMatch?.[0] ?? '', phone: phoneBest ?? '' }
+}
+
+// NEW: try to infer a contact name near the email/phone or via label
+function extractContactNameFallback(text: string, email: string, phone: string) {
+  // Labels like "Contact: Jane Doe" / "Recruiter - John Smith"
+  const byLabel = text.match(
+    /(?:contact|recruiter|hiring manager)[:\s-]+([A-Z][\w'’-]+(?:\s+[A-Z][\w'’-]+){0,2})/i
+  )
+  if (byLabel?.[1]) return byLabel[1].trim()
+
+  // A few words before the email
+  if (email) {
+    const i = text.indexOf(email)
+    if (i > -1) {
+      const left = text.slice(Math.max(0, i - 120), i)
+      const m = left.match(/([A-Z][\w'’-]+(?:\s+[A-Z][\w'’-]+){0,2})\s*$/)
+      if (m?.[1]) return m[1].trim()
+    }
+  }
+
+  // A few words after the phone
+  if (phone) {
+    const i = text.indexOf(phone)
+    if (i > -1) {
+      const right = text.slice(i + phone.length, i + phone.length + 120)
+      const m = right.match(/^\s*([A-Z][\w'’-]+(?:\s+[A-Z][\w'’-]+){0,2})/)
+      if (m?.[1]) return m[1].trim()
+    }
+  }
+
+  return ''
 }
 
 /* ============================ Component ============================ */
@@ -116,6 +149,12 @@ export default function ActiveCampaignHtmlTab() {
           contactPhone = contactPhone || fb.phone
         }
 
+        // contact name from summarize or fallback heuristics
+        let contactName = String(extracted?.contactName ?? '').trim()
+        if (!contactName) {
+          contactName = extractContactNameFallback(publicDesc, contactEmail, contactPhone)
+        }
+
         collected.push({
           id,
           title: String(extracted?.title ?? '').trim(),
@@ -124,6 +163,7 @@ export default function ActiveCampaignHtmlTab() {
           benefit1: extracted?.benefits?.[0] ?? '',
           benefit2: extracted?.benefits?.[1] ?? '',
           benefit3: extracted?.benefits?.[2] ?? '',
+          contactName,
           contactEmail,
           contactPhone,
         })
@@ -145,7 +185,9 @@ export default function ActiveCampaignHtmlTab() {
         .map(b => `<li style="color:#ffffff;font-size:16px;line-height:1.4;margin:0 0 6px 0;">${safe(b)}</li>`)
         .join('\n')
 
-      const contactBits = [safe(j.contactEmail), safe(j.contactPhone)].filter(Boolean).join(' | ')
+      const contactBits = [safe(j.contactName), safe(j.contactEmail), safe(j.contactPhone)]
+        .filter(Boolean)
+        .join(' | ')
 
       return `
 <tr>
@@ -259,7 +301,7 @@ export default function ActiveCampaignHtmlTab() {
         {/* LEFT: Job editor */}
         <div className="border rounded-xl p-4 space-y-6">
           {jobs.map((job, i) => (
-            <details key={job.id} className="border rounded-lg bg-gray-50 p-3 relative" open={i === 0}>
+            <details key={job.id} className="border rounded-lg bg-gray-50 p-3 relative" open={false}>
               <summary className="cursor-pointer select-none font-medium">
                 {job.title ? job.title : `Job ${i + 1}`}
               </summary>
@@ -326,6 +368,12 @@ export default function ActiveCampaignHtmlTab() {
 
                 {/* CONTACT (extracted) */}
                 <label className="text-xs text-gray-500 mt-2">Contact</label>
+                <input
+                  className="rounded-md border px-3 py-2 text-sm"
+                  value={job.contactName}
+                  onChange={e => updateJob(i, { contactName: e.target.value })}
+                  placeholder="Name"
+                />
                 <input
                   className="rounded-md border px-3 py-2 text-sm"
                   value={job.contactEmail}
