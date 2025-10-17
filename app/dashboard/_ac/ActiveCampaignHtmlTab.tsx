@@ -236,8 +236,11 @@ export default function ActiveCampaignHtmlTab() {
 
       return `
 <tr>
-  <td align="left" bgcolor="#3B3E44" style="padding:20px 30px;">
-    <p style="color:#ff9a42;font-size:16px;margin:0 0 6px 0;"><strong>${safe(j.title || '(No Title)')}</strong></p>
+  <td align="left" bgcolor="#333333" style="padding:20px 30px;">
+    <p style="color:#ff9a42;font-size:16px;margin:0 0 6px 0;">
+      <strong>${safe(j.title || '(No Title)')}</strong>
+      <span style="font-size:13px;font-weight:normal;opacity:.9;"> (Job ID ${safe(j.id)})</span>
+    </p>
 
     <p style="font-size:15px;margin:0 0 4px 0;">
       <b><span style="color:#ff9a42;">Location:</span></b>
@@ -349,6 +352,7 @@ export default function ActiveCampaignHtmlTab() {
             <details key={job.id} className="border rounded-lg bg-gray-50 p-3 relative" open={false}>
               <summary className="cursor-pointer select-none font-medium">
                 {job.title ? job.title : `Job ${i + 1}`}
+                {job.id ? ` (ID: ${job.id})` : ''}
               </summary>
 
               {jobs.length > 1 && (
@@ -439,13 +443,13 @@ export default function ActiveCampaignHtmlTab() {
         </div>
 
         {/* RIGHT: HTML preview */}
-        <div className="border rounded-xl p-4 bg-[#3B3E44] text-white">
+        <div className="border rounded-xl p-4 bg-[#333333] text-white">
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-semibold">HTML Preview</h3>
             <button
               onClick={copyHtml}
               disabled={!rowsHtml}
-              className="rounded-full px-4 py-2 text-sm font-medium !bg-[#F7941D] !text-white hover:opacity-95 disabled:opacity-50"
+              className="rounded-full px-4 py-2 text-sm font-medium !bg-[#001961] !text-white hover:opacity-95 disabled:opacity-50"
             >
               Copy Code
             </button>
