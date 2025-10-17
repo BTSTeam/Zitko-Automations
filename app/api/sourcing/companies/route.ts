@@ -169,7 +169,6 @@ async function apolloPeopleForCompanyDomain(domain: string, limit = 10) {
   const apiKey = process.env.APOLLO_API_KEY
   if (!apiKey) return []
 
-  // Titles to target talent/HR/hiring manager contacts
   const targetTitles = [
     'Head of Talent',
     'Talent Acquisition',
@@ -187,9 +186,9 @@ async function apolloPeopleForCompanyDomain(domain: string, limit = 10) {
   const body = {
     page: 1,
     per_page: limit,
-    // Prefer org domain binding for high precision
     organization_domains: [domain],
     person_titles: targetTitles,
+    contact_email_status: ['verified'] as string[], // ✅ filter at source
     display_edu_and_exp: false,
   }
 
@@ -203,24 +202,19 @@ async function apolloPeopleForCompanyDomain(domain: string, limit = 10) {
     body: JSON.stringify(body),
   })
 
-  if (!resp.ok) {
-    // Non-fatal; return no contacts on error
-    return []
-  }
+  if (!resp.ok) return []
 
   const json = (await resp.json()) as any
-  const contacts: ApolloPerson[] = Array.isArray(json?.contacts) ? json.contacts : []
-  // verified emails only
-  const verified = contacts.filter((c) => c?.email_status === 'verified')
+  const contacts: any[] = Array.isArray(json?.contacts) ? json.contacts : []
 
-  return verified.map((c) => ({
+  return contacts.map((c) => ({
     id: c.id,
     name: c.name || [c.first_name, c.last_name].filter(Boolean).join(' ').trim(),
-    title: s(c.title),
-    email: s(c.email),
-    email_status: s(c.email_status),
-    linkedin_url: s(c.linkedin_url),
-    organization_name: s(c.organization_name),
+    title: String(c.title ?? ''),
+    email: String(c.email ?? ''),
+    email_status: String(c.email_status ?? ''),
+    linkedin_url: String(c.linkedin_url ?? ''),
+    organization_name: String(c.organization_name ?? ''),
   }))
 }
 
