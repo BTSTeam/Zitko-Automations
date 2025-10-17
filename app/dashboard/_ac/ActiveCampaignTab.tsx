@@ -4,11 +4,11 @@ import { useEffect, useRef, useState } from 'react'
 
 type Pool = { id: string | number; name: string }
 type Candidate = { first_name: string; last_name: string; email: string }
-type Tag = { id: number; tag: string }
+type Tag = { id: string; tag: string } // id as string (matches AC payloads)
 
 const TP_USER_ID = process.env.NEXT_PUBLIC_VINCERE_TALENTPOOL_USER_ID || '29018'
 
-// ===== Password Gate (UI-only) =====
+/* ============================ Password Gate (UI-only) ============================ */
 function normalizeEnvPw(s: string | undefined | null) {
   const t = String(s ?? '').trim()
   if ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith("'") && t.endsWith("'"))) {
@@ -18,9 +18,8 @@ function normalizeEnvPw(s: string | undefined | null) {
 }
 const RAW_ENV = process.env.NEXT_PUBLIC_ACTIVE_CAMPAIGN_TAB ?? ''
 const TAB_PW = normalizeEnvPw(RAW_ENV)
-const UNLOCK_KEY = 'acTabUnlocked'
 
-// ==== Preview / pagination tuning (UI only) ====
+/* ============================ Preview / pagination tuning (UI only) ============================ */
 const SAMPLE_PREVIEW_LIMIT = 50
 
 type JobStatus = 'running' | 'done' | 'error' | 'not-found'
@@ -42,19 +41,17 @@ type JobProgress = {
 }
 
 export default function ActiveCampaignTab() {
-  // ===== Gate state =====
+  /* ============================ Gate state ============================ */
   const [unlocked, setUnlocked] = useState<boolean>(false)
   const [pw, setPw] = useState('')
   const [pwError, setPwError] = useState<string>('')
 
   function tryUnlock(e?: React.FormEvent) {
     e?.preventDefault()
-
     if (!TAB_PW) {
       setPwError('Password is not configured on this deployment.')
       return
     }
-
     const typed = pw.trim()
     if (typed === TAB_PW) {
       setUnlocked(true)
@@ -64,7 +61,7 @@ export default function ActiveCampaignTab() {
     }
   }
 
-  // ===== Existing tab state =====
+  /* ============================ Existing tab state ============================ */
   const [pools, setPools] = useState<Pool[]>([])
   const [poolId, setPoolId] = useState<string>('')
 
@@ -100,9 +97,11 @@ export default function ActiveCampaignTab() {
     }
   }, [tagName, listName, poolId])
 
-  // On tab mount: fetch Talent Pools and AC tags (only once unlocked)
+  // On tab mount (after unlock): fetch Talent Pools and AC tags
   useEffect(() => {
     if (!unlocked) return
+
+    // ---- Talent Pools ----
     fetch('/api/vincere/talentpools/user', { cache: 'no-store' })
       .then(async (r) => {
         const used = r.headers.get('x-vincere-userid') || ''
@@ -137,9 +136,14 @@ export default function ActiveCampaignTab() {
         setMessage(e?.message ?? 'Failed to load Talent Pools')
       })
 
+    // ---- ActiveCampaign Tags (all pages aggregated by the server route) ----
     fetch('/api/activecampaign/tags', { cache: 'no-store' })
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((r) => r.json())
       .then((data) => {
+        if (data?.error) {
+          setTags([])
+          return
+        }
         const raw = Array.isArray(data?.tags) ? data.tags : []
         const filtered = raw
           .filter((t: any) => String(t?.tag || '').trim().toLowerCase() !== 'customer')
@@ -222,8 +226,7 @@ export default function ActiveCampaignTab() {
 
   // Enable send when tag OR list is provided, and a pool is selected
   const acEnabled =
-    (tagName.trim().length > 0 || listName.trim().length > 0) &&
-    poolId !== ''
+    (tagName.trim().length > 0 || listName.trim().length > 0) && poolId !== ''
 
   async function sendToActiveCampaign() {
     setMessage('')
@@ -407,7 +410,7 @@ export default function ActiveCampaignTab() {
               </svg>
             </div>
           </label>
-      
+
           {/* Active Campaign List */}
           <label className="grid gap-1">
             <span className="text-sm font-medium">Active Campaign List</span>
@@ -419,7 +422,7 @@ export default function ActiveCampaignTab() {
               onChange={(e) => setListName(e.target.value)}
             />
           </label>
-      
+
           {/* Active Campaign Tag */}
           <label className="grid gap-1">
             <span className="text-sm font-medium">Active Campaign Tag</span>
@@ -429,7 +432,9 @@ export default function ActiveCampaignTab() {
                 onChange={(e) => setTagName(e.target.value)}
                 className="w-full rounded-xl border px-3 py-2 appearance-none pr-9 focus:outline-none focus:ring-2 focus:ring-[#001961]"
               >
-                <option value="" disabled>Select a tag</option>
+                <option value="" disabled>
+                  {tags.length ? 'Select a tag' : 'No tags found'}
+                </option>
                 {tags.map((t) => (
                   <option key={t.id} value={t.tag}>{t.tag}</option>
                 ))}
