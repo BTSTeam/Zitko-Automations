@@ -98,28 +98,15 @@ async function apolloCompaniesSearch(input: {
   if (jobPostings) body.has_job_postings = true
   if (rapidGrowth) body.use_growth_signal = true
 
-  // Try Bearer, then fallback to api_key-in-body on 401
-  let resp = await fetch(url, {
+  const resp = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
+      'X-Api-Key': apiKey, // ✅ required by Apollo
       'Cache-Control': 'no-store',
     },
     body: JSON.stringify(body),
   })
-
-  if (resp.status === 401) {
-    const bodyWithKey = { ...body, api_key: apiKey }
-    resp = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-store',
-      },
-      body: JSON.stringify(bodyWithKey),
-    })
-  }
 
   if (!resp.ok) {
     const t = await resp.text().catch(() => '')
@@ -171,32 +158,19 @@ async function apolloPeopleForCompanyDomain(domain: string, limit = 10) {
     per_page: limit,
     organization_domains: [domain],
     person_titles: targetTitles,
-    contact_email_status: ['verified'] as string[], // ✅ verified only
+    contact_email_status: ['verified'] as string[],
     display_edu_and_exp: false,
   }
 
-  // Try Bearer, then fallback to api_key-in-body on 401
-  let resp = await fetch(url, {
+  const resp = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
+      'X-Api-Key': apiKey, // ✅ required by Apollo
       'Cache-Control': 'no-store',
     },
     body: JSON.stringify(body),
   })
-
-  if (resp.status === 401) {
-    const bodyWithKey = { ...body, api_key: apiKey }
-    resp = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-store',
-      },
-      body: JSON.stringify(bodyWithKey),
-    })
-  }
 
   if (!resp.ok) return []
 
