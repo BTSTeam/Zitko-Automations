@@ -19,9 +19,7 @@ type PostBody = {
 /** Normalize and cap arrays */
 function arr(v: unknown): string[] {
   if (!Array.isArray(v)) return []
-  return v
-    .map((x) => (typeof x === 'string' ? x.trim() : ''))
-    .filter(Boolean)
+  return v.map((x) => (typeof x === 'string' ? x.trim() : '')).filter(Boolean)
 }
 
 /** Safe int with bounds */
@@ -92,16 +90,33 @@ async function apolloPeopleSearchPaged(input: {
   }
 
   const all: ApolloPerson[] = []
+
   for (const page of pages) {
-    const resp = await fetch(url, {
+    const baseBody = { ...commonBody, page, per_page }
+
+    // 1) Try Bearer header
+    let resp = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
         'Cache-Control': 'no-store',
       },
-      body: JSON.stringify({ ...commonBody, page, per_page }),
+      body: JSON.stringify(baseBody),
     })
+
+    // 2) If 401, retry with api_key in body (no Authorization header)
+    if (resp.status === 401) {
+      const bodyWithKey = { ...baseBody, api_key: apiKey }
+      resp = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+        },
+        body: JSON.stringify(bodyWithKey),
+      })
+    }
 
     if (!resp.ok) {
       const t = await resp.text().catch(() => '')
