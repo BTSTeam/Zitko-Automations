@@ -1,7 +1,7 @@
 // app/dashboard/_source/SourceTab.tsx
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 type SourceMode = 'candidates' | 'companies'
 type EmpType = 'permanent' | 'contract'
@@ -21,18 +21,19 @@ type SourceTabProps = {
 }
 
 export default function SourceTab({ mode: propMode }: SourceTabProps) {
-  // If a prop is provided, sync local state to it; otherwise default to 'candidates'
+  // Keep internal mode but allow external control via prop
   const [mode, setMode] = useState<SourceMode>(propMode ?? 'candidates')
   useEffect(() => {
     if (propMode && propMode !== mode) setMode(propMode)
-  }, [propMode]) // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [propMode])
 
   const [empType, setEmpType] = useState<EmpType>('permanent')
 
   // Single search panel state
   const [jobTitle, setJobTitle] = useState('')
-  const [locations, setLocations] = useState('') // comma-separated or a single string
-  const [keywords, setKeywords] = useState('')   // optional extra field
+  const [locations, setLocations] = useState('')
+  const [keywords, setKeywords] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [results, setResults] = useState<ResultItem[]>([])
@@ -53,7 +54,8 @@ export default function SourceTab({ mode: propMode }: SourceTabProps) {
       if (jobTitle.trim()) params.set('title', jobTitle.trim())
       if (locations.trim()) params.set('locations', locations.trim())
       if (keywords.trim()) params.set('keywords', keywords.trim())
-      params.set('empType', empType)
+      // Only include empType for candidate search
+      if (mode === 'candidates') params.set('empType', empType)
 
       const url =
         mode === 'candidates'
@@ -81,68 +83,17 @@ export default function SourceTab({ mode: propMode }: SourceTabProps) {
     setResults([])
     setSearched(false)
     setError(null)
+    // leave empType as-is; adjust if you want it to reset:
+    // setEmpType('permanent')
   }
 
   return (
     <div className="relative mx-auto max-w-6xl w-full space-y-6">
-      {/* Header: Mode + Emp Type */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="inline-flex rounded-xl border border-gray-200 overflow-hidden">
-          <button
-            className={`px-4 py-2 text-sm font-medium ${mode === 'candidates' ? 'bg-gray-900 text-white' : 'bg-white text-gray-700'}`}
-            onClick={() => setMode('candidates')}
-            type="button"
-          >
-            Candidates
-          </button>
-          <button
-            className={`px-4 py-2 text-sm font-medium border-l border-gray-200 ${mode === 'companies' ? 'bg-gray-900 text-white' : 'bg-white text-gray-700'}`}
-            onClick={() => setMode('companies')}
-            type="button"
-          >
-            Companies
-          </button>
-        </div>
-
-        {mode === 'candidates' && (
-          <div className="inline-flex rounded-xl border border-gray-200 overflow-hidden">
-            <button
-              className={`px-4 py-2 text-sm font-medium ${empType === 'permanent' ? 'bg-gray-900 text-white' : 'bg-white text-gray-700'}`}
-              onClick={() => setEmpType('permanent')}
-              type="button"
-            >
-              Permanent
-            </button>
-            <button
-              className={`px-4 py-2 text-sm font-medium border-l border-gray-200 ${empType === 'contract' ? 'bg-gray-900 text-white' : 'bg-white text-gray-700'}`}
-              onClick={() => setEmpType('contract')}
-              type="button"
-            >
-              Contract
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* ===== Single Search Panel (ALL fields live here) ===== */}
+      {/* ===== Single Search Panel ===== */}
       <section className="rounded-2xl border border-gray-200 bg-white shadow-sm">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <h2 className="text-lg font-semibold">{titleLabel}</h2>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={resetForm}
-              className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 hover:bg-gray-50"
-            >
-              Reset
-            </button>
-            <button
-              onClick={runSearch}
-              className="px-4 py-1.5 text-sm rounded-lg bg-[#F7941D] text-white hover:brightness-110"
-            >
-              Search
-            </button>
-          </div>
+          {/* Removed top-right Reset/Search and the mode/emp-type pills per request */}
         </div>
 
         <form onSubmit={runSearch} className="p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -169,6 +120,33 @@ export default function SourceTab({ mode: propMode }: SourceTabProps) {
             <p className="text-xs text-gray-500 mt-1">Tip: comma-separate multiple locations.</p>
           </div>
 
+          {/* Employment Type (moved into fields section) */}
+          {mode === 'candidates' && (
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Employment Type</label>
+              <div className="inline-flex rounded-xl border border-gray-200 overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setEmpType('permanent')}
+                  className={`px-4 py-2 text-sm font-medium ${
+                    empType === 'permanent' ? 'bg-gray-900 text-white' : 'bg-white text-gray-700'
+                  }`}
+                >
+                  Permanent
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEmpType('contract')}
+                  className={`px-4 py-2 text-sm font-medium border-l border-gray-200 ${
+                    empType === 'contract' ? 'bg-gray-900 text-white' : 'bg-white text-gray-700'
+                  }`}
+                >
+                  Contract
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Optional: Keywords */}
           <div className="md:col-span-2">
             <label className="block text-sm font-medium text-gray-700 mb-1">Keywords (optional)</label>
@@ -180,8 +158,15 @@ export default function SourceTab({ mode: propMode }: SourceTabProps) {
             />
           </div>
 
-          {/* Submit (mobile friendly duplication) */}
-          <div className="md:col-span-2 flex justify-end">
+          {/* Bottom actions (moved Reset here; align with Search) */}
+          <div className="md:col-span-2 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={resetForm}
+              className="px-3 py-2 text-sm rounded-lg border border-gray-200 hover:bg-gray-50"
+            >
+              Reset
+            </button>
             <button
               type="submit"
               className="px-5 py-2 rounded-lg bg-[#F7941D] text-white text-sm font-medium hover:brightness-110"
@@ -200,7 +185,7 @@ export default function SourceTab({ mode: propMode }: SourceTabProps) {
         )}
       </section>
 
-      {/* ===== Results Panel (separate, below) ===== */}
+      {/* ===== Results Panel ===== */}
       <section className="rounded-2xl border border-gray-200 bg-white shadow-sm">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <h2 className="text-lg font-semibold">{resultsTitle}</h2>
@@ -212,17 +197,13 @@ export default function SourceTab({ mode: propMode }: SourceTabProps) {
         </div>
 
         <div className="p-5">
-          {!searched && (
-            <p className="text-sm text-gray-500">Run a search to see results here.</p>
-          )}
+          {!searched && <p className="text-sm text-gray-500">Run a search to see results here.</p>}
 
           {searched && !loading && results.length === 0 && !error && (
             <p className="text-sm text-gray-500">No results found. Try adjusting your filters.</p>
           )}
 
-          {loading && (
-            <div className="text-sm text-gray-600">Loading…</div>
-          )}
+          {loading && <div className="text-sm text-gray-600">Loading…</div>}
 
           {!loading && results.length > 0 && (
             <ul className="divide-y divide-gray-100">
