@@ -75,7 +75,7 @@ async function apolloPeopleSearchPaged(input: {
 
   const { titles, locations, keywords } = input
 
-  // We’ll fetch exactly 2 pages of 25 each to total 50 (or less if API returns fewer).
+  // Exactly 2 pages × 25 = 50 (or less if API returns fewer)
   const per_page = 25
   const pages = [1, 2]
 
@@ -84,7 +84,7 @@ async function apolloPeopleSearchPaged(input: {
     person_titles: titles.length ? titles : undefined,
     person_locations: locations.length ? locations : undefined,
     q_keywords: keywords.length ? keywords.join(' ') : undefined,
-    contact_email_status: ['verified'] as string[], // ✅ filter at source
+    contact_email_status: ['verified'] as string[], // ✅ verified at source
     include_similar_titles: true,
     display_edu_and_exp: true,
   }
@@ -94,17 +94,16 @@ async function apolloPeopleSearchPaged(input: {
   for (const page of pages) {
     const baseBody = { ...commonBody, page, per_page }
 
-    // 1) Try Bearer header
     const resp = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Api-Key': apiKey,           // ✅ use X-Api-Key
+        'X-Api-Key': apiKey, // ✅ required by Apollo
         'Cache-Control': 'no-store',
       },
       body: JSON.stringify(baseBody),
     })
-  
+
     if (!resp.ok) {
       const t = await resp.text().catch(() => '')
       return NextResponse.json(
@@ -118,7 +117,7 @@ async function apolloPeopleSearchPaged(input: {
     all.push(...contacts)
   }
 
-  // De-dupe (by id or linkedin_url) in case overlap across pages
+  // De-dupe (by id or linkedin_url) across pages
   const seen = new Set<string>()
   const deduped = all.filter((c) => {
     const key = (c.id || c.linkedin_url || c.email || Math.random().toString(36)).toString()
@@ -127,7 +126,7 @@ async function apolloPeopleSearchPaged(input: {
     return true
   })
 
-  // Map to outgoing shape (all are verified already due to request filter)
+  // Map to outgoing shape
   const mapped: PersonOut[] = deduped.slice(0, 50).map((c) => ({
     id: c.id,
     name: c.name || [c.first_name, c.last_name].filter(Boolean).join(' ').trim(),
@@ -211,7 +210,7 @@ export async function POST(req: NextRequest) {
     const titles = arr(body.titles)
     const locations = arr(body.locations)
     const keywords = arr(body.keywords)
-    const limit = capInt(body.limit, 1, 50, 50) // still honored, but we fetch up to 50
+    const limit = capInt(body.limit, 1, 50, 50)
 
     // 1) Apollo (2 pages × 25, verified only)
     const apolloRes = await apolloPeopleSearchPaged({
