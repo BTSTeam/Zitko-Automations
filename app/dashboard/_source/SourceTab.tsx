@@ -50,19 +50,35 @@ export default function SourceTab({ mode: propMode }: SourceTabProps) {
     setResults([])
 
     try {
-      const params = new URLSearchParams()
-      if (jobTitle.trim()) params.set('title', jobTitle.trim())
-      if (locations.trim()) params.set('locations', locations.trim())
-      if (keywords.trim()) params.set('keywords', keywords.trim())
-      // Only include empType for candidate search
-      if (mode === 'candidates') params.set('empType', empType)
+      const split = (s: string) =>
+      s.split(',').map(t => t.trim()).filter(Boolean)
+    
+    const endpoint = mode === 'candidates'
+      ? '/api/sourcing/people'
+      : '/api/sourcing/companies'
+    
+    const body =
+      mode === 'candidates'
+        ? {
+            titles: jobTitle.trim() ? [jobTitle.trim()] : [],
+            locations: split(locations),
+            keywords: split(keywords),
+            permanent: empType === 'permanent',
+            limit: 50, // pull 2 pages (server caps/handles pagination)
+          }
+        : {
+            locations: split(locations),
+            keywords: split(keywords),
+            // you can add marketSegments/jobPostings/rapidGrowth if you expose them in UI
+            limit: 50,
+          }
 
-      const url =
-        mode === 'candidates'
-          ? `/api/sourcing/people?${params.toString()}`
-          : `/api/sourcing/companies?${params.toString()}`
-
-      const res = await fetch(url, { cache: 'no-store' })
+const res = await fetch(endpoint, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(body),
+  cache: 'no-store',
+})
       if (!res.ok) {
         const text = await res.text().catch(() => '')
         throw new Error(`Search failed (${res.status}): ${text || res.statusText}`)
