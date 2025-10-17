@@ -141,10 +141,9 @@ export default function ActiveCampaignTab() {
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((data) => {
         const raw = Array.isArray(data?.tags) ? data.tags : []
-        // Hide "Customer"
-        const filtered = raw.filter(
-          (t: any) => String(t?.tag || '').trim().toLowerCase() !== 'customer'
-        )
+        const filtered = raw
+          .filter((t: any) => String(t?.tag || '').trim().toLowerCase() !== 'customer')
+          .sort((a: any, b: any) => String(a.tag).localeCompare(String(b.tag)))
         setTags(filtered)
       })
       .catch(() => setTags([]))
