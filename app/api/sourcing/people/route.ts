@@ -95,29 +95,16 @@ async function apolloPeopleSearchPaged(input: {
     const baseBody = { ...commonBody, page, per_page }
 
     // 1) Try Bearer header
-    let resp = await fetch(url, {
+    const resp = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
+        'X-Api-Key': apiKey,           // ✅ use X-Api-Key
         'Cache-Control': 'no-store',
       },
       body: JSON.stringify(baseBody),
     })
-
-    // 2) If 401, retry with api_key in body (no Authorization header)
-    if (resp.status === 401) {
-      const bodyWithKey = { ...baseBody, api_key: apiKey }
-      resp = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Cache-Control': 'no-store',
-        },
-        body: JSON.stringify(bodyWithKey),
-      })
-    }
-
+  
     if (!resp.ok) {
       const t = await resp.text().catch(() => '')
       return NextResponse.json(
