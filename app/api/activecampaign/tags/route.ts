@@ -9,38 +9,43 @@ export async function GET() {
   try {
     requiredActiveCampaignEnv()
 
+    // Guard against trailing slash on BASE_URL so we don’t end up with //api/3
+    const BASE = String(AC.BASE_URL || '').replace(/\/+$/, '')
     const limit = 100
     let offset = 0
-    let total = Infinity
     const all: any[] = []
 
-    while (offset < total) {
-      const url = `${AC.BASE_URL}/api/3/tags?limit=${limit}&offset=${offset}`
+    // Fetch until an empty/short page. Avoids relying on AC's meta.total.
+    for (let safety = 0; safety < 200; safety++) {
+      const url = `${BASE}/api/3/tags?limit=${limit}&offset=${offset}`
       const res = await fetch(url, {
-        headers: { 'Api-Token': AC.API_TOKEN, 'Accept': 'application/json' },
+        headers: { 'Api-Token': AC.API_TOKEN, Accept: 'application/json' },
         cache: 'no-store',
       })
+
       if (!res.ok) {
         const text = await res.text().catch(() => '')
-        return NextResponse.json({ error: `ActiveCampaign tags error ${res.status}: ${text}` }, { status: res.status })
+        return NextResponse.json(
+          { error: `ActiveCampaign tags error ${res.status}: ${text}` },
+          { status: res.status }
+        )
       }
 
       const j = await res.json().catch(() => ({}))
       const page: any[] = Array.isArray(j?.tags) ? j.tags : []
-      const meta = j?.meta || {}
-      const pageInput = meta?.page_input || {}
-      total = typeof meta?.total === 'number' ? meta.total : total
-      all.push(...page)
-      offset += limit
 
-      // Fallback break if meta is missing but page is small
-      if (!meta?.total && page.length < limit) break
+      if (page.length === 0) break
+      all.push(...page)
+
+      if (page.length < limit) break
+      offset += limit
     }
 
-    // Return a normalized shape
     return NextResponse.json({ tags: all }, { status: 200 })
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message ?? 'Unknown error' }, { status: 500 })
+    return NextResponse.json(
+      { error: e?.message ?? 'Unknown error' },
+      { status: 500 }
+    )
   }
 }
-
