@@ -13,11 +13,13 @@ export async function GET() {
     )
   }
 
-  const url = new URL('https://api.apollo.io/v1/oauth/authorize') // ← updated host/path
-  url.searchParams.set('response_type', 'code')
-  url.searchParams.set('client_id', clientId)
-  url.searchParams.set('redirect_uri', redirectUri)
-  url.searchParams.set('scope', scopes)
+  const url = new URL('https://app.apollo.io/#/oauth/authorize'); // ← use hash route
+  const scopes = process.env.APOLLO_SCOPE || 'contacts_search person_read'; // ← partner scopes
+  url.searchParams.set('response_type', 'code');
+  url.searchParams.set('client_id', clientId);
+  url.searchParams.set('redirect_uri', redirectUri);
+  url.searchParams.set('scope', scopes);
+  url.searchParams.set('state', crypto.randomUUID()); // add state for safety
 
   return NextResponse.redirect(url.toString(), 302)
 }
