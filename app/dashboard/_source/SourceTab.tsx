@@ -10,9 +10,14 @@ import SearchResults, {
 type SourceMode = 'candidates' | 'companies'
 type EmpType = 'permanent' | 'contract'
 
-export default function SourceTab() {
+type Props = {
+  /** Optional initial mode to support <SourceTab mode={...} /> */
+  mode?: SourceMode
+}
+
+export default function SourceTab({ mode: initialMode = 'candidates' }: Props) {
   /* ============================ State ============================ */
-  const [mode, setMode] = useState<SourceMode>('candidates')
+  const [mode, setMode] = useState<SourceMode>(initialMode)
   const [empType, setEmpType] = useState<EmpType>('permanent')
   const [jobTitle, setJobTitle] = useState('')
   const [locations, setLocations] = useState('')
@@ -146,7 +151,7 @@ export default function SourceTab() {
             </div>
           )}
 
-          {/* Job Title */}
+          {/* Job Title / Company Name */}
           <div>
             <label className="block text-sm font-medium text-gray-700">
               {mode === 'candidates' ? 'Job Title' : 'Company Name'}
