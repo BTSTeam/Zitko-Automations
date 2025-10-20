@@ -1,240 +1,112 @@
-// app/dashboard/_source/SourceTab.tsx
 'use client'
 
 import { useEffect, useState } from 'react'
-import SearchResults, {
-  CandidateResult,
-  CompanyResult,
-} from './SearchResults'
 
 type SourceMode = 'candidates' | 'companies'
-type EmpType = 'permanent' | 'contract'
 
-type Props = {
-  mode?: SourceMode
+// Shows a full-cover overlay message
+function DownOverlay() {
+  return (
+    <div className="absolute inset-0 z-50 grid place-items-center bg-white/90 backdrop-blur-sm">
+      <div className="text-center px-6">
+        <div className="text-6xl mb-4">🛠️</div>
+        <h3 className="text-xl font-semibold mb-2">
+          Sourcing Tool is down due to technical difficulties
+        </h3>
+        <p className="text-gray-600 text-sm">
+          Please check back later.
+        </p>
+      </div>
+    </div>
+  )
 }
 
-export default function SourceTab({ mode: initialMode = 'candidates' }: Props) {
-  /* ============================ State ============================ */
-  const [mode, setMode] = useState<SourceMode>(initialMode)
-  const [empType, setEmpType] = useState<EmpType>('permanent')
-  const [jobTitle, setJobTitle] = useState('')
-  const [locations, setLocations] = useState('')
-  const [keywords, setKeywords] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [results, setResults] = useState<(CandidateResult | CompanyResult)[]>([])
+export default function SourceTab({ mode }: { mode: SourceMode }) {
+  // Toggle overlay via env var (set to "1" or "true")
+  const isDown =
+    (process.env.NEXT_PUBLIC_SOURCING_DOWN || '').toLowerCase() === '1' ||
+    (process.env.NEXT_PUBLIC_SOURCING_DOWN || '').toLowerCase() === 'true'
 
-  const [apolloConnected, setApolloConnected] = useState<boolean | null>(null)
+  if (mode === 'companies') {
+    return (
+      <div className="card p-6 relative">
+        <div className="text-center py-16">
+          <div className="text-6xl mb-4">🏗️</div>
+          <h3 className="text-xl font-semibold mb-2">Building In Process…</h3>
+          <p className="text-gray-600">This Companies sourcing page will host a similar embedded form soon.</p>
+        </div>
 
-  /* ============================ Effects ============================ */
+        {isDown && <DownOverlay />}
+      </div>
+    )
+  }
+
+  // Candidates (JotForm embed)
+  const jotformUrl = process.env.NEXT_PUBLIC_JOTFORM_URL || ''
+  const hasUrl = jotformUrl.length > 0
+  const formId = hasUrl ? (jotformUrl.match(/\/(\d{10,})(?:$|[/?#])/i)?.[1] ?? null) : null
+
+  // Start smaller and auto-resize
+  const [height, setHeight] = useState<number>(700) // reduced from 900 -> 700
+  const [iframeKey, setIframeKey] = useState(0)
+  const refreshForm = () => setIframeKey(k => k + 1)
+
   useEffect(() => {
-    fetch('/api/apollo/oauth/status', { cache: 'no-store' })
-      .then((r) => (r.ok ? r.json() : { connected: false }))
-      .then((d) => setApolloConnected(!!d.connected))
-      .catch(() => setApolloConnected(false))
-  }, [])
-
-  function handleConnect() {
-    if (!apolloConnected) {
-      window.location.href = '/api/apollo/oauth/authorize'
-    }
-  }
-
-  /* ============================ Helpers ============================ */
-  async function handleSearch() {
-    try {
-      setLoading(true)
-      setResults([])
-
-      const titles = jobTitle
-        ? jobTitle.split(',').map((t) => t.trim()).filter(Boolean)
-        : []
-      const locs = locations
-        ? locations.split(',').map((l) => l.trim()).filter(Boolean)
-        : []
-      const keys = keywords
-        ? keywords.split(',').map((k) => k.trim()).filter(Boolean)
-        : []
-
-      const body = {
-        titles,
-        locations: locs,
-        keywords: keys,
-        permanent: empType === 'permanent',
-        limit: 50,
+    function handleMessage(e: MessageEvent) {
+      if (!formId) return
+      if (typeof e.data !== 'string') return
+      const parts = e.data.split(':')
+      if (parts[0] === 'setHeight') {
+        const newH = Number(parts[1])
+        if (!Number.isNaN(newH) && newH > 0) setHeight(Math.max(600, newH + 20)) // minimum 600
       }
-
-      const endpoint =
-        mode === 'candidates'
-          ? '/api/sourcing/people'
-          : '/api/sourcing/companies'
-
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-
-      const json = await res.json()
-      if (!res.ok) throw new Error(json?.error || 'Search failed')
-      setResults(json.results || [])
-    } catch (err) {
-      console.error(err)
-      alert('Search failed. See console for details.')
-    } finally {
-      setLoading(false)
     }
-  }
-
-  function handleReset() {
-    setJobTitle('')
-    setLocations('')
-    setKeywords('')
-    setResults([])
-  }
-
-  /* ============================ UI ============================ */
+    window.addEventListener('message', handleMessage)
+    return () => window.removeEventListener('message', handleMessage)
+  }, [formId])
 
   return (
-    <div className="space-y-6">
-      {/* Title + Connection status */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-gray-900">
-            {mode === 'candidates' ? 'Candidate Search' : 'Company Search'}
-          </h2>
-          <p className="mt-1 text-sm text-gray-500">
-            Enter filters below to search Apollo data
+    <div className="card p-6 relative">
+      <div className="mb-4 flex items-center justify-between">
+        <p className="m-0">Complete the form below to source relevant candidates directly to your email inbox.</p>
+        {hasUrl && (
+          <button
+            className="btn btn-brand"
+            onClick={refreshForm}
+            title="Reload form"
+            disabled={isDown}
+          >
+            Refresh
+          </button>
+        )}
+      </div>
+
+      {!hasUrl ? (
+        <div className="border-2 border-dashed rounded-2xl p-10 text-center text-gray-500">
+          <div className="mb-2 text-5xl">🧾</div>
+          <div className="font-semibold mb-2">JotForm Integration</div>
+          <p className="mb-2">
+            Add your form URL in the Vercel env var <code>NEXT_PUBLIC_JOTFORM_URL</code> and redeploy.
           </p>
+          <p className="text-xs break-all">Example: https://form.jotform.com/123456789012345</p>
         </div>
-
-        <button
-          onClick={handleConnect}
-          className={`rounded-full px-3 py-1 text-sm font-medium transition ${
-            apolloConnected
-              ? 'bg-green-100 text-green-700'
-              : 'bg-red-100 text-red-700 hover:bg-red-200'
-          }`}
-        >
-          {apolloConnected === null
-            ? 'Checking...'
-            : apolloConnected
-            ? '🟢 Connected'
-            : '🔴 Not Connected'}
-        </button>
-      </div>
-
-      {/* Search Fields */}
-      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
-        <div className="space-y-4 px-5 py-5">
-          {/* Employment Type */}
-          {mode === 'candidates' && (
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-6">
-              <label className="text-sm font-medium text-gray-700">
-                Employment Type:
-              </label>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setEmpType('permanent')}
-                  className={`rounded-md px-3 py-1 text-sm font-medium ${
-                    empType === 'permanent'
-                      ? 'bg-[#F7941D] text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  Permanent
-                </button>
-                <button
-                  onClick={() => setEmpType('contract')}
-                  className={`rounded-md px-3 py-1 text-sm font-medium ${
-                    empType === 'contract'
-                      ? 'bg-[#F7941D] text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  Contract
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Job Title / Company Name */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              {mode === 'candidates' ? 'Job Title' : 'Company Name'}
-            </label>
-            <input
-              type="text"
-              value={jobTitle}
-              onChange={(e) => setJobTitle(e.target.value)}
-              placeholder={
-                mode === 'candidates'
-                  ? 'e.g. Fire Engineer, Security Manager'
-                  : 'e.g. Johnson Controls, Chubb Fire'
-              }
-              className="mt-1 w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-[#F7941D] focus:ring-[#F7941D]"
-            />
-          </div>
-
-          {/* Locations */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              Locations
-            </label>
-            <input
-              type="text"
-              value={locations}
-              onChange={(e) => setLocations(e.target.value)}
-              placeholder="e.g. London, Manchester"
-              className="mt-1 w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-[#F7941D] focus:ring-[#F7941D]"
-            />
-          </div>
-
-          {/* Keywords */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              Keywords
-            </label>
-            <input
-              type="text"
-              value={keywords}
-              onChange={(e) => setKeywords(e.target.value)}
-              placeholder="e.g. CCTV, Access Control, Fire Alarm"
-              className="mt-1 w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-[#F7941D] focus:ring-[#F7941D]"
-            />
-          </div>
-
-          {/* Buttons */}
-          <div className="flex justify-end gap-3 pt-2">
-            <button
-              onClick={handleReset}
-              disabled={loading}
-              className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            >
-              Reset
-            </button>
-            <button
-              onClick={handleSearch}
-              disabled={loading}
-              className="rounded-md bg-[#F7941D] px-4 py-2 text-sm font-medium text-white hover:bg-[#e5830c] disabled:opacity-50"
-            >
-              {loading ? 'Searching...' : 'Search'}
-            </button>
-          </div>
+      ) : (
+        <div className="rounded-2xl overflow-hidden border max-w-4xl mx-auto">
+          <iframe
+            key={iframeKey}
+            id={formId ? `JotFormIFrame-${formId}` : 'JotFormIFrame'}
+            title="JotForm"
+            src={jotformUrl}
+            className="w-full"
+            style={{ height }}
+            scrolling="no"
+            frameBorder={0}
+            allow="clipboard-write; fullscreen"
+          />
         </div>
-      </div>
+      )}
 
-      {/* Results Panel */}
-      <SearchResults
-        mode={mode}
-        results={results}
-        loading={loading}
-        title={
-          mode === 'candidates'
-            ? 'Candidate Search Results'
-            : 'Company Search Results'
-        }
-      />
+      {isDown && <DownOverlay />}
     </div>
   )
 }
