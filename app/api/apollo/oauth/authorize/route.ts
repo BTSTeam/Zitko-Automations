@@ -1,31 +1,24 @@
 // app/api/apollo/oauth/authorize/route.ts
-export const runtime = 'nodejs'
-export const dynamic = 'force-dynamic'
-export const revalidate = 0
+import { NextResponse } from 'next/server'
 
-import { NextRequest, NextResponse } from 'next/server'
-import { requiredApolloEnv, buildAuthorizeUrl, randomState, setCookie } from '@/lib/apolloOAuth'
+export async function GET() {
+  const clientId = process.env.APOLLO_CLIENT_ID
+  const redirectUri = process.env.APOLLO_REDIRECT_URI
+  const scopes = process.env.APOLLO_SCOPE || 'people.read organizations.read'
 
-export async function GET(_req: NextRequest) {
-  try {
-    const { clientId, redirectUri } = requiredApolloEnv()
-
-    // Choose scopes you registered in Apollo (examples below).
-    // If you omit scope here, Apollo uses the scopes defined at registration.
-    const scope = [
-      'read_user_profile',     // recommended by Apollo docs
-      // add any others you registered, e.g. 'contacts_search', 'person_read', 'organization_read', etc.
-    ]
-
-    const state = randomState()
-    const authUrl = buildAuthorizeUrl({ clientId, redirectUri, scope, state })
-
-    // Set short-lived state cookie for CSRF protection (5 minutes)
-    const headers = new Headers()
-    headers.append('Set-Cookie', setCookie('apollo_oauth_state', state, 300))
-    headers.append('Location', authUrl)
-    return new NextResponse(null, { status: 307, headers })
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message || 'OAuth authorize failed' }, { status: 500 })
+  if (!clientId || !redirectUri) {
+    return NextResponse.json(
+      { error: 'Missing Apollo OAuth environment variables' },
+      { status: 500 }
+    )
   }
+
+  const url = new URL('https://app.apollo.io/oauth/authorize')
+  url.searchParams.set('response_type', 'code')
+  url.searchParams.set('client_id', clientId)
+  url.searchParams.set('redirect_uri', redirectUri)
+  url.searchParams.set('scope', scopes)
+
+  // Redirect user to Apollo OAuth screen
+  return NextResponse.redirect(url.toString(), 302)
 }
