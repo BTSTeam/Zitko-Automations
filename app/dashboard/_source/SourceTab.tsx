@@ -1,7 +1,7 @@
 // app/dashboard/_source/SourceTab.tsx
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import SearchResults, {
   CandidateResult,
   CompanyResult,
@@ -11,7 +11,6 @@ type SourceMode = 'candidates' | 'companies'
 type EmpType = 'permanent' | 'contract'
 
 type Props = {
-  /** Optional initial mode to support <SourceTab mode={...} /> */
   mode?: SourceMode
 }
 
@@ -22,12 +21,26 @@ export default function SourceTab({ mode: initialMode = 'candidates' }: Props) {
   const [jobTitle, setJobTitle] = useState('')
   const [locations, setLocations] = useState('')
   const [keywords, setKeywords] = useState('')
-
   const [loading, setLoading] = useState(false)
   const [results, setResults] = useState<(CandidateResult | CompanyResult)[]>([])
 
-  /* ============================ Helpers ============================ */
+  const [apolloConnected, setApolloConnected] = useState<boolean | null>(null)
 
+  /* ============================ Effects ============================ */
+  useEffect(() => {
+    fetch('/api/apollo/oauth/status', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : { connected: false }))
+      .then((d) => setApolloConnected(!!d.connected))
+      .catch(() => setApolloConnected(false))
+  }, [])
+
+  function handleConnect() {
+    if (!apolloConnected) {
+      window.location.href = '/api/apollo/oauth/authorize'
+    }
+  }
+
+  /* ============================ Helpers ============================ */
   async function handleSearch() {
     try {
       setLoading(true)
@@ -84,33 +97,9 @@ export default function SourceTab({ mode: initialMode = 'candidates' }: Props) {
 
   return (
     <div className="space-y-6">
-      {/* Mode Toggle */}
-      <div className="flex gap-2">
-        <button
-          onClick={() => setMode('candidates')}
-          className={`rounded-md px-4 py-2 text-sm font-medium ${
-            mode === 'candidates'
-              ? 'bg-[#F7941D] text-white'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          }`}
-        >
-          Candidates
-        </button>
-        <button
-          onClick={() => setMode('companies')}
-          className={`rounded-md px-4 py-2 text-sm font-medium ${
-            mode === 'companies'
-              ? 'bg-[#F7941D] text-white'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          }`}
-        >
-          Companies
-        </button>
-      </div>
-
-      {/* Search Fields */}
-      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
-        <div className="border-b border-gray-100 px-5 py-4">
+      {/* Title + Connection status */}
+      <div className="flex items-center justify-between">
+        <div>
           <h2 className="text-lg font-semibold text-gray-900">
             {mode === 'candidates' ? 'Candidate Search' : 'Company Search'}
           </h2>
@@ -119,6 +108,24 @@ export default function SourceTab({ mode: initialMode = 'candidates' }: Props) {
           </p>
         </div>
 
+        <button
+          onClick={handleConnect}
+          className={`rounded-full px-3 py-1 text-sm font-medium transition ${
+            apolloConnected
+              ? 'bg-green-100 text-green-700'
+              : 'bg-red-100 text-red-700 hover:bg-red-200'
+          }`}
+        >
+          {apolloConnected === null
+            ? 'Checking...'
+            : apolloConnected
+            ? '🟢 Connected'
+            : '🔴 Not Connected'}
+        </button>
+      </div>
+
+      {/* Search Fields */}
+      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
         <div className="space-y-4 px-5 py-5">
           {/* Employment Type */}
           {mode === 'candidates' && (
