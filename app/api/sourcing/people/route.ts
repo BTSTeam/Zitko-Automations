@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { config, requiredEnv } from '@/lib/config'
 import { getSession } from '@/lib/session'
 import { refreshIdToken } from '@/lib/vincereRefresh'
+import { ensureApolloToken } from '@/lib/apolloRefresh'
 
 type PostBody = {
   titles?: string[]
@@ -110,9 +111,10 @@ async function apolloPeopleSearchPaged(input: {
   permanent: boolean
   limit: number // cap 50
 }) {
-  const apiKey = process.env.APOLLO_API_KEY
-  if (!apiKey) {
-    return NextResponse.json({ error: 'Missing APOLLO_API_KEY' }, { status: 500 })
+  // ✅ Use OAuth bearer token (NOT API key)
+  const accessToken = await ensureApolloToken()
+  if (!accessToken) {
+    return NextResponse.json({ error: 'Not connected to Apollo (OAuth)' }, { status: 401 })
   }
 
   const { titles, locations, keywords, permanent } = input
@@ -142,7 +144,7 @@ async function apolloPeopleSearchPaged(input: {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Api-Key': apiKey, // ✅ Apollo key auth
+        'Authorization': `Bearer ${accessToken}`, // ✅ OAuth bearer header
         'Cache-Control': 'no-store',
       },
       body: JSON.stringify(body),
