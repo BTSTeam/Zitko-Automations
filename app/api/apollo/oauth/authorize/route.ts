@@ -13,12 +13,11 @@ export async function GET() {
     )
   }
 
-  const url = new URL('https://api.apollo.io/v1/oauth/authorize')
+  const url = new URL('https://api.apollo.io/v1/oauth/authorize') // ← updated host/path
   url.searchParams.set('response_type', 'code')
   url.searchParams.set('client_id', clientId)
   url.searchParams.set('redirect_uri', redirectUri)
   url.searchParams.set('scope', scopes)
 
-  // Redirect user to Apollo OAuth screen
   return NextResponse.redirect(url.toString(), 302)
 }
