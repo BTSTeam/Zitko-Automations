@@ -16,7 +16,7 @@ export async function GET(req: Request) {
   }
 
   // Exchange the code for tokens
-  const tokenResp = await fetch('https://app.apollo.io/api/v1/oauth/token', {
+  const tokenResp = await fetch('https://api.apollo.io/v1/oauth/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
