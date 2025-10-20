@@ -4,9 +4,9 @@ import { NextResponse } from 'next/server'
 export async function GET(req: Request) {
   const url = new URL(req.url)
   const code = url.searchParams.get('code')
-  const clientId = process.env.APOLLO_CLIENT_ID
-  const clientSecret = process.env.APOLLO_CLIENT_SECRET
-  const redirectUri = process.env.APOLLO_REDIRECT_URI
+  const clientId = process.env.APOLLO_OAUTH_CLIENT_ID
+  const clientSecret = process.env.APOLLO_OAUTH_CLIENT_SECRET
+  const redirectUri = process.env.APOLLO_OAUTH_REDIRECT_URI
 
   if (!code || !clientId || !clientSecret || !redirectUri) {
     return NextResponse.json(
