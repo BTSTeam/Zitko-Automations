@@ -13,7 +13,7 @@ export async function GET() {
     )
   }
 
-  const url = new URL('https://app.apollo.io/oauth/authorize')
+  const url = new URL('https://api.apollo.io/v1/oauth/authorize')
   url.searchParams.set('response_type', 'code')
   url.searchParams.set('client_id', clientId)
   url.searchParams.set('redirect_uri', redirectUri)
