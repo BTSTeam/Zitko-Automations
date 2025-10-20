@@ -60,12 +60,54 @@ type PersonOut = {
   location?: string
 }
 
+/* ------------------------------ Helpers ------------------------------ */
+
+function normName(s?: string) {
+  return String(s ?? '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/**
+ * Build the Apollo keyword string based on:
+ * - user-provided keywords
+ * - employment type rules:
+ *    Contract  => MUST include: IR35, "Pay Rate"
+ *    Permanent => SHOULD exclude: IR35, "Pay Rate"
+ *
+ * Note: Apollo's mixed_people search supports a free-text
+ * q_keywords. We encode inclusion/exclusion using tokens;
+ * if Apollo ignores exclusions, results will still be valid, just broader.
+ */
+function buildApolloKeywordQuery(keywords: string[], permanent: boolean): string | undefined {
+  const base = [...keywords].filter(Boolean)
+
+  const IR35 = 'IR35'
+  const PAY_RATE = '"Pay Rate"'
+
+  if (permanent === false) {
+    // CONTRACT: ensure they are included at query-level
+    if (!base.some(k => /(^|[^a-z])ir35([^a-z]|$)/i.test(k))) base.push(IR35)
+    if (!base.some(k => /pay\s*rate/i.test(k))) base.push(PAY_RATE)
+  } else {
+    // PERMANENT: try to exclude via minus tokens
+    // (leave user keywords intact)
+    base.push(`- ${IR35}`)
+    base.push(`- ${PAY_RATE}`)
+  }
+
+  const q = base.join(' ').trim()
+  return q.length ? q : undefined
+}
+
 /* ------------------------------ Apollo ------------------------------ */
 
 async function apolloPeopleSearchPaged(input: {
   titles: string[]
   locations: string[]
   keywords: string[]
+  permanent: boolean
   limit: number // cap 50
 }) {
   const apiKey = process.env.APOLLO_API_KEY
@@ -73,18 +115,20 @@ async function apolloPeopleSearchPaged(input: {
     return NextResponse.json({ error: 'Missing APOLLO_API_KEY' }, { status: 500 })
   }
 
-  const { titles, locations, keywords } = input
+  const { titles, locations, keywords, permanent } = input
 
-  // Exactly 2 pages × 25 = 50 (or less if API returns fewer)
+  // Pull up to 50 (2 * 25). If the caller asked for < 50, we'll slice later.
   const per_page = 25
   const pages = [1, 2]
 
   const url = 'https://api.apollo.io/api/v1/mixed_people/search'
-  const commonBody = {
+  const q_keywords = buildApolloKeywordQuery(keywords, permanent)
+
+  const commonBody: Record<string, any> = {
     person_titles: titles.length ? titles : undefined,
     person_locations: locations.length ? locations : undefined,
-    q_keywords: keywords.length ? keywords.join(' ') : undefined,
-    contact_email_status: ['verified'] as string[], // ✅ verified at source
+    q_keywords,
+    contact_email_status: ['verified'], // ✅ verified only
     include_similar_titles: true,
     display_edu_and_exp: true,
   }
@@ -92,16 +136,16 @@ async function apolloPeopleSearchPaged(input: {
   const all: ApolloPerson[] = []
 
   for (const page of pages) {
-    const baseBody = { ...commonBody, page, per_page }
+    const body = { ...commonBody, page, per_page }
 
     const resp = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Api-Key': apiKey, // ✅ required by Apollo
+        'X-Api-Key': apiKey, // ✅ Apollo key auth
         'Cache-Control': 'no-store',
       },
-      body: JSON.stringify(baseBody),
+      body: JSON.stringify(body),
     })
 
     if (!resp.ok) {
@@ -117,17 +161,20 @@ async function apolloPeopleSearchPaged(input: {
     all.push(...contacts)
   }
 
-  // De-dupe (by id or linkedin_url) across pages
+  // De-dupe across pages STRICTLY by name + linkedin_url
   const seen = new Set<string>()
   const deduped = all.filter((c) => {
-    const key = (c.id || c.linkedin_url || c.email || Math.random().toString(36)).toString()
+    const name = normName(c.name || [c.first_name, c.last_name].filter(Boolean).join(' '))
+    const li = String(c.linkedin_url ?? '').trim().toLowerCase()
+    const key = `${name}__${li}`
+    if (!name || !li) return true // keep if missing either; Vincere step will handle final gate
     if (seen.has(key)) return false
     seen.add(key)
     return true
   })
 
   // Map to outgoing shape
-  const mapped: PersonOut[] = deduped.slice(0, 50).map((c) => ({
+  const mapped: PersonOut[] = deduped.map((c) => ({
     id: c.id,
     name: c.name || [c.first_name, c.last_name].filter(Boolean).join(' ').trim(),
     title: c.title,
@@ -175,7 +222,13 @@ async function vincereCandidateExistsByNameAndLinkedIn(args: {
   const { name, linkedin_url, idToken } = args
   if (!name || !linkedin_url) return false
 
-  const q = `name:"${name.replace(/"/g, '\\"')}" AND linkedin_url:"${linkedin_url.replace(/"/g, '\\"')}"`
+  const safeName = name.replace(/"/g, '\\"')
+  const safeLi = linkedin_url.replace(/"/g, '\\"')
+
+  // NOTE: Using keywords (q) to combine conditions. Tail end "#"
+  // preserves phrase searches reliably in Vincere.
+  const q = `name:"${safeName}" AND linkedin_url:"${safeLi}"`
+
   const u = new URL(
     config.VINCERE_TENANT_API_BASE.replace(/\/$/, '') +
       '/api/v2/candidate/search/fl=id,first_name,last_name,linkedin_url',
@@ -210,23 +263,34 @@ export async function POST(req: NextRequest) {
     const titles = arr(body.titles)
     const locations = arr(body.locations)
     const keywords = arr(body.keywords)
+    const permanent = Boolean(body.permanent ?? true) // default to Permanent
     const limit = capInt(body.limit, 1, 50, 50)
 
-    // 1) Apollo (2 pages × 25, verified only)
+    // 1) Apollo (2 pages × 25, verified only) + employment-type keyword rules
     const apolloRes = await apolloPeopleSearchPaged({
       titles,
       locations,
       keywords,
+      permanent,
       limit,
     })
     if (apolloRes instanceof NextResponse) return apolloRes
     const people: PersonOut[] = apolloRes
 
+    // Quick hard cap BEFORE Vincere checks to avoid excessive calls
+    const precheck = people.slice(0, 200) // safety cap before Vincere I/O
+
     // 2) Dedupe against Vincere (name AND LinkedIn)
     const idToken = await ensureVincereToken()
     if (!idToken) {
+      // Return Apollo results sliced, but indicate we didn't run Vincere de-dupe
       return NextResponse.json(
-        { results: people.slice(0, limit), deduped: false, reason: 'Missing Vincere tokens or env' },
+        {
+          results: precheck.slice(0, limit),
+          deduped: false,
+          reason: 'Missing Vincere tokens or env',
+          employmentType: permanent ? 'permanent' : 'contract',
+        },
         { status: 200 },
       )
     }
@@ -236,9 +300,9 @@ export async function POST(req: NextRequest) {
     const deduped: PersonOut[] = []
 
     async function worker() {
-      while (idx < people.length) {
+      while (idx < precheck.length) {
         const i = idx++
-        const p = people[i]
+        const p = precheck[i]
         const exists = await vincereCandidateExistsByNameAndLinkedIn({
           name: p.name,
           linkedin_url: p.linkedin_url,
@@ -250,8 +314,13 @@ export async function POST(req: NextRequest) {
 
     await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()))
 
+    // Final slice to requested limit
     return NextResponse.json(
-      { results: deduped.slice(0, limit), deduped: true },
+      {
+        results: deduped.slice(0, limit),
+        deduped: true,
+        employmentType: permanent ? 'permanent' : 'contract',
+      },
       { status: 200 },
     )
   } catch (e: any) {
