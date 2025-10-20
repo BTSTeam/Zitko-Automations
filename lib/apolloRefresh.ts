@@ -1,8 +1,7 @@
 // lib/apolloRefresh.ts
 //
 // Handles refreshing Apollo OAuth tokens and ensuring a valid access token exists.
-// Similar in structure to lib/vincereRefresh.ts
-//
+
 import { getSession } from '@/lib/session'
 
 function requiredApolloEnv() {
@@ -46,15 +45,16 @@ export async function refreshApolloToken(): Promise<string | null> {
   const form = new URLSearchParams({
     grant_type: 'refresh_token',
     refresh_token: apollo.refreshToken,
-    client_id: process.env.APOLLO_CLIENT_ID!,
-    client_secret: process.env.APOLLO_CLIENT_SECRET!,
-    redirect_uri: process.env.APOLLO_REDIRECT_URI!,
+    client_id: process.env.APOLLO_OAUTH_CLIENT_ID!,     // ← updated
+    client_secret: process.env.APOLLO_OAUTH_CLIENT_SECRET!, // ← updated
+    // redirect_uri is not required for refresh in most OAuth servers; safe to omit
   })
 
-  const res = await fetch('https://app.apollo.io/api/v1/oauth/token', {
+  const res = await fetch('https://api.apollo.io/v1/oauth/token', { // ← updated host/path
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: form,
+    cache: 'no-store',
   })
 
   if (!res.ok) {
@@ -69,6 +69,7 @@ export async function refreshApolloToken(): Promise<string | null> {
     expires_in?: number
     created_at?: number
     token_type?: string
+    scope?: string
   }
 
   const createdAt = tok.created_at ?? Math.floor(Date.now() / 1000)
@@ -77,8 +78,8 @@ export async function refreshApolloToken(): Promise<string | null> {
   const updated: ApolloAuth = {
     accessToken: tok.access_token,
     refreshToken: tok.refresh_token ?? apollo.refreshToken,
-    tokenType: tok.token_type || apollo.tokenType,
-    scope: apollo.scope,
+    tokenType: tok.token_type || apollo.tokenType || 'Bearer',
+    scope: tok.scope ?? apollo.scope,
     createdAt,
     expiresAt,
   }
