@@ -7,9 +7,9 @@ import { getSession } from '@/lib/session'
 
 function requiredApolloEnv() {
   const missing: string[] = []
-  if (!process.env.APOLLO_CLIENT_ID) missing.push('APOLLO_CLIENT_ID')
-  if (!process.env.APOLLO_CLIENT_SECRET) missing.push('APOLLO_CLIENT_SECRET')
-  if (!process.env.APOLLO_REDIRECT_URI) missing.push('APOLLO_REDIRECT_URI')
+  if (!process.env.APOLLO_OAUTH_CLIENT_ID) missing.push('APOLLO_OAUTH_CLIENT_ID')
+  if (!process.env.APOLLO_OAUTH_CLIENT_SECRET) missing.push('APOLLO_OAUTH_CLIENT_SECRET')
+  if (!process.env.APOLLO_OAUTH_REDIRECT_URI) missing.push('APOLLO_OAUTH_REDIRECT_URI')
   if (missing.length) throw new Error(`Missing env vars: ${missing.join(', ')}`)
 }
 
