@@ -8,197 +8,241 @@ import { config, requiredEnv } from '@/lib/config'
 import { getSession } from '@/lib/session'
 import { refreshIdToken } from '@/lib/vincereRefresh'
 
-type InCompany = any
+type PostBody = {
+  // required
+  name?: string
 
-type Body = {
-  companies: InCompany[]
-  industryTag: string
-  note?: string
+  // optional
+  website?: string
+  linkedin_url?: string
+  domain?: string
+  phone?: string
+  notes?: string
+
+  // address (all optional)
+  address_line1?: string
+  city?: string
+  state?: string
+  country?: string
+  postcode?: string
+
+  // Vincere industry IDs
+  industries?: Array<number | string>
+
+  // Upsert behavior (default true): check for existing by name/domain
+  upsert?: boolean
 }
 
-type OutRow =
-  | { ok: true; index: number; id?: string; message?: string }
-  | { ok: false; index: number; error: string; status?: number; detail?: string }
+/* ----------------------------- helpers ----------------------------- */
 
-function s(v: unknown): string {
-  return typeof v === 'string' ? v : ''
-}
-
-/**
- * Map an Apollo organization object to a Vincere company payload.
- * NOTE: Field names follow common Vincere v2 shapes; adjust to your tenant if needed.
- */
-function mapToVincereCompany(input: InCompany, industryTag: string, note?: string) {
-  const name = s(input.name)
-  const domain = s(input.domain || input.primary_domain)
-  const website = s(input.website_url) || (domain ? `https://${domain}` : '')
-  const linkedin_url = s(input.linkedin_url) || s(input.linkedinUrl)
-  const location = s(input.location || input.headquarters_address)
-
-  // Minimal, commonly-accepted company fields
-  const payload: Record<string, any> = {
-    name: name || undefined,
-    website: website || undefined,
-    linkedin_url: linkedin_url || undefined,
-
-    // Location fields vary per tenant; provide a generic text field
-    primary_address: location || undefined,
-
-    // Industry: many tenants accept either id or name depending on mappings
-    industry_name: industryTag || undefined,
-
-    // Optional note/comment (put in multiple common fields for compatibility)
-    note: note || undefined,
-    description: note || undefined,
-    comment: note || undefined,
+function parseDomain(input?: string): string | undefined {
+  const s = (input ?? '').trim()
+  if (!s) return undefined
+  try {
+    const u = new URL(s.startsWith('http') ? s : `https://${s}`)
+    const host = u.hostname.toLowerCase()
+    // strip leading www.
+    return host.replace(/^www\./, '')
+  } catch {
+    // Not a URL; treat as a plain domain string and sanitize
+    return s.replace(/^https?:\/\//i, '').replace(/^www\./i, '').toLowerCase()
   }
-
-  // Strip empty keys
-  for (const k of Object.keys(payload)) {
-    const v = payload[k]
-    if (v == null) delete payload[k]
-    else if (typeof v === 'string' && v.trim() === '') delete payload[k]
-  }
-
-  return payload
 }
-
-/* ----------------------------- Vincere auth ----------------------------- */
 
 async function ensureVincereToken(): Promise<string | null> {
   try {
-    requiredEnv() // enforces VINCERE_* and REDIRECT_URI
-  } catch (e) {
-    console.error('Missing Vincere env vars', e)
+    requiredEnv()
+  } catch {
     return null
   }
 
   const session = await getSession()
-  if (session?.tokens?.idToken) return session.tokens.idToken
+  let idTok = session?.tokens?.idToken
+  if (idTok) return idTok
 
-  const ok = await refreshIdToken('default') // adjust user key if you use per-user tokens
+  const ok = await refreshIdToken('default')
   if (!ok) return null
 
   const session2 = await getSession()
   return session2?.tokens?.idToken ?? null
 }
 
-/* -------------------------------- Route --------------------------------- */
+/** Search Vincere company by name or domain; returns first match id if found */
+async function findExistingCompany(args: {
+  idToken: string
+  name?: string
+  domain?: string
+}): Promise<string | null> {
+  const { idToken } = args
+  const name = (args.name ?? '').trim()
+  const domain = (args.domain ?? '').trim().toLowerCase()
+
+  const base = config.VINCERE_TENANT_API_BASE.replace(/\/$/, '')
+  const url = new URL(`${base}/api/v2/company/search/fl=id,name,website,domain`)
+  // Build a conservative OR query: name OR domain
+  const clauses: string[] = []
+  if (name) clauses.push(`name:"${name.replace(/"/g, '\\"')}"`)
+  if (domain) clauses.push(`domain:"${domain.replace(/"/g, '\\"')}"`)
+  if (!clauses.length) return null
+
+  url.searchParams.set('q', `${clauses.join(' OR ')}#`)
+  url.searchParams.set('page', '1')
+  url.searchParams.set('size', '1')
+
+  const res = await fetch(url.toString(), {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': config.VINCERE_API_KEY!,
+      Authorization: `Bearer ${idToken}`,
+      'Cache-Control': 'no-store',
+    },
+  })
+
+  if (!res.ok) {
+    console.error('Vincere company search error', res.status, await res.text().catch(() => ''))
+    return null
+  }
+
+  const j = (await res.json()) as any
+  const items = Array.isArray(j?.items) ? j.items : []
+  return items[0]?.id ?? null
+}
+
+/* ------------------------------ route ------------------------------ */
 
 export async function POST(req: NextRequest) {
   try {
-    const { companies, industryTag, note } = (await req.json()) as Body
+    const body = (await req.json()) as PostBody
 
-    if (!Array.isArray(companies) || companies.length === 0) {
-      return NextResponse.json(
-        { error: 'No companies provided.' },
-        { status: 400 },
-      )
-    }
-
-    if (!industryTag || typeof industryTag !== 'string') {
-      return NextResponse.json(
-        { error: 'industryTag is required (string).' },
-        { status: 400 },
-      )
+    // Validate required
+    const name = String(body.name ?? '').trim()
+    if (!name) {
+      return NextResponse.json({ error: 'Company name is required' }, { status: 400 })
     }
 
     const idToken = await ensureVincereToken()
     if (!idToken) {
       return NextResponse.json(
-        { error: 'Unable to obtain Vincere token. Ensure OAuth is connected.' },
-        { status: 401 },
+        { error: 'Missing Vincere credentials (env or token)' },
+        { status: 500 },
       )
     }
 
-    const base = config.VINCERE_TENANT_API_BASE.replace(/\/$/, '')
-    const url = `${base}/api/v2/company`
+    // Normalize website/domain
+    const website = (body.website ?? '').trim()
+    const domain = (body.domain ?? parseDomain(website))?.toLowerCase()
 
-    // Use small concurrency to be gentle on the API
-    const CONCURRENCY = 3
-    let cursor = 0
-    const results: OutRow[] = []
-
-    async function worker() {
-      while (cursor < companies.length) {
-        const i = cursor++
-        const c = companies[i]
-        try {
-          const payload = mapToVincereCompany(c, industryTag, note)
-
-          const res = await fetch(url, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-api-key': config.VINCERE_API_KEY!,
-              Authorization: `Bearer ${idToken}`,
-              'Cache-Control': 'no-store',
-            },
-            body: JSON.stringify(payload),
-          })
-
-          const text = await res.text().catch(() => '')
-          let json: any = null
-          try {
-            json = text ? JSON.parse(text) : null
-          } catch {
-            // ignore non-JSON responses
-          }
-
-          if (!res.ok) {
-            results.push({
-              ok: false,
-              index: i,
-              status: res.status,
-              error: `Vincere create failed (${res.status})`,
-              detail: json?.error || text || 'Unknown error',
-            })
-            continue
-          }
-
-          // Capture created id if returned
-          const createdId =
-            json?.id ||
-            json?.company_id ||
-            json?.data?.id ||
-            json?.data?.company_id
-
-          results.push({
+    // Upsert: check existing by name/domain unless explicitly disabled
+    const doUpsert = body.upsert !== false
+    if (doUpsert) {
+      const existingId = await findExistingCompany({ idToken, name, domain })
+      if (existingId) {
+        return NextResponse.json(
+          {
             ok: true,
-            index: i,
-            id: createdId ? String(createdId) : undefined,
-            message: 'Created',
-          })
-        } catch (e: any) {
-          results.push({
-            ok: false,
-            index: i,
-            error: e?.message || 'Unexpected error',
-          })
-        }
+            id: existingId,
+            upserted: true,
+            existing: true,
+            echo: { name, website, domain },
+          },
+          { status: 200 },
+        )
       }
     }
 
-    await Promise.all(
-      Array.from({ length: Math.min(CONCURRENCY, companies.length) }, () => worker()),
-    )
+    // Build payload for Vincere company creation
+    // Note: Field names are common v2 patterns; tenant schemas can vary.
+    const payload: Record<string, any> = {
+      name,
+    }
 
-    const okCount = results.filter((r) => r.ok).length
-    const errCount = results.length - okCount
+    if (website) payload.website = website
+    if (domain) payload.domain = domain
+    if (body.linkedin_url) payload.linkedin_url = body.linkedin_url
+
+    if (body.phone) {
+      payload.phone = body.phone
+      payload.phones = [{ number: body.phone, type: 'main', is_default: true }]
+    }
+
+    // Address (basic)
+    const addrLine1 = (body.address_line1 ?? '').trim()
+    const city = (body.city ?? '').trim()
+    const state = (body.state ?? '').trim()
+    const country = (body.country ?? '').trim()
+    const postcode = (body.postcode ?? '').trim()
+    if (addrLine1 || city || state || country || postcode) {
+      payload.addresses = [
+        {
+          line1: addrLine1 || undefined,
+          city: city || undefined,
+          state: state || undefined,
+          country: country || undefined,
+          post_code: postcode || undefined,
+          type: 'headquarters',
+          is_default: true,
+        },
+      ]
+    }
+
+    if (body.notes) payload.description = body.notes
+
+    const industries = (body.industries ?? [])
+      .map((x) => Number(x))
+      .filter((n) => Number.isFinite(n))
+    if (industries.length) {
+      payload.industries = industries.map((id) => ({ id }))
+    }
+
+    const base = config.VINCERE_TENANT_API_BASE.replace(/\/$/, '')
+    const createUrl = `${base}/api/v2/company`
+
+    const res = await fetch(createUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': config.VINCERE_API_KEY!,
+        Authorization: `Bearer ${idToken}`,
+        'Cache-Control': 'no-store',
+      },
+      body: JSON.stringify(payload),
+    })
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      return NextResponse.json(
+        { error: `Vincere company create error ${res.status}: ${text}` },
+        { status: 502 },
+      )
+    }
+
+    const json = (await res.json()) as any
+    const createdId =
+      (json && (json.id || json._id)) ??
+      (json?.data && (json.data.id || json.data._id)) ??
+      null
 
     return NextResponse.json(
       {
-        ok: okCount,
-        errors: errCount,
-        results,
+        ok: true,
+        id: createdId,
+        upserted: false,
+        existing: false,
+        echo: {
+          name,
+          website: website || undefined,
+          domain: domain || undefined,
+          linkedin_url: body.linkedin_url || undefined,
+          phone: body.phone || undefined,
+          address: { line1: addrLine1 || undefined, city: city || undefined, state: state || undefined, country: country || undefined, postcode: postcode || undefined },
+          industries,
+        },
       },
       { status: 200 },
     )
   } catch (e: any) {
-    console.error('addCompany route error', e)
-    return NextResponse.json(
-      { error: e?.message || 'Unknown server error' },
-      { status: 500 },
-    )
+    console.error('addCompany error', e)
+    return NextResponse.json({ error: e?.message || 'Unknown server error' }, { status: 500 })
   }
 }
