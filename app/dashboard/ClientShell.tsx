@@ -6,8 +6,7 @@ import dynamic from 'next/dynamic'
 const MatchTab  = dynamic(() => import('./_match/MatchTab'),   { ssr: false })
 const SourceTab = dynamic(() => import('./_source/SourceTab'), { ssr: false })
 const CvTab     = dynamic(() => import('./_cv/CvTab'),         { ssr: false })
-const ActiveCampaignUploadTab = dynamic(() => import('./_ac/ActiveCampaignTab'), { ssr: false })
-const ActiveCampaignHtmlTab = dynamic(() => import('./_ac/ActiveCampaignHtmlTab'), { ssr: false })
+const ActiveCampaignTab = dynamic(() => import('./_ac/ActiveCampaignTab'), { ssr: false })
 
 type TabKey = 'match' | 'source' | 'cv' | 'ac'
 type SourceMode = 'candidates' | 'companies'
@@ -25,15 +24,12 @@ export default function ClientShell(): JSX.Element {
 
   const [cvOpen, setCvOpen] = useState(false)
   const [cvTemplate, setCvTemplate] = useState<CvTemplate>('standard')
-  const [acOpen, setAcOpen] = useState(false)
-  const [acMode, setAcMode] = useState<'upload' | 'html'>('upload')
 
   useEffect(() => {
     function onClick(e: MouseEvent) {
       const t = (e.target as HTMLElement)
       if (!t.closest?.('[data-sourcing-root]')) setSourceOpen(false)
       if (!t.closest?.('[data-cv-root]')) setCvOpen(false)
-      if (!t.closest?.('[data-ac-root]')) setAcOpen(false)   // ← add this line
     }
     document.addEventListener('click', onClick)
     return () => document.removeEventListener('click', onClick)
@@ -143,51 +139,16 @@ export default function ClientShell(): JSX.Element {
             </div>
           </div>
 
-                    {/* Right-aligned Active Campaign with dropdown */}
-          <div className="relative" data-ac-root>
+          {/* Right-aligned Active Campaign */}
+          <div>
             <button
-              onClick={() => setAcOpen(v => !v)}
+              onClick={() => { setTab('ac'); setShowWelcome(false) }}
               title="Active Campaign"
               aria-selected={!showWelcome && tab === 'ac'}
-              className={`tab ${
-                !showWelcome && tab === 'ac'
-                  ? '!bg-[#001961] !text-white !border-transparent hover:opacity-95 shadow-sm'
-                  : ''
-              }`}
+              className={`tab ${!showWelcome && tab === 'ac' ? '!bg-[#001961] !text-white !border-transparent hover:opacity-95 shadow-sm' : ''}`}
             >
               Active Campaign
             </button>
-
-            {acOpen && (
-              <div className="absolute right-0 mt-2 w-44 rounded-xl border bg-white shadow-lg overflow-hidden z-10">
-                <button
-                  className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${
-                    acMode === 'upload' ? 'font-medium' : ''
-                  }`}
-                  onClick={() => {
-                    setAcMode('upload')
-                    setTab('ac')
-                    setAcOpen(false)
-                    setShowWelcome(false)
-                  }}
-                >
-                  Upload
-                </button>
-                <button
-                  className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${
-                    acMode === 'html' ? 'font-medium' : ''
-                  }`}
-                  onClick={() => {
-                    setAcMode('html')
-                    setTab('ac')
-                    setAcOpen(false)
-                    setShowWelcome(false)
-                  }}
-                >
-                  HTML Build
-                </button>
-              </div>
-            )}
           </div>
         </div>
 
@@ -200,8 +161,7 @@ export default function ClientShell(): JSX.Element {
               {tab === 'match' && <MatchTab />}
               {tab === 'source' && <SourceTab mode={sourceMode} />}
               {tab === 'cv' && <CvTab templateFromShell={cvTemplate} />}
-              {tab === 'ac' && acMode === 'upload' && <ActiveCampaignUploadTab />}
-              {tab === 'ac' && acMode === 'html' && <ActiveCampaignHtmlTab />}  
+              {tab === 'ac' && <ActiveCampaignTab />}
             </>
           )}
         </div>
