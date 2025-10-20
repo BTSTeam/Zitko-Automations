@@ -8,102 +8,48 @@ import { config, requiredEnv } from '@/lib/config'
 import { getSession } from '@/lib/session'
 import { refreshIdToken } from '@/lib/vincereRefresh'
 
-type InCandidate = any
+type PostBody = {
+  // minimal
+  name?: string
+  first_name?: string
+  last_name?: string
+  linkedin_url?: string
 
-type Body = {
-  candidates: InCandidate[]
-  industryTag: string
-  note?: string
+  // recommended
+  email?: string
+  phone?: string
+  title?: string
+  organization_name?: string
+  location?: string
+
+  // optional
+  notes?: string
+  industries?: Array<number | string> // Vincere industry IDs
 }
 
-type OutRow =
-  | { ok: true; index: number; id?: string; message?: string }
-  | { ok: false; index: number; error: string; status?: number; detail?: string }
+/* ----------------------------- helpers ----------------------------- */
 
-function s(v: unknown): string {
-  return typeof v === 'string' ? v : ''
-}
-
-/** Split a full name into first/last for Vincere payload */
-function splitName(fullName: string): { first_name?: string; last_name?: string } {
-  const n = (fullName || '').trim().replace(/\s+/g, ' ')
-  if (!n) return {}
-  const parts = n.split(' ')
+function splitNameFallback(name?: string): { first_name?: string; last_name?: string } {
+  const t = String(name ?? '').trim()
+  if (!t) return {}
+  const parts = t.split(/\s+/).filter(Boolean)
   if (parts.length === 1) return { first_name: parts[0] }
-  return { first_name: parts.slice(0, -1).join(' '), last_name: parts.slice(-1)[0] }
+  const first_name = parts.slice(0, -1).join(' ')
+  const last_name = parts.at(-1)
+  return { first_name, last_name }
 }
-
-/**
- * Map an Apollo person object to a Vincere candidate payload.
- * NOTE: Field names follow common Vincere v2 shapes; adjust if your tenant expects
- * different property names. We include only safe/common fields and the required Source.
- */
-function mapToVincereCandidate(input: InCandidate, industryTag: string, note?: string) {
-  const name =
-    s(input.name) ||
-    [s(input.first_name), s(input.last_name)].filter(Boolean).join(' ').trim()
-
-  const { first_name, last_name } = splitName(name)
-
-  const email = s(input.email)
-  const linkedin_url = s(input.linkedin_url) || s(input.linkedinUrl)
-  const current_job_title =
-    s(input.title) || s(input.current_title) || s(input.headline)
-  const organization_name =
-    s(input.organization_name) || s(input.organization?.name)
-  const location =
-    s(input.present_raw_address) ||
-    s(input.current_location_name) ||
-    s(input.location)
-
-  // Minimal, commonly-accepted candidate fields
-  const payload: Record<string, any> = {
-    first_name,
-    last_name,
-    email: email || undefined,
-    linkedin_url: linkedin_url || undefined,
-    current_job_title: current_job_title || undefined,
-    current_company_name: organization_name || undefined,
-    current_location_name: location || undefined,
-
-    // REQUIRED BY SPEC: set Source
-    source: 'BTS - Candidate Sourcing Tool',
-
-    // Industry: your /industries route returns names; many Vincere tenants accept either
-    // an id or name depending on setup. We send a name field that is commonly mapped.
-    industry_name: industryTag || undefined,
-
-    // Optional note/comment
-    note: note || undefined,
-    comment: note || undefined,
-    description: note || undefined,
-  }
-
-  // Strip empty keys (undefined/null/'')
-  for (const k of Object.keys(payload)) {
-    const v = payload[k]
-    if (v == null) delete payload[k]
-    else if (typeof v === 'string' && v.trim() === '') delete payload[k]
-  }
-
-  return payload
-}
-
-/* ----------------------------- Vincere auth ----------------------------- */
 
 async function ensureVincereToken(): Promise<string | null> {
   try {
-    // Requires VINCERE_* & REDIRECT_URI – enforced in lib/config.ts
     requiredEnv()
-  } catch (e) {
-    console.error('Missing Vincere env vars', e)
+  } catch {
     return null
   }
 
   const session = await getSession()
-  if (session?.tokens?.idToken) return session.tokens.idToken
+  let idTok = session?.tokens?.idToken
+  if (idTok) return idTok
 
-  // Attempt refresh (your user key may differ)
   const ok = await refreshIdToken('default')
   if (!ok) return null
 
@@ -111,22 +57,31 @@ async function ensureVincereToken(): Promise<string | null> {
   return session2?.tokens?.idToken ?? null
 }
 
-/* -------------------------------- Route --------------------------------- */
+/* ------------------------------ route ------------------------------ */
 
 export async function POST(req: NextRequest) {
   try {
-    const { candidates, industryTag, note } = (await req.json()) as Body
+    const body = (await req.json()) as PostBody
 
-    if (!Array.isArray(candidates) || candidates.length === 0) {
+    // Resolve name fields
+    let { first_name, last_name } = body
+    if (!first_name && !last_name) {
+      const split = splitNameFallback(body.name)
+      first_name = first_name || split.first_name
+      last_name = last_name || split.last_name
+    }
+
+    if (!first_name && !last_name) {
       return NextResponse.json(
-        { error: 'No candidates provided.' },
+        { error: 'first_name/last_name or name is required' },
         { status: 400 },
       )
     }
 
-    if (!industryTag || typeof industryTag !== 'string') {
+    // Require LinkedIn URL for your dedupe rules to be meaningful
+    if (!body.linkedin_url) {
       return NextResponse.json(
-        { error: 'industryTag is required (string).' },
+        { error: 'linkedin_url is required' },
         { status: 400 },
       )
     }
@@ -134,96 +89,102 @@ export async function POST(req: NextRequest) {
     const idToken = await ensureVincereToken()
     if (!idToken) {
       return NextResponse.json(
-        { error: 'Unable to obtain Vincere token. Ensure OAuth is connected.' },
-        { status: 401 },
+        { error: 'Missing Vincere credentials (env or token)' },
+        { status: 500 },
       )
+    }
+
+    // Build Vincere payload
+    // NOTE: Field names reflect common Vincere v2 patterns; adjust if your tenant differs.
+    // - Source is set as a simple string field. If your tenant uses a source_id enum,
+    //   you can map/lookup and send candidate_source_id instead.
+    const payload: Record<string, any> = {
+      first_name,
+      last_name,
+      linkedin_url: body.linkedin_url,
+      source: 'BTS - Candidate Sourcing Tool', // ✅ required by your spec
+    }
+
+    if (body.email) {
+      // Vincere commonly supports a flat email field or an emails collection depending on endpoint.
+      // Keep both variants for compatibility; the API will ignore unknown fields.
+      payload.email = body.email
+      payload.emails = [
+        { address: body.email, type: 'work', is_default: true },
+      ]
+    }
+
+    if (body.phone) {
+      payload.phone = body.phone
+      payload.phones = [
+        { number: body.phone, type: 'mobile', is_default: true },
+      ]
+    }
+
+    if (body.title) payload.title = body.title
+    if (body.organization_name) {
+      // Optionally seed current company into summary; some tenants support current_employer/company fields
+      payload.current_company = body.organization_name
+    }
+    if (body.location) payload.location = body.location
+    if (body.notes) payload.description = body.notes
+
+    // Industries (array of IDs). Many Vincere tenants accept `industries: [{ id }]` at create.
+    const ind = (body.industries ?? []).map((x) => Number(x)).filter((n) => Number.isFinite(n))
+    if (ind.length) {
+      payload.industries = ind.map((id) => ({ id }))
     }
 
     const base = config.VINCERE_TENANT_API_BASE.replace(/\/$/, '')
     const url = `${base}/api/v2/candidate`
 
-    // Process sequentially or with small concurrency to be gentle on API
-    const CONCURRENCY = 3
-    let cursor = 0
-    const results: OutRow[] = []
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': config.VINCERE_API_KEY!,
+        Authorization: `Bearer ${idToken}`,
+        'Cache-Control': 'no-store',
+      },
+      body: JSON.stringify(payload),
+    })
 
-    async function worker() {
-      while (cursor < candidates.length) {
-        const i = cursor++
-        const c = candidates[i]
-        try {
-          const payload = mapToVincereCandidate(c, industryTag, note)
-          const res = await fetch(url, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-api-key': config.VINCERE_API_KEY!,
-              Authorization: `Bearer ${idToken}`,
-              'Cache-Control': 'no-store',
-            },
-            body: JSON.stringify(payload),
-          })
-
-          const text = await res.text().catch(() => '')
-          let json: any = null
-          try {
-            json = text ? JSON.parse(text) : null
-          } catch {
-            // non-JSON payloads are possible on errors
-          }
-
-          if (!res.ok) {
-            results.push({
-              ok: false,
-              index: i,
-              status: res.status,
-              error: `Vincere create failed (${res.status})`,
-              detail: json?.error || text || 'Unknown error',
-            })
-            continue
-          }
-
-          // Most tenants return the created id in body; capture if present
-          const createdId =
-            json?.id ||
-            json?.candidate_id ||
-            json?.data?.id ||
-            json?.data?.candidate_id
-
-          results.push({
-            ok: true,
-            index: i,
-            id: createdId ? String(createdId) : undefined,
-            message: 'Created',
-          })
-        } catch (e: any) {
-          results.push({
-            ok: false,
-            index: i,
-            error: e?.message || 'Unexpected error',
-          })
-        }
-      }
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      return NextResponse.json(
+        { error: `Vincere candidate create error ${res.status}: ${text}` },
+        { status: 502 },
+      )
     }
 
-    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, candidates.length) }, () => worker()))
-
-    const okCount = results.filter((r) => r.ok).length
-    const errCount = results.length - okCount
+    const json = (await res.json()) as any
+    // Commonly returns { id, ... } or { data: { id, ... } }
+    const createdId =
+      (json && (json.id || json._id)) ??
+      (json?.data && (json.data.id || json.data._id)) ??
+      null
 
     return NextResponse.json(
       {
-        ok: okCount,
-        errors: errCount,
-        results,
+        ok: true,
+        id: createdId,
+        echo: {
+          first_name,
+          last_name,
+          linkedin_url: body.linkedin_url,
+          email: body.email,
+          phone: body.phone,
+          title: body.title,
+          organization_name: body.organization_name,
+          location: body.location,
+          industries: ind,
+          source: 'BTS - Candidate Sourcing Tool',
+        },
       },
       { status: 200 },
     )
   } catch (e: any) {
-    console.error('addCandidate route error', e)
-    return NextResponse.json(
-      { error: e?.message || 'Unknown server error' },
-      { status: 500 },
-    )
+    console.error('addCandidate error', e)
+    return NextResponse.json({ error: e?.message || 'Unknown server error' }, { status: 500 })
   }
 }
