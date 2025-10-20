@@ -4,119 +4,65 @@ export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
 import { NextRequest, NextResponse } from 'next/server'
-import { getSession } from '@/lib/session'
-
-function requiredApolloEnv() {
-  const missing: string[] = []
-  if (!process.env.APOLLO_CLIENT_ID) missing.push('APOLLO_CLIENT_ID')
-  if (!process.env.APOLLO_CLIENT_SECRET) missing.push('APOLLO_CLIENT_SECRET')
-  if (!process.env.APOLLO_REDIRECT_URI) missing.push('APOLLO_REDIRECT_URI')
-  if (missing.length) throw new Error(`Missing environment variables: ${missing.join(', ')}`)
-}
+import { requiredApolloEnv, exchangeCodeForTokens, getCookie, delCookie, setCookie } from '@/lib/apolloOAuth'
 
 /**
- * GET /api/apollo/oauth/callback
- *
- * Handles Apollo OAuth redirection:
- *  - Verifies `state` against session (CSRF protection)
- *  - Exchanges `code` for access & refresh tokens
- *  - Stores tokens in the session under `session.apollo`
- *  - Redirects to the original `next` path (or /dashboard)
+ * After successful exchange, we set an httpOnly cookie with the Apollo tokens.
+ * For production, you likely want to persist per-user in Redis/DB tied to your user id
+ * and keep only a small "connected" flag in cookies. This is a minimal working setup.
  */
 export async function GET(req: NextRequest) {
+  const url = new URL(req.url)
+  const code = url.searchParams.get('code')
+  const state = url.searchParams.get('state')
+  const err = url.searchParams.get('error') || url.searchParams.get('status_code') || url.searchParams.get('error_message')
+
+  // If Apollo redirected with an error, surface it nicely
+  if (err) {
+    const headers = new Headers()
+    headers.append('Set-Cookie', delCookie('apollo_oauth_state'))
+    return NextResponse.redirect(new URL(`/dashboard?apollo_error=${encodeURIComponent(String(err))}`, url.origin), { headers })
+  }
+
+  if (!code) {
+    return NextResponse.json({ error: 'Missing authorization code' }, { status: 400 })
+  }
+
+  // CSRF check
+  const cookieState = getCookie(req, 'apollo_oauth_state')
+  if (!cookieState || cookieState !== state) {
+    const headers = new Headers()
+    headers.append('Set-Cookie', delCookie('apollo_oauth_state'))
+    return NextResponse.json({ error: 'Invalid OAuth state' }, { status: 400, headers })
+  }
+
   try {
-    requiredApolloEnv()
+    const { clientId, clientSecret, redirectUri } = requiredApolloEnv()
+    const tokens = await exchangeCodeForTokens({ code, clientId, clientSecret, redirectUri })
 
-    const session = await getSession()
+    // Clear state cookie
+    const headers = new Headers()
+    headers.append('Set-Cookie', delCookie('apollo_oauth_state'))
 
-    const url = new URL(req.url)
-    const code = url.searchParams.get('code') || ''
-    const returnedState = url.searchParams.get('state') || ''
-    const error = url.searchParams.get('error')
-    const errorDescription = url.searchParams.get('error_description')
-
-    // Early error from provider
-    if (error) {
-      return NextResponse.json(
-        { error: `Apollo OAuth error: ${error}`, detail: errorDescription || '' },
-        { status: 400 },
-      )
-    }
-
-    if (!code) {
-      return NextResponse.json({ error: 'Missing authorization code.' }, { status: 400 })
-    }
-
-    // CSRF/state check
-    const expectedState = (session as any).oauthApolloState as string | undefined
-    if (!expectedState || returnedState !== expectedState) {
-      return NextResponse.json({ error: 'Invalid or missing OAuth state.' }, { status: 400 })
-    }
-
-    // We’ll redirect the user back here after success
-    const nextPath = ((session as any).oauthApolloNext as string | undefined) || '/dashboard'
-
-    // Clear one-time values
-    delete (session as any).oauthApolloState
-    delete (session as any).oauthApolloNext
-
-    // Exchange code for tokens
-    const tokenUrl = 'https://app.apollo.io/api/v1/oauth/token'
-    const form = new URLSearchParams({
-      grant_type: 'authorization_code',
-      client_id: process.env.APOLLO_CLIENT_ID!,
-      client_secret: process.env.APOLLO_CLIENT_SECRET!,
-      redirect_uri: process.env.APOLLO_REDIRECT_URI!,
-      code,
+    // Store tokens in an httpOnly cookie (short-term). Prefer DB in real deployments.
+    const blob = JSON.stringify({
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
+      user_id: tokens.user_id,
+      // expires_in is seconds from now; compute absolute expiry on client if needed
+      expires_in: tokens.expires_in ?? 3600,
+      obtained_at: Date.now(),
     })
 
-    const tokenResp = await fetch(tokenUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: form,
-      cache: 'no-store',
-    })
+    // Cookie lifetime: cap at an hour for access; you still have refresh_token server-side
+    headers.append('Set-Cookie', setCookie('apollo_oauth', blob, Math.min(tokens.expires_in ?? 3600, 3600)))
 
-    if (!tokenResp.ok) {
-      const text = await tokenResp.text().catch(() => '')
-      return NextResponse.json(
-        { error: `Apollo token exchange failed (${tokenResp.status})`, detail: text },
-        { status: 502 },
-      )
-    }
-
-    const tok = (await tokenResp.json()) as {
-      access_token?: string
-      token_type?: string
-      expires_in?: number
-      refresh_token?: string
-      scope?: string
-      created_at?: number
-    }
-
-    if (!tok?.access_token) {
-      return NextResponse.json({ error: 'Apollo token response missing access_token.' }, { status: 502 })
-    }
-
-    // Compute an absolute expiry timestamp (seconds since epoch)
-    const createdAt = typeof tok.created_at === 'number' ? tok.created_at : Math.floor(Date.now() / 1000)
-    const expiresAt = tok.expires_in ? createdAt + tok.expires_in : undefined
-
-    // Store under session.apollo (kept separate from Vincere tokens)
-    ;(session as any).apollo = {
-      accessToken: tok.access_token,
-      refreshToken: tok.refresh_token ?? '',
-      tokenType: tok.token_type || 'Bearer',
-      scope: tok.scope || '',
-      createdAt,
-      expiresAt, // seconds since epoch
-    }
-    await session.save()
-
-    // Send user back to where they came from (or dashboard)
-    return NextResponse.redirect(nextPath, { status: 302 })
-  } catch (err: any) {
-    const message = err?.message || 'Apollo OAuth callback failed.'
-    return NextResponse.json({ error: message }, { status: 500 })
+    // Redirect user back to Sourcing page
+    const redirectTo = new URL('/dashboard?apollo=connected', url.origin)
+    return NextResponse.redirect(redirectTo, { headers })
+  } catch (e: any) {
+    const headers = new Headers()
+    headers.append('Set-Cookie', delCookie('apollo_oauth_state'))
+    return NextResponse.redirect(new URL(`/dashboard?apollo_error=${encodeURIComponent(e?.message || 'OAuth exchange failed')}`, new URL(req.url).origin), { headers })
   }
 }
