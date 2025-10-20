@@ -2,8 +2,8 @@
 import { NextResponse } from 'next/server'
 
 export async function GET() {
-  const clientId = process.env.APOLLO_CLIENT_ID
-  const redirectUri = process.env.APOLLO_REDIRECT_URI
+  const clientId = process.env.APOLLO_OAUTH_CLIENT_ID
+  const redirectUri = process.env.APOLLO_OAUTH_REDIRECT_URI
   const scopes = process.env.APOLLO_SCOPE || 'people.read organizations.read'
 
   if (!clientId || !redirectUri) {
