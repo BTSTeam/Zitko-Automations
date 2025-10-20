@@ -2,11 +2,21 @@
 import type { NextRequest } from 'next/server'
 
 export function requiredApolloEnv() {
-  const { APOLLO_OAUTH_CLIENT_ID, APOLLO_OAUTH_CLIENT_SECRET, APOLLO_OAUTH_REDIRECT_URI } = process.env
+  const {
+    APOLLO_OAUTH_CLIENT_ID,
+    APOLLO_OAUTH_CLIENT_SECRET,
+    APOLLO_OAUTH_REDIRECT_URI,
+  } = process.env
   if (!APOLLO_OAUTH_CLIENT_ID || !APOLLO_OAUTH_CLIENT_SECRET || !APOLLO_OAUTH_REDIRECT_URI) {
-    throw new Error('Missing Apollo OAuth env: APOLLO_OAUTH_CLIENT_ID, APOLLO_OAUTH_CLIENT_SECRET, APOLLO_OAUTH_REDIRECT_URI')
+    throw new Error(
+      'Missing Apollo OAuth env: APOLLO_OAUTH_CLIENT_ID, APOLLO_OAUTH_CLIENT_SECRET, APOLLO_OAUTH_REDIRECT_URI'
+    )
   }
-  return { clientId: APOLLO_OAUTH_CLIENT_ID, clientSecret: APOLLO_OAUTH_CLIENT_SECRET, redirectUri: APOLLO_OAUTH_REDIRECT_URI }
+  return {
+    clientId: APOLLO_OAUTH_CLIENT_ID,
+    clientSecret: APOLLO_OAUTH_CLIENT_SECRET,
+    redirectUri: APOLLO_OAUTH_REDIRECT_URI,
+  }
 }
 
 export function randomState(len = 32) {
@@ -22,7 +32,8 @@ export function buildAuthorizeUrl(params: {
   state: string
 }) {
   const { clientId, redirectUri, scope = [], state } = params
-  const url = new URL('https://app.apollo.io/#/oauth/authorize') // per official docs
+  // Correct OAuth host (no hash route)
+  const url = new URL('https://api.apollo.io/v1/oauth/authorize')
   url.searchParams.set('client_id', clientId)
   url.searchParams.set('redirect_uri', redirectUri)
   url.searchParams.set('response_type', 'code')
@@ -31,7 +42,7 @@ export function buildAuthorizeUrl(params: {
   return url.toString()
 }
 
-/** Minimal cookie helpers */
+/** Minimal cookie helpers (unused if saving to session, but kept for completeness) */
 export function setCookie(name: string, value: string, maxAgeSec: number) {
   const secure = process.env.NODE_ENV === 'production'
   return `${name}=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSec};${secure ? ' Secure;' : ''}`
@@ -52,16 +63,15 @@ export async function exchangeCodeForTokens(args: {
   redirectUri: string
 }) {
   const { code, clientId, clientSecret, redirectUri } = args
-  const tokenUrl = 'https://app.apollo.io/api/v1/oauth/token' // per official docs
+
   const body = new URLSearchParams()
   body.set('grant_type', 'authorization_code')
   body.set('code', code)
   body.set('client_id', clientId)
   body.set('client_secret', clientSecret)
-  // redirect_uri is optional in Apollo docs but safe to include if you registered multiple
   body.set('redirect_uri', redirectUri)
 
-  const res = await fetch(tokenUrl, {
+  const res = await fetch('https://api.apollo.io/v1/oauth/token', { // ← updated host/path
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body,
