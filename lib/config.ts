@@ -13,15 +13,15 @@ type Cfg = {
   OPENAI_API_KEY?: string
 
   // ActiveCampaign (optional globally; required by AC routes)
-  AC_BASE_URL?: string
-  AC_API_TOKEN?: string
+  AC_BASE_URL?: string        // e.g. https://youraccount.api-us1.com  (exact URL from Developer tab)
+  AC_API_TOKEN?: string       // Api-Token value from Developer tab
 
   // Apollo (OAuth 2.0)
   APOLLO_CLIENT_ID?: string
   APOLLO_CLIENT_SECRET?: string
   APOLLO_REDIRECT_URI?: string
   APOLLO_SCOPES?: string
-  APOLLO_API_KEY?: string           // optional legacy API key
+  APOLLO_API_KEY?: string     // optional legacy API key for key-based endpoints
 }
 
 export const config: Cfg = {
@@ -37,7 +37,7 @@ export const config: Cfg = {
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
 
   // ActiveCampaign
-  AC_BASE_URL: process.env.AC_BASE_URL,
+  AC_BASE_URL: process.env.AC_BASE_URL,     // keep optional here; enforce per-route
   AC_API_TOKEN: process.env.AC_API_TOKEN,
 
   // Apollo (OAuth 2.0)
@@ -61,9 +61,13 @@ export function requiredEnv(requiredKeys?: (keyof Cfg)[]) {
     'VINCERE_API_KEY',
     'REDIRECT_URI',
   ]
+
   const keysToCheck = requiredKeys ?? defaultRequired
   const missing = keysToCheck.filter((k) => !config[k])
-  if (missing.length) throw new Error(`Missing env vars: ${missing.join(', ')}`)
+
+  if (missing.length) {
+    throw new Error(`Missing env vars: ${missing.join(', ')}`)
+  }
 }
 
 /** Convenience helper specifically for ActiveCampaign routes */
@@ -76,12 +80,13 @@ export function requiredApolloEnv() {
   requiredEnv(['APOLLO_CLIENT_ID', 'APOLLO_CLIENT_SECRET', 'APOLLO_REDIRECT_URI'])
 }
 
-/** Small helper objects */
+/** Small helper object for AC routes */
 export const AC = {
-  BASE_URL: (config.AC_BASE_URL ?? '').replace(/\/+$/, ''),
+  BASE_URL: (config.AC_BASE_URL ?? '').replace(/\/+$/, ''), // strip trailing slash
   API_TOKEN: config.AC_API_TOKEN ?? '',
 }
 
+/** Small helper object for Apollo routes */
 export const APOLLO = {
   CLIENT_ID: config.APOLLO_CLIENT_ID ?? '',
   CLIENT_SECRET: config.APOLLO_CLIENT_SECRET ?? '',
