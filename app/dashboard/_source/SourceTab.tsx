@@ -74,26 +74,34 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
   async function runSearch(e?: React.FormEvent) {
     e?.preventDefault()
     if (isDown) return
-
+  
     setLoading(true)
     setError(null)
     setResults([])
-
+  
     try {
-      const params = new URLSearchParams()
-      if (title.trim()) params.set('title', title.trim())
-      if (location.trim()) params.set('location', location.trim())
-      if (keywords.trim()) params.set('keywords', keywords.trim())
-      params.set('type', roleType)
-
-      const res = await fetch(`/api/apollo/people-search?${params.toString()}`, {
-        method: 'GET',
-      })
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
-        throw new Error(body?.error || `Search failed (${res.status})`)
+      const payload = {
+        title: title.trim(),          // can be comma-separated; server splits
+        location: location.trim(),    // can be comma-separated; server splits
+        keywords: keywords.trim(),
+        type: roleType,               // 'permanent' | 'contract'
+        emailStatus: 'verified',      // default in route, but explicit is fine
+        page: 1,
+        perPage: 100
       }
-      const data = await res.json()
+  
+      const res = await fetch('/api/apollo/people-search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+  
+      const data = await res.json().catch(() => ({}))
+  
+      if (!res.ok) {
+        throw new Error(data?.error || `Search failed (${res.status})`)
+      }
+  
       setResults(Array.isArray(data.people) ? data.people.slice(0, 100) : [])
     } catch (err: any) {
       setError(err?.message || 'Unexpected error')
