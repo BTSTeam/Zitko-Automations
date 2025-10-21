@@ -19,8 +19,9 @@ function toArray(v?: string | string[]): string[] {
 }
 
 export async function POST(req: NextRequest) {
-  // 1) Auth
   const apolloApiKey = process.env.APOLLO_API_KEY;
+  const DEBUG = (process.env.SOURCING_DEBUG_APOLLO || '').toLowerCase() === 'true';
+
   if (!apolloApiKey) {
     return NextResponse.json(
       { error: 'Missing APOLLO_API_KEY env var' },
@@ -33,7 +34,6 @@ export async function POST(req: NextRequest) {
   try {
     body = (await req.json()) as SearchBody;
   } catch {
-    // allow empty body
     body = {};
   }
 
@@ -77,39 +77,107 @@ export async function POST(req: NextRequest) {
   searchUrl.searchParams.set('per_page', String(perPage));
 
   // 4) Call Apollo (POST with headers; query in URL)
-  const resp = await fetch(searchUrl.toString(), {
-    method: 'POST',
-    headers: {
-      accept: 'application/json',
-      'Cache-Control': 'no-cache',
-      'Content-Type': 'application/json',
-      'X-Api-Key': apolloApiKey, // if your workspace requires Bearer, swap to Authorization: `Bearer ${apolloApiKey}`
-    },
-    cache: 'no-store',
-  });
+  const headers: Record<string, string> = {
+    accept: 'application/json',
+    'Cache-Control': 'no-cache',
+    'Content-Type': 'application/json',
+    'X-Api-Key': apolloApiKey, // if your workspace requires Bearer, swap to Authorization: `Bearer ${apolloApiKey}`
+  };
 
-  // 5) Error handling
-  if (!resp.ok) {
-    const text = await resp.text().catch(() => '');
-    return NextResponse.json(
-      { error: `Apollo error: ${resp.status} ${resp.statusText}`, details: text.slice(0, 2000) },
-      { status: resp.status }
-    );
+  // DEBUG: log outbound request (mask secrets)
+  if (DEBUG) {
+    console.info('[Apollo DEBUG] Outbound request → Apollo', {
+      method: 'POST',
+      url: searchUrl.toString(),
+      headers: {
+        ...headers,
+        'X-Api-Key': '***MASKED***',
+        Authorization: headers['Authorization'] ? '***MASKED***' : undefined,
+      },
+      inputs: {
+        titles,
+        locations,
+        keywords,
+        type,
+        emailStatus,
+        page,
+        perPage,
+      },
+      curl: [
+        'curl -X POST',
+        `'${searchUrl.toString()}'`,
+        "-H 'accept: application/json'",
+        "-H 'Cache-Control: no-cache'",
+        "-H 'Content-Type: application/json'",
+        "-H 'X-Api-Key: ***MASKED***'",
+      ].join(' ')
+    });
   }
 
-  // 6) Normalize response for your UI
-  const data = await resp.json();
-  const people = Array.isArray(data?.people)
-    ? data.people.map((p: any) => ({
-        id: p?.id ?? '',
-        name: p?.name ?? null,
-        title: p?.title ?? null,
-        company: p?.organization?.name ?? null,
-        linkedin_url: p?.linkedin_url ?? null,
-      }))
-    : [];
+  const t0 = Date.now();
+  let rawText = '';
+  let status = 0;
+  let statusText = '';
 
-  return NextResponse.json({ people });
+  try {
+    const resp = await fetch(searchUrl.toString(), {
+      method: 'POST',
+      headers,
+      cache: 'no-store',
+    });
+
+    status = resp.status;
+    statusText = resp.statusText;
+    rawText = await resp.text().catch(() => '');
+
+    if (DEBUG) {
+      console.info('[Apollo DEBUG] Response ← Apollo', {
+        status: resp.status,
+        statusText: resp.statusText,
+        durationMs: Date.now() - t0,
+        rawPreview: rawText.slice(0, 2000),
+      });
+    }
+
+    if (!resp.ok) {
+      return NextResponse.json(
+        { error: `Apollo error: ${resp.status} ${resp.statusText}`, details: rawText.slice(0, 2000) },
+        { status: resp.status }
+      );
+    }
+
+    // 6) Normalize response for your UI
+    let data: any = {};
+    try { data = rawText ? JSON.parse(rawText) : {}; } catch { data = {}; }
+
+    const people = Array.isArray(data?.people)
+      ? data.people.map((p: any) => ({
+          id: p?.id ?? '',
+          name: p?.name ?? null,
+          title: p?.title ?? null,
+          company: p?.organization?.name ?? null,
+          linkedin_url: p?.linkedin_url ?? null,
+        }))
+      : [];
+
+    // (Optional) You can return pagination for debugging if needed:
+    // const pagination = data?.pagination ?? null;
+
+    return NextResponse.json({ people });
+  } catch (err: any) {
+    if (DEBUG) {
+      console.error('[Apollo DEBUG] Fetch threw', {
+        durationMs: Date.now() - t0,
+        status,
+        statusText,
+        error: String(err),
+      });
+    }
+    return NextResponse.json(
+      { error: 'Server error during Apollo request', details: String(err) },
+      { status: 500 }
+    );
+  }
 }
 
 // (Optional) Guard accidental GETs with a clear message
