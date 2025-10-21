@@ -1,5 +1,11 @@
 // app/api/apollo/people-search/route.ts
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 import { NextRequest, NextResponse } from 'next/server'
+import { getSession } from '@/lib/session'
+import { refreshApolloAccessToken } from '@/lib/apolloRefresh'
 
 /**
  * Expected shape of the search request body.  All fields are optional.
@@ -25,17 +31,14 @@ function toArray(value?: string | string[]): string[] {
     : value.split(',').map(s => s.trim()).filter(Boolean)
 }
 
+const APOLLO_URL = 'https://api.apollo.io/api/v1/mixed_people/search'
+
 /**
  * Handle POST /api/apollo/people-search
  * Builds a JSON payload based on user filters and proxies it to the Apollo API.
  */
 export async function POST(req: NextRequest) {
-  const apolloApiKey = process.env.APOLLO_API_KEY
   const DEBUG = (process.env.SOURCING_DEBUG_APOLLO || '').toLowerCase() === 'true'
-
-  if (!apolloApiKey) {
-    return NextResponse.json({ error: 'Missing APOLLO_API_KEY env var' }, { status: 500 })
-  }
 
   // Parse body and normalise fields
   let body: SearchBody = {}
@@ -67,35 +70,73 @@ export async function POST(req: NextRequest) {
   if (emailStatusArr.length > 0) payload.contact_email_status = emailStatusArr
   if (keywords) payload.q_keywords = keywords
 
-  // Prepare headers
-  const headers: Record<string, string> = {
-    accept: 'application/json',
-    'Cache-Control': 'no-cache',
-    'Content-Type': 'application/json',
-    'X-Api-Key': apolloApiKey,
-  }
+  // Resolve auth: prefer OAuth bearer, otherwise X-Api-Key fallback
+  const session = await getSession()
+  const userKey = session.user?.email || session.sessionId || ''
+  let accessToken = session.tokens?.apolloAccessToken
+  const apiKey = process.env.APOLLO_API_KEY
 
-  if (DEBUG) {
-    console.info('[Apollo DEBUG] Outbound request → Apollo', {
-      url: 'https://api.apollo.io/api/v1/mixed_people/search',
-      payload,
-      headers: { ...headers, 'X-Api-Key': '***MASKED***' },
-    })
-  }
-
-  try {
-    const resp = await fetch('https://api.apollo.io/api/v1/mixed_people/search', {
+  async function call(headers: Record<string, string>) {
+    return fetch(APOLLO_URL, {
       method: 'POST',
       headers,
       body: JSON.stringify(payload),
       cache: 'no-store',
     })
+  }
+
+  function buildHeaders(): Record<string, string> {
+    const h: Record<string, string> = {
+      accept: 'application/json',
+      'Cache-Control': 'no-cache',
+      'Content-Type': 'application/json',
+    }
+    if (accessToken) {
+      h['Authorization'] = `Bearer ${accessToken}`
+    } else if (apiKey) {
+      h['X-Api-Key'] = apiKey
+    }
+    return h
+  }
+
+  if (!accessToken && !apiKey) {
+    return NextResponse.json(
+      { error: 'Not authenticated: no Apollo OAuth token or APOLLO_API_KEY present' },
+      { status: 401 },
+    )
+  }
+
+  if (DEBUG) {
+    const dbgHeaders = { ...buildHeaders() }
+    if (dbgHeaders['Authorization']) dbgHeaders['Authorization'] = 'Bearer ***'
+    if (dbgHeaders['X-Api-Key']) dbgHeaders['X-Api-Key'] = '***'
+    console.info('[Apollo DEBUG] Outbound request → Apollo', {
+      url: APOLLO_URL,
+      payload,
+      headers: dbgHeaders,
+    })
+  }
+
+  try {
+    // First attempt
+    let resp = await call(buildHeaders())
+
+    // If OAuth was used and we got 401/403, try refresh then retry once
+    if ((resp.status === 401 || resp.status === 403) && accessToken && userKey) {
+      const refreshed = await refreshApolloAccessToken(userKey)
+      if (refreshed) {
+        const s2 = await getSession()
+        accessToken = s2.tokens?.apolloAccessToken
+        resp = await call(buildHeaders())
+      }
+    }
+
     const rawText = await resp.text()
 
     if (!resp.ok) {
       return NextResponse.json(
         { error: `Apollo error: ${resp.status} ${resp.statusText}`, details: rawText.slice(0, 2000) },
-        { status: resp.status },
+        { status: resp.status || 400 },
       )
     }
 
