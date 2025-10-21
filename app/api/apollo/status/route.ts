@@ -1,7 +1,9 @@
 // app/api/apollo/status/route.ts
 import { NextResponse } from 'next/server'
-export const dynamic = 'force-dynamic'
+import { getSession } from '@/lib/session'
 
 export async function GET() {
-  return NextResponse.json({ connected: false })
+  const session = await getSession()
+  const connected = Boolean(session.tokens?.apolloAccessToken)
+  return NextResponse.json({ connected })
 }
