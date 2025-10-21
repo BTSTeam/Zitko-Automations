@@ -5,24 +5,31 @@ export const revalidate = 0
 
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'node:crypto'
-import { APOLLO } from '@/lib/config'
 
 const AUTHZ_BASE = 'https://app.apollo.io/#/oauth/authorize'
 
 export async function GET(_req: NextRequest) {
-  const REDIRECT_URI = APOLLO.REDIRECT_URI
-  if (!APOLLO.CLIENT_ID || !REDIRECT_URI) {
-    return NextResponse.json({ error: 'Missing Apollo OAuth env (client_id/redirect_uri)' }, { status: 500 })
+  const clientId = process.env.APOLLO_OAUTH_CLIENT_ID
+  const redirectUri = process.env.APOLLO_OAUTH_REDIRECT_URI
+  const scopes = (process.env.APOLLO_OAUTH_SCOPES || 'read_user_profile contacts_read accounts_read')
+    .trim()
+
+  if (!clientId || !redirectUri) {
+    // Clear message for you in logs and to the browser
+    console.error('[Apollo OAuth] Missing env', { clientId: !!clientId, redirectUri: !!redirectUri })
+    return NextResponse.json(
+      { error: 'Missing Apollo OAuth env (client id / redirect uri)' },
+      { status: 500 }
+    )
   }
 
   const state = crypto.randomBytes(16).toString('hex')
-  const scopes = (APOLLO.SCOPES || 'read_user_profile contacts_read accounts_read').split(/\s+/).filter(Boolean)
 
   const authorizeUrl = new URL(AUTHZ_BASE)
-  authorizeUrl.searchParams.set('client_id', APOLLO.CLIENT_ID)
-  authorizeUrl.searchParams.set('redirect_uri', REDIRECT_URI)
+  authorizeUrl.searchParams.set('client_id', clientId)
+  authorizeUrl.searchParams.set('redirect_uri', redirectUri)
   authorizeUrl.searchParams.set('response_type', 'code')
-  authorizeUrl.searchParams.set('scope', scopes.join(' '))
+  authorizeUrl.searchParams.set('scope', scopes)
   authorizeUrl.searchParams.set('state', state)
 
   const res = NextResponse.redirect(authorizeUrl.toString())
