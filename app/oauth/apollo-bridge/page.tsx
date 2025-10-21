@@ -1,9 +1,7 @@
-// app/oauth/apollo-bridge/page.tsx
 'use client'
 import { useEffect } from 'react'
 
 function getParamFromHash(name: string) {
-  // hash looks like: #/oauth/authorize?code=...&state=...  or  #/oauth/callback?code=...
   const hash = window.location.hash || ''
   const qIndex = hash.indexOf('?')
   if (qIndex === -1) return null
@@ -14,7 +12,6 @@ function getParamFromHash(name: string) {
 
 export default function ApolloBridge() {
   useEffect(() => {
-    // Try both hash and query string (just in case)
     const code =
       getParamFromHash('code') || new URLSearchParams(window.location.search).get('code')
     const state =
@@ -24,26 +21,26 @@ export default function ApolloBridge() {
       getParamFromHash('error_message') ||
       new URLSearchParams(window.location.search).get('error')
 
-    // Decide where to go next
+    const base = window.location.origin
+    const dashboardUrl = `${base}/dashboard`
+
+    // If Apollo returned an error, go back to dashboard with error param
     if (err) {
-      const url = new URL('/dashboard', window.location.origin)
-      url.searchParams.set('error', err)
-      window.location.replace(url.toString())
+      window.location.replace(`${dashboardUrl}?error=${encodeURIComponent(err)}`)
       return
     }
 
+    // If we have a code, forward it to the server callback for token exchange
     if (code) {
-      const url = new URL('/api/apollo/oauth/callback', window.location.origin)
+      const url = new URL('/api/apollo/oauth/callback', base)
       url.searchParams.set('code', code)
       if (state) url.searchParams.set('state', state)
       window.location.replace(url.toString())
       return
     }
 
-    // Nothing found → show a friendly message or bounce back
-    const url = new URL('/dashboard', window.location.origin)
-    url.searchParams.set('error', 'missing_code')
-    window.location.replace(url.toString())
+    // Otherwise redirect back to dashboard with an error
+    window.location.replace(`${dashboardUrl}?error=missing_code`)
   }, [])
 
   return (
