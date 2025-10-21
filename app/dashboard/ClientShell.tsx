@@ -13,7 +13,7 @@ type SourceMode = 'candidates' | 'companies'
 type CvTemplate = 'standard' | 'sales'
 
 // 🔒 Toggle to re-enable later
-const DISABLE_SOURCING = true
+const DISABLE_SOURCING = false
 
 export default function ClientShell(): JSX.Element {
   const [tab, setTab] = useState<TabKey>('match')
