@@ -128,12 +128,13 @@ export default function IntegrationsPage() {
               <img
                 src="/Apollo-Logo.png"
                 alt="Apollo"
-                className="h-6 w-auto inline-block align-middle"
+                className={`h-6 w-auto inline-block align-middle rounded-full p-1 transition 
+                  ${apolloConnected ? 'bg-yellow-400' : 'bg-transparent'}`}
                 onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
               />
               Apollo.io
             </h2>
-
+          
             {apolloConnected ? (
               <>
                 <p className="text-sm text-green-600">✅ Connected to Apollo</p>
@@ -153,7 +154,7 @@ export default function IntegrationsPage() {
                 <img
                   src="/Apollo-Logo.png"
                   alt="Apollo"
-                  className="h-6 w-auto inline-block align-middle"
+                  className="h-6 w-auto inline-block align-middle rounded-full p-1"
                   onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
                 />
                 Login with Apollo
