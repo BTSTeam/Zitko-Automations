@@ -1,3 +1,4 @@
+// app/api/apollo/oauth/authorize/route.ts
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -5,7 +6,7 @@ export const revalidate = 0
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'node:crypto'
 
-const AUTHZ_BASE = 'https://app.apollo.io/#/oauth/authorize'
+const AUTHZ_HASH_BASE = 'https://app.apollo.io/#/oauth/authorize'
 
 export async function GET(_req: NextRequest) {
   const clientId = process.env.APOLLO_OAUTH_CLIENT_ID
@@ -19,16 +20,23 @@ export async function GET(_req: NextRequest) {
 
   const state = crypto.randomBytes(16).toString('hex')
 
-  const authorizeUrl = new URL(AUTHZ_BASE)
-  authorizeUrl.searchParams.set('client_id', clientId)
-  authorizeUrl.searchParams.set('redirect_uri', redirectUri)
-  authorizeUrl.searchParams.set('response_type', 'code')
-  authorizeUrl.searchParams.set('scope', scopes)
-  authorizeUrl.searchParams.set('state', state)
+  // IMPORTANT: build query AFTER the hash route
+  const qs = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    response_type: 'code',
+    scope: scopes,
+    state,
+  }).toString()
 
-  const res = NextResponse.redirect(authorizeUrl.toString())
+  const authorizeUrl = `${AUTHZ_HASH_BASE}?${qs}`
+
+  const res = NextResponse.redirect(authorizeUrl)
   res.cookies.set('apollo_oauth_state', state, {
-    httpOnly: true, sameSite: 'lax', secure: true, path: '/',
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: true,
+    path: '/',
   })
   return res
 }
