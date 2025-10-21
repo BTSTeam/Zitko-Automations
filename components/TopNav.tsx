@@ -119,7 +119,7 @@ export default function TopNav() {
             ].join(' ')}
           >
             <img
-              src="/apollo.svg"  // drop your logo in /public
+              src="/Apollo-Logo.png"  // drop your logo in /public
               alt="Apollo"
               className="h-4 w-4"
             />
