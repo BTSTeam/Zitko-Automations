@@ -121,7 +121,12 @@ export default function IntegrationsPage() {
 
           {/* Apollo section */}
           <div className="grid gap-3">
-            <h2 className="font-semibold">Apollo.io</h2>
+            <h2 className="font-semibold flex items-center gap-2">
+              {/* CASE-SENSITIVE, file lives at /public/Apollo-Logo.png */}
+              <img src="/Apollo-Logo.png" alt="Apollo" className="h-6 w-auto" />
+              Apollo.io
+            </h2>
+          
             {apolloConnected ? (
               <>
                 <p className="text-sm text-green-600">✅ Connected to Apollo</p>
@@ -134,8 +139,12 @@ export default function IntegrationsPage() {
                 </button>
               </>
             ) : (
-              <button className="btn btn-brand w-max" onClick={loginWithApollo}>
-                🔐 Login with Apollo
+              <button
+                className="btn btn-brand w-max flex items-center gap-2"
+                onClick={loginWithApollo}
+              >
+                <img src="/Apollo-Logo.png" alt="Apollo" className="h-5 w-auto" />
+                Login with Apollo
               </button>
             )}
 
