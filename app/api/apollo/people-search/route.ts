@@ -62,15 +62,13 @@ export async function POST(req: NextRequest) {
   // Compose keyword string:
   // - contract  => include IR35 & "pay rate"
   // - permanent => exclude IR35 & "pay rate"
+  // Only add keyword filters if user typed them.
+  // For validation, comment out the roleType logic:
   const kwParts: string[] = [];
   if (keywords) kwParts.push(keywords);
-  if (type === 'contract') {
-    kwParts.push('IR35', '"pay rate"');
-  } else {
-    kwParts.push('-IR35', '-"pay rate"');
-  }
-  if (kwParts.length) {
-    searchUrl.searchParams.set('q_keywords', kwParts.join(' '));
+  // if (type === 'contract') { kwParts.push('IR35', '"pay rate"'); }
+  // else { kwParts.push('-IR35', '-"pay rate"'); }
+  if (kwParts.length) searchUrl.searchParams.set('q_keywords', kwParts.join(' '));
   }
 
   searchUrl.searchParams.set('page', String(page));
@@ -149,16 +147,20 @@ export async function POST(req: NextRequest) {
     // 6) Normalize response for your UI
     let data: any = {};
     try { data = rawText ? JSON.parse(rawText) : {}; } catch { data = {}; }
-
-    const people = Array.isArray(data?.people)
-      ? data.people.map((p: any) => ({
-          id: p?.id ?? '',
-          name: p?.name ?? null,
-          title: p?.title ?? null,
-          company: p?.organization?.name ?? null,
-          linkedin_url: p?.linkedin_url ?? null,
-        }))
-      : [];
+    
+    const arr = Array.isArray(data?.people)
+      ? data.people
+      : Array.isArray(data?.contacts)
+        ? data.contacts
+        : [];
+    
+    const people = arr.map((p: any) => ({
+      id: p?.id ?? '',
+      name: p?.name ?? [p?.first_name, p?.last_name].filter(Boolean).join(' ') || null,
+      title: p?.title ?? null,
+      company: p?.organization?.name ?? p?.employment_history?.[0]?.organization_name ?? null,
+      linkedin_url: p?.linkedin_url ?? null,
+    }));
 
     // (Optional) You can return pagination for debugging if needed:
     // const pagination = data?.pagination ?? null;
