@@ -13,8 +13,15 @@ type Cfg = {
   OPENAI_API_KEY?: string
 
   // ActiveCampaign (optional globally; required by AC routes)
-  AC_BASE_URL?: string        // e.g. https://youraccount.api-us1.com  (exact URL from Developer tab)
-  AC_API_TOKEN?: string       // Api-Token value from Developer tab
+  AC_BASE_URL?: string
+  AC_API_TOKEN?: string
+
+  // Apollo (OAuth 2.0)
+  APOLLO_CLIENT_ID?: string
+  APOLLO_CLIENT_SECRET?: string
+  APOLLO_REDIRECT_URI?: string
+  APOLLO_SCOPES?: string
+  APOLLO_API_KEY?: string           // optional legacy API key
 }
 
 export const config: Cfg = {
@@ -30,8 +37,15 @@ export const config: Cfg = {
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
 
   // ActiveCampaign
-  AC_BASE_URL: process.env.AC_BASE_URL,     // keep optional here; enforce per-route
+  AC_BASE_URL: process.env.AC_BASE_URL,
   AC_API_TOKEN: process.env.AC_API_TOKEN,
+
+  // Apollo (OAuth 2.0)
+  APOLLO_CLIENT_ID: process.env.APOLLO_OAUTH_CLIENT_ID,
+  APOLLO_CLIENT_SECRET: process.env.APOLLO_OAUTH_CLIENT_SECRET,
+  APOLLO_REDIRECT_URI: process.env.APOLLO_OAUTH_REDIRECT_URI,
+  APOLLO_SCOPES: process.env.APOLLO_OAUTH_SCOPES,
+  APOLLO_API_KEY: process.env.APOLLO_API_KEY,
 }
 
 /**
@@ -47,13 +61,9 @@ export function requiredEnv(requiredKeys?: (keyof Cfg)[]) {
     'VINCERE_API_KEY',
     'REDIRECT_URI',
   ]
-
   const keysToCheck = requiredKeys ?? defaultRequired
   const missing = keysToCheck.filter((k) => !config[k])
-
-  if (missing.length) {
-    throw new Error(`Missing env vars: ${missing.join(', ')}`)
-  }
+  if (missing.length) throw new Error(`Missing env vars: ${missing.join(', ')}`)
 }
 
 /** Convenience helper specifically for ActiveCampaign routes */
@@ -61,9 +71,20 @@ export function requiredActiveCampaignEnv() {
   requiredEnv(['AC_BASE_URL', 'AC_API_TOKEN'])
 }
 
-/** Small helper object for AC routes */
+/** Convenience helper for Apollo routes */
+export function requiredApolloEnv() {
+  requiredEnv(['APOLLO_CLIENT_ID', 'APOLLO_CLIENT_SECRET', 'APOLLO_REDIRECT_URI'])
+}
+
+/** Small helper objects */
 export const AC = {
-  BASE_URL: (config.AC_BASE_URL ?? '').replace(/\/+$/, ''), // strip trailing slash
+  BASE_URL: (config.AC_BASE_URL ?? '').replace(/\/+$/, ''),
   API_TOKEN: config.AC_API_TOKEN ?? '',
 }
 
+export const APOLLO = {
+  CLIENT_ID: config.APOLLO_CLIENT_ID ?? '',
+  CLIENT_SECRET: config.APOLLO_CLIENT_SECRET ?? '',
+  REDIRECT_URI: config.APOLLO_REDIRECT_URI ?? '',
+  SCOPES: config.APOLLO_SCOPES ?? 'read_user_profile contacts_read accounts_read',
+}
