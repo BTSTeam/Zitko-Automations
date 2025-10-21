@@ -3,8 +3,9 @@ import { getIronSession, type SessionOptions } from 'iron-session'
 import { cookies } from 'next/headers'
 
 export type Tokens = {
-  accessToken?: string
-  refreshToken?: string
+  vincereIdToken?: string
+  apolloAccessToken?: string
+  apolloRefreshToken?: string
   idToken?: string
 }
 
@@ -30,9 +31,9 @@ export async function getSession() {
   return getIronSession<SessionData>(cookies(), sessionOptions)
 }
 
-export async function saveTokens(tokens: Tokens) {
+export async function saveTokens(partial: Partial<Tokens>) {
   const session = await getSession()
-  session.tokens = tokens
+  session.tokens = { ...(session.tokens ?? {}), ...partial }
   await session.save()
 }
 
