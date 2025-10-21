@@ -1,19 +1,40 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 
 export default function IntegrationsPage() {
-  const router = useRouter()                      // ✅ here
+  const router = useRouter()
+  const [apolloConnected, setApolloConnected] = useState(false)
+  const [loadingApollo, setLoadingApollo] = useState(false)
 
-  // Existing settings
   const [jotform, setJotform] = useState('')
   const [openaiModel, setOpenaiModel] = useState('gpt-4o-mini')
-
-  // Vincere test bits
   const [jobId, setJobId] = useState('')
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
   const [payload, setPayload] = useState<any>(null)
+
+  // Apollo connection status
+  useEffect(() => {
+    fetch('/api/apollo/status')
+      .then(r => r.json())
+      .then(d => setApolloConnected(!!d.connected))
+      .catch(() => setApolloConnected(false))
+  }, [])
+
+  const loginWithApollo = () => {
+    window.location.href = '/api/apollo/oauth/authorize'
+  }
+
+  const disconnectApollo = async () => {
+    setLoadingApollo(true)
+    try {
+      await fetch('/api/apollo/disconnect', { method: 'POST' })
+      setApolloConnected(false)
+    } finally {
+      setLoadingApollo(false)
+    }
+  }
 
   const loginWithVincere = () => {
     window.location.href = '/api/auth/authorize'
@@ -31,8 +52,7 @@ export default function IntegrationsPage() {
       const r = await fetch(`/api/vincere/position/${encodeURIComponent(jobId)}`)
       const text = await r.text()
       let data: any = null
-      try { data = JSON.parse(text) } catch { /* keep raw text */ }
-
+      try { data = JSON.parse(text) } catch {}
       if (!r.ok) {
         setStatus(`Failed (${r.status}). Check auth & Job ID.`)
         setPayload(data ?? text)
@@ -50,12 +70,11 @@ export default function IntegrationsPage() {
   return (
     <div className="grid gap-6">
       <div className="card p-6 grid gap-6">
-        {/* Header with Close X */}
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-semibold">Integration Settings</h1>
           <button
             aria-label="Close"
-            onClick={() => router.back()}            // ✅ this closes and returns
+            onClick={() => router.back()}
             className="w-8 h-8 grid place-items-center rounded-full border text-gray-600 hover:text-gray-900"
             title="Close"
           >
@@ -63,7 +82,6 @@ export default function IntegrationsPage() {
           </button>
         </div>
 
-        {/* Vincere auth + test */}
         <div className="grid sm:grid-cols-2 gap-6">
           <div className="grid gap-3">
             <h2 className="font-semibold">Vincere</h2>
@@ -101,36 +119,49 @@ export default function IntegrationsPage() {
             )}
           </div>
 
-          {/* Existing sections */}
-          <div className="grid gap-4">
-            <div>
-              <h2 className="font-semibold mb-2">JotForm</h2>
-              <label className="text-sm text-gray-600">JotForm Embed URL</label>
+          {/* Apollo section */}
+          <div className="grid gap-3">
+            <h2 className="font-semibold">Apollo.io</h2>
+            {apolloConnected ? (
+              <>
+                <p className="text-sm text-green-600">✅ Connected to Apollo</p>
+                <button
+                  className="btn btn-grey w-max"
+                  onClick={disconnectApollo}
+                  disabled={loadingApollo}
+                >
+                  {loadingApollo ? 'Disconnecting…' : 'Disconnect'}
+                </button>
+              </>
+            ) : (
+              <button className="btn btn-brand w-max" onClick={loginWithApollo}>
+                🔐 Login with Apollo
+              </button>
+            )}
+
+            <div className="mt-4 border-t pt-3">
+              <h3 className="font-medium mb-1 text-sm text-gray-700">ChatGPT (OpenAI)</h3>
               <input
-                className="input mt-1"
+                className="input"
+                value={openaiModel}
+                onChange={(e) => setOpenaiModel(e.target.value)}
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                API key is set via environment variables.
+              </p>
+            </div>
+
+            <div className="mt-4">
+              <h3 className="font-medium mb-1 text-sm text-gray-700">JotForm Embed URL</h3>
+              <input
+                className="input"
                 value={jotform}
-                onChange={e => setJotform(e.target.value)}
+                onChange={(e) => setJotform(e.target.value)}
                 placeholder="https://form.jotform.com/..."
               />
-              <p className="text-sm text-gray-500 mt-2">
-                Paste your JotForm's direct link here to embed it on the Sourcing tab.
-              </p>
             </div>
 
-            <div>
-              <h2 className="font-semibold mb-2">ChatGPT (OpenAI)</h2>
-              <label className="text-sm text-gray-600">Model</label>
-              <input
-                className="input mt-1"
-                value={openaiModel}
-                onChange={e => setOpenaiModel(e.target.value)}
-              />
-              <p className="text-sm text-gray-500 mt-2">
-                API key is set in environment variables on Vercel.
-              </p>
-            </div>
-
-            <button className="btn btn-grey w-max">Save (demo only)</button>
+            <button className="btn btn-grey w-max mt-3">Save (demo only)</button>
           </div>
         </div>
       </div>
