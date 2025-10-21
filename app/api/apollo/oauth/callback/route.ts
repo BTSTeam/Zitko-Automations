@@ -1,22 +1,24 @@
+// app/api/apollo/oauth/callback/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 
 const APOLLO_AUTH_URL = 'https://app.apollo.io/api/v1/oauth/token';
 const REDIRECT_URI = process.env.APOLLO_OAUTH_REDIRECT_URI;
 
-if (!REDIRECT_URI) {
-  throw new Error('Missing env: APOLLO_OAUTH_REDIRECT_URI');
-}
-
 export async function GET(req: NextRequest) {
+  if (!REDIRECT_URI) {
+    return NextResponse.json({ error: 'Missing env: APOLLO_OAUTH_REDIRECT_URI' }, { status: 500 });
+  }
+
   const url = new URL(req.url);
   const code = url.searchParams.get('code');
   const state = url.searchParams.get('state');
 
-  const stateCookie = req.cookies.get('apollo_oauth_state')?.value;
-
   if (!code) {
     return NextResponse.redirect(new URL('/integrations/apollo?error=missing_code', req.url));
   }
+
+  // Optional: verify state with cookie/session if you generate it earlier
+  const stateCookie = req.cookies.get('apollo_oauth_state')?.value;
   if (stateCookie && stateCookie !== state) {
     return NextResponse.redirect(new URL('/integrations/apollo?error=state_mismatch', req.url));
   }
@@ -43,7 +45,8 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // const tokens = await tokenRes.json();  // persist securely on the server
+  // const tokens = await tokenRes.json(); // store securely server-side if needed
+
   const res = NextResponse.redirect(new URL('/integrations/apollo?connected=1', req.url));
   res.cookies.delete('apollo_oauth_state');
   return res;
