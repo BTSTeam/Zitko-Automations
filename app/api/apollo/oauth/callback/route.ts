@@ -14,40 +14,46 @@ export async function GET(req: NextRequest) {
   const state = url.searchParams.get('state');
 
   if (!code) {
-    return NextResponse.redirect(new URL('/integrations/apollo?error=missing_code', req.url));
+    return NextResponse.redirect(new URL('/dashboard?error=missing_code', req.url));
   }
 
-  // Optional: verify state with cookie/session if you generate it earlier
+  // Optional CSRF check: only enforce if we actually set a cookie earlier.
   const stateCookie = req.cookies.get('apollo_oauth_state')?.value;
   if (stateCookie && stateCookie !== state) {
-    return NextResponse.redirect(new URL('/integrations/apollo?error=state_mismatch', req.url));
+    return NextResponse.redirect(new URL('/dashboard?error=state_mismatch', req.url));
   }
 
-  const body = new URLSearchParams({
-    grant_type: 'authorization_code',
-    client_id: process.env.APOLLO_OAUTH_CLIENT_ID!,
-    client_secret: process.env.APOLLO_OAUTH_CLIENT_SECRET!,
-    redirect_uri: REDIRECT_URI,
-    code,
-  });
+  try {
+    const body = new URLSearchParams({
+      grant_type: 'authorization_code',
+      client_id: process.env.APOLLO_OAUTH_CLIENT_ID!,
+      client_secret: process.env.APOLLO_OAUTH_CLIENT_SECRET!,
+      redirect_uri: REDIRECT_URI,
+      code,
+    });
 
-  const tokenRes = await fetch(APOLLO_AUTH_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body,
-    cache: 'no-store',
-  });
+    const tokenRes = await fetch(APOLLO_AUTH_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
+      cache: 'no-store',
+    });
 
-  if (!tokenRes.ok) {
-    const errTxt = await tokenRes.text();
+    if (!tokenRes.ok) {
+      const errTxt = await tokenRes.text();
+      return NextResponse.redirect(
+        new URL(`/dashboard?error=token_exchange_failed&detail=${encodeURIComponent(errTxt)}`, req.url)
+      );
+    }
+
+    // const tokens = await tokenRes.json(); // TODO: persist securely server-side
+
+    const res = NextResponse.redirect(new URL('/dashboard?connected=1', req.url));
+    res.cookies.delete('apollo_oauth_state');
+    return res;
+  } catch (e: any) {
     return NextResponse.redirect(
-      new URL(`/integrations/apollo?error=token_exchange_failed&detail=${encodeURIComponent(errTxt)}`, req.url)
+      new URL(`/dashboard?error=unexpected&detail=${encodeURIComponent(String(e?.message ?? e))}`, req.url)
     );
   }
-
-  // const tokens = await tokenRes.json(); // store securely server-side if needed
-
-  const res = NextResponse.redirect(new URL('/dashboard?connected=1', req.url));
-  res.cookies.delete('apollo_oauth_state');
-  return res;
 }
