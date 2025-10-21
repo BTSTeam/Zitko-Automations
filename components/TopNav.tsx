@@ -13,20 +13,27 @@ type MeResp = {
 export default function TopNav() {
   const router = useRouter()
   const [me, setMe] = useState<MeResp>({ loggedIn: false, email: '', name: '', vincereConnected: false })
+  const [apolloConnected, setApolloConnected] = useState(false)
 
   useEffect(() => {
     const load = async () => {
       try {
-        const r = await fetch('/api/auth/me', { cache: 'no-store' })
-        const j: MeResp = await r.json()
+        const [meRes, apolloRes] = await Promise.all([
+          fetch('/api/auth/me', { cache: 'no-store' }),
+          fetch('/api/apollo/status', { cache: 'no-store' })
+        ])
+        const j: MeResp = await meRes.json().catch(() => ({ loggedIn: false }))
+        const a = await apolloRes.json().catch(() => ({ connected: false }))
         setMe({
           loggedIn: !!j?.loggedIn,
           email: j?.email ?? '',
           name: j?.name ?? '',
           vincereConnected: !!j?.vincereConnected,
         })
+        setApolloConnected(!!a?.connected)
       } catch {
         setMe({ loggedIn: false, email: '', name: '', vincereConnected: false })
+        setApolloConnected(false)
       }
     }
     load()
@@ -37,13 +44,18 @@ export default function TopNav() {
       await fetch('/api/auth/logout', { method: 'POST' })
     } finally {
       setMe({ loggedIn: false, email: '', name: '', vincereConnected: false })
+      setApolloConnected(false)
       router.push('/login')
     }
   }
 
   const connectVincere = () => {
-    // Start OAuth; after callback your /api/auth/callback should store tokens in session
     window.location.href = '/api/auth/authorize'
+  }
+
+  const connectApollo = () => {
+    // starts the OAuth Authorization Code flow you already built
+    window.location.href = '/api/apollo/oauth/authorize'
   }
 
   const displayName = (me.name?.trim() || '').toString()
@@ -74,19 +86,18 @@ export default function TopNav() {
             )}
           </div>
 
-          {/* User Management (person bust) */}
+          {/* User Management */}
           <Link href="/settings/users" className="tab" title="User Management">
             <span aria-hidden>👤</span>
           </Link>
 
-          {/* Vincere connection status */}
+          {/* Vincere connection */}
           <button
             type="button"
             onClick={!me.vincereConnected ? connectVincere : undefined}
             title={me.vincereConnected ? 'Connected to Vincere' : 'Connect to Vincere'}
             className={`tab flex items-center gap-2 ${me.vincereConnected ? 'text-green-600' : 'text-red-600'}`}
           >
-            {/* Optional logo (add /public/vincere-logo.png if you like). If not present, the text still shows. */}
             <img
               src="/vincere-logo.png"
               alt=""
@@ -94,6 +105,24 @@ export default function TopNav() {
               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
             />
             <span>{me.vincereConnected ? 'Connected' : 'Not Connected'}</span>
+          </button>
+
+          {/* Apollo icon button (yellow when connected) */}
+          <button
+            type="button"
+            onClick={!apolloConnected ? connectApollo : undefined}
+            title={apolloConnected ? 'Apollo connected' : 'Connect Apollo'}
+            aria-label={apolloConnected ? 'Apollo connected' : 'Connect Apollo'}
+            className={[
+              'h-9 w-9 grid place-items-center rounded-full border transition',
+              apolloConnected ? 'bg-yellow-300 border-yellow-400' : 'bg-white border-gray-200 hover:bg-gray-50'
+            ].join(' ')}
+          >
+            <img
+              src="/apollo.svg"  // drop your logo in /public
+              alt="Apollo"
+              className="h-4 w-4"
+            />
           </button>
 
           {/* Sign In / Out */}
