@@ -131,21 +131,17 @@ export default function IntegrationsPage() {
               <>
                 <p className="text-sm text-green-600">✅ Connected to Apollo</p>
                 <button
-                  className="btn btn-grey w-max"
-                  onClick={disconnectApollo}
-                  disabled={loadingApollo}
+                  className="btn btn-brand w-max flex items-center gap-2"
+                  onClick={loginWithApollo}
                 >
-                  {loadingApollo ? 'Disconnecting…' : 'Disconnect'}
+                  <img
+                    src="/Apollo-Logo.png"
+                    alt="Apollo"
+                    className="h-6 w-auto inline-block align-middle"
+                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+                  />
+                  Login with Apollo
                 </button>
-              </>
-            ) : (
-              <button
-                className="btn btn-brand w-max flex items-center gap-2"
-                onClick={loginWithApollo}
-              >
-                <img src="/Apollo-Logo.png" alt="Apollo" className="h-6 w-auto inline-block align-middle" />
-                Login with Apollo
-              </button>
             )}
 
             <div className="mt-4 border-t pt-3">
