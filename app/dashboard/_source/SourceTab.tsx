@@ -12,6 +12,20 @@ type Person = {
   linkedin_url: string | null
 }
 
+const SENIORITY_OPTIONS = [
+  { value: 'owner', label: 'Owner' },
+  { value: 'founder', label: 'Founder' },
+  { value: 'c_suite', label: 'C-suite' },
+  { value: 'partner', label: 'Partner' },
+  { value: 'vp', label: 'VP' },
+  { value: 'head', label: 'Head' },
+  { value: 'director', label: 'Director' },
+  { value: 'manager', label: 'Manager' },
+  { value: 'senior', label: 'Senior' },
+  { value: 'entry', label: 'Entry' },
+  { value: 'intern', label: 'Intern' },
+]
+
 // Full-screen maintenance overlay
 function DownOverlay() {
   return (
@@ -28,7 +42,7 @@ function DownOverlay() {
 }
 
 export default function SourceTab({ mode }: { mode: SourceMode }) {
-  // Toggle overlay via env var (set to "1" or "true")
+  // Toggle overlay via env var
   const isDown =
     (process.env.NEXT_PUBLIC_SOURCING_DOWN || '').toLowerCase() === '1' ||
     (process.env.NEXT_PUBLIC_SOURCING_DOWN || '').toLowerCase() === 'true'
@@ -52,14 +66,15 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
   // ---- CANDIDATES TAB (Apollo people search) ----
   const [title, setTitle] = useState('')
   const [location, setLocation] = useState('')
-  const [keywords, setKeywords] = useState('') // company keyword in Apollo
+  const [keywords, setKeywords] = useState('')
+  const [domains, setDomains] = useState('')
+  const [selectedSeniorities, setSelectedSeniorities] = useState<string[]>([])
   const [roleType, setRoleType] = useState<'permanent' | 'contract'>('permanent')
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [results, setResults] = useState<Person[]>([])
 
-  // Derived “effective keywords” just for the hint below the input
   const effectiveKeywordsHint = useMemo(() => {
     const parts: string[] = []
     if (keywords.trim()) parts.push(keywords.trim())
@@ -74,34 +89,36 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
   async function runSearch(e?: React.FormEvent) {
     e?.preventDefault()
     if (isDown) return
-  
+
     setLoading(true)
     setError(null)
     setResults([])
-  
+
     try {
       const payload = {
-        title: title.trim(),          // can be comma-separated; server splits
-        location: location.trim(),    // can be comma-separated; server splits
+        title: title.trim(),
+        location: location.trim(),
         keywords: keywords.trim(),
-        type: roleType,               // 'permanent' | 'contract'
-        emailStatus: 'verified',      // default in route, but explicit is fine
+        domains: domains.trim(),
+        seniorities: selectedSeniorities,
+        type: roleType,
+        emailStatus: 'verified',
         page: 1,
-        perPage: 100
+        perPage: 100,
       }
-  
+
       const res = await fetch('/api/apollo/people-search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
       })
-  
+
       const data = await res.json().catch(() => ({}))
-  
+
       if (!res.ok) {
         throw new Error(data?.error || `Search failed (${res.status})`)
       }
-  
+
       setResults(Array.isArray(data.people) ? data.people.slice(0, 100) : [])
     } catch (err: any) {
       setError(err?.message || 'Unexpected error')
@@ -110,11 +127,10 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
     }
   }
 
-  // Allow Enter to submit when focused in any field
+  // Allow Cmd/Ctrl+Enter to trigger search
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
       if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) {
-        // optional: Ctrl/Cmd+Enter quick search
         runSearch()
       }
     }
@@ -126,16 +142,14 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
     <div className="card p-6 relative space-y-6">
       {/* Panel 1: Search form */}
       <form onSubmit={runSearch} className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-3">
           <h3 className="text-lg font-semibold m-0">Apollo People Search</h3>
           <div className="flex items-center gap-2">
             <label className="text-sm text-gray-600">Role Type</label>
             <select
               className="input"
               value={roleType}
-              onChange={(e) =>
-                setRoleType(e.target.value as 'permanent' | 'contract')
-              }
+              onChange={(e) => setRoleType(e.target.value as 'permanent' | 'contract')}
               disabled={isDown}
             >
               <option value="permanent">Permanent</option>
@@ -176,9 +190,7 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
           </div>
 
           <div className="flex flex-col">
-            <label className="text-sm text-gray-600 mb-1">
-              Company Keywords (Apollo)
-            </label>
+            <label className="text-sm text-gray-600 mb-1">Company Keywords</label>
             <input
               className="input"
               placeholder="e.g. CCTV, access control, fire alarm"
@@ -191,6 +203,50 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
               <code className="text-[11px]">{effectiveKeywordsHint || '—'}</code>
             </p>
           </div>
+        </div>
+
+        {/* Domains input */}
+        <div className="flex flex-col">
+          <label className="text-sm text-gray-600 mb-1">
+            Company Domains (optional)
+          </label>
+          <input
+            className="input"
+            placeholder="e.g. honeywell.com, johnsoncontrols.com"
+            value={domains}
+            onChange={(e) => setDomains(e.target.value)}
+            disabled={isDown}
+          />
+        </div>
+
+        {/* Seniority multi-select */}
+        <div className="flex flex-col">
+          <label className="text-sm text-gray-600 mb-1">
+            Seniority (multi-select)
+          </label>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            {SENIORITY_OPTIONS.map((opt) => (
+              <label key={opt.value} className="inline-flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="accent-brand"
+                  checked={selectedSeniorities.includes(opt.value)}
+                  onChange={(e) =>
+                    setSelectedSeniorities((prev) =>
+                      e.target.checked
+                        ? [...prev, opt.value]
+                        : prev.filter((v) => v !== opt.value)
+                    )
+                  }
+                  disabled={isDown}
+                />
+                <span>{opt.label}</span>
+              </label>
+            ))}
+          </div>
+          <p className="text-xs text-gray-500 mt-1">
+            Sent to Apollo as <code className="text-[11px]">person_seniorities</code>.
+          </p>
         </div>
       </form>
 
