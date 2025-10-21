@@ -1,170 +1,141 @@
 // app/api/apollo/people-search/route.ts
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server'
 
+/**
+ * Expected shape of the search request body.  All fields are optional.
+ */
 type SearchBody = {
-  title?: string | string[];
-  location?: string | string[];
-  keywords?: string;
-  type?: 'permanent' | 'contract';
-  emailStatus?: string; // e.g. 'verified'
-  page?: number;
-  perPage?: number;
-};
-
-function toArray(v?: string | string[]): string[] {
-  if (!v) return [];
-  return Array.isArray(v)
-    ? v.map(s => s.trim()).filter(Boolean)
-    : v.split(',').map(s => s.trim()).filter(Boolean);
+  title?: string | string[]
+  location?: string | string[]
+  keywords?: string
+  domains?: string | string[]
+  seniorities?: string | string[]
+  emailStatus?: string | string[]
+  page?: number
+  perPage?: number
 }
 
+/**
+ * Convert comma-separated strings or arrays to an array of trimmed strings.
+ */
+function toArray(value?: string | string[]): string[] {
+  if (!value) return []
+  return Array.isArray(value)
+    ? value.map(s => s.trim()).filter(Boolean)
+    : value.split(',').map(s => s.trim()).filter(Boolean)
+}
+
+/**
+ * Handle POST /api/apollo/people-search
+ * Builds a JSON payload based on user filters and proxies it to the Apollo API.
+ */
 export async function POST(req: NextRequest) {
-  const apolloApiKey = process.env.APOLLO_API_KEY;
-  const DEBUG = (process.env.SOURCING_DEBUG_APOLLO || '').toLowerCase() === 'true';
+  const apolloApiKey = process.env.APOLLO_API_KEY
+  const DEBUG = (process.env.SOURCING_DEBUG_APOLLO || '').toLowerCase() === 'true'
 
   if (!apolloApiKey) {
-    return NextResponse.json(
-      { error: 'Missing APOLLO_API_KEY env var' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Missing APOLLO_API_KEY env var' }, { status: 500 })
   }
 
-  // Parse body
-  let body: SearchBody = {};
+  // Parse body and normalise fields
+  let body: SearchBody = {}
   try {
-    body = (await req.json()) as SearchBody;
+    body = (await req.json()) as SearchBody
   } catch {
-    body = {};
+    body = {}
   }
 
-  const titles = toArray(body.title);
-  const locations = toArray(body.location);
-  const keywords = (body.keywords ?? '').trim();
-  const type = (body.type ?? 'permanent') as 'permanent' | 'contract';
-  const emailStatus = (body.emailStatus ?? 'verified').trim();
-  const page = Number.isFinite(body.page) && (body.page as number) > 0 ? (body.page as number) : 1;
-  const perPageRaw = Number.isFinite(body.perPage) && (body.perPage as number) > 0 ? (body.perPage as number) : 100;
-  const perPage = Math.min(perPageRaw, 100); // Apollo max 100/page
+  const titles = toArray(body.title)
+  const locations = toArray(body.location)
+  const domains = toArray(body.domains)
+  const seniorities = toArray(body.seniorities)
+  const emailStatusArr = Array.isArray(body.emailStatus)
+    ? body.emailStatus.map(s => s.trim()).filter(Boolean)
+    : toArray(body.emailStatus)
+  const keywords = (body.keywords ?? '').trim()
+  const page = Number.isFinite(body.page) && body.page! > 0 ? body.page! : 1
+  const perPageRaw =
+    Number.isFinite(body.perPage) && body.perPage! > 0 ? body.perPage! : 100
+  const perPage = Math.min(perPageRaw, 100)
 
-  // Build Apollo URL with query params
-  const searchUrl = new URL('https://api.apollo.io/api/v1/mixed_people/search');
+  // Build the JSON payload for Apollo
+  const payload: Record<string, any> = { page, per_page: perPage }
+  if (titles.length > 0) payload.person_titles = titles
+  if (locations.length > 0) payload.person_locations = locations
+  if (domains.length > 0) payload.q_organization_domains_list = domains
+  if (seniorities.length > 0) payload.person_seniorities = seniorities
+  if (emailStatusArr.length > 0) payload.contact_email_status = emailStatusArr
+  if (keywords) payload.q_keywords = keywords
 
-  titles.forEach(t => searchUrl.searchParams.append('person_titles[]', t));
-
-  // Tip: Apollo examples often include country, e.g. "California, US".
-  locations.forEach(l => searchUrl.searchParams.append('person_locations[]', l));
-
-  if (emailStatus) {
-    // If your workspace expects v2, try 'contact_email_status_v2[]'
-    searchUrl.searchParams.append('contact_email_status[]', emailStatus);
-  }
-
-  // q_keywords – keep it minimal while validating; add contract/permanent flavor later if desired
-  const kwParts: string[] = [];
-  if (keywords) kwParts.push(keywords);
-  if (kwParts.length > 0) {
-    searchUrl.searchParams.set('q_keywords', kwParts.join(' '));
-  }
-
-  searchUrl.searchParams.set('page', String(page));
-  searchUrl.searchParams.set('per_page', String(perPage));
-
+  // Prepare headers
   const headers: Record<string, string> = {
     accept: 'application/json',
     'Cache-Control': 'no-cache',
     'Content-Type': 'application/json',
     'X-Api-Key': apolloApiKey,
-  };
+  }
 
   if (DEBUG) {
     console.info('[Apollo DEBUG] Outbound request → Apollo', {
-      method: 'POST',
-      url: searchUrl.toString(),
-      headers: {
-        ...headers,
-        'X-Api-Key': '***MASKED***',
-      },
-      inputs: { titles, locations, keywords, type, emailStatus, page, perPage },
-      curl: [
-        'curl -X POST',
-        `'${searchUrl.toString()}'`,
-        "-H 'accept: application/json'",
-        "-H 'Cache-Control: no-cache'",
-        "-H 'Content-Type: application/json'",
-        "-H 'X-Api-Key: ***MASKED***'",
-      ].join(' '),
-    });
+      url: 'https://api.apollo.io/api/v1/mixed_people/search',
+      payload,
+      headers: { ...headers, 'X-Api-Key': '***MASKED***' },
+    })
   }
 
-  const t0 = Date.now();
-  let rawText = '';
-
   try {
-    const resp = await fetch(searchUrl.toString(), {
+    const resp = await fetch('https://api.apollo.io/api/v1/mixed_people/search', {
       method: 'POST',
       headers,
+      body: JSON.stringify(payload),
       cache: 'no-store',
-    });
-
-    rawText = await resp.text().catch(() => '');
-
-    if (DEBUG) {
-      console.info('[Apollo DEBUG] Response ← Apollo', {
-        status: resp.status,
-        statusText: resp.statusText,
-        durationMs: Date.now() - t0,
-        rawPreview: rawText.slice(0, 2000),
-      });
-    }
+    })
+    const rawText = await resp.text()
 
     if (!resp.ok) {
       return NextResponse.json(
-        {
-          error: `Apollo error: ${resp.status} ${resp.statusText}`,
-          details: rawText.slice(0, 2000),
-        },
+        { error: `Apollo error: ${resp.status} ${resp.statusText}`, details: rawText.slice(0, 2000) },
         { status: resp.status },
-      );
+      )
     }
 
-    // Normalize response
-    let data: any = {};
+    // Parse Apollo response; it may contain either `contacts` or `people`
+    let data: any = {}
     try {
-      data = rawText ? JSON.parse(rawText) : {};
+      data = rawText ? JSON.parse(rawText) : {}
     } catch {
-      data = {};
+      data = {}
     }
 
-    // Apollo often returns `contacts` (and sometimes `people`). Handle both.
     const arr: any[] = Array.isArray(data?.contacts)
       ? data.contacts
       : Array.isArray(data?.people)
         ? data.people
-        : [];
+        : []
 
+    // Normalise to expected fields
     const people = arr.map((p: any) => {
-      // build name without mixing ?? and ||
-      let name: string | null = null;
+      let name: string | null = null
       if (typeof p?.name === 'string' && p.name.trim()) {
-        name = p.name.trim();
+        name = p.name.trim()
       } else {
-        const first = typeof p?.first_name === 'string' ? p.first_name.trim() : '';
-        const last = typeof p?.last_name === 'string' ? p.last_name.trim() : '';
-        const joined = [first, last].filter(Boolean).join(' ').trim();
-        name = joined ? joined : null;
+        const first = typeof p?.first_name === 'string' ? p.first_name.trim() : ''
+        const last = typeof p?.last_name === 'string' ? p.last_name.trim() : ''
+        const joined = [first, last].filter(Boolean).join(' ').trim()
+        name = joined || null
       }
 
-      // company
-      let company: string | null = null;
+      let company: string | null = null
       if (typeof p?.organization?.name === 'string' && p.organization.name.trim()) {
-        company = p.organization.name.trim();
+        company = p.organization.name.trim()
       } else if (Array.isArray(p?.employment_history) && p.employment_history.length > 0) {
-        const orgName = p.employment_history[0]?.organization_name;
-        company = typeof orgName === 'string' && orgName.trim() ? orgName.trim() : null;
+        const orgName = p.employment_history[0]?.organization_name
+        company = typeof orgName === 'string' && orgName.trim() ? orgName.trim() : null
       }
 
-      const title = typeof p?.title === 'string' && p.title.trim() ? p.title.trim() : null;
-      const linkedin_url = typeof p?.linkedin_url === 'string' && p.linkedin_url ? p.linkedin_url : null;
+      const title = typeof p?.title === 'string' && p.title.trim() ? p.title.trim() : null
+      const linkedin_url =
+        typeof p?.linkedin_url === 'string' && p.linkedin_url ? p.linkedin_url : null
 
       return {
         id: p?.id ?? '',
@@ -172,28 +143,24 @@ export async function POST(req: NextRequest) {
         title,
         company,
         linkedin_url,
-      };
-    });
+      }
+    })
 
-    return NextResponse.json({ people });
+    return NextResponse.json({ people })
   } catch (err: any) {
-    if (DEBUG) {
-      console.error('[Apollo DEBUG] Fetch threw', {
-        durationMs: Date.now() - t0,
-        error: String(err),
-      });
-    }
     return NextResponse.json(
       { error: 'Server error during Apollo request', details: String(err) },
       { status: 500 },
-    );
+    )
   }
 }
 
-// Guard accidental GETs with a clear message
+/**
+ * Provide a clear message for unsupported GET requests.
+ */
 export async function GET() {
   return NextResponse.json(
     { error: 'Use POST /api/apollo/people-search with a JSON body.' },
     { status: 405 },
-  );
+  )
 }
