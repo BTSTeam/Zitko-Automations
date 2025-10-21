@@ -123,7 +123,7 @@ export default function IntegrationsPage() {
           <div className="grid gap-3">
             <h2 className="font-semibold flex items-center gap-2">
               {/* CASE-SENSITIVE, file lives at /public/Apollo-Logo.png */}
-              <img src="/Apollo-Logo.png" alt="Apollo" className="h-6 w-auto" />
+              <img src="/Apollo-Logo.png" alt="Apollo" className="h-6 w-auto inline-block align-middle" />
               Apollo.io
             </h2>
           
@@ -143,7 +143,7 @@ export default function IntegrationsPage() {
                 className="btn btn-brand w-max flex items-center gap-2"
                 onClick={loginWithApollo}
               >
-                <img src="/Apollo-Logo.png" alt="Apollo" className="h-5 w-auto" />
+                <img src="/Apollo-Logo.png" alt="Apollo" className="h-6 w-auto inline-block align-middle" />
                 Login with Apollo
               </button>
             )}
