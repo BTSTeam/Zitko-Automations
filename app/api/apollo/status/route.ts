@@ -1,13 +1,16 @@
 // app/api/apollo/status/route.ts
-import { NextResponse } from 'next/server';
-
-// TODO: replace with real user/tenant lookup of stored OAuth tokens
-async function isApolloConnectedForCurrentUser(): Promise<boolean> {
-  // Example: return !!(await db.tokens.findUnique({ where: { userId, provider: 'apollo' } }))
-  return !!process.env.APOLLO_TEST_ACCESS_TOKEN; // placeholder
-}
+import { NextResponse } from 'next/server'
+import { getCurrentUser } from '@/lib/auth'       // however you identify the current user
+import { db } from '@/lib/db'                     // your Prisma or database client
 
 export async function GET() {
-  const connected = await isApolloConnectedForCurrentUser();
-  return NextResponse.json({ connected });
+  const user = await getCurrentUser()
+  if (!user) return NextResponse.json({ connected: false })
+
+  // Check if Apollo token exists for this user
+  const token = await db.oauthToken.findFirst({
+    where: { userId: user.id, provider: 'apollo' },
+  })
+
+  return NextResponse.json({ connected: !!token })
 }
