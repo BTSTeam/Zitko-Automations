@@ -67,6 +67,8 @@ export default function IntegrationsPage() {
     }
   }
 
+  // ✅ The extra stray "}" that caused the build error was here — removed.
+
   return (
     <div className="grid gap-6">
       <div className="card p-6 grid gap-6">
@@ -123,25 +125,39 @@ export default function IntegrationsPage() {
           <div className="grid gap-3">
             <h2 className="font-semibold flex items-center gap-2">
               {/* CASE-SENSITIVE, file lives at /public/Apollo-Logo.png */}
-              <img src="/Apollo-Logo.png" alt="Apollo" className="h-6 w-auto inline-block align-middle" />
+              <img
+                src="/Apollo-Logo.png"
+                alt="Apollo"
+                className="h-6 w-auto inline-block align-middle"
+                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+              />
               Apollo.io
             </h2>
-          
+
             {apolloConnected ? (
               <>
                 <p className="text-sm text-green-600">✅ Connected to Apollo</p>
                 <button
-                  className="btn btn-brand w-max flex items-center gap-2"
-                  onClick={loginWithApollo}
+                  className="btn btn-grey w-max"
+                  onClick={disconnectApollo}
+                  disabled={loadingApollo}
                 >
-                  <img
-                    src="/Apollo-Logo.png"
-                    alt="Apollo"
-                    className="h-6 w-auto inline-block align-middle"
-                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
-                  />
-                  Login with Apollo
+                  {loadingApollo ? 'Disconnecting…' : 'Disconnect'}
                 </button>
+              </>
+            ) : (
+              <button
+                className="btn btn-brand w-max flex items-center gap-2"
+                onClick={loginWithApollo}
+              >
+                <img
+                  src="/Apollo-Logo.png"
+                  alt="Apollo"
+                  className="h-6 w-auto inline-block align-middle"
+                  onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+                />
+                Login with Apollo
+              </button>
             )}
 
             <div className="mt-4 border-t pt-3">
