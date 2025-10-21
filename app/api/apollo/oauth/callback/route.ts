@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
 
   // const tokens = await tokenRes.json(); // store securely server-side if needed
 
-  const res = NextResponse.redirect(new URL('/integrations/apollo?connected=1', req.url));
+  const res = NextResponse.redirect(new URL('/dashboard?connected=1', req.url));
   res.cookies.delete('apollo_oauth_state');
   return res;
 }
