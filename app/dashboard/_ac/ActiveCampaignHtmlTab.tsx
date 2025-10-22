@@ -285,16 +285,16 @@ export default function ActiveCampaignHtmlTab() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* LEFT: Job editor */}
         <div className="border rounded-xl p-4">
-          {/* Header row with Add Role (top-right, neutral style) */}
+          {/* Header row with Add Role (top-right, smaller + no border) */}
           <div className="flex items-center justify-between mb-3">
-            <h3 className="font-semibold">Jobs</h3>
+            <h3 className="font-medium text-sm text-gray-800">Jobs</h3>
             <button
               type="button"
               onClick={addJob}
-              className="rounded-full border px-3 py-1.5 text-sm font-medium bg-white hover:bg-gray-50"
+              className="px-2 py-1 text-xs text-gray-600 font-normal rounded-md hover:bg-gray-100 transition"
               title="Add Role"
             >
-              Add Role
+              + Add Role
             </button>
           </div>
 
