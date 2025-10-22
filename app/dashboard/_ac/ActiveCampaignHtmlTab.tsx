@@ -37,9 +37,15 @@ const EMPTY_JOB = (): EditableJob => ({
 })
 
 function safe(s: string) {
-  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
 }
-function stripTags(html: string) { return String(html ?? '').replace(/<[^>]*>/g, ' ') }
+
+function stripTags(html: string) {
+  return String(html ?? '').replace(/<[^>]*>/g, ' ')
+}
 
 function extractEmailPhoneFallback(textOrHtml: string) {
   const text = stripTags(textOrHtml)
@@ -48,32 +54,53 @@ function extractEmailPhoneFallback(textOrHtml: string) {
   const phoneBest = phoneCandidates.sort((a, b) => b.length - a.length)[0]
   return { email: emailMatch?.[0] ?? '', phone: phoneBest ?? '' }
 }
+
 function extractNameBeforeEmailFromHtml(html: string): string {
-  const patterns: RegExp[] = [
-    /<br[^>]*>\s*([A-Za-z][\w'’\-]+(?:\s+[A-Za-z][\w'’\-]+){0,3})\s*[—–-]\s*<strong>\s*<a[^>]*>[^<@]+@[^<]+<\/a>\s*<\/strong>/i,
-    /<br[^>]*>\s*<strong>\s*([A-Za-z][\w'’\-]+(?:\s+[A-Za-z][\w'’\-]+){0,3})\s*<\/strong>\s*[—–-]\s*<a[^>]*>[^<@]+@[^<]+<\/a>/i,
-    /contact[:\s-]*([A-Za-z][\w'’\-]+(?:\s+[A-Za-z][\w'’\-]+){0,3})\s*[—–-]\s*<strong>\s*<a[^>]*>[^<@]+@[^<]+<\/a>\s*<\/strong>/i,
-    />\s*([A-Za-z][\w'’\-]+(?:\s+[A-Za-z][\w'’\-]+){0,3})\s*(?:[—–\-|])\s*<a[^>]*>[^<@]+@[^<]+<\/a>/i,
-  ]
-  for (const rx of patterns) { const m = html.match(rx); if (m?.[1]) return m[1].trim() }
-  const email = (html.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i) || [])[0]
-  if (email) {
-    const i = html.indexOf(email)
-    if (i > -1) {
-      const left = stripTags(html.slice(Math.max(0, i - 140), i))
-      const m2 = left.match(/([A-Z][\w'’\-]+(?:\s+[A-Z][\w'’\-]+){0,3})\s*$/)
-      if (m2?.[1]) return m2[1].trim()
-    }
-  }
-  return ''
+  // Find first email in the HTML/text
+  const emailMatch = (html || '').match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)
+  if (!emailMatch) return ''
+
+  // Local-part before the @
+  let local = emailMatch[0].split('@')[0]
+
+  // Remove any +tagging (e.g., john.smith+sales -> john.smith)
+  local = local.replace(/\+.*/, '')
+
+  // Replace common separators with spaces
+  local = local.replace(/[._-]+/g, ' ')
+
+  // Drop leading digits (e.g., 123jsmith -> jsmith)
+  local = local.replace(/^\d+/, '')
+
+  // Trim + collapse spaces
+  local = local.trim().replace(/\s+/g, ' ')
+  if (!local || local.length < 2) return ''
+
+  // Avoid generic mailboxes like info@, careers@, support@, etc.
+  const genericMailbox = /^(info|hello|contact|careers?|jobs?|enquiries?|support|sales|admin|recruitment|noreply|no[\s-]?reply)$/i
+  if (genericMailbox.test(local)) return ''
+
+  // Title-case up to 4 tokens
+  const name = local
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 4)
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ')
+    .trim()
+
+  return name
 }
+
 function extractContactNameFallback(textOrHtml: string, email: string, phone: string) {
   const html = String(textOrHtml ?? '')
   const fromHtml = extractNameBeforeEmailFromHtml(html)
   if (fromHtml) return fromHtml
+
   const text = stripTags(html)
   const byLabel = text.match(/(?:contact|recruiter|hiring manager)[:\s-]+([A-Z][\w'’-]+(?:\s+[A-Z][\w'’-]+){0,2})/i)
   if (byLabel?.[1]) return byLabel[1].trim()
+
   if (email) {
     const i = text.indexOf(email)
     if (i > -1) {
@@ -82,6 +109,7 @@ function extractContactNameFallback(textOrHtml: string, email: string, phone: st
       if (m?.[1]) return m[1].trim()
     }
   }
+
   if (phone) {
     const i = text.indexOf(phone)
     if (i > -1) {
@@ -90,6 +118,7 @@ function extractContactNameFallback(textOrHtml: string, email: string, phone: st
       if (m?.[1]) return m[1].trim()
     }
   }
+
   return ''
 }
 
