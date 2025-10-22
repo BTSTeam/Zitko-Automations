@@ -304,7 +304,7 @@ export default function ActiveCampaignHtmlTab() {
 
           <div className="space-y-6">
             {jobs.map((job, i) => (
-              <details key={job.id} className="border rounded-lg bg-gray-50 p-3 relative" open>
+              <details key={job.id} className="border rounded-lg bg-gray-50 p-3 relative">
                 <summary className="cursor-pointer select-none font-medium">
                   {job.title ? job.title : `Job ${i + 1}`}
                 </summary>
