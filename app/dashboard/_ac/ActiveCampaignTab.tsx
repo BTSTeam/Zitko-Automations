@@ -83,8 +83,8 @@ export default function ActiveCampaignTab() {
   useEffect(() => {
     function onDocMouseDown(e: MouseEvent) {
       const target = e.target as Node
-      if (tagFieldRef.current?.contains(target)) return // clicking field — allow toggle handler to run
-      if (popoverRef.current?.contains(target)) return // clicking inside popover
+      if (tagFieldRef.current?.contains(target)) return
+      if (popoverRef.current?.contains(target)) return
       setTagOpen(false)
     }
     document.addEventListener('mousedown', onDocMouseDown)
@@ -292,47 +292,34 @@ export default function ActiveCampaignTab() {
     <div className="grid gap-6">
       {/* Controls Card */}
       <div className="rounded-2xl border bg-white p-4 overflow-visible">
-        {/* Two columns: left = pool + list (stacked), right = tags field with internal dropdown */}
-        <div className="grid gap-4 md:grid-cols-2">
-          {/* LEFT: Pool + List stacked */}
-          <div className="grid gap-4">
-            {/* Talent Pool */}
-            <label className="grid gap-1">
-              <span className="text-sm font-medium">Talent Pool</span>
-              <div className="relative">
-                <select
-                  value={poolId}
-                  onChange={(e) => setPoolId(e.target.value)}
-                  className="w-full rounded-xl border px-3 py-2 appearance-none pr-9 focus:outline-none focus:ring-2 focus:ring-[#001961]"
-                >
-                  {pools.length === 0 ? (
-                    <option value="" disabled>No Talent Pools</option>
-                  ) : (
-                    pools.map((p) => (
-                      <option key={`${p.id}`} value={`${p.id}`}>{p.name}</option>
-                    ))
-                  )}
-                </select>
-                <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" viewBox="0 0 20 20" fill="currentColor">
-                  <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.116l3.71-2.885a.75.75 0 1 1 .92 1.18l-4.2 3.265a.75.75 0 0 1-.92 0L5.25 8.39a.75.75 0 0 1-.02-1.18z" />
-                </svg>
-              </div>
-            </label>
+        {/* Two rows x two cols:
+            Row 1 = Talent Pool (L) + Tags (R)
+            Row 2 = Active Campaign List (L) + Buttons (R) */}
+        <div className="grid gap-4 md:grid-cols-2 md:grid-rows-[auto_auto] items-start">
+          {/* Row 1, Col 1 — Talent Pool */}
+          <label className="grid gap-1">
+            <span className="text-sm font-medium">Talent Pool</span>
+            <div className="relative">
+              <select
+                value={poolId}
+                onChange={(e) => setPoolId(e.target.value)}
+                className="w-full rounded-xl border px-3 py-2 appearance-none pr-9 focus:outline-none focus:ring-2 focus:ring-[#001961]"
+              >
+                {pools.length === 0 ? (
+                  <option value="" disabled>No Talent Pools</option>
+                ) : (
+                  pools.map((p) => (
+                    <option key={`${p.id}`} value={`${p.id}`}>{p.name}</option>
+                  ))
+                )}
+              </select>
+              <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.116l3.71-2.885a.75.75 0 1 1 .92 1.18l-4.2 3.265a.75.75 0 0 1-.92 0L5.25 8.39a.75.75 0 0 1-.02-1.18z" />
+              </svg>
+            </div>
+          </label>
 
-            {/* Active Campaign List */}
-            <label className="grid gap-1">
-              <span className="text-sm font-medium">Active Campaign List</span>
-              <input
-                type="text"
-                placeholder="New list name"
-                className="w-full rounded-xl border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#001961]"
-                value={listName}
-                onChange={(e) => setListName(e.target.value)}
-              />
-            </label>
-          </div>
-
-          {/* RIGHT: Tag chip field + internal dropdown */}
+          {/* Row 1, Col 2 — Tags (chip field + internal dropdown) */}
           <label className="grid gap-1 relative">
             <span className="text-sm font-medium">Active Campaign Tag</span>
 
@@ -428,9 +415,20 @@ export default function ActiveCampaignTab() {
             )}
           </label>
 
-          {/* ACTIONS: on the right, below the tags (matches your desired layout) */}
-          <div className="hidden md:block" />
-          <div className="flex items-center gap-3 justify-start md:justify-end">
+          {/* Row 2, Col 1 — Active Campaign List */}
+          <label className="grid gap-1">
+            <span className="text-sm font-medium">Active Campaign List</span>
+            <input
+              type="text"
+              placeholder="New list name"
+              className="w-full rounded-xl border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#001961]"
+              value={listName}
+              onChange={(e) => setListName(e.target.value)}
+            />
+          </label>
+
+          {/* Row 2, Col 2 — Buttons (inline with List) */}
+          <div className="flex items-center gap-3 justify-start md:justify-end self-end">
             <button
               onClick={retrievePoolCandidates}
               disabled={loading || !poolId || isSending}
