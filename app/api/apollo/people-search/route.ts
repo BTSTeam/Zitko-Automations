@@ -7,111 +7,95 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/session'
 import { refreshApolloAccessToken } from '@/lib/apolloRefresh'
 
-type SearchBody = {
-  // Legacy keys we used before
-  title?: string | string[]
-  location?: string | string[]
-  keywords?: string
-  domains?: string | string[]
-  seniorities?: string | string[]
-  emailStatus?: string | string[]
-  page?: number
-  perPage?: number
-
-  // Apollo-style keys you wanted to send from the UI
-  personTitles?: string[] | string
-  personLocations?: string[] | string
-  personSeniorities?: string[] | string
-  qKeywords?: string
-  qOrganizationDomains?: string[] | string
-  contactEmailStatus?: string[] | string
-
-  // UI-only (we do NOT forward directly to Apollo in order to avoid 422s)
-  personDepartmentOrSubdepartments?: string[] | string
-}
-
-/** Convert comma-separated strings or arrays to a trimmed string array */
-function toArray(value?: string | string[]): string[] {
-  if (!value) return []
-  return Array.isArray(value)
-    ? value.map((s) => s.trim()).filter(Boolean)
-    : value.split(',').map((s) => s.trim()).filter(Boolean)
-}
-
 const APOLLO_URL = 'https://api.apollo.io/api/v1/mixed_people/search'
+
+type InBody = {
+  person_titles?: string[] | string
+  include_similar_titles?: boolean | string
+  q_keywords?: string
+  person_locations?: string[] | string
+  person_seniorities?: string[] | string
+  page?: number | string
+  per_page?: number | string
+}
+
+/** Normalize array-like values: accept array or comma-separated string */
+function toArray(v?: string[] | string): string[] {
+  if (!v) return []
+  if (Array.isArray(v)) return v.map(s => s.trim()).filter(Boolean)
+  return v.split(',').map(s => s.trim()).filter(Boolean)
+}
+
+/** Strict boolean coercion for "true"/"false"/1/0 and real booleans */
+function toBool(v: unknown): boolean | undefined {
+  if (typeof v === 'boolean') return v
+  if (typeof v === 'string') {
+    const s = v.trim().toLowerCase()
+    if (s === 'true' || s === '1') return true
+    if (s === 'false' || s === '0') return false
+  }
+  return undefined
+}
+
+/** Safe positive integer with fallback */
+function toPosInt(v: unknown, fallback: number): number {
+  const n = typeof v === 'string' ? parseInt(v, 10) : typeof v === 'number' ? v : NaN
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback
+}
+
+/** (Optional) guard against invalid seniorities */
+const ALLOWED_SENIORITIES = new Set([
+  'owner',
+  'founder',
+  'c_suite',
+  'partner',
+  'vp',
+  'head',
+  'director',
+  'manager',
+  'senior',
+  'entry',
+  'intern',
+])
 
 export async function POST(req: NextRequest) {
   const DEBUG = (process.env.SOURCING_DEBUG_APOLLO || '').toLowerCase() === 'true'
 
-  let body: SearchBody = {}
+  let inBody: InBody = {}
   try {
-    body = (await req.json()) as SearchBody
+    inBody = (await req.json()) as InBody
   } catch {
-    body = {}
+    // ignore — empty body
   }
 
-  // --- Gather from BOTH legacy and new keys ---
+  // ---- Map ONLY the documented fields you listed ----
+  const person_titles = toArray(inBody.person_titles)
+  const include_similar_titles = toBool(inBody.include_similar_titles)
+  const q_keywords = (inBody.q_keywords || '').toString().trim()
+  const person_locations = toArray(inBody.person_locations)
 
-  const titles = [
-    ...toArray(body.title as any),
-    ...toArray(body.personTitles as any),
-  ]
+  // Filter seniorities to allowed set (quietly drop anything else)
+  const person_seniorities = toArray(inBody.person_seniorities).filter(s =>
+    ALLOWED_SENIORITIES.has(s as any),
+  )
 
-  const locations = [
-    ...toArray(body.location as any),
-    ...toArray(body.personLocations as any),
-  ]
+  const page = toPosInt(inBody.page, 1)
+  const per_page = toPosInt(inBody.per_page, 50) // sensible default, user-controllable
 
-  const seniorities = [
-    ...toArray(body.seniorities as any),
-    ...toArray(body.personSeniorities as any),
-  ]
+  // ---- Build Apollo querystring (Apollo accepts POST + query params) ----
+  const params = new URLSearchParams()
+  params.set('page', String(page))
+  params.set('per_page', String(per_page))
 
-  // Keywords: prefer qKeywords; fall back to keywords
-  const qKeywords =
-    (typeof body.qKeywords === 'string' ? body.qKeywords.trim() : '') ||
-    (typeof body.keywords === 'string' ? body.keywords.trim() : '')
-
-  // Organization domains: accept either legacy or new field name
-  const orgDomains = [
-    ...toArray(body.domains as any),
-    ...toArray(body.qOrganizationDomains as any),
-  ]
-
-  const emailStatusArr = [
-    ...toArray(body.emailStatus as any),
-    ...toArray(body.contactEmailStatus as any),
-  ]
-
-  // Optional departments coming from UI – we currently DO NOT forward this as a
-  // separate Apollo field to avoid 422; if provided, we blend into q_keywords.
-  const departmentsFromUI = toArray(body.personDepartmentOrSubdepartments as any)
-
-  // Final keywords string (merge base keywords + departments as hints)
-  const mergedKeywords = [
-    qKeywords,
-    ...departmentsFromUI.map((d) => d.replaceAll('_', ' ')),
-  ]
-    .filter(Boolean)
-    .join(' ')
-    .trim()
-
-  const page = Number.isFinite(body.page) && (body.page as number) > 0 ? (body.page as number) : 1
-  const perPage = 25 // enforce UI requirement
-
-  // --- Build Apollo payload using documented People Search fields only ---
-  const payload: Record<string, any> = {
-    page,
-    per_page: perPage,
+  person_titles.forEach(t => params.append('person_titles[]', t))
+  person_locations.forEach(l => params.append('person_locations[]', l))
+  person_seniorities.forEach(s => params.append('person_seniorities[]', s))
+  if (typeof include_similar_titles === 'boolean') {
+    params.set('include_similar_titles', include_similar_titles ? 'true' : 'false')
   }
-  if (titles.length)      payload.person_titles = titles
-  if (locations.length)   payload.person_locations = locations
-  if (seniorities.length) payload.person_seniorities = seniorities
-  if (orgDomains.length)  payload.q_organization_domains = orgDomains
-  if (emailStatusArr.length) payload.contact_email_status = emailStatusArr
-  if (mergedKeywords)     payload.q_keywords = mergedKeywords
+  if (q_keywords) params.set('q_keywords', q_keywords)
 
-  // Auth: prefer OAuth bearer; fall back to X-Api-Key
+  // ---- Auth: OAuth bearer preferred; fallback to X-Api-Key ----
   const session = await getSession()
   const userKey = session.user?.email || session.sessionId || ''
   let accessToken = session.tokens?.apolloAccessToken
@@ -135,11 +119,13 @@ export async function POST(req: NextRequest) {
     return h
   }
 
+  const urlWithQs = `${APOLLO_URL}?${params.toString()}`
   const call = (headers: Record<string, string>) =>
-    fetch(APOLLO_URL, {
+    fetch(urlWithQs, {
       method: 'POST',
       headers,
-      body: JSON.stringify(payload),
+      // Apollo is fine with empty body when using query params
+      body: JSON.stringify({}), // keep POST semantics; avoids some edge proxies
       cache: 'no-store',
     })
 
@@ -147,13 +133,13 @@ export async function POST(req: NextRequest) {
     const dbgHeaders = { ...buildHeaders() }
     if (dbgHeaders.Authorization) dbgHeaders.Authorization = 'Bearer ***'
     if (dbgHeaders['X-Api-Key']) dbgHeaders['X-Api-Key'] = '***'
-    console.info('[Apollo DEBUG] →', { url: APOLLO_URL, payload, headers: dbgHeaders })
+    console.info('[Apollo DEBUG] →', { url: urlWithQs, headers: dbgHeaders })
   }
 
   try {
     let resp = await call(buildHeaders())
 
-    // Retry once on 401/403 with OAuth refresh
+    // 401/403 → try one refresh for OAuth
     if ((resp.status === 401 || resp.status === 403) && accessToken && userKey) {
       const refreshed = await refreshApolloAccessToken(userKey)
       if (refreshed) {
@@ -163,17 +149,20 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const rawText = await resp.text()
-
+    const raw = await resp.text()
     if (!resp.ok) {
       return NextResponse.json(
-        { error: `Apollo error: ${resp.status} ${resp.statusText}`, details: rawText.slice(0, 2000) },
+        { error: `Apollo error: ${resp.status} ${resp.statusText}`, details: raw?.slice(0, 2000) },
         { status: resp.status || 400 },
       )
     }
 
     let data: any = {}
-    try { data = rawText ? JSON.parse(rawText) : {} } catch { data = {} }
+    try {
+      data = raw ? JSON.parse(raw) : {}
+    } catch {
+      data = {}
+    }
 
     const arr: any[] = Array.isArray(data?.contacts)
       ? data.contacts
@@ -182,37 +171,31 @@ export async function POST(req: NextRequest) {
       : []
 
     const people = arr.map((p: any) => {
-      // name
-      let name: string | null = null
-      if (typeof p?.name === 'string' && p.name.trim()) {
-        name = p.name.trim()
-      } else {
-        const first = typeof p?.first_name === 'string' ? p.first_name.trim() : ''
-        const last  = typeof p?.last_name  === 'string' ? p.last_name.trim()  : ''
-        const joined = [first, last].filter(Boolean).join(' ').trim()
-        name = joined || null
-      }
-
-      // company
-      let company: string | null = null
-      if (typeof p?.organization?.name === 'string' && p.organization.name.trim()) {
-        company = p.organization.name.trim()
-      } else if (Array.isArray(p?.employment_history) && p.employment_history.length > 0) {
-        const orgName = p.employment_history[0]?.organization_name
-        company = typeof orgName === 'string' && orgName.trim() ? orgName.trim() : null
-      }
-
-      // location (wrap ?? when mixing with ||)
-      const location =
-        (p?.location?.name ??
-          [p?.city, p?.state, p?.country].filter(Boolean).join(', ')) ||
+      const first = (p?.first_name ?? '').toString().trim()
+      const last = (p?.last_name ?? '').toString().trim()
+      const name =
+        (p?.name && String(p.name).trim()) ||
+        [first, last].filter(Boolean).join(' ').trim() ||
         null
 
-      // linkedin
+      const title =
+        (p?.title && String(p.title).trim()) ||
+        (Array.isArray(p?.employment_history) && p.employment_history[0]?.title) ||
+        null
+
+      const company =
+        (p?.organization?.name && String(p.organization.name).trim()) ||
+        (Array.isArray(p?.employment_history) && p.employment_history[0]?.organization_name) ||
+        null
+
+      const location =
+        p?.location?.name ??
+        [p?.city, p?.state, p?.country].filter(Boolean).join(', ') ||
+        null
+
       const linkedin_url =
         typeof p?.linkedin_url === 'string' && p.linkedin_url ? p.linkedin_url : null
 
-      // auto score (cover common keys)
       const autoScore =
         typeof p?.people_auto_score === 'number'
           ? p.people_auto_score
@@ -223,16 +206,26 @@ export async function POST(req: NextRequest) {
       return {
         id: p?.id ?? '',
         name,
-        company,
-        location,
+        title: title ? String(title).trim() : null,
+        company: company ? String(company).trim() : null,
+        location: location || null,
         linkedin_url,
         autoScore,
       }
     })
 
-    // Sort by Auto-Score desc defensively and cap to 25
-    people.sort((a, b) => (b.autoScore ?? 0) - (a.autoScore ?? 0))
-    return NextResponse.json({ people: people.slice(0, 25) })
+    // Sort by auto score (desc) then name
+    people.sort((a, b) => (b.autoScore ?? 0) - (a.autoScore ?? 0) || String(a.name).localeCompare(String(b.name)))
+
+    return NextResponse.json({
+      meta: {
+        page,
+        per_page,
+        count: people.length,
+      },
+      people,
+      raw, // keep for debugging in UI if needed
+    })
   } catch (err: any) {
     return NextResponse.json(
       { error: 'Server error during Apollo request', details: String(err) },
