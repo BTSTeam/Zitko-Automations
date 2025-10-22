@@ -51,7 +51,7 @@ function stripTags(html: string) {
 function extractEmailPhoneFallback(textOrHtml: string) {
   const text = stripTags(textOrHtml)
   const emailMatch = text.match(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i)
-  const phoneCandidates = (text.match(/(\+?\d[\d\s().-]{7,}\d)/g) || []).map(s => s.trim())
+  const phoneCandidates = (text.match(/(\+?\d[\d\s().-]{7,}\d)/g) || []).map((s) => s.trim())
   const phoneBest = phoneCandidates.sort((a, b) => b.length - a.length)[0]
   return { email: emailMatch?.[0] ?? '', phone: phoneBest ?? '' }
 }
@@ -123,7 +123,6 @@ function extractContactNameFallback(textOrHtml: string, email: string, phone: st
       if (m?.[1]) return m[1].trim()
     }
   }
-
   return ''
 }
 
@@ -149,7 +148,7 @@ export default function ActiveCampaignHtmlTab() {
 
   /* ---------------- Job logic ---------------- */
   function updateJob(idx: number, patch: Partial<EditableJob>) {
-    setJobs(prev => {
+    setJobs((prev) => {
       const copy = [...prev]
       copy[idx] = { ...copy[idx], ...patch }
       return copy
@@ -157,12 +156,12 @@ export default function ActiveCampaignHtmlTab() {
   }
 
   function removeJob(idx: number) {
-    setJobs(prev => prev.filter((_, i) => i !== idx))
+    setJobs((prev) => prev.filter((_, i) => i !== idx))
   }
 
   // Retrieve positions by ID → summarize via ChatGPT
   async function retrieveJobs() {
-    const ids = jobIds.map(s => s.trim()).filter(Boolean)
+    const ids = jobIds.map((s) => s.trim()).filter(Boolean)
     if (ids.length === 0) return
     setLoadingJobs(true)
 
@@ -172,8 +171,7 @@ export default function ActiveCampaignHtmlTab() {
         // 1) Vincere position
         const r = await fetch(`/api/vincere/position/${encodeURIComponent(id)}`, { cache: 'no-store' })
         const data = await r.json()
-        const publicDesc: string =
-          data?.public_description || data?.publicDescription || data?.description || ''
+        const publicDesc: string = data?.public_description || data?.publicDescription || data?.description || ''
 
         // 2) Summarize
         const ai = await fetch('/api/job/summarize', {
@@ -224,46 +222,52 @@ export default function ActiveCampaignHtmlTab() {
 
   /* ---------------- HTML generation ---------------- */
   const htmlBlocks = useMemo(() => {
-    return jobs.map(j => {
+    return jobs.map((j) => {
       const benefits = [j.benefit1, j.benefit2, j.benefit3]
         .filter(Boolean)
-        .map(b => `<li style="color:#ffffff;font-size:16px;line-height:1.4;margin:0 0 6px 0;">${safe(b)}</li>`)
+        .map((b) => `<li style="color:#ffffff;font-size:16px;line-height:1.4;margin:0 0 6px 0;">${safe(b)}</li>`)
         .join('\n')
 
-      const contactBits = [safe(j.contactName), safe(j.contactEmail), safe(j.contactPhone)]
-        .filter(Boolean)
-        .join(' | ')
+      const contactBits = [safe(j.contactName), safe(j.contactEmail), safe(j.contactPhone)].filter(Boolean).join(' | ')
 
       return `
-<tr>
-  <td align="left" bgcolor="#333333" style="padding:20px 30px;">
-    <p style="color:#ff9a42;font-size:18px;margin:0 0 6px 0;">
-      <strong>${safe(j.title || '(No Title)')}</strong>
-      <span style="font-size:13px;font-weight:normal;opacity:.9;"> (Job ID ${safe(j.id)})</span>
-    </p>
+    <tr>
+      <td align="left" bgcolor="#333333" style="padding:20px 30px;">
+        <p style="color:#ff9a42;font-size:18px;margin:0 0 6px 0;">
+          <strong>${safe(j.title || '(No Title)')}</strong>
+          <span style="font-size:13px;font-weight:normal;opacity:.9;"> (Job ID ${safe(j.id)})</span>
+        </p>
 
-    <p style="font-size:15px;margin:0 0 4px 0;">
-      <b><span style="color:#ff9a42;">Location:</span></b>
-      <span style="color:#ffffff;"> ${safe(j.location)}</span>
-    </p>
+        <p style="font-size:15px;margin:0 0 4px 0;">
+          <b><span style="color:#ff9a42;">Location:</span></b>
+          <span style="color:#ffffff;"> ${safe(j.location)}</span>
+        </p>
 
-    <p style="font-size:15px;margin:0 0 10px 0;">
-      <b><span style="color:#ff9a42;">Salary:</span></b>
-      <span style="color:#ffffff;"> ${safe(j.salary)}</span>
-    </p>
+        <p style="font-size:15px;margin:0 0 10px 0;">
+          <b><span style="color:#ff9a42;">Salary:</span></b>
+          <span style="color:#ffffff;"> ${safe(j.salary)}</span>
+        </p>
 
-    <ul style="margin:0 0 12px 0; padding:0 0 0 36px; list-style-type:disc; list-style-position:outside; mso-padding-left-alt:36px;">
-      ${benefits}
-    </ul>
+        <ul style="margin:0 0 12px 0; padding:0 0 0 36px; list-style-type:disc; list-style-position:outside; mso-padding-left-alt:36px;">
+          ${benefits}
+        </ul>
 
-    <p style="font-size:15px;margin:0;">
-      <span style="color:#ff9a42;font-weight:bold;">Contact:</span>
-      <span style="color:#f5f5f7;font-weight:normal;">
-        ${contactBits}
-      </span>
-    </p>
-  </td>
-</tr>`.trim()
+        <p style="font-size:15px;margin:0;">
+          <span style="color:#ff9a42;font-weight:bold;">Contact:</span>
+          <span style="color:#f5f5f7;font-weight:normal;">
+            ${contactBits}
+          </span>
+        </p>
+
+        <!-- Apply button added -->
+        <p style="margin-top:12px;margin-bottom:0;">
+          <a href="PASTE URL FOR JOB ID ${safe(j.id)}"
+             style="background-color:#ff9a42;color:#ffffff;padding:10px 16px;text-decoration:none;border-radius:4px;display:inline-block;">
+            Apply Here
+          </a>
+        </p>
+      </td>
+    </tr>`.trim()
     })
   }, [jobs])
 
@@ -284,7 +288,7 @@ export default function ActiveCampaignHtmlTab() {
         <div className="absolute inset-0 grid place-items-center bg-white">
           <form onSubmit={tryUnlock} className="w-full max-w-sm rounded-2xl border bg-white p-6 shadow-sm">
             <div className="text-center mb-4">
-              <div className="text-4xl">🔒</div>
+              <div className="text-4xl"></div>
               <h2 className="mt-2 text-lg font-semibold">Restricted Area</h2>
               <p className="text-sm text-gray-600">Enter the password to access Active Campaign tools.</p>
             </div>
@@ -294,7 +298,7 @@ export default function ActiveCampaignHtmlTab() {
                 type="password"
                 className={`rounded-xl border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#001961] ${pwError ? 'border-red-500' : ''}`}
                 value={pw}
-                onChange={e => {
+                onChange={(e) => {
                   setPw(e.target.value)
                   if (pwError) setPwError('')
                 }}
@@ -303,10 +307,7 @@ export default function ActiveCampaignHtmlTab() {
               />
             </label>
             {pwError && <div className="mt-2 text-sm text-red-600">{pwError}</div>}
-            <button
-              type="submit"
-              className="mt-4 w-full rounded-full px-5 py-3 font-medium !bg-[#001961] !text-white hover:opacity-95"
-            >
+            <button type="submit" className="mt-4 w-full rounded-full px-5 py-3 font-medium !bg-[#001961] !text-white hover:opacity-95">
               Unlock
             </button>
           </form>
@@ -328,7 +329,7 @@ export default function ActiveCampaignHtmlTab() {
               className="rounded-md border px-3 py-2 text-sm"
               placeholder={`Job ID ${idx + 1}`}
               value={val}
-              onChange={e => {
+              onChange={(e) => {
                 const copy = [...jobIds]
                 copy[idx] = e.target.value
                 setJobIds(copy)
@@ -339,7 +340,7 @@ export default function ActiveCampaignHtmlTab() {
         <button
           onClick={retrieveJobs}
           className="mt-3 w-full rounded-full px-5 py-2 font-medium !bg-[#001961] !text-white hover:opacity-95 disabled:opacity-50"
-          disabled={loadingJobs || jobIds.every(id => !id.trim())}
+          disabled={loadingJobs || jobIds.every((id) => !id.trim())}
         >
           {loadingJobs ? 'Retrieving…' : 'Retrieve'}
         </button>
@@ -353,7 +354,6 @@ export default function ActiveCampaignHtmlTab() {
               <summary className="cursor-pointer select-none font-medium">
                 {job.title ? job.title : `Job ${i + 1}`}
               </summary>
-
               {jobs.length > 1 && (
                 <button
                   type="button"
@@ -364,81 +364,85 @@ export default function ActiveCampaignHtmlTab() {
                   Remove
                 </button>
               )}
-
               <div className="mt-3 grid gap-2">
                 {/* Job Title */}
                 <label className="text-xs text-gray-500">Job Title</label>
                 <input
                   className="rounded-md border px-3 py-2 text-sm"
                   value={job.title}
-                  onChange={e => updateJob(i, { title: e.target.value })}
+                  onChange={(e) => updateJob(i, { title: e.target.value })}
                   placeholder="Job Title"
                 />
-
                 {/* Location */}
                 <label className="text-xs text-gray-500">Location</label>
                 <input
                   className="rounded-md border px-3 py-2 text-sm"
                   value={job.location}
-                  onChange={e => updateJob(i, { location: e.target.value })}
+                  onChange={(e) => updateJob(i, { location: e.target.value })}
                   placeholder="Location"
                 />
-
                 {/* Salary */}
                 <label className="text-xs text-gray-500">Salary</label>
                 <input
                   className="rounded-md border px-3 py-2 text-sm"
                   value={job.salary}
-                  onChange={e => updateJob(i, { salary: e.target.value })}
+                  onChange={(e) => updateJob(i, { salary: e.target.value })}
                   placeholder="Salary"
                 />
-
                 {/* Benefits */}
                 <label className="text-xs text-gray-500">Benefits (Top 3)</label>
                 <input
                   className="rounded-md border px-3 py-2 text-sm"
                   value={job.benefit1}
-                  onChange={e => updateJob(i, { benefit1: e.target.value })}
+                  onChange={(e) => updateJob(i, { benefit1: e.target.value })}
                   placeholder="Benefit 1"
                 />
                 <input
                   className="rounded-md border px-3 py-2 text-sm"
                   value={job.benefit2}
-                  onChange={e => updateJob(i, { benefit2: e.target.value })}
+                  onChange={(e) => updateJob(i, { benefit2: e.target.value })}
                   placeholder="Benefit 2"
                 />
                 <input
                   className="rounded-md border px-3 py-2 text-sm"
                   value={job.benefit3}
-                  onChange={e => updateJob(i, { benefit3: e.target.value })}
+                  onChange={(e) => updateJob(i, { benefit3: e.target.value })}
                   placeholder="Benefit 3"
                 />
-
                 {/* CONTACT (extracted) */}
                 <label className="text-xs text-gray-500 mt-2">Contact</label>
                 <input
                   className="rounded-md border px-3 py-2 text-sm"
                   value={job.contactName}
-                  onChange={e => updateJob(i, { contactName: e.target.value })}
+                  onChange={(e) => updateJob(i, { contactName: e.target.value })}
                   placeholder="Name"
                 />
                 <input
                   className="rounded-md border px-3 py-2 text-sm"
                   value={job.contactEmail}
-                  onChange={e => updateJob(i, { contactEmail: e.target.value })}
+                  onChange={(e) => updateJob(i, { contactEmail: e.target.value })}
                   placeholder="Email"
                   inputMode="email"
                 />
                 <input
                   className="rounded-md border px-3 py-2 text-sm"
                   value={job.contactPhone}
-                  onChange={e => updateJob(i, { contactPhone: e.target.value })}
+                  onChange={(e) => updateJob(i, { contactPhone: e.target.value })}
                   placeholder="Phone"
                   inputMode="tel"
                 />
               </div>
             </details>
           ))}
+          {/* Add Job button for manual addition */}
+          <button
+            type="button"
+            onClick={() => setJobs((prev) => [...prev, EMPTY_JOB()])}
+            className="text-xs text-blue-600 underline"
+            title="Add a new job"
+          >
+            Add Job
+          </button>
         </div>
 
         {/* RIGHT: HTML preview */}
@@ -453,11 +457,10 @@ export default function ActiveCampaignHtmlTab() {
               Copy Code
             </button>
           </div>
-
           <div className="rounded-md bg-transparent p-3 min-h-[240px] overflow-x-auto">
             <div
               dangerouslySetInnerHTML={{
-                __html: `<table width="100%" cellspacing="0" cellpadding="0">${rowsHtml}</table>`
+                __html: `<table width="100%" cellspacing="0" cellpadding="0">${rowsHtml}</table>`,
               }}
             />
           </div>
