@@ -1,7 +1,7 @@
 // app/dashboard/_ac/ActiveCampaignHtmlTab.tsx
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 
 function normalizeEnvPw(s: string | undefined | null) {
   const t = String(s ?? '').trim()
@@ -21,6 +21,7 @@ type EditableJob = {
   contactName: string
   contactEmail: string
   contactPhone: string
+  postUrl: string
 }
 
 const EMPTY_JOB = (): EditableJob => ({
@@ -34,18 +35,13 @@ const EMPTY_JOB = (): EditableJob => ({
   contactName: '',
   contactEmail: '',
   contactPhone: '',
+  postUrl: '',
 })
 
 function safe(s: string) {
-  return String(s ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
-
-function stripTags(html: string) {
-  return String(html ?? '').replace(/<[^>]*>/g, ' ')
-}
+function stripTags(html: string) { return String(html ?? '').replace(/<[^>]*>/g, ' ') }
 
 function extractEmailPhoneFallback(textOrHtml: string) {
   const text = stripTags(textOrHtml)
@@ -55,52 +51,31 @@ function extractEmailPhoneFallback(textOrHtml: string) {
   return { email: emailMatch?.[0] ?? '', phone: phoneBest ?? '' }
 }
 
+// New: derive a contact name from the part before "@"
 function extractNameBeforeEmailFromHtml(html: string): string {
-  // Find first email in the HTML/text
   const emailMatch = (html || '').match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)
   if (!emailMatch) return ''
-
-  // Local-part before the @
   let local = emailMatch[0].split('@')[0]
-
-  // Remove any +tagging (e.g., john.smith+sales -> john.smith)
-  local = local.replace(/\+.*/, '')
-
-  // Replace common separators with spaces
-  local = local.replace(/[._-]+/g, ' ')
-
-  // Drop leading digits (e.g., 123jsmith -> jsmith)
-  local = local.replace(/^\d+/, '')
-
-  // Trim + collapse spaces
-  local = local.trim().replace(/\s+/g, ' ')
+  local = local.replace(/\+.*/, '').replace(/[._-]+/g, ' ').replace(/^\d+/, '').trim().replace(/\s+/g, ' ')
   if (!local || local.length < 2) return ''
-
-  // Avoid generic mailboxes like info@, careers@, support@, etc.
   const genericMailbox = /^(info|hello|contact|careers?|jobs?|enquiries?|support|sales|admin|recruitment|noreply|no[\s-]?reply)$/i
   if (genericMailbox.test(local)) return ''
-
-  // Title-case up to 4 tokens
-  const name = local
+  return local
     .split(' ')
     .filter(Boolean)
     .slice(0, 4)
     .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
     .join(' ')
     .trim()
-
-  return name
 }
 
 function extractContactNameFallback(textOrHtml: string, email: string, phone: string) {
   const html = String(textOrHtml ?? '')
   const fromHtml = extractNameBeforeEmailFromHtml(html)
   if (fromHtml) return fromHtml
-
   const text = stripTags(html)
   const byLabel = text.match(/(?:contact|recruiter|hiring manager)[:\s-]+([A-Z][\w'’-]+(?:\s+[A-Z][\w'’-]+){0,2})/i)
   if (byLabel?.[1]) return byLabel[1].trim()
-
   if (email) {
     const i = text.indexOf(email)
     if (i > -1) {
@@ -109,7 +84,6 @@ function extractContactNameFallback(textOrHtml: string, email: string, phone: st
       if (m?.[1]) return m[1].trim()
     }
   }
-
   if (phone) {
     const i = text.indexOf(phone)
     if (i > -1) {
@@ -118,7 +92,6 @@ function extractContactNameFallback(textOrHtml: string, email: string, phone: st
       if (m?.[1]) return m[1].trim()
     }
   }
-
   return ''
 }
 
@@ -147,7 +120,9 @@ export default function ActiveCampaignHtmlTab() {
     })
   }
   function removeJob(idx: number) { setJobs(prev => prev.filter((_, i) => i !== idx)) }
-  function addJob() { setJobs(prev => [EMPTY_JOB(), ...prev]) }
+
+  // Append new roles at the bottom
+  function addJob() { setJobs(prev => [...prev, EMPTY_JOB()]) }
 
   async function retrieveJobs() {
     const ids = jobIds.map(s => s.trim()).filter(Boolean)
@@ -181,6 +156,7 @@ export default function ActiveCampaignHtmlTab() {
           benefit2: extracted?.benefits?.[1] ?? '',
           benefit3: extracted?.benefits?.[2] ?? '',
           contactName, contactEmail, contactPhone,
+          postUrl: '', // user will set this; drives the Apply button
         })
       } catch (err) {
         console.error(err); alert(`Failed to retrieve or summarize job ${id}`)
@@ -190,7 +166,7 @@ export default function ActiveCampaignHtmlTab() {
     setLoadingJobs(false)
   }
 
-  // HTML rows (includes Apply Here button — slightly reduced height)
+  // Build the AC HTML rows
   const htmlBlocks = useMemo(() => {
     return jobs.map(j => {
       const benefits = [j.benefit1, j.benefit2, j.benefit3]
@@ -202,7 +178,7 @@ export default function ActiveCampaignHtmlTab() {
         .filter(Boolean)
         .join(' | ')
 
-      const applyUrlPlaceholder = `PASTE URL FOR JOB ID ${safe(j.id)}`
+      const applyHref = (j.postUrl || '').trim() || '#'
 
       return `
 <tr>
@@ -232,7 +208,7 @@ export default function ActiveCampaignHtmlTab() {
     </p>
 
     <div style="margin-top:2px;">
-      <a href="${applyUrlPlaceholder}" target="_blank" rel="noopener"
+      <a href="${safe(applyHref)}" target="_blank" rel="noopener"
          style="display:inline-block;background:#F7941D;color:#ffffff;text-decoration:none;
                 font-weight:600;font-size:14px;line-height:1;border-radius:8px;
                 padding:8px 14px;">
@@ -314,7 +290,6 @@ export default function ActiveCampaignHtmlTab() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* LEFT: Job editor */}
         <div className="border rounded-xl p-4">
-          {/* Header row with Add Role (top-right, smaller + no border) */}
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-medium text-sm text-gray-800">Jobs</h3>
             <button
@@ -329,7 +304,7 @@ export default function ActiveCampaignHtmlTab() {
 
           <div className="space-y-6">
             {jobs.map((job, i) => (
-              <details key={job.id} className="border rounded-lg bg-gray-50 p-3 relative" open={false}>
+              <details key={job.id} className="border rounded-lg bg-gray-50 p-3 relative" open>
                 <summary className="cursor-pointer select-none font-medium">
                   {job.title ? job.title : `Job ${i + 1}`}
                 </summary>
@@ -364,6 +339,16 @@ export default function ActiveCampaignHtmlTab() {
                   <input className="rounded-md border px-3 py-2 text-sm" value={job.contactName} onChange={e => updateJob(i, { contactName: e.target.value })} placeholder="Name" />
                   <input className="rounded-md border px-3 py-2 text-sm" value={job.contactEmail} onChange={e => updateJob(i, { contactEmail: e.target.value })} placeholder="Email" inputMode="email" />
                   <input className="rounded-md border px-3 py-2 text-sm" value={job.contactPhone} onChange={e => updateJob(i, { contactPhone: e.target.value })} placeholder="Phone" inputMode="tel" />
+
+                  {/* Post URL directly under Contact */}
+                  <label className="text-xs text-gray-500 mt-2">Post URL</label>
+                  <input
+                    className="rounded-md border px-3 py-2 text-sm"
+                    value={job.postUrl}
+                    onChange={e => updateJob(i, { postUrl: e.target.value })}
+                    placeholder="https://your-job-posting-url"
+                    inputMode="url"
+                  />
                 </div>
               </details>
             ))}
