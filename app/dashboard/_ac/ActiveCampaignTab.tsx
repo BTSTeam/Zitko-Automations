@@ -75,8 +75,11 @@ export default function ActiveCampaignTab() {
 
   // Tags & List
   const [tags, setTags] = useState<Tag[]>([])
-  const [tagName, setTagName] = useState('')
+  const [selectedTags, setSelectedTags] = useState<string[]>([]) // <— multi-select
   const [listName, setListName] = useState('')
+
+  // Double-click confirmation for send
+  const [confirmSend, setConfirmSend] = useState(false)
 
   // Send button state
   type SendState = 'idle' | 'starting' | 'sending' | 'success' | 'error'
@@ -91,11 +94,12 @@ export default function ActiveCampaignTab() {
     setSendState('idle')
     setProgress(null)
     setPoolTotal(null)
+    setConfirmSend(false)
     if (esRef.current) {
       esRef.current.close()
       esRef.current = null
     }
-  }, [tagName, listName, poolId])
+  }, [selectedTags, listName, poolId])
 
   // On tab mount (after unlock): fetch Talent Pools and AC tags
   useEffect(() => {
@@ -226,16 +230,17 @@ export default function ActiveCampaignTab() {
 
   // Enable send when tag OR list is provided, and a pool is selected
   const acEnabled =
-    (tagName.trim().length > 0 || listName.trim().length > 0) && poolId !== ''
+    (selectedTags.length > 0 || listName.trim().length > 0) && poolId !== ''
 
   async function sendToActiveCampaign() {
     setMessage('')
     setSendState('starting')
 
-    const effectiveTag = tagName.trim()
+    const effectiveTags = selectedTags.map(t => t.trim()).filter(Boolean)
+    const tagString = effectiveTags.join(',') // server expects string; multi supported via comma-join
     const effectiveList = listName.trim()
 
-    if (!effectiveTag && !effectiveList) {
+    if (!tagString && !effectiveList) {
       setSendState('error')
       setMessage('Specify a Tag or List')
       return
@@ -266,7 +271,7 @@ export default function ActiveCampaignTab() {
         body: JSON.stringify({
           poolId,
           userId: TP_USER_ID,
-          tagName: effectiveTag || undefined,
+          tagName: tagString || undefined,
           listId: createdListId ?? undefined,
           rows: 200,
           max: 100000,
@@ -310,6 +315,16 @@ export default function ActiveCampaignTab() {
       setSendState('error')
       setMessage(e?.message ?? 'Import failed')
     }
+  }
+
+  // handle send button click with confirmation
+  function handleSendClick() {
+    if (!confirmSend) {
+      setConfirmSend(true)
+      return
+    }
+    setConfirmSend(false)
+    sendToActiveCampaign()
   }
 
   const isSending = sendState === 'sending' || sendState === 'starting'
@@ -423,17 +438,22 @@ export default function ActiveCampaignTab() {
             />
           </label>
 
-          {/* Active Campaign Tag */}
+          {/* Active Campaign Tag (multi-select) */}
           <label className="grid gap-1">
             <span className="text-sm font-medium">Active Campaign Tag</span>
             <div className="relative">
               <select
-                value={tagName}
-                onChange={(e) => setTagName(e.target.value)}
+                multiple
+                value={selectedTags}
+                onChange={(e) => {
+                  const opts = Array.from(e.target.selectedOptions).map(o => o.value)
+                  setSelectedTags(opts)
+                  setConfirmSend(false)
+                }}
                 className="w-full rounded-xl border px-3 py-2 appearance-none pr-9 focus:outline-none focus:ring-2 focus:ring-[#001961]"
               >
                 <option value="" disabled>
-                  {tags.length ? 'Select a tag' : 'No tags found'}
+                  {tags.length ? 'Select tags' : 'No tags found'}
                 </option>
                 {tags.map((t) => (
                   <option key={t.id} value={t.tag}>{t.tag}</option>
@@ -463,7 +483,7 @@ export default function ActiveCampaignTab() {
           </button>
 
           <button
-            onClick={sendToActiveCampaign}
+            onClick={handleSendClick}
             disabled={!acEnabled || isSending}
             className={`ml-auto rounded-full px-5 py-3 font-medium shadow-sm transition 
               ${acEnabled && !isSending
@@ -471,7 +491,13 @@ export default function ActiveCampaignTab() {
                 : 'bg-gray-100 text-gray-500 cursor-not-allowed'}`}
             aria-live="polite"
           >
-            {sendState === 'success' ? '✓' : isSending ? 'Sending…' : 'Send to Active Campaign'}
+            {sendState === 'success'
+              ? '✓'
+              : isSending
+              ? 'Sending…'
+              : confirmSend
+              ? 'Are you Sure ?'
+              : 'Send to Active Campaign'}
           </button>
         </div>
 
@@ -485,16 +511,16 @@ export default function ActiveCampaignTab() {
       <div className="rounded-2xl border bg-white p-6">
         {/* Header — dynamic for tag/list */}
         <div className="text-[#001961] font-semibold text-lg">
-          {tagName.trim() && listName.trim() ? (
+          {selectedTags.length && listName.trim() ? (
             <>
               Tagging candidates as{' '}
-              <span className="font-normal text-gray-600">“{tagName.trim()}”</span> and adding to list{' '}
+              <span className="font-normal text-gray-600">“{selectedTags.join(', ')}”</span> and adding to list{' '}
               <span className="font-normal text-gray-600">“{listName.trim()}”</span>
             </>
-          ) : tagName.trim() ? (
+          ) : selectedTags.length ? (
             <>
               Tagging candidates as{' '}
-              <span className="font-normal text-gray-600">“{tagName.trim()}”</span>
+              <span className="font-normal text-gray-600">“{selectedTags.join(', ')}”</span>
             </>
           ) : listName.trim() ? (
             <>
