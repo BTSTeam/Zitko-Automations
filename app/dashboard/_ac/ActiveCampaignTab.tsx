@@ -63,14 +63,30 @@ export default function ActiveCampaignTab() {
   const [tagQuery, setTagQuery] = useState('')
   const [listName, setListName] = useState('')
 
-  // Send state
+  // Chip-field dropdown state
+  const [tagOpen, setTagOpen] = useState(false)
+  const tagFieldRef = useRef<HTMLDivElement | null>(null)
+
+  // Two-click confirmation
   const [confirmSend, setConfirmSend] = useState(false)
+
+  // Send state
   type SendState = 'idle' | 'starting' | 'sending' | 'success' | 'error'
   const [sendState, setSendState] = useState<SendState>('idle')
 
   // Progress (SSE)
   const [progress, setProgress] = useState<JobProgress | null>(null)
   const esRef = useRef<EventSource | null>(null)
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function onDocMouseDown(e: MouseEvent) {
+      if (!tagFieldRef.current) return
+      if (!tagFieldRef.current.contains(e.target as Node)) setTagOpen(false)
+    }
+    document.addEventListener('mousedown', onDocMouseDown)
+    return () => document.removeEventListener('mousedown', onDocMouseDown)
+  }, [])
 
   // Reset on input change
   useEffect(() => {
@@ -221,6 +237,14 @@ export default function ActiveCampaignTab() {
     setConfirmSend(false); sendToActiveCampaign()
   }
 
+  function onTagFieldKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.key === 'Backspace' && selectedTags.length && !tagQuery) {
+      e.preventDefault()
+      setSelectedTags(prev => prev.slice(0, -1))
+      setConfirmSend(false)
+    }
+  }
+
   const isSending = sendState === 'sending' || sendState === 'starting'
   const totalInPool = (progress?.totals?.poolTotal ?? poolTotal) ?? null
   const sent = progress?.totals?.sent ?? 0
@@ -265,7 +289,7 @@ export default function ActiveCampaignTab() {
     <div className="grid gap-6">
       {/* Controls Card */}
       <div className="rounded-2xl border bg-white p-4">
-        {/* Two columns: left = pool + list (stacked), right = tags panel */}
+        {/* Two columns: left = pool + list (stacked), right = tags field with internal dropdown */}
         <div className="grid gap-4 md:grid-cols-2">
           {/* LEFT: Pool + List stacked */}
           <div className="grid gap-4">
@@ -305,70 +329,101 @@ export default function ActiveCampaignTab() {
             </label>
           </div>
 
-          {/* RIGHT: Tags panel */}
-          <div className="grid gap-2 md:h-full">
+          {/* RIGHT: Tag chip field + internal dropdown */}
+          <label className="grid gap-1 relative">
             <span className="text-sm font-medium">Active Campaign Tag</span>
 
-            {/* Selected chips */}
-            <div className="flex flex-wrap gap-2 min-h-[2.25rem] rounded-xl border bg-white p-2">
-              {selectedTags.length === 0 ? (
-                <span className="text-xs text-gray-400 px-1 py-1">No tags selected</span>
-              ) : (
-                selectedTags.map(t => (
-                  <span key={t} className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm bg-gray-50">
-                    {t}
-                    <button
-                      type="button"
-                      onClick={() => setSelectedTags(prev => prev.filter(x => x !== t))}
-                      className="text-gray-500 hover:text-gray-700"
-                      aria-label={`Remove ${t}`}
-                      title="Remove"
-                    >
-                      ×
-                    </button>
-                  </span>
-                ))
+            {/* Chip field */}
+            <div
+              ref={tagFieldRef}
+              role="combobox"
+              aria-expanded={tagOpen}
+              tabIndex={0}
+              onClick={() => setTagOpen(o => !o)}
+              onKeyDown={onTagFieldKeyDown}
+              className="w-full rounded-xl border px-2 py-1.5 min-h-[42px] flex items-center flex-wrap gap-2
+                         focus-within:ring-2 focus-within:ring-[#001961] bg-white cursor-text"
+            >
+              {selectedTags.length === 0 && (
+                <span className="text-sm text-gray-400 px-1">No tags selected</span>
               )}
+
+              {selectedTags.map((t) => (
+                <span
+                  key={t}
+                  className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm bg-gray-50"
+                  onClick={(e) => { e.stopPropagation() }}
+                >
+                  {t}
+                  <button
+                    type="button"
+                    aria-label={`Remove ${t}`}
+                    title="Remove"
+                    className="text-gray-500 hover:text-gray-700"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setSelectedTags(prev => prev.filter(x => x !== t))
+                      setConfirmSend(false)
+                    }}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+
+              {/* caret */}
+              <svg
+                className="ml-auto mr-1 h-4 w-4 text-gray-500 pointer-events-none"
+                viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"
+              >
+                <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.116l3.71-2.885a.75.75 0 1 1 .92 1.18l-4.2 3.265a.75.75 0 0 1-.92 0L5.25 8.39a.75.75 0 0 1-.02-1.18z" />
+              </svg>
             </div>
 
-            {/* Filter + list */}
-            <div className="rounded-xl border overflow-hidden">
-              <div className="border-b px-3 py-2">
-                <input
-                  value={tagQuery}
-                  onChange={(e) => setTagQuery(e.target.value)}
-                  placeholder="Search tags…"
-                  className="w-full outline-none text-sm"
-                />
+            {/* Internal dropdown (popover) */}
+            {tagOpen && (
+              <div
+                className="absolute left-0 right-0 mt-1 rounded-xl border bg-white shadow-lg z-50"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="border-b px-3 py-2">
+                  <input
+                    value={tagQuery}
+                    onChange={(e) => { setTagQuery(e.target.value) }}
+                    placeholder="Search tags..."
+                    className="w-full outline-none text-sm"
+                    autoFocus
+                  />
+                </div>
+                <div className="max-h-60 overflow-auto">
+                  {filteredTags.map((t) => {
+                    const checked = selectedTags.includes(t.tag)
+                    return (
+                      <label
+                        key={t.id}
+                        className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 cursor-pointer select-none"
+                        onClick={() => {
+                          setSelectedTags(prev => checked ? prev.filter(x => x !== t.tag) : [...prev, t.tag])
+                          setConfirmSend(false)
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => {}}
+                          className="h-4 w-4 accent-[#001961]"
+                        />
+                        <span>{t.tag}</span>
+                      </label>
+                    )
+                  })}
+                  {filteredTags.length === 0 && (
+                    <div className="px-3 py-3 text-sm text-gray-500">No tags match your search.</div>
+                  )}
+                </div>
               </div>
-              <div className="max-h-48 overflow-auto">
-                {filteredTags.map((t) => {
-                  const checked = selectedTags.includes(t.tag)
-                  return (
-                    <label
-                      key={t.id}
-                      className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 cursor-pointer"
-                      onClick={(e) => {
-                        e.preventDefault()
-                        setSelectedTags(prev => checked ? prev.filter(x => x !== t.tag) : [...prev, t.tag])
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => {}}
-                        className="h-4 w-4 accent-[#001961]"
-                      />
-                      <span>{t.tag}</span>
-                    </label>
-                  )
-                })}
-                {filteredTags.length === 0 && (
-                  <div className="px-3 py-3 text-sm text-gray-500">No tags match your search.</div>
-                )}
-              </div>
-            </div>
-          </div>
+            )}
+          </label>
         </div>
 
         {/* Actions */}
@@ -403,7 +458,6 @@ export default function ActiveCampaignTab() {
           </button>
         </div>
 
-        {/* Only show non-success errors/info */}
         {message && sendState !== 'success' && (
           <div className="mt-2 text-sm text-gray-700">{message}</div>
         )}
