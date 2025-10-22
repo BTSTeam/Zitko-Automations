@@ -77,6 +77,7 @@ export default function ActiveCampaignTab() {
 
   // Progress (SSE)
   const [progress, setProgress] = useState<JobProgress | null>(null)
+  const [currentTag, setCurrentTag] = useState<string>('') // show which tag is being applied right now
   const esRef = useRef<EventSource | null>(null)
 
   // Close dropdown on outside click (but not when clicking inside popover)
@@ -97,6 +98,7 @@ export default function ActiveCampaignTab() {
     setProgress(null)
     setPoolTotal(null)
     setConfirmSend(false)
+    setCurrentTag('')
     if (esRef.current) { esRef.current.close(); esRef.current = null }
   }, [selectedTags, listName, poolId])
 
@@ -185,53 +187,104 @@ export default function ActiveCampaignTab() {
 
   const acEnabled = (selectedTags.length > 0 || listName.trim().length > 0) && poolId !== ''
 
-  async function sendToActiveCampaign() {
-    setMessage(''); setSendState('starting')
-    const effectiveTags = selectedTags.map(t => t.trim()).filter(Boolean)
-    const tagString = effectiveTags.join(',')
-    const effectiveList = listName.trim()
-    if (!tagString && !effectiveList) { setSendState('error'); setMessage('Specify a Tag or List'); return }
+  // ---- helper: run ONE import job (single tag) and resolve on finish
+  async function runSingleImport(tagName: string | undefined, listId: number | null) {
+    // start job
+    const res = await fetch('/api/activecampaign/import-pool/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        poolId,
+        userId: TP_USER_ID,
+        tagName: tagName || undefined, // same backend field as before
+        listId: listId ?? undefined,
+        rows: 200,
+        max: 100000,
+        chunk: 25,
+        pauseMs: 150,
+      }),
+    })
+    const data = await res.json()
+    if (!res.ok || !data?.jobId) {
+      throw new Error(data?.error || `Failed to start import (${res.status}).`)
+    }
 
-    try {
-      let createdListId: number | null = null
-      if (effectiveList) {
-        const lr = await fetch('/api/activecampaign/lists', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: effectiveList }),
-        })
-        const lj = await lr.json()
-        if (!lr.ok || !lj?.id) { setSendState('error'); setMessage(lj?.error || `Failed to create list (${lr.status}).`); return }
-        createdListId = Number(lj.id)
-      }
+    // listen to progress via SSE and resolve when done
+    if (esRef.current) esRef.current.close()
+    const es = new EventSource(`/api/activecampaign/import-pool/progress/${data.jobId}`)
+    esRef.current = es
 
-      const res = await fetch('/api/activecampaign/import-pool/start', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          poolId, userId: TP_USER_ID,
-          tagName: tagString || undefined,
-          listId: createdListId ?? undefined,
-          rows: 200, max: 100000, chunk: 25, pauseMs: 150,
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok || !data?.jobId) { setSendState('error'); setMessage(data?.error || `Failed to start import (${res.status}).`); return }
-
-      setSendState('sending')
-
-      if (esRef.current) esRef.current.close()
-      const es = new EventSource(`/api/activecampaign/import-pool/progress/${data.jobId}`)
-      esRef.current = es
+    await new Promise<void>((resolve, reject) => {
       es.onmessage = (evt) => {
         const payload: JobProgress = JSON.parse(evt.data || '{}')
         setProgress(payload)
-        if (payload.status === 'done') { setSendState('success'); es.close(); esRef.current = null }
-        else if (payload.status === 'error' || payload.status === 'not-found') {
-          setSendState('error'); setMessage(payload.error || 'Import failed'); es.close(); esRef.current = null
+        if (payload?.tagName) setCurrentTag(payload.tagName)
+        if (payload.status === 'done') {
+          es.close(); esRef.current = null
+          resolve()
+        } else if (payload.status === 'error' || payload.status === 'not-found') {
+          es.close(); esRef.current = null
+          reject(new Error(payload.error || 'Import failed'))
         }
       }
-      es.onerror = () => {}
+      es.onerror = () => {
+        // network hiccup; keep waiting — server will push the final state
+      }
+    })
+  }
+
+  async function sendToActiveCampaign() {
+    setMessage('')
+    setSendState('starting')
+    setCurrentTag('')
+
+    // normalize inputs
+    const tagsToApply = selectedTags.map(t => t.trim()).filter(Boolean)
+    const effectiveList = listName.trim()
+
+    if (tagsToApply.length === 0 && !effectiveList) {
+      setSendState('error')
+      setMessage('Specify a Tag or List')
+      return
+    }
+
+    try {
+      // create list once (if needed)
+      let createdListId: number | null = null
+      if (effectiveList) {
+        const lr = await fetch('/api/activecampaign/lists', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: effectiveList }),
+        })
+        const lj = await lr.json()
+        if (!lr.ok || !lj?.id) {
+          setSendState('error')
+          setMessage(lj?.error || `Failed to create list (${lr.status}).`)
+          return
+        }
+        createdListId = Number(lj.id)
+      }
+
+      // When multiple tags are selected, apply them **one by one** using the existing single-tag API.
+      // This prevents AC from creating a single combined tag.
+      setSendState('sending')
+
+      if (tagsToApply.length === 0) {
+        // no tag, just list add
+        await runSingleImport(undefined, createdListId)
+      } else {
+        for (const t of tagsToApply) {
+          setCurrentTag(t)
+          await runSingleImport(t, createdListId)
+        }
+      }
+
+      setSendState('success')
+      setCurrentTag('')
     } catch (e: any) {
-      setSendState('error'); setMessage(e?.message ?? 'Import failed')
+      setSendState('error')
+      setMessage(e?.message ?? 'Import failed')
     }
   }
 
@@ -480,6 +533,10 @@ export default function ActiveCampaignTab() {
             <>No tag or list specified</>
           )}
         </div>
+
+        {currentTag && sendState === 'sending' && (
+          <div className="mt-1 text-sm text-gray-500">Applying tag: “{currentTag}”</div>
+        )}
 
         <div className="mt-6 flex items-center justify-center">
           <div className="relative" style={{ width: 360, height: 360 }}>
