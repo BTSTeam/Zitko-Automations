@@ -241,9 +241,9 @@ export async function POST(req: NextRequest) {
 
       // location (try a few common shapes)
       const loc =
-        p?.location?.name ??
-        [p?.city, p?.state, p?.country].filter(Boolean).join(', ') ||
-        null
+      (p?.location?.name ??
+        [p?.city, p?.state, p?.country].filter(Boolean).join(', ')) ||
+      null
 
       // linkedin
       const linkedin_url =
