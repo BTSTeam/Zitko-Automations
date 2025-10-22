@@ -189,8 +189,8 @@ export async function POST(req: NextRequest) {
         null
 
       const location =
-        p?.location?.name ??
-        [p?.city, p?.state, p?.country].filter(Boolean).join(', ') ||
+        (p?.location?.name ??
+          [p?.city, p?.state, p?.country].filter(Boolean).join(', ')) ||
         null
 
       const linkedin_url =
