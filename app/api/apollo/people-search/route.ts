@@ -9,8 +9,12 @@ import { refreshApolloAccessToken } from '@/lib/apolloRefresh'
 
 /**
  * Expected shape of the search request body.  All fields are optional.
+ * Supports both legacy keys (title, location, keywords, seniorities, emailStatus)
+ * and Apollo-style keys (personTitles, personLocations, qOrganizationKeywordTags,
+ * personSeniorities, personDepartmentOrSubdepartments, contactEmailStatus).
  */
 type SearchBody = {
+  // legacy
   title?: string | string[]
   location?: string | string[]
   keywords?: string
@@ -19,16 +23,25 @@ type SearchBody = {
   emailStatus?: string | string[]
   page?: number
   perPage?: number
+
+  // Apollo-style
+  personTitles?: string[] | string
+  personLocations?: string[] | string
+  qOrganizationKeywordTags?: string[] | string
+  includedOrganizationKeywordFields?: string[] | string
+  personSeniorities?: string[] | string
+  personDepartmentOrSubdepartments?: string[] | string
+  contactEmailStatus?: string[] | string
+  sortByField?: string
+  sortAscending?: boolean
 }
 
-/**
- * Convert comma-separated strings or arrays to an array of trimmed strings.
- */
+/** Convert comma-separated strings or arrays to an array of trimmed strings. */
 function toArray(value?: string | string[]): string[] {
   if (!value) return []
   return Array.isArray(value)
-    ? value.map(s => s.trim()).filter(Boolean)
-    : value.split(',').map(s => s.trim()).filter(Boolean)
+    ? value.map((s) => s.trim()).filter(Boolean)
+    : value.split(',').map((s) => s.trim()).filter(Boolean)
 }
 
 const APOLLO_URL = 'https://api.apollo.io/api/v1/mixed_people/search'
@@ -48,27 +61,77 @@ export async function POST(req: NextRequest) {
     body = {}
   }
 
-  const titles = toArray(body.title)
-  const locations = toArray(body.location)
-  const domains = toArray(body.domains)
-  const seniorities = toArray(body.seniorities)
-  const emailStatusArr = Array.isArray(body.emailStatus)
-    ? body.emailStatus.map(s => s.trim()).filter(Boolean)
-    : toArray(body.emailStatus)
-  const keywords = (body.keywords ?? '').trim()
-  const page = Number.isFinite(body.page) && body.page! > 0 ? body.page! : 1
-  const perPageRaw =
-    Number.isFinite(body.perPage) && body.perPage! > 0 ? body.perPage! : 100
-  const perPage = Math.min(perPageRaw, 100)
+  // --- Gather filters from BOTH legacy and Apollo-style keys ---
+
+  // Titles
+  const titles = [
+    ...toArray(body.title as any),
+    ...toArray(body.personTitles as any),
+  ]
+
+  // Locations
+  const locations = [
+    ...toArray(body.location as any),
+    ...toArray(body.personLocations as any),
+  ]
+
+  // Seniorities
+  const seniorities = [
+    ...toArray(body.seniorities as any),
+    ...toArray(body.personSeniorities as any),
+  ]
+
+  // Departments / subdepartments
+  const departments = toArray(body.personDepartmentOrSubdepartments as any)
+
+  // Organization keyword tags (Apollo doc)
+  const orgKeywordTags = toArray(body.qOrganizationKeywordTags as any)
+
+  // Legacy "keywords" (q_keywords)
+  const freeKeywords = (body.keywords ?? '').trim()
+
+  // Email status (legacy and Apollo-style)
+  const emailStatusArr = [
+    ...toArray(body.emailStatus as any),
+    ...toArray(body.contactEmailStatus as any),
+  ]
+
+  // Optional domains (legacy)
+  const domains = toArray(body.domains as any)
+
+  // Pagination (we hard-cap to 25 per your requirements)
+  const page = Number.isFinite(body.page) && (body.page as number) > 0 ? (body.page as number) : 1
+  const perPage = 25
+
+  // Sorting (try to request auto-score order from Apollo)
+  const sortByField = body.sortByField || 'people_auto_score'
+  const sortAscending = typeof body.sortAscending === 'boolean' ? body.sortAscending : false
 
   // Build the JSON payload for Apollo
-  const payload: Record<string, any> = { page, per_page: perPage }
+  const payload: Record<string, any> = {
+    page,
+    per_page: perPage,
+    sort_by_field: sortByField,
+    sort_ascending: sortAscending,
+  }
+
   if (titles.length > 0) payload.person_titles = titles
   if (locations.length > 0) payload.person_locations = locations
-  if (domains.length > 0) payload.q_organization_domains_list = domains
   if (seniorities.length > 0) payload.person_seniorities = seniorities
+  if (departments.length > 0) payload.person_department_or_subdepartments = departments
+
+  if (orgKeywordTags.length > 0) {
+    payload.q_organization_keyword_tags = orgKeywordTags
+    // caller may pass this; default to tags+name to match your example URL
+    const included = toArray(body.includedOrganizationKeywordFields as any)
+    payload.included_organization_keyword_fields = included.length ? included : ['tags', 'name']
+  }
+
+  if (domains.length > 0) payload.q_organization_domains_list = domains
+
   if (emailStatusArr.length > 0) payload.contact_email_status = emailStatusArr
-  if (keywords) payload.q_keywords = keywords
+
+  if (freeKeywords) payload.q_keywords = freeKeywords
 
   // Resolve auth: prefer OAuth bearer, otherwise X-Api-Key fallback
   const session = await getSession()
@@ -154,8 +217,9 @@ export async function POST(req: NextRequest) {
         ? data.people
         : []
 
-    // Normalise to expected fields
+    // Normalise to expected fields for the UI
     const people = arr.map((p: any) => {
+      // name
       let name: string | null = null
       if (typeof p?.name === 'string' && p.name.trim()) {
         name = p.name.trim()
@@ -166,6 +230,7 @@ export async function POST(req: NextRequest) {
         name = joined || null
       }
 
+      // company
       let company: string | null = null
       if (typeof p?.organization?.name === 'string' && p.organization.name.trim()) {
         company = p.organization.name.trim()
@@ -174,20 +239,39 @@ export async function POST(req: NextRequest) {
         company = typeof orgName === 'string' && orgName.trim() ? orgName.trim() : null
       }
 
-      const title = typeof p?.title === 'string' && p.title.trim() ? p.title.trim() : null
+      // location (try a few common shapes)
+      const loc =
+        p?.location?.name ??
+        [p?.city, p?.state, p?.country].filter(Boolean).join(', ') ||
+        null
+
+      // linkedin
       const linkedin_url =
         typeof p?.linkedin_url === 'string' && p.linkedin_url ? p.linkedin_url : null
+
+      // auto score (different payloads use different keys)
+      const autoScore =
+        typeof p?.people_auto_score === 'number'
+          ? p.people_auto_score
+          : typeof p?.auto_score === 'number'
+          ? p.auto_score
+          : null
 
       return {
         id: p?.id ?? '',
         name,
-        title,
         company,
+        location: loc,
         linkedin_url,
+        autoScore,
       }
     })
 
-    return NextResponse.json({ people })
+    // Defensive server-side sort & cap
+    people.sort((a, b) => (b.autoScore ?? 0) - (a.autoScore ?? 0))
+    const capped = people.slice(0, 25)
+
+    return NextResponse.json({ people: capped })
   } catch (err: any) {
     return NextResponse.json(
       { error: 'Server error during Apollo request', details: String(err) },
