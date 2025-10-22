@@ -1,15 +1,16 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 type SourceMode = 'candidates' | 'companies'
 
 type Person = {
   id: string
   name: string
-  title: string | null
   company: string | null
+  location: string | null
   linkedin_url: string | null
+  autoScore: number | null
 }
 
 const SENIORITY_OPTIONS = [
@@ -24,6 +25,23 @@ const SENIORITY_OPTIONS = [
   { value: 'senior', label: 'Senior' },
   { value: 'entry', label: 'Entry' },
   { value: 'intern', label: 'Intern' },
+]
+
+const DEPARTMENT_OPTIONS = [
+  { value: 'c_suite',                 label: 'C-Suite' },
+  { value: 'product',                 label: 'Product' },
+  { value: 'engineering',             label: 'Engineering & Technical' },
+  { value: 'design',                  label: 'Design' },
+  { value: 'education',               label: 'Education' },
+  { value: 'finance',                 label: 'Finance' },
+  { value: 'human_resources',         label: 'Human Resources' },
+  { value: 'information_technology',  label: 'Information Technology' },
+  { value: 'legal',                   label: 'Legal' },
+  { value: 'marketing',               label: 'Marketing' },
+  { value: 'medical',                 label: 'Medical & Health' },
+  { value: 'operations',              label: 'Operations' },
+  { value: 'sales',                   label: 'Sales' },
+  { value: 'consulting',              label: 'Consulting' },
 ]
 
 // Full-screen maintenance overlay
@@ -64,27 +82,15 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
   }
 
   // ---- CANDIDATES TAB (Apollo people search) ----
-  const [title, setTitle] = useState('')
-  const [location, setLocation] = useState('')
-  const [keywords, setKeywords] = useState('')
-  const [domains, setDomains] = useState('')
+  const [title, setTitle] = useState('')                   // Job Title (personTitles)
+  const [location, setLocation] = useState('')             // Location (personLocations)
+  const [keywords, setKeywords] = useState('')             // Keywords (qOrganizationKeywordTags)
   const [selectedSeniorities, setSelectedSeniorities] = useState<string[]>([])
-  const [roleType, setRoleType] = useState<'permanent' | 'contract'>('permanent')
+  const [selectedDepartments, setSelectedDepartments] = useState<string[]>([])
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [results, setResults] = useState<Person[]>([])
-
-  const effectiveKeywordsHint = useMemo(() => {
-    const parts: string[] = []
-    if (keywords.trim()) parts.push(keywords.trim())
-    if (roleType === 'contract') {
-      parts.push('IR35', 'pay rate')
-    } else {
-      parts.push('-IR35', '-pay rate')
-    }
-    return parts.join(' ')
-  }, [keywords, roleType])
 
   async function runSearch(e?: React.FormEvent) {
     e?.preventDefault()
@@ -95,16 +101,27 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
     setResults([])
 
     try {
+      // Build a payload that works with your current API AND future Apollo-style keys
       const payload = {
+        // === legacy keys your existing route.ts already reads ===
         title: title.trim(),
         location: location.trim(),
         keywords: keywords.trim(),
-        domains: domains.trim(),
         seniorities: selectedSeniorities,
-        type: roleType,
         emailStatus: 'verified',
         page: 1,
-        perPage: 100,
+        perPage: 25,
+
+        // === Apollo-style keys you requested (for your updated backend) ===
+        personTitles: title.trim() ? [title.trim()] : [],
+        personLocations: location.trim() ? [location.trim()] : [],
+        qOrganizationKeywordTags: keywords.trim() ? [keywords.trim()] : [],
+        personSeniorities: selectedSeniorities,
+        personDepartmentOrSubdepartments: selectedDepartments,
+        includedOrganizationKeywordFields: ['tags', 'name'],
+        contactEmailStatus: ['verified'],
+        sortByField: 'people_auto_score',
+        sortAscending: false,
       }
 
       const res = await fetch('/api/apollo/people-search', {
@@ -119,7 +136,10 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
         throw new Error(data?.error || `Search failed (${res.status})`)
       }
 
-      setResults(Array.isArray(data.people) ? data.people.slice(0, 100) : [])
+      // Expecting backend to return [{ id, name, company, location, linkedin_url, autoScore }]
+      const arr = Array.isArray(data.people) ? data.people : []
+      // Enforce max 25 here as an extra guard
+      setResults(arr.slice(0, 25))
     } catch (err: any) {
       setError(err?.message || 'Unexpected error')
     } finally {
@@ -145,16 +165,6 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
         <div className="flex items-center justify-between flex-wrap gap-3">
           <h3 className="text-lg font-semibold m-0">Apollo People Search</h3>
           <div className="flex items-center gap-2">
-            <label className="text-sm text-gray-600">Role Type</label>
-            <select
-              className="input"
-              value={roleType}
-              onChange={(e) => setRoleType(e.target.value as 'permanent' | 'contract')}
-              disabled={isDown}
-            >
-              <option value="permanent">Permanent</option>
-              <option value="contract">Contract</option>
-            </select>
             <button
               type="submit"
               className="btn btn-brand"
@@ -166,12 +176,13 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
           </div>
         </div>
 
+        {/* Row: Job Title / Location / Keywords */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div className="flex flex-col">
-            <label className="text-sm text-gray-600 mb-1">Job Title</label>
+            <label className="text-sm text-gray-600 mb-1">Job Title (personTitles)</label>
             <input
               className="input"
-              placeholder="e.g. Fire & Security Engineer"
+              placeholder="e.g. Field Service Technician"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               disabled={isDown}
@@ -179,10 +190,10 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
           </div>
 
           <div className="flex flex-col">
-            <label className="text-sm text-gray-600 mb-1">Location</label>
+            <label className="text-sm text-gray-600 mb-1">Location (personLocations)</label>
             <input
               className="input"
-              placeholder="e.g. London, UK"
+              placeholder="e.g. United Kingdom"
               value={location}
               onChange={(e) => setLocation(e.target.value)}
               disabled={isDown}
@@ -190,39 +201,55 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
           </div>
 
           <div className="flex flex-col">
-            <label className="text-sm text-gray-600 mb-1">Company Keywords</label>
+            <label className="text-sm text-gray-600 mb-1">Keywords (qOrganizationKeywordTags)</label>
             <input
               className="input"
-              placeholder="e.g. CCTV, access control, fire alarm"
+              placeholder="e.g. Fire"
               value={keywords}
               onChange={(e) => setKeywords(e.target.value)}
               disabled={isDown}
             />
             <p className="text-xs text-gray-500 mt-1">
-              Effective keywords:{' '}
-              <code className="text-[11px]">{effectiveKeywordsHint || '—'}</code>
+              Sent to Apollo as <code className="text-[11px]">q_organization_keyword_tags</code>{' '}
+              and <code className="text-[11px]">included_organization_keyword_fields=['tags','name']</code>.
             </p>
           </div>
         </div>
 
-        {/* Domains input */}
+        {/* Departments & Job Function */}
         <div className="flex flex-col">
           <label className="text-sm text-gray-600 mb-1">
-            Company Domains (optional)
+            Departments &amp; Job Function (personDepartmentOrSubdepartments)
           </label>
-          <input
-            className="input"
-            placeholder="e.g. honeywell.com, johnsoncontrols.com"
-            value={domains}
-            onChange={(e) => setDomains(e.target.value)}
-            disabled={isDown}
-          />
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+            {DEPARTMENT_OPTIONS.map((opt) => (
+              <label key={opt.value} className="inline-flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="accent-brand"
+                  checked={selectedDepartments.includes(opt.value)}
+                  onChange={(e) =>
+                    setSelectedDepartments((prev) =>
+                      e.target.checked
+                        ? [...prev, opt.value]
+                        : prev.filter((v) => v !== opt.value)
+                    )
+                  }
+                  disabled={isDown}
+                />
+                <span>{opt.label}</span>
+              </label>
+            ))}
+          </div>
+          <p className="text-xs text-gray-500 mt-1">
+            Sent to Apollo as <code className="text-[11px]">person_department_or_subdepartments</code>.
+          </p>
         </div>
 
         {/* Seniority multi-select */}
         <div className="flex flex-col">
           <label className="text-sm text-gray-600 mb-1">
-            Seniority (multi-select)
+            Seniorities (personSeniorities)
           </label>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             {SENIORITY_OPTIONS.map((opt) => (
@@ -267,8 +294,7 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
           <div className="p-6 text-sm text-red-600">{error}</div>
         ) : results.length === 0 && !loading ? (
           <div className="p-6 text-sm text-gray-500">
-            Enter your criteria above and click <strong>Search</strong> to view
-            up to 100 people.
+            Enter your criteria above and click <strong>Search</strong> to view up to 25 people.
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -276,17 +302,18 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
               <thead>
                 <tr className="text-left bg-white">
                   <th className="px-4 py-2 border-b">Candidate</th>
-                  <th className="px-4 py-2 border-b">Job Title</th>
                   <th className="px-4 py-2 border-b">Company</th>
+                  <th className="px-4 py-2 border-b">Location</th>
                   <th className="px-4 py-2 border-b">LinkedIn</th>
+                  <th className="px-4 py-2 border-b">Auto-Score</th>
                 </tr>
               </thead>
               <tbody>
                 {results.map((p) => (
                   <tr key={p.id} className="odd:bg-gray-50">
                     <td className="px-4 py-2 border-b">{p.name || '—'}</td>
-                    <td className="px-4 py-2 border-b">{p.title || '—'}</td>
                     <td className="px-4 py-2 border-b">{p.company || '—'}</td>
+                    <td className="px-4 py-2 border-b">{p.location || '—'}</td>
                     <td className="px-4 py-2 border-b">
                       {p.linkedin_url ? (
                         <a
@@ -300,6 +327,9 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
                       ) : (
                         '—'
                       )}
+                    </td>
+                    <td className="px-4 py-2 border-b">
+                      {p.autoScore != null ? p.autoScore.toFixed(2) : '—'}
                     </td>
                   </tr>
                 ))}
