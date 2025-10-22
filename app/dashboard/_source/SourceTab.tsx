@@ -81,10 +81,10 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
     )
   }
 
-  // ---- CANDIDATES TAB (Apollo people search) ----
+  // ---- CANDIDATES TAB ----
   const [title, setTitle] = useState('')                   // Job Title (personTitles)
   const [location, setLocation] = useState('')             // Location (personLocations)
-  const [keywords, setKeywords] = useState('')             // Keywords (qOrganizationKeywordTags)
+  const [keywords, setKeywords] = useState('')             // Keywords (qKeywords)
   const [selectedSeniorities, setSelectedSeniorities] = useState<string[]>([])
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>([])
 
@@ -101,27 +101,18 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
     setResults([])
 
     try {
-      // Build a payload that works with your current API AND future Apollo-style keys
+      // We send only documented People Search fields.
+      // Departments are blended into qKeywords (server will merge safely).
       const payload = {
-        // === legacy keys your existing route.ts already reads ===
-        title: title.trim(),
-        location: location.trim(),
-        keywords: keywords.trim(),
-        seniorities: selectedSeniorities,
-        emailStatus: 'verified',
-        page: 1,
-        perPage: 25,
-
-        // === Apollo-style keys you requested (for your updated backend) ===
         personTitles: title.trim() ? [title.trim()] : [],
         personLocations: location.trim() ? [location.trim()] : [],
-        qOrganizationKeywordTags: keywords.trim() ? [keywords.trim()] : [],
         personSeniorities: selectedSeniorities,
-        personDepartmentOrSubdepartments: selectedDepartments,
-        includedOrganizationKeywordFields: ['tags', 'name'],
+        qKeywords: keywords.trim(),
+        // If you later decide to support org domains, add qOrganizationDomains: [...]
         contactEmailStatus: ['verified'],
-        sortByField: 'people_auto_score',
-        sortAscending: false,
+        personDepartmentOrSubdepartments: selectedDepartments, // UI-only; server merges into qKeywords
+        page: 1,
+        perPage: 25,
       }
 
       const res = await fetch('/api/apollo/people-search', {
@@ -136,10 +127,8 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
         throw new Error(data?.error || `Search failed (${res.status})`)
       }
 
-      // Expecting backend to return [{ id, name, company, location, linkedin_url, autoScore }]
-      const arr = Array.isArray(data.people) ? data.people : []
-      // Enforce max 25 here as an extra guard
-      setResults(arr.slice(0, 25))
+      const arr: Person[] = Array.isArray(data.people) ? data.people : []
+      setResults(arr.slice(0, 25)) // enforce UI cap as a guard
     } catch (err: any) {
       setError(err?.message || 'Unexpected error')
     } finally {
@@ -201,7 +190,7 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
           </div>
 
           <div className="flex flex-col">
-            <label className="text-sm text-gray-600 mb-1">Keywords (qOrganizationKeywordTags)</label>
+            <label className="text-sm text-gray-600 mb-1">Keywords (qKeywords)</label>
             <input
               className="input"
               placeholder="e.g. Fire"
@@ -210,8 +199,7 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
               disabled={isDown}
             />
             <p className="text-xs text-gray-500 mt-1">
-              Sent to Apollo as <code className="text-[11px]">q_organization_keyword_tags</code>{' '}
-              and <code className="text-[11px]">included_organization_keyword_fields=['tags','name']</code>.
+              Departments you select below are also blended into keywords server-side.
             </p>
           </div>
         </div>
@@ -219,7 +207,7 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
         {/* Departments & Job Function */}
         <div className="flex flex-col">
           <label className="text-sm text-gray-600 mb-1">
-            Departments &amp; Job Function (personDepartmentOrSubdepartments)
+            Departments &amp; Job Function (UI)
           </label>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
             {DEPARTMENT_OPTIONS.map((opt) => (
@@ -242,7 +230,7 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
             ))}
           </div>
           <p className="text-xs text-gray-500 mt-1">
-            Sent to Apollo as <code className="text-[11px]">person_department_or_subdepartments</code>.
+            Currently merged into <code className="text-[11px]">q_keywords</code> on the server to avoid unsupported Apollo params.
           </p>
         </div>
 
