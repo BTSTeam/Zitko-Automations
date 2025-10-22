@@ -66,6 +66,7 @@ export default function ActiveCampaignTab() {
   // Chip-field dropdown state
   const [tagOpen, setTagOpen] = useState(false)
   const tagFieldRef = useRef<HTMLDivElement | null>(null)
+  const popoverRef = useRef<HTMLDivElement | null>(null)
 
   // Two-click confirmation
   const [confirmSend, setConfirmSend] = useState(false)
@@ -78,11 +79,13 @@ export default function ActiveCampaignTab() {
   const [progress, setProgress] = useState<JobProgress | null>(null)
   const esRef = useRef<EventSource | null>(null)
 
-  // Close dropdown on outside click
+  // Close dropdown on outside click (but not when clicking inside popover)
   useEffect(() => {
     function onDocMouseDown(e: MouseEvent) {
-      if (!tagFieldRef.current) return
-      if (!tagFieldRef.current.contains(e.target as Node)) setTagOpen(false)
+      const target = e.target as Node
+      if (tagFieldRef.current?.contains(target)) return // clicking field — allow toggle handler to run
+      if (popoverRef.current?.contains(target)) return // clicking inside popover
+      setTagOpen(false)
     }
     document.addEventListener('mousedown', onDocMouseDown)
     return () => document.removeEventListener('mousedown', onDocMouseDown)
@@ -288,7 +291,7 @@ export default function ActiveCampaignTab() {
   return (
     <div className="grid gap-6">
       {/* Controls Card */}
-      <div className="rounded-2xl border bg-white p-4">
+      <div className="rounded-2xl border bg-white p-4 overflow-visible">
         {/* Two columns: left = pool + list (stacked), right = tags field with internal dropdown */}
         <div className="grid gap-4 md:grid-cols-2">
           {/* LEFT: Pool + List stacked */}
@@ -383,8 +386,8 @@ export default function ActiveCampaignTab() {
             {/* Internal dropdown (popover) */}
             {tagOpen && (
               <div
+                ref={popoverRef}
                 className="absolute left-0 right-0 mt-1 rounded-xl border bg-white shadow-lg z-50"
-                onClick={(e) => e.stopPropagation()}
               >
                 <div className="border-b px-3 py-2">
                   <input
@@ -424,38 +427,39 @@ export default function ActiveCampaignTab() {
               </div>
             )}
           </label>
-        </div>
 
-        {/* Actions */}
-        <div className="mt-4 flex items-center gap-3">
-          <button
-            onClick={retrievePoolCandidates}
-            disabled={loading || !poolId || isSending}
-            className={`rounded-full px-6 py-3 font-medium shadow-sm transition
-              ${!loading && poolId && !isSending
-                ? '!bg-[#001961] !text-white hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#001961]'
-                : 'bg-gray-100 text-gray-500 cursor-not-allowed'}`}
-          >
-            {loading ? 'Retrieving…' : 'Retrieve TP Candidates'}
-          </button>
+          {/* ACTIONS: on the right, below the tags (matches your desired layout) */}
+          <div className="hidden md:block" />
+          <div className="flex items-center gap-3 justify-start md:justify-end">
+            <button
+              onClick={retrievePoolCandidates}
+              disabled={loading || !poolId || isSending}
+              className={`rounded-full px-6 py-3 font-medium shadow-sm transition
+                ${!loading && poolId && !isSending
+                  ? '!bg-[#001961] !text-white hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#001961]'
+                  : 'bg-gray-100 text-gray-500 cursor-not-allowed'}`}
+            >
+              {loading ? 'Retrieving…' : 'Retrieve TP Candidates'}
+            </button>
 
-          <button
-            onClick={handleSendClick}
-            disabled={!acEnabled || isSending}
-            className={`ml-auto rounded-full px-5 py-3 font-medium shadow-sm transition 
-              ${acEnabled && !isSending
-                ? '!bg-[#001961] !text-white hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#001961]'
-                : 'bg-gray-100 text-gray-500 cursor-not-allowed'}`}
-            aria-live="polite"
-          >
-            {sendState === 'success'
-              ? '✓'
-              : isSending
-              ? 'Sending…'
-              : confirmSend
-              ? 'Are you Sure ?'
-              : 'Send to Active Campaign'}
-          </button>
+            <button
+              onClick={handleSendClick}
+              disabled={!acEnabled || isSending}
+              className={`rounded-full px-5 py-3 font-medium shadow-sm transition 
+                ${acEnabled && !isSending
+                  ? '!bg-[#001961] !text-white hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#001961]'
+                  : 'bg-gray-100 text-gray-500 cursor-not-allowed'}`}
+              aria-live="polite"
+            >
+              {sendState === 'success'
+                ? '✓'
+                : isSending
+                ? 'Sending…'
+                : confirmSend
+                ? 'Are you Sure ?'
+                : 'Send to Active Campaign'}
+            </button>
+          </div>
         </div>
 
         {message && sendState !== 'success' && (
