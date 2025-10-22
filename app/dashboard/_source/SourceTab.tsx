@@ -27,23 +27,6 @@ const SENIORITY_OPTIONS = [
   { value: 'intern', label: 'Intern' },
 ]
 
-const DEPARTMENT_OPTIONS = [
-  { value: 'c_suite',                 label: 'C-Suite' },
-  { value: 'product',                 label: 'Product' },
-  { value: 'engineering',             label: 'Engineering & Technical' },
-  { value: 'design',                  label: 'Design' },
-  { value: 'education',               label: 'Education' },
-  { value: 'finance',                 label: 'Finance' },
-  { value: 'human_resources',         label: 'Human Resources' },
-  { value: 'information_technology',  label: 'Information Technology' },
-  { value: 'legal',                   label: 'Legal' },
-  { value: 'marketing',               label: 'Marketing' },
-  { value: 'medical',                 label: 'Medical & Health' },
-  { value: 'operations',              label: 'Operations' },
-  { value: 'sales',                   label: 'Sales' },
-  { value: 'consulting',              label: 'Consulting' },
-]
-
 // Full-screen maintenance overlay
 function DownOverlay() {
   return (
@@ -82,15 +65,25 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
   }
 
   // ---- CANDIDATES TAB ----
-  const [title, setTitle] = useState('')                   // Job Title (personTitles)
-  const [location, setLocation] = useState('')             // Location (personLocations)
-  const [keywords, setKeywords] = useState('')             // Keywords (qKeywords)
-  const [selectedSeniorities, setSelectedSeniorities] = useState<string[]>([])
-  const [selectedDepartments, setSelectedDepartments] = useState<string[]>([])
+  // Inputs mapped 1:1 to Apollo params
+  const [personTitlesInput, setPersonTitlesInput] = useState('')       // maps to person_titles[]
+  const [includeSimilarTitles, setIncludeSimilarTitles] = useState(true)
+  const [qKeywords, setQKeywords] = useState('')                       // maps to q_keywords
+  const [personLocationsInput, setPersonLocationsInput] = useState('') // maps to person_locations[]
+  const [selectedSeniorities, setSelectedSeniorities] = useState<string[]>([]) // person_seniorities[]
+  const [page, setPage] = useState(1)
+  const [perPage, setPerPage] = useState(50)
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [results, setResults] = useState<Person[]>([])
+
+  function toArray(input: string): string[] {
+    return input
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean)
+  }
 
   async function runSearch(e?: React.FormEvent) {
     e?.preventDefault()
@@ -101,18 +94,14 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
     setResults([])
 
     try {
-      // We send only documented People Search fields.
-      // Departments are blended into qKeywords (server will merge safely).
       const payload = {
-        personTitles: title.trim() ? [title.trim()] : [],
-        personLocations: location.trim() ? [location.trim()] : [],
-        personSeniorities: selectedSeniorities,
-        qKeywords: keywords.trim(),
-        // If you later decide to support org domains, add qOrganizationDomains: [...]
-        contactEmailStatus: ['verified'],
-        personDepartmentOrSubdepartments: selectedDepartments, // UI-only; server merges into qKeywords
-        page: 1,
-        perPage: 25,
+        person_titles: toArray(personTitlesInput),
+        include_similar_titles: includeSimilarTitles,
+        q_keywords: qKeywords.trim(),
+        person_locations: toArray(personLocationsInput),
+        person_seniorities: selectedSeniorities,
+        page,
+        per_page: perPage,
       }
 
       const res = await fetch('/api/apollo/people-search', {
@@ -122,13 +111,12 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
       })
 
       const data = await res.json().catch(() => ({}))
-
       if (!res.ok) {
         throw new Error(data?.error || `Search failed (${res.status})`)
       }
 
       const arr: Person[] = Array.isArray(data.people) ? data.people : []
-      setResults(arr.slice(0, 25)) // enforce UI cap as a guard
+      setResults(arr)
     } catch (err: any) {
       setError(err?.message || 'Unexpected error')
     } finally {
@@ -165,86 +153,70 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
           </div>
         </div>
 
-        {/* Row: Job Title / Location / Keywords */}
+        {/* Row: Titles / Include similar / Keywords */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div className="flex flex-col">
-            <label className="text-sm text-gray-600 mb-1">Job Title (personTitles)</label>
+            <label className="text-sm text-gray-600 mb-1">
+              Person Titles <span className="text-gray-400">(person_titles[])</span>
+            </label>
             <input
               className="input"
-              placeholder="e.g. Field Service Technician"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              placeholder="e.g. Field Service Technician, Field Service Engineer"
+              value={personTitlesInput}
+              onChange={(e) => setPersonTitlesInput(e.target.value)}
+              disabled={isDown}
+            />
+            <label className="mt-2 inline-flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="accent-brand h-4 w-4"
+                checked={includeSimilarTitles}
+                onChange={(e) => setIncludeSimilarTitles(e.target.checked)}
+                disabled={isDown}
+              />
+              Include similar titles
+              <span className="text-gray-400">(include_similar_titles)</span>
+            </label>
+          </div>
+
+          <div className="flex flex-col">
+            <label className="text-sm text-gray-600 mb-1">
+              Keywords <span className="text-gray-400">(q_keywords)</span>
+            </label>
+            <input
+              className="input"
+              placeholder="A string of words to filter results, e.g. Fire, IR35, Pay Rate"
+              value={qKeywords}
+              onChange={(e) => setQKeywords(e.target.value)}
               disabled={isDown}
             />
           </div>
 
           <div className="flex flex-col">
-            <label className="text-sm text-gray-600 mb-1">Location (personLocations)</label>
+            <label className="text-sm text-gray-600 mb-1">
+              Person Locations <span className="text-gray-400">(person_locations[])</span>
+            </label>
             <input
               className="input"
-              placeholder="e.g. United Kingdom"
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
+              placeholder="e.g. United States, California, United Kingdom, London"
+              value={personLocationsInput}
+              onChange={(e) => setPersonLocationsInput(e.target.value)}
               disabled={isDown}
             />
           </div>
-
-          <div className="flex flex-col">
-            <label className="text-sm text-gray-600 mb-1">Keywords (qKeywords)</label>
-            <input
-              className="input"
-              placeholder="e.g. Fire"
-              value={keywords}
-              onChange={(e) => setKeywords(e.target.value)}
-              disabled={isDown}
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              Departments you select below are also blended into keywords server-side.
-            </p>
-          </div>
         </div>
 
-        {/* Departments & Job Function */}
+        {/* Seniorities */}
         <div className="flex flex-col">
           <label className="text-sm text-gray-600 mb-1">
-            Departments &amp; Job Function (UI)
-          </label>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-            {DEPARTMENT_OPTIONS.map((opt) => (
-              <label key={opt.value} className="inline-flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  className="accent-brand"
-                  checked={selectedDepartments.includes(opt.value)}
-                  onChange={(e) =>
-                    setSelectedDepartments((prev) =>
-                      e.target.checked
-                        ? [...prev, opt.value]
-                        : prev.filter((v) => v !== opt.value)
-                    )
-                  }
-                  disabled={isDown}
-                />
-                <span>{opt.label}</span>
-              </label>
-            ))}
-          </div>
-          <p className="text-xs text-gray-500 mt-1">
-            Currently merged into <code className="text-[11px]">q_keywords</code> on the server to avoid unsupported Apollo params.
-          </p>
-        </div>
-
-        {/* Seniority multi-select */}
-        <div className="flex flex-col">
-          <label className="text-sm text-gray-600 mb-1">
-            Seniorities (personSeniorities)
+            Seniorities <span className="text-gray-400">(person_seniorities[])</span>
           </label>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             {SENIORITY_OPTIONS.map((opt) => (
               <label key={opt.value} className="inline-flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"
-                  className="accent-brand"
+                  className="accent-brand h-4 w-4"
                   checked={selectedSeniorities.includes(opt.value)}
                   onChange={(e) =>
                     setSelectedSeniorities((prev) =>
@@ -259,9 +231,38 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
               </label>
             ))}
           </div>
-          <p className="text-xs text-gray-500 mt-1">
-            Sent to Apollo as <code className="text-[11px]">person_seniorities</code>.
-          </p>
+        </div>
+
+        {/* Pagination controls */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="flex flex-col">
+            <label className="text-sm text-gray-600 mb-1">
+              Page <span className="text-gray-400">(page)</span>
+            </label>
+            <input
+              type="number"
+              min={1}
+              className="input"
+              value={page}
+              onChange={(e) => setPage(Math.max(1, Number(e.target.value) || 1))}
+              disabled={isDown}
+            />
+          </div>
+          <div className="flex flex-col">
+            <label className="text-sm text-gray-600 mb-1">
+              Per Page <span className="text-gray-400">(per_page)</span>
+            </label>
+            <select
+              className="input"
+              value={perPage}
+              onChange={(e) => setPerPage(Number(e.target.value))}
+              disabled={isDown}
+            >
+              {[25, 50, 100, 150, 200].map(n => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+          </div>
         </div>
       </form>
 
@@ -282,7 +283,7 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
           <div className="p-6 text-sm text-red-600">{error}</div>
         ) : results.length === 0 && !loading ? (
           <div className="p-6 text-sm text-gray-500">
-            Enter your criteria above and click <strong>Search</strong> to view up to 25 people.
+            Enter your criteria above and click <strong>Search</strong> to view people.
           </div>
         ) : (
           <div className="overflow-x-auto">
