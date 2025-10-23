@@ -11,99 +11,64 @@ const APOLLO_URL = 'https://api.apollo.io/api/v1/mixed_people/search'
 
 type InBody = {
   person_titles?: string[] | string
-  include_similar_titles?: boolean | string
-  q_keywords?: string
+  q_keywords?: string[] | string   // we accept chips; join to string
   person_locations?: string[] | string
   person_seniorities?: string[] | string
   page?: number | string
   per_page?: number | string
 }
 
-/** Normalize array-like values: accept array or comma-separated string */
 function toArray(v?: string[] | string): string[] {
   if (!v) return []
   if (Array.isArray(v)) return v.map(s => s.trim()).filter(Boolean)
   return v.split(',').map(s => s.trim()).filter(Boolean)
 }
-
-/** Strict boolean coercion for "true"/"false"/1/0 and real booleans */
-function toBool(v: unknown): boolean | undefined {
-  if (typeof v === 'boolean') return v
-  if (typeof v === 'string') {
-    const s = v.trim().toLowerCase()
-    if (s === 'true' || s === '1') return true
-    if (s === 'false' || s === '0') return false
-  }
-  return undefined
-}
-
-/** Safe positive integer with fallback */
 function toPosInt(v: unknown, fallback: number): number {
   const n = typeof v === 'string' ? parseInt(v, 10) : typeof v === 'number' ? v : NaN
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback
 }
-
-/** Apollo seniority allow-list */
 const ALLOWED_SENIORITIES = new Set([
-  'owner',
-  'founder',
-  'c_suite',
-  'partner',
-  'vp',
-  'head',
-  'director',
-  'manager',
-  'senior',
-  'entry',
-  'intern',
+  'owner','founder','c_suite','partner','vp','head','director','manager','senior','entry','intern',
 ])
 
 export async function POST(req: NextRequest) {
   const DEBUG = (process.env.SOURCING_DEBUG_APOLLO || '').toLowerCase() === 'true'
 
   let inBody: InBody = {}
-  try {
-    inBody = (await req.json()) as InBody
-  } catch {
-    // ignore; empty body is allowed
-  }
+  try { inBody = (await req.json()) as InBody } catch {}
 
-  // ---- Map input fields ----
   const person_titles = toArray(inBody.person_titles)
-  const include_similar_titles = toBool(inBody.include_similar_titles) ?? true
-  const q_keywords = (inBody.q_keywords || '').toString().trim()
   const person_locations = toArray(inBody.person_locations)
+  const person_seniorities = toArray(inBody.person_seniorities).filter(s => ALLOWED_SENIORITIES.has(s as any))
 
-  const person_seniorities = toArray(inBody.person_seniorities).filter(s =>
-    ALLOWED_SENIORITIES.has(s as any),
-  )
+  // q_keywords can arrive as array (chips) or string. Join chips with spaces.
+  let q_keywords = ''
+  if (Array.isArray(inBody.q_keywords)) q_keywords = inBody.q_keywords.filter(Boolean).join(' ')
+  else if (typeof inBody.q_keywords === 'string') q_keywords = inBody.q_keywords.trim()
 
   const page = toPosInt(inBody.page, 1)
-  const per_page = 25 // fixed page size to keep UI predictable
+  const per_page = 25 // fixed by design
 
-  // ---- Build Apollo querystring ----
   const params = new URLSearchParams()
   params.set('page', String(page))
   params.set('per_page', String(per_page))
-  params.set('include_similar_titles', include_similar_titles ? 'true' : 'false')
+  params.set('include_similar_titles', 'true')
   person_titles.forEach(t => params.append('person_titles[]', t))
   person_locations.forEach(l => params.append('person_locations[]', l))
   person_seniorities.forEach(s => params.append('person_seniorities[]', s))
   if (q_keywords) params.set('q_keywords', q_keywords)
 
-  // ---- Auth: OAuth bearer preferred; fallback to X-Api-Key ----
+  // Auth
   const session = await getSession()
   const userKey = session.user?.email || session.sessionId || ''
   let accessToken = session.tokens?.apolloAccessToken
   const apiKey = process.env.APOLLO_API_KEY
-
   if (!accessToken && !apiKey) {
     return NextResponse.json(
       { error: 'Not authenticated: no Apollo OAuth token or APOLLO_API_KEY present' },
       { status: 401 },
     )
   }
-
   const buildHeaders = (): Record<string, string> => {
     const h: Record<string, string> = {
       accept: 'application/json',
@@ -117,12 +82,7 @@ export async function POST(req: NextRequest) {
 
   const urlWithQs = `${APOLLO_URL}?${params.toString()}`
   const call = (headers: Record<string, string>) =>
-    fetch(urlWithQs, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({}), // POST semantics required by Apollo even when params are in the QS
-      cache: 'no-store',
-    })
+    fetch(urlWithQs, { method: 'POST', headers, body: JSON.stringify({}), cache: 'no-store' })
 
   if (DEBUG) {
     const dbgHeaders = { ...buildHeaders() }
@@ -133,8 +93,6 @@ export async function POST(req: NextRequest) {
 
   try {
     let resp = await call(buildHeaders())
-
-    // Retry once on 401/403 if using OAuth and a refresh is possible
     if ((resp.status === 401 || resp.status === 403) && accessToken && userKey) {
       const refreshed = await refreshApolloAccessToken(userKey)
       if (refreshed) {
@@ -144,35 +102,29 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const rawText = await resp.text()
-
+    const raw = await resp.text()
     if (!resp.ok) {
       return NextResponse.json(
-        {
-          error: `Apollo error: ${resp.status} ${resp.statusText}`,
-          details: rawText?.slice(0, 2000),
-        },
+        { error: `Apollo error: ${resp.status} ${resp.statusText}`, details: raw?.slice(0, 2000) },
         { status: resp.status || 400 },
       )
     }
 
-    // Parse safely
-    let payload: any = {}
-    try {
-      payload = rawText ? JSON.parse(rawText) : {}
-    } catch {
-      payload = {}
+    // Parse safely (double-parse guard)
+    let data: any = {}
+    try { data = raw ? JSON.parse(raw) : {} } catch { data = {} }
+    if (typeof data === 'string') {
+      try { data = JSON.parse(data) } catch { data = {} }
     }
 
-    // Apollo returns either `contacts` or `people`
-    const rawList: any[] = Array.isArray(payload?.contacts)
-      ? payload.contacts
-      : Array.isArray(payload?.people)
-      ? payload.people
+    // Use contacts (primary); some responses return "people"
+    const arr: any[] = Array.isArray(data?.contacts)
+      ? data.contacts
+      : Array.isArray(data?.people)
+      ? data.people
       : []
 
-    // Map to the exact fields your UI needs
-    const people = rawList.map((p: any) => {
+    const people = arr.map((p: any) => {
       const first = (p?.first_name ?? '').toString().trim()
       const last = (p?.last_name ?? '').toString().trim()
       const name =
@@ -185,19 +137,20 @@ export async function POST(req: NextRequest) {
         (Array.isArray(p?.employment_history) && p.employment_history[0]?.title) ||
         null
 
+      // From first (most recent) employment history if available, else org.name
       const organization_name =
+        (Array.isArray(p?.employment_history) && p.employment_history[0]?.organization_name) ||
         (p?.organization?.name && String(p.organization.name).trim()) ||
-        (Array.isArray(p?.employment_history) &&
-          p.employment_history[0]?.organization_name) ||
         null
 
-      // Prefer explicit formatted address fields Apollo often returns
+      // Address preference order
       const formatted_address =
-        (typeof p?.present_raw_address === 'string' && p.present_raw_address.trim()) ||
         (typeof p?.formatted_address === 'string' && p.formatted_address.trim()) ||
-        (p?.location?.name ??
-          [p?.city, p?.state, p?.country].filter(Boolean).join(', ')) ||
-        null
+        (typeof p?.present_raw_address === 'string' && p.present_raw_address.trim()) ||
+        ((p?.location?.name ?? [p?.city, p?.state, p?.country].filter(Boolean).join(', ')) || null)
+
+      const headline =
+        (typeof p?.headline === 'string' && p.headline.trim()) || null
 
       const linkedin_url =
         typeof p?.linkedin_url === 'string' && p.linkedin_url ? p.linkedin_url : null
@@ -205,8 +158,12 @@ export async function POST(req: NextRequest) {
       const facebook_url =
         typeof p?.facebook_url === 'string' && p.facebook_url ? p.facebook_url : null
 
-      const headline =
-        typeof p?.headline === 'string' && p.headline.trim() ? p.headline.trim() : null
+      const autoScore =
+        typeof p?.people_auto_score === 'number'
+          ? p.people_auto_score
+          : typeof p?.auto_score === 'number'
+          ? p.auto_score
+          : null
 
       return {
         id: p?.id ?? '',
@@ -214,17 +171,26 @@ export async function POST(req: NextRequest) {
         title: title ? String(title).trim() : null,
         organization_name: organization_name ? String(organization_name).trim() : null,
         formatted_address,
+        headline,
         linkedin_url,
         facebook_url,
-        headline,
+        autoScore,
       }
     })
 
+    people.sort(
+      (a, b) =>
+        (b.autoScore ?? 0) - (a.autoScore ?? 0) ||
+        String(a.name ?? '').localeCompare(String(b.name ?? '')),
+    )
+
     return NextResponse.json({
       meta: { page, per_page, count: people.length },
-      pagination: payload?.pagination ?? { page, per_page },
+      breadcrumbs: data?.breadcrumbs ?? [],
+      pagination: data?.pagination ?? { page, per_page },
       people,
-      apollo_pretty: JSON.stringify(payload, null, 2), // helpful for debugging in UI
+      apollo: data,
+      apollo_pretty: JSON.stringify(data, null, 2),
     })
   } catch (err: any) {
     return NextResponse.json(
