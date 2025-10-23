@@ -9,14 +9,12 @@ type Person = {
   name: string | null
   title: string | null
   organization_name: string | null
+  organization_website_url: string | null
   formatted_address: string | null
-  headline: string | null
   linkedin_url: string | null
   facebook_url: string | null
 }
 
-// NOTE: If you add or remove options here, also update the allowed set in the
-// API route.  These values must stay in sync.
 const SENIORITIES = [
   'owner',
   'founder',
@@ -47,7 +45,6 @@ function useChipInput(initial: string[] = []) {
       e.preventDefault()
       addChipFromInput()
     } else if (e.key === 'Backspace' && !input && chips.length) {
-      // remove last
       setChips(prev => prev.slice(0, -1))
     }
   }
@@ -88,9 +85,15 @@ function IconFacebook() {
     </svg>
   )
 }
+function IconGlobe() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" className="inline-block align-[-2px]">
+      <path fill="currentColor" d="M12 2a10 10 0 1 0 .001 20.001A10 10 0 0 0 12 2Zm7.93 9h-3.086a15.4 15.4 0 0 0-1.02-5.02A8.01 8.01 0 0 1 19.93 11ZM12 4c.94 1.24 1.66 3.12 1.98 5H10.02C10.34 7.12 11.06 5.24 12 4ZM8.176 6.98A15.4 15.4 0 0 0 7.156 12H4.07a8.01 8.01 0 0 1 4.106-5.02ZM4.07 13h3.086a15.4 15.4 0 0 0 1.02 5.02A8.01 8.01 0 0 1 4.07 13ZM12 20c-.94-1.24-1.66-3.12-1.98-5h3.96C13.66 16.88 12.94 18.76 12 20Zm3.824-1.98A15.4 15.4 0 0 0 16.844 13h3.086a8.01 8.01 0 0 1-4.106 5.02ZM16.844 12a13.5 13.5 0 0 1-1.047-4H8.203a13.5 13.5 0 0 1-1.047 4h9.688Z"/>
+    </svg>
+  )
+}
 
-// Multi-select dropdown with checkboxes.  The dropdown is absolutely positioned so it
-// overlays other content rather than pushing the panel down.
+// Multi-select dropdown (absolute) so it doesn’t push the panel down.
 function MultiSelect({
   label,
   options,
@@ -159,7 +162,7 @@ function MultiSelect({
   )
 }
 
-// Utility to transform a raw Apollo contact/person into our Person shape.
+// Map raw Apollo contact/person → Person
 function transformToPerson(p: any): Person {
   const first = (p?.first_name ?? '').toString().trim()
   const last = (p?.last_name ?? '').toString().trim()
@@ -172,11 +175,12 @@ function transformToPerson(p: any): Person {
     (Array.isArray(p?.employment_history) && p.employment_history[0]?.organization_name) ||
     (p?.organization?.name && String(p.organization.name).trim()) ||
     null
+  const organization_website_url =
+    (p?.organization?.website_url && String(p.organization.website_url).trim()) || null
   const formatted_address =
     (typeof p?.formatted_address === 'string' && p.formatted_address.trim()) ||
     (typeof p?.present_raw_address === 'string' && p.present_raw_address.trim()) ||
     ([p?.city, p?.state, p?.country].filter(Boolean).join(', ') || null)
-  const headline = (typeof p?.headline === 'string' && p.headline.trim()) || null
   const linkedin_url = (typeof p?.linkedin_url === 'string' && p.linkedin_url) || null
   const facebook_url = (typeof p?.facebook_url === 'string' && p.facebook_url) || null
   return {
@@ -184,8 +188,8 @@ function transformToPerson(p: any): Person {
     name,
     title: title ? String(title).trim() : null,
     organization_name: organization_name ? String(organization_name).trim() : null,
+    organization_website_url,
     formatted_address,
-    headline,
     linkedin_url,
     facebook_url,
   }
@@ -211,7 +215,7 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
 
   // Chips: titles, locations, keywords
   const titles = useChipInput([])
-  const locations = useChipInput(['United States'])
+  const locations = useChipInput([]) // (1) No pre-populated "United States"
   const keywords = useChipInput([])
 
   const [seniorities, setSeniorities] = useState<string[]>([])
@@ -243,7 +247,7 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
       })
       const json: any = await res.json()
       if (!res.ok) throw new Error(json?.error || `Search failed (${res.status})`)
-      // prefer top-level people array if it has items; otherwise fallback to nested
+      // Prefer top-level people; else fall back to nested contacts/people
       let rawArr: any[] = []
       if (Array.isArray(json.people) && json.people.length) {
         rawArr = json.people
@@ -353,7 +357,7 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
           />
         </div>
 
-        {/* Search tips and search button */}
+        {/* Search tips & Search button */}
         <div className="mt-4 flex items-center justify-between">
           <span className="text-xs text-gray-500">
             Press <kbd className="px-1 border rounded">Enter</kbd> to add a chip. Use{' '}
@@ -368,21 +372,19 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
           </button>
         </div>
 
-        {/* Advanced search request prompt */}
-        <div className="mt-4 text-center border-t pt-3">
-          <span className="text-xs text-gray-500">If you would like to request a more advanced search, please click here</span>{' '}
-          <button type="button" className="text-xs text-orange-500 underline ml-1">
-            Request
-          </button>
+        {/* (6) Advanced search prompt aligned right */}
+        <div className="mt-3 flex justify-end">
+          <div className="text-right">
+            <span className="text-xs text-gray-500">
+              If you would like to request a more advanced search, please click here
+            </span>{' '}
+            <button type="button" className="text-xs text-orange-500 underline">Request</button>
+          </div>
         </div>
       </form>
 
-      {/* -------- Panel 2: Results -------- */}
+      {/* -------- Panel 2: Results (2) title removed -------- */}
       <div className="rounded-2xl border bg-white shadow-sm">
-        <div className="px-4 py-3 border-b">
-          <h4 className="font-semibold">Results</h4>
-        </div>
-
         {error ? (
           <div className="p-6 text-sm text-red-600">{error}</div>
         ) : people.length === 0 && !loading ? (
@@ -394,46 +396,46 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
             {people.map(p => (
               <li key={p.id} className="p-4">
                 <div className="flex items-start justify-between gap-4">
+                  {/* Left: details */}
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-semibold text-base">{p.name || '—'}</span>
-                      <div className="flex items-center gap-2">
-                        {p.linkedin_url && (
-                          <a href={p.linkedin_url} target="_blank" rel="noreferrer" title="LinkedIn">
-                            <IconLinkedIn />
-                          </a>
-                        )}
-                        {p.facebook_url && (
-                          <a href={p.facebook_url} target="_blank" rel="noreferrer" title="Facebook">
-                            <IconFacebook />
-                          </a>
-                        )}
-                      </div>
-                    </div>
+                    {/* (3) Name */}
+                    <div className="font-semibold text-base truncate">{p.name || '—'}</div>
 
-                    <div className="text-sm mt-1">
+                    {/* (3) Job Title */}
+                    <div className="text-sm mt-0.5">{p.title || '—'}</div>
+
+                    {/* (3) Company + website icon */}
+                    <div className="text-sm mt-0.5 flex items-center gap-2">
                       <span className="font-medium">{p.organization_name || '—'}</span>
-                      {p.title ? (
-                        <>
-                          {' '}
-                          — <span>{p.title}</span>
-                        </>
+                      {p.organization_website_url ? (
+                        <a
+                          href={p.organization_website_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-gray-600 hover:text-gray-900"
+                          title="Open company website"
+                        >
+                          <IconGlobe />
+                        </a>
                       ) : null}
-                      {p.headline ? <span className="text-gray-500"> ({p.headline})</span> : null}
                     </div>
 
-                    <div className="text-sm text-gray-700 mt-1">{p.formatted_address || '—'}</div>
+                    {/* (3) Location */}
+                    <div className="text-sm text-gray-700 mt-0.5">{p.formatted_address || '—'}</div>
                   </div>
 
-                  <div className="shrink-0">
-                    <button
-                      type="button"
-                      className="rounded-full bg-orange-500 text-white px-6 py-2 text-sm font-medium"
-                      title="Create"
-                      // Handler to be added later
-                    >
-                      Create
-                    </button>
+                  {/* (5) Right: social icons (replaces Create button) */}
+                  <div className="shrink-0 flex items-center gap-2">
+                    {p.linkedin_url && (
+                      <a href={p.linkedin_url} target="_blank" rel="noreferrer" title="LinkedIn">
+                        <IconLinkedIn />
+                      </a>
+                    )}
+                    {p.facebook_url && (
+                      <a href={p.facebook_url} target="_blank" rel="noreferrer" title="Facebook">
+                        <IconFacebook />
+                      </a>
+                    )}
                   </div>
                 </div>
               </li>
