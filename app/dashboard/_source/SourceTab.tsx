@@ -110,7 +110,7 @@ function MultiSelect({
   return (
     <div className="flex flex-col relative" ref={ref}>
       <label className="text-sm text-gray-600 mb-1">{label}</label>
-      <button type="button" onClick={() => setOpen(o => !o)} className="w-full rounded-xl border px-3 py-1.5 text-sm text-left bg-white">
+      <button type="button" onClick={() => setOpen(o => !o)} className="w-full rounded-xl border px-3 py-2.5 text-sm text-left bg-white">
         {values.length ? (
           <div className="flex flex-wrap gap-2">
             {values.map(v => (
