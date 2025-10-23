@@ -42,6 +42,46 @@ function DownOverlay() {
   )
 }
 
+// Minimal mapper for Apollo "contacts" -> UI Person
+function mapApolloContactToPerson(c: any): Person {
+  const first = (c?.first_name ?? '').toString().trim()
+  const last = (c?.last_name ?? '').toString().trim()
+  const name =
+    (typeof c?.name === 'string' && c.name.trim()) ||
+    [first, last].filter(Boolean).join(' ').trim() ||
+    '—'
+
+  const company =
+    (typeof c?.organization_name === 'string' && c.organization_name.trim()) ||
+    (typeof c?.organization?.name === 'string' && c.organization.name.trim()) ||
+    null
+
+  const location =
+    (typeof c?.present_raw_address === 'string' && c.present_raw_address.trim()) ||
+    (c?.location?.name ??
+      [c?.city, c?.state, c?.country].filter(Boolean).join(', ')) ||
+    null
+
+  const linkedin_url =
+    typeof c?.linkedin_url === 'string' && c.linkedin_url ? c.linkedin_url : null
+
+  const autoScore =
+    typeof c?.people_auto_score === 'number'
+      ? c.people_auto_score
+      : typeof c?.auto_score === 'number'
+      ? c.auto_score
+      : null
+
+  return {
+    id: c?.id ?? '',
+    name,
+    company,
+    location,
+    linkedin_url,
+    autoScore,
+  }
+}
+
 export default function SourceTab({ mode }: { mode: SourceMode }) {
   // Toggle overlay via env var
   const isDown =
@@ -66,17 +106,18 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
 
   // ---- CANDIDATES TAB ----
   // Inputs mapped 1:1 to Apollo params
-  const [personTitlesInput, setPersonTitlesInput] = useState('')       // maps to person_titles[]
-  const [includeSimilarTitles, setIncludeSimilarTitles] = useState(true)
-  const [qKeywords, setQKeywords] = useState('')                       // maps to q_keywords
-  const [personLocationsInput, setPersonLocationsInput] = useState('') // maps to person_locations[]
-  const [selectedSeniorities, setSelectedSeniorities] = useState<string[]>([]) // person_seniorities[]
-  const [page, setPage] = useState(1)
-  const [perPage, setPerPage] = useState(50)
+  const [personTitlesInput, setPersonTitlesInput] = useState('')       // -> person_titles[]
+  const [qKeywords, setQKeywords] = useState('')                       // -> q_keywords
+  const [personLocationsInput, setPersonLocationsInput] = useState('') // -> person_locations[]
+  const [selectedSeniorities, setSelectedSeniorities] = useState<string[]>([]) // -> person_seniorities[]
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [results, setResults] = useState<Person[]>([])
+
+  // For quick debugging/visibility of Apollo payload/response
+  const [showRaw, setShowRaw] = useState(false)
+  const [rawText, setRawText] = useState<string>('')
 
   function toArray(input: string): string[] {
     return input
@@ -92,16 +133,17 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
     setLoading(true)
     setError(null)
     setResults([])
+    setRawText('')
 
     try {
       const payload = {
         person_titles: toArray(personTitlesInput),
-        include_similar_titles: includeSimilarTitles,
+        include_similar_titles: true, // always true
         q_keywords: qKeywords.trim(),
         person_locations: toArray(personLocationsInput),
         person_seniorities: selectedSeniorities,
-        page,
-        per_page: perPage,
+        page: 1,
+        per_page: 25, // always 25
       }
 
       const res = await fetch('/api/apollo/people-search', {
@@ -115,8 +157,30 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
         throw new Error(data?.error || `Search failed (${res.status})`)
       }
 
-      const arr: Person[] = Array.isArray(data.people) ? data.people : []
-      setResults(arr)
+      // Primary: use server-mapped people
+      let people: Person[] = Array.isArray(data.people) ? data.people : []
+
+      // Fallback: parse Apollo "raw" if people came back empty
+      if ((!people || people.length === 0) && typeof data.raw === 'string' && data.raw.trim()) {
+        try {
+          const parsed = JSON.parse(data.raw)
+          const contacts = Array.isArray(parsed?.contacts) ? parsed.contacts : []
+          if (contacts.length) {
+            people = contacts.map(mapApolloContactToPerson)
+          }
+        } catch {
+          // ignore parse error; we'll just show no results
+        }
+      }
+
+      setResults(people || [])
+
+      // keep raw visible for debugging
+      if (typeof data.raw === 'string') {
+        setRawText(data.raw)
+      } else if (data && Object.keys(data).length) {
+        setRawText(JSON.stringify(data, null, 2))
+      }
     } catch (err: any) {
       setError(err?.message || 'Unexpected error')
     } finally {
@@ -141,7 +205,16 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
       <form onSubmit={runSearch} className="space-y-4">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <h3 className="text-lg font-semibold m-0">Apollo People Search</h3>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            <label className="inline-flex items-center gap-2 text-sm text-gray-600">
+              <input
+                type="checkbox"
+                className="h-4 w-4"
+                checked={showRaw}
+                onChange={(e) => setShowRaw(e.target.checked)}
+              />
+              Show raw response
+            </label>
             <button
               type="submit"
               className="btn btn-brand"
@@ -153,7 +226,7 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
           </div>
         </div>
 
-        {/* Row: Titles / Include similar / Keywords */}
+        {/* Row: Titles / Keywords / Locations */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div className="flex flex-col">
             <label className="text-sm text-gray-600 mb-1">
@@ -166,17 +239,6 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
               onChange={(e) => setPersonTitlesInput(e.target.value)}
               disabled={isDown}
             />
-            <label className="mt-2 inline-flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                className="accent-brand h-4 w-4"
-                checked={includeSimilarTitles}
-                onChange={(e) => setIncludeSimilarTitles(e.target.checked)}
-                disabled={isDown}
-              />
-              Include similar titles
-              <span className="text-gray-400">(include_similar_titles)</span>
-            </label>
           </div>
 
           <div className="flex flex-col">
@@ -211,58 +273,26 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
           <label className="text-sm text-gray-600 mb-1">
             Seniorities <span className="text-gray-400">(person_seniorities[])</span>
           </label>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            {SENIORITY_OPTIONS.map((opt) => (
-              <label key={opt.value} className="inline-flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  className="accent-brand h-4 w-4"
-                  checked={selectedSeniorities.includes(opt.value)}
-                  onChange={(e) =>
-                    setSelectedSeniorities((prev) =>
-                      e.target.checked
-                        ? [...prev, opt.value]
-                        : prev.filter((v) => v !== opt.value)
-                    )
-                  }
-                  disabled={isDown}
-                />
-                <span>{opt.label}</span>
-              </label>
-            ))}
-          </div>
         </div>
-
-        {/* Pagination controls */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div className="flex flex-col">
-            <label className="text-sm text-gray-600 mb-1">
-              Page <span className="text-gray-400">(page)</span>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          {SENIORITY_OPTIONS.map((opt) => (
+            <label key={opt.value} className="inline-flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="accent-brand h-4 w-4"
+                checked={selectedSeniorities.includes(opt.value)}
+                onChange={(e) =>
+                  setSelectedSeniorities((prev) =>
+                    e.target.checked
+                      ? [...prev, opt.value]
+                      : prev.filter((v) => v !== opt.value)
+                  )
+                }
+                disabled={isDown}
+              />
+              <span>{opt.label}</span>
             </label>
-            <input
-              type="number"
-              min={1}
-              className="input"
-              value={page}
-              onChange={(e) => setPage(Math.max(1, Number(e.target.value) || 1))}
-              disabled={isDown}
-            />
-          </div>
-          <div className="flex flex-col">
-            <label className="text-sm text-gray-600 mb-1">
-              Per Page <span className="text-gray-400">(per_page)</span>
-            </label>
-            <select
-              className="input"
-              value={perPage}
-              onChange={(e) => setPerPage(Number(e.target.value))}
-              disabled={isDown}
-            >
-              {[25, 50, 100, 150, 200].map(n => (
-                <option key={n} value={n}>{n}</option>
-              ))}
-            </select>
-          </div>
+          ))}
         </div>
       </form>
 
@@ -327,6 +357,13 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
           </div>
         )}
       </div>
+
+      {/* Raw response (debug) */}
+      {showRaw && (
+        <pre className="mt-3 text-[12px] leading-snug p-3 rounded-xl border bg-gray-50 overflow-auto max-h-80 whitespace-pre-wrap">
+          {rawText || '—'}
+        </pre>
+      )}
 
       {isDown && <DownOverlay />}
     </div>
