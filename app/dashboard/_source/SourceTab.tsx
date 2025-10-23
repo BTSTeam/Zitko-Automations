@@ -6,11 +6,13 @@ type SourceMode = 'candidates' | 'companies'
 
 type Person = {
   id: string
-  name: string
-  company: string | null
-  location: string | null
+  name: string | null
+  title: string | null
+  organization_name: string | null
+  formatted_address: string | null
   linkedin_url: string | null
-  autoScore: number | null
+  facebook_url: string | null
+  headline: string | null
 }
 
 const SENIORITY_OPTIONS = [
@@ -27,7 +29,7 @@ const SENIORITY_OPTIONS = [
   { value: 'intern', label: 'Intern' },
 ]
 
-// Full-screen maintenance overlay
+// Full-screen maintenance overlay (optional via env)
 function DownOverlay() {
   return (
     <div className="absolute inset-0 z-50 grid place-items-center bg-white/90 backdrop-blur-sm">
@@ -42,48 +44,34 @@ function DownOverlay() {
   )
 }
 
-// Minimal mapper for Apollo "contacts" -> UI Person
-function mapApolloContactToPerson(c: any): Person {
-  const first = (c?.first_name ?? '').toString().trim()
-  const last = (c?.last_name ?? '').toString().trim()
-  const name =
-    (typeof c?.name === 'string' && c.name.trim()) ||
-    [first, last].filter(Boolean).join(' ').trim() ||
-    '—'
+// Small brand icons (inline SVG so you don’t need an asset)
+function LinkedInIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className={className || 'h-4 w-4'}
+      fill="currentColor"
+    >
+      <path d="M4.98 3.5C4.98 4.88 3.87 6 2.5 6S0 4.88 0 3.5 1.12 1 2.5 1s2.48 1.12 2.48 2.5zM0 8h5v16H0zM8 8h4.8v2.2h.07c.67-1.2 2.3-2.46 4.73-2.46 5.05 0 5.98 3.33 5.98 7.66V24h-5v-7.2c0-1.72-.03-3.94-2.4-3.94-2.4 0-2.77 1.87-2.77 3.8V24H8z" />
+    </svg>
+  )
+}
 
-  const company =
-    (typeof c?.organization_name === 'string' && c.organization_name.trim()) ||
-    (typeof c?.organization?.name === 'string' && c.organization.name.trim()) ||
-    null
-
-  const location =
-    (typeof c?.present_raw_address === 'string' && c.present_raw_address.trim()) ||
-    (c?.location?.name ??
-      [c?.city, c?.state, c?.country].filter(Boolean).join(', ')) ||
-    null
-
-  const linkedin_url =
-    typeof c?.linkedin_url === 'string' && c.linkedin_url ? c.linkedin_url : null
-
-  const autoScore =
-    typeof c?.people_auto_score === 'number'
-      ? c.people_auto_score
-      : typeof c?.auto_score === 'number'
-      ? c.auto_score
-      : null
-
-  return {
-    id: c?.id ?? '',
-    name,
-    company,
-    location,
-    linkedin_url,
-    autoScore,
-  }
+function FacebookIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className={className || 'h-4 w-4'}
+      fill="currentColor"
+    >
+      <path d="M22 12.06C22 6.5 17.52 2 12 2S2 6.5 2 12.06c0 5.03 3.66 9.2 8.44 9.94v-7.03H7.9v-2.9h2.54V9.41c0-2.5 1.49-3.89 3.78-3.89 1.1 0 2.25.2 2.25.2v2.47h-1.27c-1.25 0-1.64.78-1.64 1.58v1.9h2.79l-.45 2.9h-2.34V22c4.78-.74 8.44-4.91 8.44-9.94z" />
+    </svg>
+  )
 }
 
 export default function SourceTab({ mode }: { mode: SourceMode }) {
-  // Toggle overlay via env var
   const isDown =
     (process.env.NEXT_PUBLIC_SOURCING_DOWN || '').toLowerCase() === '1' ||
     (process.env.NEXT_PUBLIC_SOURCING_DOWN || '').toLowerCase() === 'true'
@@ -106,16 +94,16 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
 
   // ---- CANDIDATES TAB ----
   // Inputs mapped 1:1 to Apollo params
-  const [personTitlesInput, setPersonTitlesInput] = useState('')       // -> person_titles[]
-  const [qKeywords, setQKeywords] = useState('')                       // -> q_keywords
-  const [personLocationsInput, setPersonLocationsInput] = useState('') // -> person_locations[]
-  const [selectedSeniorities, setSelectedSeniorities] = useState<string[]>([]) // -> person_seniorities[]
+  const [personTitlesInput, setPersonTitlesInput] = useState('') // person_titles[]
+  const [qKeywords, setQKeywords] = useState('') // q_keywords
+  const [personLocationsInput, setPersonLocationsInput] = useState('') // person_locations[]
+  const [selectedSeniorities, setSelectedSeniorities] = useState<string[]>([]) // person_seniorities[]
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [results, setResults] = useState<Person[]>([])
 
-  // For quick debugging/visibility of Apollo payload/response
+  // Optional debug
   const [showRaw, setShowRaw] = useState(false)
   const [rawText, setRawText] = useState<string>('')
 
@@ -138,12 +126,12 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
     try {
       const payload = {
         person_titles: toArray(personTitlesInput),
-        include_similar_titles: true, // always true
+        include_similar_titles: true,
         q_keywords: qKeywords.trim(),
         person_locations: toArray(personLocationsInput),
         person_seniorities: selectedSeniorities,
         page: 1,
-        per_page: 25, // always 25
+        per_page: 25,
       }
 
       const res = await fetch('/api/apollo/people-search', {
@@ -152,35 +140,15 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
         body: JSON.stringify(payload),
       })
 
-      const data = await res.json().catch(() => ({}))
+      const data = await res.json()
       if (!res.ok) {
         throw new Error(data?.error || `Search failed (${res.status})`)
       }
 
-      // Primary: use server-mapped people
-      let people: Person[] = Array.isArray(data.people) ? data.people : []
+      const people: Person[] = Array.isArray(data.people) ? data.people : []
+      setResults(people)
 
-      // Fallback: parse Apollo "raw" if people came back empty
-      if ((!people || people.length === 0) && typeof data.raw === 'string' && data.raw.trim()) {
-        try {
-          const parsed = JSON.parse(data.raw)
-          const contacts = Array.isArray(parsed?.contacts) ? parsed.contacts : []
-          if (contacts.length) {
-            people = contacts.map(mapApolloContactToPerson)
-          }
-        } catch {
-          // ignore parse error; we'll just show no results
-        }
-      }
-
-      setResults(people || [])
-
-      // keep raw visible for debugging
-      if (typeof data.raw === 'string') {
-        setRawText(data.raw)
-      } else if (data && Object.keys(data).length) {
-        setRawText(JSON.stringify(data, null, 2))
-      }
+      setRawText(data?.apollo_pretty || '')
     } catch (err: any) {
       setError(err?.message || 'Unexpected error')
     } finally {
@@ -215,18 +183,30 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
               />
               Show raw response
             </label>
-            <button
-              type="submit"
-              className="btn btn-brand"
-              disabled={isDown || loading}
-              title="Run search"
-            >
-              {loading ? 'Searching…' : 'Search'}
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="rounded-full bg-orange-500 text-white px-4 py-2 text-sm hover:bg-orange-600"
+                title="Request an advanced search"
+                onClick={() => {
+                  // placeholder – no action wired yet
+                }}
+              >
+                Request
+              </button>
+              <button
+                type="submit"
+                className="rounded-full bg-orange-500 text-white px-4 py-2 text-sm hover:bg-orange-600"
+                disabled={isDown || loading}
+                title="Run search"
+              >
+                {loading ? 'Searching…' : 'Search'}
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Row: Titles / Keywords / Locations */}
+        {/* Row: Titles / Locations / Keywords */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div className="flex flex-col">
             <label className="text-sm text-gray-600 mb-1">
@@ -243,19 +223,6 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
 
           <div className="flex flex-col">
             <label className="text-sm text-gray-600 mb-1">
-              Keywords <span className="text-gray-400">(q_keywords)</span>
-            </label>
-            <input
-              className="input"
-              placeholder="A string of words to filter results, e.g. Fire, IR35, Pay Rate"
-              value={qKeywords}
-              onChange={(e) => setQKeywords(e.target.value)}
-              disabled={isDown}
-            />
-          </div>
-
-          <div className="flex flex-col">
-            <label className="text-sm text-gray-600 mb-1">
               Person Locations <span className="text-gray-400">(person_locations[])</span>
             </label>
             <input
@@ -263,6 +230,19 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
               placeholder="e.g. United States, California, United Kingdom, London"
               value={personLocationsInput}
               onChange={(e) => setPersonLocationsInput(e.target.value)}
+              disabled={isDown}
+            />
+          </div>
+
+          <div className="flex flex-col">
+            <label className="text-sm text-gray-600 mb-1">
+              Keywords <span className="text-gray-400">(q_keywords)</span>
+            </label>
+            <input
+              className="input"
+              placeholder="e.g. IR35, Pay Rate, Fire"
+              value={qKeywords}
+              onChange={(e) => setQKeywords(e.target.value)}
               disabled={isDown}
             />
           </div>
@@ -279,7 +259,7 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
             <label key={opt.value} className="inline-flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
-                className="accent-brand h-4 w-4"
+                className="accent-orange-500 h-4 w-4"
                 checked={selectedSeniorities.includes(opt.value)}
                 onChange={(e) =>
                   setSelectedSeniorities((prev) =>
@@ -296,7 +276,7 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
         </div>
       </form>
 
-      {/* Panel 2: Results */}
+      {/* Panel 2: Results – stack rows like the mock (no columns) */}
       <div className="rounded-2xl border overflow-hidden">
         <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
           <div className="font-medium">Results</div>
@@ -316,45 +296,80 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
             Enter your criteria above and click <strong>Search</strong> to view people.
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left bg-white">
-                  <th className="px-4 py-2 border-b">Candidate</th>
-                  <th className="px-4 py-2 border-b">Company</th>
-                  <th className="px-4 py-2 border-b">Location</th>
-                  <th className="px-4 py-2 border-b">LinkedIn</th>
-                  <th className="px-4 py-2 border-b">Auto-Score</th>
-                </tr>
-              </thead>
-              <tbody>
-                {results.map((p) => (
-                  <tr key={p.id} className="odd:bg-gray-50">
-                    <td className="px-4 py-2 border-b">{p.name || '—'}</td>
-                    <td className="px-4 py-2 border-b">{p.company || '—'}</td>
-                    <td className="px-4 py-2 border-b">{p.location || '—'}</td>
-                    <td className="px-4 py-2 border-b">
-                      {p.linkedin_url ? (
-                        <a
-                          href={p.linkedin_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-brand underline"
-                        >
-                          View Profile
-                        </a>
-                      ) : (
-                        '—'
-                      )}
-                    </td>
-                    <td className="px-4 py-2 border-b">
-                      {p.autoScore != null ? p.autoScore.toFixed(2) : '—'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ul className="divide-y">
+            {results.map((p) => (
+              <li key={p.id} className="p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    {/* Row 1: Name + social icons */}
+                    <div className="flex items-center gap-3">
+                      <div className="text-base font-semibold truncate">{p.name || '—'}</div>
+                      <div className="flex items-center gap-2 text-gray-500">
+                        {p.linkedin_url ? (
+                          <a
+                            href={p.linkedin_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex p-1 rounded hover:text-orange-600"
+                            title="Open LinkedIn"
+                          >
+                            <LinkedInIcon />
+                          </a>
+                        ) : (
+                          <span className="inline-flex p-1 opacity-30">
+                            <LinkedInIcon />
+                          </span>
+                        )}
+                        {p.facebook_url ? (
+                          <a
+                            href={p.facebook_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex p-1 rounded hover:text-orange-600"
+                            title="Open Facebook"
+                          >
+                            <FacebookIcon />
+                          </a>
+                        ) : (
+                          <span className="inline-flex p-1 opacity-30">
+                            <FacebookIcon />
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Row 2: Company - Title (Headline) */}
+                    <div className="text-sm mt-1">
+                      <span className="font-medium">
+                        {p.organization_name || '—'}
+                      </span>
+                      {p.title ? ` - ${p.title}` : ''}
+                      {p.headline ? (
+                        <span className="text-gray-600"> ({p.headline})</span>
+                      ) : null}
+                    </div>
+
+                    {/* Row 3: Address */}
+                    <div className="text-sm text-gray-600 mt-2">
+                      {p.formatted_address || '—'}
+                    </div>
+                  </div>
+
+                  {/* Create button (no action wired) */}
+                  <button
+                    type="button"
+                    className="self-center rounded-full bg-orange-500 text-white px-5 py-2 text-sm hover:bg-orange-600"
+                    onClick={() => {
+                      // intentionally empty for now
+                    }}
+                    title="Create"
+                  >
+                    Create
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
         )}
       </div>
 
