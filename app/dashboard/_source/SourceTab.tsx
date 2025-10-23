@@ -10,189 +10,134 @@ type Person = {
   title: string | null
   organization_name: string | null
   formatted_address: string | null
+  headline: string | null
   linkedin_url: string | null
   facebook_url: string | null
-  headline: string | null
 }
 
-const SENIORITY_OPTIONS = [
-  { value: 'owner', label: 'Owner' },
-  { value: 'founder', label: 'Founder' },
-  { value: 'c_suite', label: 'C-suite' },
-  { value: 'partner', label: 'Partner' },
-  { value: 'vp', label: 'VP' },
-  { value: 'head', label: 'Head' },
-  { value: 'director', label: 'Director' },
-  { value: 'manager', label: 'Manager' },
-  { value: 'senior', label: 'Senior' },
-  { value: 'entry', label: 'Entry' },
-  { value: 'intern', label: 'Intern' },
-]
+const SENIORITIES = [
+  'owner','founder','c_suite','partner','vp','head','director','manager','senior','entry','intern',
+] as const
 
-// -------------------------------
-// Small brand icons
-// -------------------------------
-function LinkedInIcon({ className }: { className?: string }) {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" className={className || 'h-4 w-4'} fill="currentColor">
-      <path d="M4.98 3.5C4.98 4.88 3.87 6 2.5 6S0 4.88 0 3.5 1.12 1 2.5 1s2.48 1.12 2.48 2.5zM0 8h5v16H0zM8 8h4.8v2.2h.07c.67-1.2 2.3-2.46 4.73-2.46 5.05 0 5.98 3.33 5.98 7.66V24h-5v-7.2c0-1.72-.03-3.94-2.4-3.94-2.4 0-2.77 1.87-2.77 3.8V24H8z" />
-    </svg>
-  )
-}
-function FacebookIcon({ className }: { className?: string }) {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" className={className || 'h-4 w-4'} fill="currentColor">
-      <path d="M22 12.06C22 6.5 17.52 2 12 2S2 6.5 2 12.06c0 5.03 3.66 9.2 8.44 9.94v-7.03H7.9v-2.9h2.54V9.41c0-2.5 1.49-3.89 3.78-3.89 1.1 0 2.25.2 2.25.2v2.47h-1.27c-1.25 0-1.64.78-1.64 1.58v1.9h2.79l-.45 2.9h-2.34V22c4.78-.74 8.44-4.91 8.44-9.94z" />
-    </svg>
-  )
-}
+// ---------------- UI helpers ----------------
+function useChipInput(initial: string[] = []) {
+  const [chips, setChips] = useState<string[]>(initial)
+  const [input, setInput] = useState('')
 
-// -------------------------------
-// ChipInput – press Enter / comma to add
-// -------------------------------
-function ChipInput({
-  value,
-  onChange,
-  placeholder,
-  'aria-label': ariaLabel,
-}: {
-  value: string[]
-  onChange: (next: string[]) => void
-  placeholder?: string
-  'aria-label'?: string
-}) {
-  const [draft, setDraft] = useState('')
-  const inputRef = useRef<HTMLInputElement | null>(null)
-
-  function addChipFromDraft() {
-    const clean = draft.trim()
-    if (!clean) return
-    if (!value.includes(clean)) onChange([...value, clean])
-    setDraft('')
+  function addChipFromInput() {
+    const v = input.trim()
+    if (!v) return
+    if (!chips.includes(v)) setChips(prev => [...prev, v])
+    setInput('')
   }
-
-  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === 'Enter' || e.key === ',' || e.key === ';') {
+  function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter') {
       e.preventDefault()
-      addChipFromDraft()
-    } else if (e.key === 'Backspace' && draft.length === 0 && value.length > 0) {
-      e.preventDefault()
-      onChange(value.slice(0, -1))
+      addChipFromInput()
+    } else if (e.key === 'Backspace' && !input && chips.length) {
+      // remove last
+      setChips(prev => prev.slice(0, -1))
     }
   }
+  function removeChip(v: string) {
+    setChips(prev => prev.filter(c => c !== v))
+  }
 
+  return { chips, input, setInput, addChipFromInput, onKeyDown, removeChip, setChips }
+}
+
+function Chip({ children, onRemove }: { children: string; onRemove: () => void }) {
   return (
-    <div className="min-h-[40px] w-full rounded-xl border px-2 py-1.5 flex items-center flex-wrap gap-2 bg-white">
-      {value.map((chip, idx) => (
-        <span
-          key={`${chip}-${idx}`}
-          className="inline-flex items-center gap-2 rounded-full bg-gray-100 px-3 py-1 text-sm"
-        >
-          {chip}
-          <button
-            type="button"
-            className="text-gray-500 hover:text-gray-700"
-            aria-label={`Remove ${chip}`}
-            onClick={() => onChange(value.filter((c) => c !== chip))}
-          >
-            ×
-          </button>
-        </span>
-      ))}
-      <input
-        ref={inputRef}
-        aria-label={ariaLabel}
-        className="flex-1 min-w-[120px] outline-none text-sm placeholder:text-gray-400 bg-transparent py-1"
-        placeholder={placeholder}
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={handleKeyDown}
-        onBlur={addChipFromDraft}
-      />
-    </div>
+    <span className="inline-flex items-center gap-2 rounded-full bg-gray-100 px-3 py-1 text-sm">
+      <span className="truncate">{children}</span>
+      <button
+        type="button"
+        onClick={onRemove}
+        className="rounded-full w-5 h-5 grid place-items-center hover:bg-gray-200"
+        title="Remove"
+      >
+        ×
+      </button>
+    </span>
   )
 }
 
-// -------------------------------
-// MultiSelect dropdown (shows chips when closed)
-// -------------------------------
+function IconLinkedIn() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" className="fill-[#0a66c2]">
+      <path d="M4.98 3.5C4.98 4.88 3.86 6 2.5 6S0 4.88 0 3.5 1.12 1 2.5 1 4.98 2.12 4.98 3.5zM0 8h5v16H0zM8 8h4.8v2.2h.07c.67-1.27 2.32-2.6 4.77-2.6 5.1 0 6.05 3.36 6.05 7.73V24h-5v-7.1c0-1.69-.03-3.86-2.35-3.86-2.35 0-2.71 1.83-2.71 3.74V24H8z" />
+    </svg>
+  )
+}
+function IconFacebook() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" className="fill-[#1877f2]">
+      <path d="M22.675 0H1.325C.593 0 0 .593 0 1.326V22.67c0 .73.593 1.325 1.325 1.325h11.495V14.71H9.692v-3.59h3.128V8.414c0-3.1 1.893-4.788 4.659-4.788 1.325 0 2.463.099 2.795.143v3.24l-1.918.001c-1.504 0-1.796.715-1.796 1.763v2.314h3.59l-.467 3.59h-3.123V24h6.125c.73 0 1.325-.594 1.325-1.325V1.326C24 .593 23.405 0 22.675 0z" />
+    </svg>
+  )
+}
+
+// Multi-select dropdown with checkboxes
 function MultiSelect({
+  label,
   options,
-  value,
-  onChange,
-  placeholder,
-  'aria-label': ariaLabel,
+  values,
+  setValues,
+  placeholder = 'Select…',
 }: {
-  options: { value: string; label: string }[]
-  value: string[]
-  onChange: (next: string[]) => void
+  label: string
+  options: string[]
+  values: string[]
+  setValues: (v: string[]) => void
   placeholder?: string
-  'aria-label'?: string
 }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
-    function onDocClick(e: MouseEvent) {
+    const onClick = (e: MouseEvent) => {
       if (!ref.current) return
       if (!ref.current.contains(e.target as Node)) setOpen(false)
     }
-    document.addEventListener('mousedown', onDocClick)
-    return () => document.removeEventListener('mousedown', onDocClick)
+    window.addEventListener('click', onClick)
+    return () => window.removeEventListener('click', onClick)
   }, [])
 
-  const selected = options.filter((o) => value.includes(o.value))
-
-  function toggle(val: string) {
-    if (value.includes(val)) onChange(value.filter((v) => v !== val))
-    else onChange([...value, val])
+  function toggle(value: string) {
+    setValues(values.includes(value) ? values.filter(v => v !== value) : [...values, value])
   }
 
   return (
-    <div className="relative" ref={ref} aria-label={ariaLabel}>
+    <div className="flex flex-col" ref={ref}>
+      <label className="text-sm text-gray-600 mb-1">{label}</label>
       <button
         type="button"
-        className="w-full min-h-[40px] rounded-xl border px-2 py-1.5 text-left bg-white"
-        onClick={() => setOpen((s) => !s)}
+        onClick={() => setOpen(o => !o)}
+        className="w-full rounded-xl border px-3 py-2 text-sm text-left bg-white"
       >
-        {selected.length === 0 ? (
-          <span className="text-sm text-gray-400">{placeholder || 'Select…'}</span>
-        ) : (
+        {values.length ? (
           <div className="flex flex-wrap gap-2">
-            {selected.map((s) => (
-              <span key={s.value} className="inline-flex items-center gap-2 rounded-full bg-gray-100 px-3 py-1 text-sm">
-                {s.label}
-                <button
-                  type="button"
-                  className="text-gray-500 hover:text-gray-700"
-                  aria-label={`Remove ${s.label}`}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    toggle(s.value)
-                  }}
-                >
-                  ×
-                </button>
+            {values.map(v => (
+              <span key={v} className="rounded-full bg-gray-100 px-2 py-0.5 text-xs uppercase">
+                {v.replace('_', ' ')}
               </span>
             ))}
           </div>
+        ) : (
+          <span className="text-gray-400">{placeholder}</span>
         )}
       </button>
-
       {open && (
-        <div className="absolute z-20 mt-2 w-full rounded-xl border bg-white shadow-lg p-2 max-h-64 overflow-auto">
-          {options.map((opt) => (
-            <label
-              key={opt.value}
-              className="flex items-center gap-2 px-2 py-2 rounded hover:bg-gray-50 cursor-pointer"
-            >
+        <div className="mt-2 rounded-xl border bg-white shadow-lg max-h-60 overflow-auto z-10">
+          {options.map(opt => (
+            <label key={opt} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50">
               <input
                 type="checkbox"
-                className="h-4 w-4 accent-orange-500"
-                checked={value.includes(opt.value)}
-                onChange={() => toggle(opt.value)}
+                className="h-4 w-4"
+                checked={values.includes(opt)}
+                onChange={() => toggle(opt)}
               />
-              <span className="text-sm">{opt.label}</span>
+              <span className="uppercase">{opt.replace('_', ' ')}</span>
             </label>
           ))}
         </div>
@@ -201,30 +146,12 @@ function MultiSelect({
   )
 }
 
-// -------------------------------
-// Maintenance overlay (optional via env)
-// -------------------------------
-function DownOverlay() {
-  return (
-    <div className="absolute inset-0 z-50 grid place-items-center bg-white/90 backdrop-blur-sm">
-      <div className="text-center px-6">
-        <div className="text-6xl mb-4">🛠️</div>
-        <h3 className="text-xl font-semibold mb-2">Sourcing Tool is down due to technical difficulties</h3>
-        <p className="text-gray-600 text-sm">Please check back later.</p>
-      </div>
-    </div>
-  )
-}
-
-// -------------------------------
-// Main component
-// -------------------------------
+// ---------------- Main ----------------
 export default function SourceTab({ mode }: { mode: SourceMode }) {
   const isDown =
     (process.env.NEXT_PUBLIC_SOURCING_DOWN || '').toLowerCase() === '1' ||
     (process.env.NEXT_PUBLIC_SOURCING_DOWN || '').toLowerCase() === 'true'
 
-  // Companies tab placeholder
   if (mode === 'companies') {
     return (
       <div className="card p-6 relative">
@@ -233,53 +160,45 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
           <h3 className="text-xl font-semibold mb-2">Building In Process…</h3>
           <p className="text-gray-600">This Companies sourcing page will host a similar search soon.</p>
         </div>
-        {isDown && <DownOverlay />}
       </div>
     )
   }
 
-  // Inputs mapped 1:1 to Apollo params
-  const [titles, setTitles] = useState<string[]>([])          // person_titles[]
-  const [locations, setLocations] = useState<string[]>([])    // person_locations[]
-  const [keywords, setKeywords] = useState<string[]>([])      // q_keywords (joined)
-  const [seniorities, setSeniorities] = useState<string[]>([])// person_seniorities[]
+  // Chips: titles, locations, keywords
+  const titles = useChipInput([])
+  const locations = useChipInput(['United States'])
+  const keywords = useChipInput([])
+
+  const [seniorities, setSeniorities] = useState<string[]>([])
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [results, setResults] = useState<Person[]>([])
-
-  const [showRaw, setShowRaw] = useState(false)
-  const [rawText, setRawText] = useState<string>('')
+  const [people, setPeople] = useState<Person[]>([])
 
   async function runSearch(e?: React.FormEvent) {
     e?.preventDefault()
     if (isDown) return
-
     setLoading(true)
     setError(null)
-    setResults([])
-    setRawText('')
+    setPeople([])
 
     try {
       const payload = {
-        person_titles: titles,
-        include_similar_titles: true,
-        q_keywords: keywords.join(', '), // Apollo expects a string; join chips
-        person_locations: locations,
+        person_titles: titles.chips,
+        person_locations: locations.chips,
         person_seniorities: seniorities,
+        q_keywords: keywords.chips, // server joins with spaces
         page: 1,
         per_page: 25,
       }
-
       const res = await fetch('/api/apollo/people-search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data?.error || `Search failed (${res.status})`)
-      setResults(Array.isArray(data.people) ? data.people : [])
-      setRawText(data?.apollo_pretty || '')
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error || `Search failed (${res.status})`)
+      setPeople(Array.isArray(json.people) ? json.people : [])
     } catch (err: any) {
       setError(err?.message || 'Unexpected error')
     } finally {
@@ -287,7 +206,7 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
     }
   }
 
-  // Cmd/Ctrl+Enter to search
+  // Cmd/Ctrl + Enter to search
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
       if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) runSearch()
@@ -297,193 +216,165 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
   }, [])
 
   return (
-    <div className="card p-6 relative space-y-6">
-      {/* Search form */}
-      <form onSubmit={runSearch} className="space-y-4">
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <h3 className="text-lg font-semibold m-0">Apollo People Search</h3>
-          <div className="flex items-center gap-3">
-            <label className="inline-flex items-center gap-2 text-sm text-gray-600">
-              <input
-                type="checkbox"
-                className="h-4 w-4"
-                checked={showRaw}
-                onChange={(e) => setShowRaw(e.target.checked)}
-              />
-              Show raw response
-            </label>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                className="rounded-full bg-orange-500 text-white px-4 py-2 text-sm hover:bg-orange-600"
-                title="Request an advanced search"
-              >
-                Request
-              </button>
-              <button
-                type="submit"
-                className="rounded-full bg-orange-500 text-white px-4 py-2 text-sm hover:bg-orange-600"
-                disabled={isDown || loading}
-                title="Run search"
-              >
-                {loading ? 'Searching…' : 'Search'}
-              </button>
-            </div>
-          </div>
-        </div>
+    <div className="space-y-4">
+      {/* -------- Panel 1: Search -------- */}
+      <form onSubmit={runSearch} className="rounded-2xl border bg-white shadow-sm p-4">
+        <h3 className="font-semibold mb-3">Apollo People Search</h3>
 
-        {/* Inputs row – chip style */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div className="flex flex-col">
-            <label className="text-sm text-gray-600 mb-1">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Person Titles (chips) */}
+          <div>
+            <label className="block text-sm text-gray-600 mb-1">
               Person Titles <span className="text-gray-400">(person_titles[])</span>
             </label>
-            <ChipInput
-              aria-label="Person titles"
-              value={titles}
-              onChange={setTitles}
-              placeholder="e.g. CISO, CSO, Field Service Technician"
-            />
+            <div className="rounded-xl border px-2 py-1.5">
+              <div className="flex flex-wrap gap-2">
+                {titles.chips.map(v => (
+                  <Chip key={v} onRemove={() => titles.removeChip(v)}>{v}</Chip>
+                ))}
+                <input
+                  className="min-w-[10ch] flex-1 outline-none text-sm px-2 py-1"
+                  placeholder="e.g. Field Service Technician"
+                  value={titles.input}
+                  onChange={(e) => titles.setInput(e.target.value)}
+                  onKeyDown={titles.onKeyDown}
+                  disabled={isDown}
+                />
+              </div>
+            </div>
           </div>
 
-          <div className="flex flex-col">
-            <label className="text-sm text-gray-600 mb-1">
+          {/* Person Locations (chips) */}
+          <div>
+            <label className="block text-sm text-gray-600 mb-1">
               Person Locations <span className="text-gray-400">(person_locations[])</span>
             </label>
-            <ChipInput
-              aria-label="Person locations"
-              value={locations}
-              onChange={setLocations}
-              placeholder="e.g. United States, California, London"
-            />
+            <div className="rounded-xl border px-2 py-1.5">
+              <div className="flex flex-wrap gap-2">
+                {locations.chips.map(v => (
+                  <Chip key={v} onRemove={() => locations.removeChip(v)}>{v}</Chip>
+                ))}
+                <input
+                  className="min-w-[10ch] flex-1 outline-none text-sm px-2 py-1"
+                  placeholder="e.g. United States, California"
+                  value={locations.input}
+                  onChange={(e) => locations.setInput(e.target.value)}
+                  onKeyDown={locations.onKeyDown}
+                  disabled={isDown}
+                />
+              </div>
+            </div>
           </div>
 
-          <div className="flex flex-col">
-            <label className="text-sm text-gray-600 mb-1">
+          {/* Keywords (chips) */}
+          <div>
+            <label className="block text-sm text-gray-600 mb-1">
               Keywords <span className="text-gray-400">(q_keywords)</span>
             </label>
-            <ChipInput
-              aria-label="Keywords"
-              value={keywords}
-              onChange={setKeywords}
-              placeholder="e.g. IR35, Pay Rate, Fire"
-            />
+            <div className="rounded-xl border px-2 py-1.5">
+              <div className="flex flex-wrap gap-2">
+                {keywords.chips.map(v => (
+                  <Chip key={v} onRemove={() => keywords.removeChip(v)}>{v}</Chip>
+                ))}
+                <input
+                  className="min-w-[10ch] flex-1 outline-none text-sm px-2 py-1"
+                  placeholder="e.g. Fire, IR35"
+                  value={keywords.input}
+                  onChange={(e) => keywords.setInput(e.target.value)}
+                  onKeyDown={keywords.onKeyDown}
+                  disabled={isDown}
+                />
+              </div>
+            </div>
           </div>
+
+          {/* Seniorities (multi-select dropdown) */}
+          <MultiSelect
+            label="Seniorities (person_seniorities[])"
+            options={SENIORITIES as unknown as string[]}
+            values={seniorities}
+            setValues={setSeniorities}
+            placeholder="Choose one or more seniorities"
+          />
         </div>
 
-        {/* Seniorities – multiselect dropdown with chips */}
-        <div className="flex flex-col">
-          <label className="text-sm text-gray-600 mb-1">
-            Seniorities <span className="text-gray-400">(person_seniorities[])</span>
-          </label>
-          <MultiSelect
-            aria-label="Seniorities"
-            options={SENIORITY_OPTIONS}
-            value={seniorities}
-            onChange={setSeniorities}
-            placeholder="Select seniorities"
-          />
+        <div className="mt-4 flex items-center justify-between">
+          <span className="text-xs text-gray-500">
+            Press <kbd className="px-1 border rounded">Enter</kbd> to add a chip. Use <kbd className="px-1 border rounded">Cmd/Ctrl</kbd> + <kbd className="px-1 border rounded">Enter</kbd> to search.
+          </span>
+          <button
+            type="submit"
+            className="rounded-full bg-orange-500 text-white px-5 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50"
+            disabled={isDown || loading}
+          >
+            {loading ? 'Searching…' : 'Search'}
+          </button>
         </div>
       </form>
 
-      {/* Results – stacked rows */}
-      <div className="rounded-2xl border overflow-hidden">
-        <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
-          <div className="font-medium">Results</div>
-          <div className="text-sm text-gray-600">
-            {loading
-              ? 'Searching…'
-              : results.length
-              ? `${results.length} candidate${results.length === 1 ? '' : 's'}`
-              : 'No results'}
-          </div>
+      {/* -------- Panel 2: Results -------- */}
+      <div className="rounded-2xl border bg-white shadow-sm">
+        <div className="px-4 py-3 border-b">
+          <h4 className="font-semibold">Results</h4>
         </div>
 
         {error ? (
           <div className="p-6 text-sm text-red-600">{error}</div>
-        ) : results.length === 0 && !loading ? (
+        ) : people.length === 0 && !loading ? (
           <div className="p-6 text-sm text-gray-500">
             Enter your criteria above and click <strong>Search</strong> to view people.
           </div>
         ) : (
           <ul className="divide-y">
-            {results.map((p) => (
+            {people.map((p) => (
               <li key={p.id} className="p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
-                    {/* Row 1: Name + social icons */}
-                    <div className="flex items-center gap-3">
-                      <div className="text-base font-semibold truncate">{p.name || '—'}</div>
-                      <div className="flex items-center gap-2 text-gray-500">
-                        {p.linkedin_url ? (
-                          <a
-                            href={p.linkedin_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex p-1 rounded hover:text-orange-600"
-                            title="Open LinkedIn"
-                          >
-                            <LinkedInIcon />
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-base">{p.name || '—'}</span>
+                      <div className="flex items-center gap-2">
+                        {p.linkedin_url && (
+                          <a href={p.linkedin_url} target="_blank" rel="noreferrer" title="LinkedIn">
+                            <IconLinkedIn />
                           </a>
-                        ) : (
-                          <span className="inline-flex p-1 opacity-30">
-                            <LinkedInIcon />
-                          </span>
                         )}
-                        {p.facebook_url ? (
-                          <a
-                            href={p.facebook_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex p-1 rounded hover:text-orange-600"
-                            title="Open Facebook"
-                          >
-                            <FacebookIcon />
+                        {p.facebook_url && (
+                          <a href={p.facebook_url} target="_blank" rel="noreferrer" title="Facebook">
+                            <IconFacebook />
                           </a>
-                        ) : (
-                          <span className="inline-flex p-1 opacity-30">
-                            <FacebookIcon />
-                          </span>
                         )}
                       </div>
                     </div>
 
-                    {/* Row 2: Company - Title (Headline) */}
                     <div className="text-sm mt-1">
                       <span className="font-medium">{p.organization_name || '—'}</span>
-                      {p.title ? ` - ${p.title}` : ''}
-                      {p.headline ? <span className="text-gray-600"> ({p.headline})</span> : null}
+                      {p.title ? <> — <span>{p.title}</span></> : null}
+                      {p.headline ? (
+                        <span className="text-gray-500">  ({p.headline})</span>
+                      ) : null}
                     </div>
 
-                    {/* Row 3: Address */}
-                    <div className="text-sm text-gray-600 mt-2">
+                    <div className="text-sm text-gray-700 mt-1">
                       {p.formatted_address || '—'}
                     </div>
                   </div>
 
-                  {/* Create button (no action wired) */}
-                  <button
-                    type="button"
-                    className="self-center rounded-full bg-orange-500 text-white px-5 py-2 text-sm hover:bg-orange-600"
-                    title="Create"
-                  >
-                    Create
-                  </button>
+                  <div className="shrink-0">
+                    <button
+                      type="button"
+                      className="rounded-full bg-orange-500 text-white px-6 py-2 text-sm font-medium"
+                      title="Create"
+                      // no handler yet
+                    >
+                      Create
+                    </button>
+                  </div>
                 </div>
               </li>
             ))}
           </ul>
         )}
       </div>
-
-      {/* Raw response (debug) */}
-      {showRaw && (
-        <pre className="mt-3 text-[12px] leading-snug p-3 rounded-xl border bg-gray-50 overflow-auto max-h-80 whitespace-pre-wrap">
-          {rawText || '—'}
-        </pre>
-      )}
-
-      {isDown && <DownOverlay />}
     </div>
   )
 }
