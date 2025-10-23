@@ -15,8 +15,20 @@ type Person = {
   facebook_url: string | null
 }
 
+// NOTE: If you add or remove options here, also update the allowed set in the
+// API route.  These values must stay in sync.
 const SENIORITIES = [
-  'owner','founder','c_suite','partner','vp','head','director','manager','senior','entry','intern',
+  'owner',
+  'founder',
+  'c_suite',
+  'partner',
+  'vp',
+  'head',
+  'director',
+  'manager',
+  'senior',
+  'entry',
+  'intern',
 ] as const
 
 // ---------------- UI helpers ----------------
@@ -77,7 +89,8 @@ function IconFacebook() {
   )
 }
 
-// Multi-select dropdown with checkboxes
+// Multi-select dropdown with checkboxes.  The dropdown is absolutely positioned so it
+// overlays other content rather than pushing the panel down.
 function MultiSelect({
   label,
   options,
@@ -108,7 +121,7 @@ function MultiSelect({
   }
 
   return (
-    <div className="flex flex-col" ref={ref}>
+    <div className="flex flex-col relative" ref={ref}>
       <label className="text-sm text-gray-600 mb-1">{label}</label>
       <button
         type="button"
@@ -128,7 +141,7 @@ function MultiSelect({
         )}
       </button>
       {open && (
-        <div className="mt-2 rounded-xl border bg-white shadow-lg max-h-60 overflow-auto z-10">
+        <div className="absolute left-0 right-0 mt-1 rounded-xl border bg-white shadow-lg max-h-60 overflow-auto z-20">
           {options.map(opt => (
             <label key={opt} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50">
               <input
@@ -146,6 +159,38 @@ function MultiSelect({
   )
 }
 
+// Utility to transform a raw Apollo contact/person into our Person shape.
+function transformToPerson(p: any): Person {
+  const first = (p?.first_name ?? '').toString().trim()
+  const last = (p?.last_name ?? '').toString().trim()
+  const name = (p?.name && String(p.name).trim()) || [first, last].filter(Boolean).join(' ').trim() || null
+  const title =
+    (p?.title && String(p.title).trim()) ||
+    (Array.isArray(p?.employment_history) && p.employment_history[0]?.title) ||
+    null
+  const organization_name =
+    (Array.isArray(p?.employment_history) && p.employment_history[0]?.organization_name) ||
+    (p?.organization?.name && String(p.organization.name).trim()) ||
+    null
+  const formatted_address =
+    (typeof p?.formatted_address === 'string' && p.formatted_address.trim()) ||
+    (typeof p?.present_raw_address === 'string' && p.present_raw_address.trim()) ||
+    ([p?.city, p?.state, p?.country].filter(Boolean).join(', ') || null)
+  const headline = (typeof p?.headline === 'string' && p.headline.trim()) || null
+  const linkedin_url = (typeof p?.linkedin_url === 'string' && p.linkedin_url) || null
+  const facebook_url = (typeof p?.facebook_url === 'string' && p.facebook_url) || null
+  return {
+    id: p?.id ?? '',
+    name,
+    title: title ? String(title).trim() : null,
+    organization_name: organization_name ? String(organization_name).trim() : null,
+    formatted_address,
+    headline,
+    linkedin_url,
+    facebook_url,
+  }
+}
+
 // ---------------- Main ----------------
 export default function SourceTab({ mode }: { mode: SourceMode }) {
   const isDown =
@@ -156,7 +201,7 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
     return (
       <div className="card p-6 relative">
         <div className="text-center py-16">
-          <div className="text-6xl mb-4">🏗️</div>
+          <div className="text-6xl mb-4">️</div>
           <h3 className="text-xl font-semibold mb-2">Building In Process…</h3>
           <p className="text-gray-600">This Companies sourcing page will host a similar search soon.</p>
         </div>
@@ -196,9 +241,19 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
-      const json = await res.json()
+      const json: any = await res.json()
       if (!res.ok) throw new Error(json?.error || `Search failed (${res.status})`)
-      setPeople(Array.isArray(json.people) ? json.people : [])
+      // prefer top-level people array if it has items; otherwise fallback to nested
+      let rawArr: any[] = []
+      if (Array.isArray(json.people) && json.people.length) {
+        rawArr = json.people
+      } else if (Array.isArray(json.apollo?.contacts) && json.apollo.contacts.length) {
+        rawArr = json.apollo.contacts
+      } else if (Array.isArray(json.apollo?.people)) {
+        rawArr = json.apollo.people
+      }
+      const transformed = rawArr.map(transformToPerson)
+      setPeople(transformed)
     } catch (err: any) {
       setError(err?.message || 'Unexpected error')
     } finally {
@@ -236,7 +291,7 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
                   className="min-w-[10ch] flex-1 outline-none text-sm px-2 py-1"
                   placeholder="e.g. Field Service Technician"
                   value={titles.input}
-                  onChange={(e) => titles.setInput(e.target.value)}
+                  onChange={e => titles.setInput(e.target.value)}
                   onKeyDown={titles.onKeyDown}
                   disabled={isDown}
                 />
@@ -258,7 +313,7 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
                   className="min-w-[10ch] flex-1 outline-none text-sm px-2 py-1"
                   placeholder="e.g. United States, California"
                   value={locations.input}
-                  onChange={(e) => locations.setInput(e.target.value)}
+                  onChange={e => locations.setInput(e.target.value)}
                   onKeyDown={locations.onKeyDown}
                   disabled={isDown}
                 />
@@ -280,7 +335,7 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
                   className="min-w-[10ch] flex-1 outline-none text-sm px-2 py-1"
                   placeholder="e.g. Fire, IR35"
                   value={keywords.input}
-                  onChange={(e) => keywords.setInput(e.target.value)}
+                  onChange={e => keywords.setInput(e.target.value)}
                   onKeyDown={keywords.onKeyDown}
                   disabled={isDown}
                 />
@@ -298,9 +353,11 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
           />
         </div>
 
+        {/* Search tips and search button */}
         <div className="mt-4 flex items-center justify-between">
           <span className="text-xs text-gray-500">
-            Press <kbd className="px-1 border rounded">Enter</kbd> to add a chip. Use <kbd className="px-1 border rounded">Cmd/Ctrl</kbd> + <kbd className="px-1 border rounded">Enter</kbd> to search.
+            Press <kbd className="px-1 border rounded">Enter</kbd> to add a chip. Use{' '}
+            <kbd className="px-1 border rounded">Cmd/Ctrl</kbd> + <kbd className="px-1 border rounded">Enter</kbd> to search.
           </span>
           <button
             type="submit"
@@ -308,6 +365,14 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
             disabled={isDown || loading}
           >
             {loading ? 'Searching…' : 'Search'}
+          </button>
+        </div>
+
+        {/* Advanced search request prompt */}
+        <div className="mt-4 text-center border-t pt-3">
+          <span className="text-xs text-gray-500">If you would like to request a more advanced search, please click here</span>{' '}
+          <button type="button" className="text-xs text-orange-500 underline ml-1">
+            Request
           </button>
         </div>
       </form>
@@ -326,7 +391,7 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
           </div>
         ) : (
           <ul className="divide-y">
-            {people.map((p) => (
+            {people.map(p => (
               <li key={p.id} className="p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
@@ -348,15 +413,16 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
 
                     <div className="text-sm mt-1">
                       <span className="font-medium">{p.organization_name || '—'}</span>
-                      {p.title ? <> — <span>{p.title}</span></> : null}
-                      {p.headline ? (
-                        <span className="text-gray-500">  ({p.headline})</span>
+                      {p.title ? (
+                        <>
+                          {' '}
+                          — <span>{p.title}</span>
+                        </>
                       ) : null}
+                      {p.headline ? <span className="text-gray-500"> ({p.headline})</span> : null}
                     </div>
 
-                    <div className="text-sm text-gray-700 mt-1">
-                      {p.formatted_address || '—'}
-                    </div>
+                    <div className="text-sm text-gray-700 mt-1">{p.formatted_address || '—'}</div>
                   </div>
 
                   <div className="shrink-0">
@@ -364,7 +430,7 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
                       type="button"
                       className="rounded-full bg-orange-500 text-white px-6 py-2 text-sm font-medium"
                       title="Create"
-                      // no handler yet
+                      // Handler to be added later
                     >
                       Create
                     </button>
