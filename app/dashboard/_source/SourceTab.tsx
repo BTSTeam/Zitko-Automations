@@ -4,6 +4,13 @@ import { useEffect, useRef, useState } from 'react'
 
 type SourceMode = 'candidates' | 'companies'
 
+type EmploymentItem = {
+  organization_name: string | null
+  title: string | null
+  start_date: string | null
+  end_date: string | null
+}
+
 type Person = {
   id: string
   name: string | null
@@ -13,6 +20,7 @@ type Person = {
   formatted_address: string | null
   linkedin_url: string | null
   facebook_url: string | null
+  employment_history: EmploymentItem[]
 }
 
 const SENIORITIES = [
@@ -85,9 +93,15 @@ function IconFacebook() {
     </svg>
   )
 }
-function IconGlobe() {
+function IconGlobe({ muted }: { muted?: boolean }) {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" className="inline-block align-[-2px]">
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className={muted ? 'text-gray-300' : 'text-gray-700'}
+    >
       <path fill="currentColor" d="M12 2a10 10 0 1 0 .001 20.001A10 10 0 0 0 12 2Zm7.93 9h-3.086a15.4 15.4 0 0 0-1.02-5.02A8.01 8.01 0 0 1 19.93 11ZM12 4c.94 1.24 1.66 3.12 1.98 5H10.02C10.34 7.12 11.06 5.24 12 4ZM8.176 6.98A15.4 15.4 0 0 0 7.156 12H4.07a8.01 8.01 0 0 1 4.106-5.02ZM4.07 13h3.086a15.4 15.4 0 0 0 1.02 5.02A8.01 8.01 0 0 1 4.07 13ZM12 20c-.94-1.24-1.66-3.12-1.98-5h3.96C13.66 16.88 12.94 18.76 12 20Zm3.824-1.98A15.4 15.4 0 0 0 16.844 13h3.086a8.01 8.01 0 0 1-4.106 5.02ZM16.844 12a13.5 13.5 0 0 1-1.047-4H8.203a13.5 13.5 0 0 1-1.047 4h9.688Z"/>
     </svg>
   )
@@ -183,6 +197,17 @@ function transformToPerson(p: any): Person {
     ([p?.city, p?.state, p?.country].filter(Boolean).join(', ') || null)
   const linkedin_url = (typeof p?.linkedin_url === 'string' && p.linkedin_url) || null
   const facebook_url = (typeof p?.facebook_url === 'string' && p.facebook_url) || null
+
+  const employment_history: EmploymentItem[] = Array.isArray(p?.employment_history)
+    ? p.employment_history.map((eh: any) => ({
+        organization_name:
+          (eh?.organization_name && String(eh.organization_name).trim()) || null,
+        title: (eh?.title && String(eh.title).trim()) || null,
+        start_date: (eh?.start_date && String(eh.start_date).trim()) || null,
+        end_date: (eh?.end_date && String(eh.end_date).trim()) || null,
+      }))
+    : []
+
   return {
     id: p?.id ?? '',
     name,
@@ -192,6 +217,7 @@ function transformToPerson(p: any): Person {
     formatted_address,
     linkedin_url,
     facebook_url,
+    employment_history,
   }
 }
 
@@ -215,14 +241,23 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
 
   // Chips: titles, locations, keywords
   const titles = useChipInput([])
-  const locations = useChipInput([]) // (1) No pre-populated "United States"
+  const locations = useChipInput([]) // no default “United States”
   const keywords = useChipInput([])
 
   const [seniorities, setSeniorities] = useState<string[]>([])
-
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [people, setPeople] = useState<Person[]>([])
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+
+  function toggleExpanded(id: string) {
+    setExpanded(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
   async function runSearch(e?: React.FormEvent) {
     e?.preventDefault()
@@ -230,6 +265,7 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
     setLoading(true)
     setError(null)
     setPeople([])
+    setExpanded(new Set())
 
     try {
       const payload = {
@@ -256,8 +292,7 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
       } else if (Array.isArray(json.apollo?.people)) {
         rawArr = json.apollo.people
       }
-      const transformed = rawArr.map(transformToPerson)
-      setPeople(transformed)
+      setPeople(rawArr.map(transformToPerson))
     } catch (err: any) {
       setError(err?.message || 'Unexpected error')
     } finally {
@@ -357,7 +392,7 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
           />
         </div>
 
-        {/* Search tips & Search button */}
+        {/* Tips & Search button */}
         <div className="mt-4 flex items-center justify-between">
           <span className="text-xs text-gray-500">
             Press <kbd className="px-1 border rounded">Enter</kbd> to add a chip. Use{' '}
@@ -372,7 +407,7 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
           </button>
         </div>
 
-        {/* (6) Advanced search prompt aligned right */}
+        {/* Advanced search prompt right-aligned */}
         <div className="mt-3 flex justify-end">
           <div className="text-right">
             <span className="text-xs text-gray-500">
@@ -383,7 +418,7 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
         </div>
       </form>
 
-      {/* -------- Panel 2: Results (2) title removed -------- */}
+      {/* -------- Panel 2: Results (no title bar) -------- */}
       <div className="rounded-2xl border bg-white shadow-sm">
         {error ? (
           <div className="p-6 text-sm text-red-600">{error}</div>
@@ -393,53 +428,118 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
           </div>
         ) : (
           <ul className="divide-y">
-            {people.map(p => (
-              <li key={p.id} className="p-4">
-                <div className="flex items-start justify-between gap-4">
-                  {/* Left: details */}
-                  <div className="min-w-0">
-                    {/* (3) Name */}
-                    <div className="font-semibold text-base truncate">{p.name || '—'}</div>
+            {people.map(p => {
+              const hasLI = !!p.linkedin_url
+              const hasFB = !!p.facebook_url
+              const hasWWW = !!p.organization_website_url
+              const NameAndLocation = (
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="font-semibold text-base truncate">{p.name || '—'}</span>
+                  {p.formatted_address ? (
+                    <>
+                      <span className="text-gray-300">|</span>
+                      <span className="text-sm text-gray-600 truncate">{p.formatted_address}</span>
+                    </>
+                  ) : null}
+                </div>
+              )
+              return (
+                <li key={p.id} className="p-4">
+                  {/* Row 1: Name | Location  +  Always-on icons at far right */}
+                  <div className="flex items-center justify-between gap-4">
+                    {NameAndLocation}
+                    <div className="shrink-0 flex items-center gap-3">
+                      {/* LinkedIn */}
+                      <a
+                        href={hasLI ? p.linkedin_url! : undefined}
+                        target={hasLI ? '_blank' : undefined}
+                        rel={hasLI ? 'noreferrer' : undefined}
+                        className={hasLI ? '' : 'opacity-30 pointer-events-none cursor-default'}
+                        title={hasLI ? 'Open LinkedIn' : 'LinkedIn not available'}
+                      >
+                        <IconLinkedIn />
+                      </a>
+                      {/* Facebook */}
+                      <a
+                        href={hasFB ? p.facebook_url! : undefined}
+                        target={hasFB ? '_blank' : undefined}
+                        rel={hasFB ? 'noreferrer' : undefined}
+                        className={hasFB ? '' : 'opacity-30 pointer-events-none cursor-default'}
+                        title={hasFB ? 'Open Facebook' : 'Facebook not available'}
+                      >
+                        <IconFacebook />
+                      </a>
+                      {/* Company website */}
+                      <a
+                        href={hasWWW ? p.organization_website_url! : undefined}
+                        target={hasWWW ? '_blank' : undefined}
+                        rel={hasWWW ? 'noreferrer' : undefined}
+                        className={hasWWW ? 'text-gray-700 hover:text-gray-900' : 'opacity-30 pointer-events-none cursor-default'}
+                        title={hasWWW ? 'Open company website' : 'Company website not available'}
+                      >
+                        <IconGlobe muted={!hasWWW} />
+                      </a>
+                    </div>
+                  </div>
 
-                    {/* (3) Job Title */}
-                    <div className="text-sm mt-0.5">{p.title || '—'}</div>
-
-                    {/* (3) Company + website icon */}
-                    <div className="text-sm mt-0.5 flex items-center gap-2">
+                  {/* Row 2: Company + Title  +  Employment history toggle (far right) */}
+                  <div className="mt-1 flex items-center justify-between gap-4">
+                    <div className="text-sm">
                       <span className="font-medium">{p.organization_name || '—'}</span>
-                      {p.organization_website_url ? (
-                        <a
-                          href={p.organization_website_url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-gray-600 hover:text-gray-900"
-                          title="Open company website"
-                        >
-                          <IconGlobe />
-                        </a>
+                      {p.title ? (
+                        <>
+                          {' '}
+                          — <span>{p.title}</span>
+                        </>
                       ) : null}
                     </div>
 
-                    {/* (3) Location */}
-                    <div className="text-sm text-gray-700 mt-0.5">{p.formatted_address || '—'}</div>
+                    <button
+                      type="button"
+                      onClick={() => toggleExpanded(p.id)}
+                      className="text-sm text-gray-700 hover:text-gray-900 inline-flex items-center gap-1"
+                      title="Toggle employment history"
+                    >
+                      Employment history
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                        className={expanded.has(p.id) ? 'rotate-180 transition-transform' : 'transition-transform'}
+                      >
+                        <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z" />
+                      </svg>
+                    </button>
                   </div>
 
-                  {/* (5) Right: social icons (replaces Create button) */}
-                  <div className="shrink-0 flex items-center gap-2">
-                    {p.linkedin_url && (
-                      <a href={p.linkedin_url} target="_blank" rel="noreferrer" title="LinkedIn">
-                        <IconLinkedIn />
-                      </a>
-                    )}
-                    {p.facebook_url && (
-                      <a href={p.facebook_url} target="_blank" rel="noreferrer" title="Facebook">
-                        <IconFacebook />
-                      </a>
-                    )}
-                  </div>
-                </div>
-              </li>
-            ))}
+                  {/* Collapsible: Employment history table-like rows */}
+                  {expanded.has(p.id) && (
+                    <div className="mt-3 rounded-xl border bg-gray-50">
+                      <div className="p-3 text-xs text-gray-500">
+                        organization_name | title | start_date | end_date
+                      </div>
+                      <ul className="text-sm">
+                        {p.employment_history.length ? (
+                          p.employment_history.map((eh, idx) => (
+                            <li key={idx} className="px-3 py-2 border-t first:border-t-0">
+                              <div className="grid grid-cols-1 md:grid-cols-4 md:gap-3">
+                                <div>{eh.organization_name || '—'}</div>
+                                <div>{eh.title || '—'}</div>
+                                <div>{eh.start_date || '—'}</div>
+                                <div>{eh.end_date || 'Present'}</div>
+                              </div>
+                            </li>
+                          ))
+                        ) : (
+                          <li className="px-3 py-2 border-t first:border-t-0 text-gray-500">No history available.</li>
+                        )}
+                      </ul>
+                    </div>
+                  )}
+                </li>
+              )
+            })}
           </ul>
         )}
       </div>
