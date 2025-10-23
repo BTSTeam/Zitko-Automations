@@ -213,7 +213,7 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
       <div className="card p-6 relative">
         <div className="text-center py-16">
           <div className="text-6xl mb-4">️</div>
-          <h3 className="text-xl font-semibold mb-2">Building In Process…</h3>
+          <h3 className="text-xl font-semibold mb-2">️Building In Process…</h3>
           <p className="text-gray-600">This Companies sourcing page will host a similar search soon.</p>
         </div>
       </div>
@@ -230,6 +230,7 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
   const [error, setError] = useState<string | null>(null)
   const [people, setPeople] = useState<Person[]>([])
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [searchOpen, setSearchOpen] = useState(true) // NEW: collapsed by default
 
   function toggleExpanded(id: string) {
     setExpanded(prev => {
@@ -272,6 +273,7 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
     } catch (err: any) {
       setError(err?.message || 'Unexpected error')
     } finally {
+      setSearchOpen(false)
       setLoading(false)
     }
   }
@@ -287,100 +289,121 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
 
   return (
     <div className="space-y-4">
-      {/* -------- Panel 1: Search -------- */}
-      <form onSubmit={runSearch} className="rounded-2xl border bg-white shadow-sm p-4">
-        <h3 className="font-semibold mb-3">Candidate | Contact Search</h3>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Titles */}
-          <div>
-            <label className="block text-sm text-gray-600 mb-1">Job Titles</label>
-            <div className="rounded-xl border px-2 py-1.5">
-              <div className="flex flex-wrap gap-2">
-                {titles.chips.map(v => (
-                  <Chip key={v} onRemove={() => titles.removeChip(v)}>{v}</Chip>
-                ))}
-                <input
-                  className="min-w-[10ch] flex-1 outline-none text-sm px-2 py-1"
-                  placeholder="e.g. Field Service Technician"
-                  value={titles.input}
-                  onChange={e => titles.setInput(e.target.value)}
-                  onKeyDown={titles.onKeyDown}
-                  disabled={isDown}
-                />
-              </div>
-            </div>
-          </div>
-          
-          {/* Locations */}
-          <div>
-            <label className="block text-sm text-gray-600 mb-1">Locations</label>
-            <div className="rounded-xl border px-2 py-1.5">
-              <div className="flex flex-wrap gap-2">
-                {locations.chips.map(v => (
-                  <Chip key={v} onRemove={() => locations.removeChip(v)}>{v}</Chip>
-                ))}
-                <input
-                  className="min-w-[10ch] flex-1 outline-none text-sm px-2 py-1"
-                  placeholder="e.g. California, United States"
-                  value={locations.input}
-                  onChange={e => locations.setInput(e.target.value)}
-                  onKeyDown={locations.onKeyDown}
-                  disabled={isDown}
-                />
-              </div>
-            </div>
-          </div>
-          
-          {/* Keywords */}
-          <div>
-            <label className="block text-sm text-gray-600 mb-1">Keywords</label>
-            <div className="rounded-xl border px-2 py-1.5">
-              <div className="flex flex-wrap gap-2">
-                {keywords.chips.map(v => (
-                  <Chip key={v} onRemove={() => keywords.removeChip(v)}>{v}</Chip>
-                ))}
-                <input
-                  className="min-w-[10ch] flex-1 outline-none text-sm px-2 py-1"
-                  placeholder="e.g. Fire, IR35"
-                  value={keywords.input}
-                  onChange={e => keywords.setInput(e.target.value)}
-                  onKeyDown={keywords.onKeyDown}
-                  disabled={isDown}
-                />
-              </div>
-            </div>
-          </div>
-          
-          {/* Seniorities */}
-          <MultiSelect
-            label="Seniorities"
-            options={SENIORITIES as unknown as string[]}
-            values={seniorities}
-            setValues={setSeniorities}
-            placeholder="Choose one or more seniorities"
-          />
-        </div>
-
-        {/* Search button only */}
-        <div className="mt-4 flex justify-end">
-          <button
-            type="submit"
-            className="rounded-full bg-orange-500 text-white px-5 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50"
-            disabled={isDown || loading}
+      {/* -------- Panel 1: Search (collapsible, collapsed by default) -------- */}
+      <div className="rounded-2xl border bg-white shadow-sm">
+        <button
+          type="button"
+          onClick={() => setSearchOpen(o => !o)}
+          className="w-full flex items-center justify-between px-4 py-3"
+          aria-expanded={searchOpen}
+        >
+          <h3 className="font-semibold">Candidate | Contact Search</h3>
+          <svg
+            width="16" height="16" viewBox="0 0 20 20" fill="currentColor"
+            className={searchOpen ? 'rotate-180 transition-transform' : 'transition-transform'}
           >
-            {loading ? 'Searching…' : 'Search'}
-          </button>
-        </div>
+            <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z" />
+          </svg>
+        </button>
 
-        {/* Advanced search prompt right-aligned, with non-underlined 'here' link */}
-        <div className="mt-3 flex justify-end">
-          <div className="text-right text-xs text-gray-500">
-            If you would like to request a more advanced search, please click{' '}
-            <a href="#" className="text-orange-500 hover:text-orange-600 no-underline">here</a>
-          </div>
-        </div>
-      </form>
+        {searchOpen && (
+          <form onSubmit={runSearch} className="p-4 pt-0">
+            {/* grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Titles */}
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">Job Titles</label>
+                <div className="rounded-xl border px-2 py-1.5">
+                  <div className="flex flex-wrap gap-2">
+                    {titles.chips.map(v => (
+                      <Chip key={v} onRemove={() => titles.removeChip(v)}>{v}</Chip>
+                    ))}
+                    <input
+                      className="min-w-[10ch] flex-1 outline-none text-sm px-2 py-1"
+                      placeholder="e.g. Field Service Technician"
+                      value={titles.input}
+                      onChange={e => titles.setInput(e.target.value)}
+                      onKeyDown={titles.onKeyDown}
+                      disabled={isDown}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Locations */}
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">Locations</label>
+                <div className="rounded-xl border px-2 py-1.5">
+                  <div className="flex flex-wrap gap-2">
+                    {locations.chips.map(v => (
+                      <Chip key={v} onRemove={() => locations.removeChip(v)}>{v}</Chip>
+                    ))}
+                    <input
+                      className="min-w-[10ch] flex-1 outline-none text-sm px-2 py-1"
+                      placeholder="e.g. California, United States"
+                      value={locations.input}
+                      onChange={e => locations.setInput(e.target.value)}
+                      onKeyDown={locations.onKeyDown}
+                      disabled={isDown}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Keywords */}
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">Keywords</label>
+                <div className="rounded-xl border px-2 py-1.5">
+                  <div className="flex flex-wrap gap-2">
+                    {keywords.chips.map(v => (
+                      <Chip key={v} onRemove={() => keywords.removeChip(v)}>{v}</Chip>
+                    ))}
+                    <input
+                      className="min-w-[10ch] flex-1 outline-none text-sm px-2 py-1"
+                      placeholder="e.g. Fire, IR35"
+                      value={keywords.input}
+                      onChange={e => keywords.setInput(e.target.value)}
+                      onKeyDown={keywords.onKeyDown}
+                      disabled={isDown}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Seniorities */}
+              <MultiSelect
+                label="Seniorities"
+                options={SENIORITIES as unknown as string[]}
+                values={seniorities}
+                setValues={setSeniorities}
+                placeholder="Choose one or more seniorities"
+              />
+            </div>
+
+            {/* Tips & Search button */}
+            <div className="mt-4 flex items-center justify-between">
+              <span className="text-xs text-gray-500">
+                Please press <kbd className="px-1 border rounded">Enter</kbd> to submit your search criteria for each field.
+              </span>
+              <button
+                type="submit"
+                className="rounded-full bg-orange-500 text-white px-5 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50"
+                disabled={isDown || loading}
+              >
+                {loading ? 'Searching…' : 'Search'}
+              </button>
+            </div>
+
+            {/* Advanced search prompt right-aligned, with non-underlined 'here' link */}
+            <div className="mt-3 flex justify-end">
+              <div className="text-right text-xs text-gray-500">
+                If you would like to request a more advanced search, please click{' '}
+                <a href="#" className="text-orange-500 hover:text-orange-600 no-underline">here</a>
+              </div>
+            </div>
+          </form>
+        )}
+      </div>
 
       {/* -------- Panel 2: Results (no title bar) -------- */}
       <div className="rounded-2xl border bg-white shadow-sm">
@@ -463,10 +486,10 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
                     <div className="mt-3 rounded-xl border bg-gray-50">
                       {/* Column headers */}
                       <div className="px-3 py-2 border-b grid grid-cols-1 md:grid-cols-4 md:gap-3 text-xs text-gray-500">
-                        <div>organization_name</div>
-                        <div>title</div>
-                        <div>start_date</div>
-                        <div>end_date</div>
+                        <div>Company</div>
+                        <div>Job Title</div>
+                        <div>Start Date</div>
+                        <div>End Date</div>
                       </div>
 
                       <ul className="text-xs">
