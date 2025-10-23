@@ -43,7 +43,7 @@ function toPosInt(v: unknown, fallback: number): number {
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback
 }
 
-/** (Optional) guard against invalid seniorities */
+/** Apollo seniority allow-list */
 const ALLOWED_SENIORITIES = new Set([
   'owner',
   'founder',
@@ -65,13 +65,12 @@ export async function POST(req: NextRequest) {
   try {
     inBody = (await req.json()) as InBody
   } catch {
-    // ignore empty body
+    // ignore; empty body is allowed
   }
 
-  // ---- Map ONLY the documented fields ----
+  // ---- Map input fields ----
   const person_titles = toArray(inBody.person_titles)
-  const include_similar_titles =
-    toBool(inBody.include_similar_titles) ?? true // default TRUE
+  const include_similar_titles = toBool(inBody.include_similar_titles) ?? true
   const q_keywords = (inBody.q_keywords || '').toString().trim()
   const person_locations = toArray(inBody.person_locations)
 
@@ -80,7 +79,7 @@ export async function POST(req: NextRequest) {
   )
 
   const page = toPosInt(inBody.page, 1)
-  const per_page = 25 // always fixed per Apollo UI design
+  const per_page = 25 // fixed page size to keep UI predictable
 
   // ---- Build Apollo querystring ----
   const params = new URLSearchParams()
@@ -121,7 +120,7 @@ export async function POST(req: NextRequest) {
     fetch(urlWithQs, {
       method: 'POST',
       headers,
-      body: JSON.stringify({}), // keep POST semantics
+      body: JSON.stringify({}), // POST semantics required by Apollo even when params are in the QS
       cache: 'no-store',
     })
 
@@ -135,7 +134,7 @@ export async function POST(req: NextRequest) {
   try {
     let resp = await call(buildHeaders())
 
-    // Retry once on 401/403 for OAuth
+    // Retry once on 401/403 if using OAuth and a refresh is possible
     if ((resp.status === 401 || resp.status === 403) && accessToken && userKey) {
       const refreshed = await refreshApolloAccessToken(userKey)
       if (refreshed) {
@@ -145,41 +144,35 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const raw = await resp.text()
+    const rawText = await resp.text()
 
     if (!resp.ok) {
       return NextResponse.json(
         {
           error: `Apollo error: ${resp.status} ${resp.statusText}`,
-          details: raw?.slice(0, 2000),
+          details: rawText?.slice(0, 2000),
         },
         { status: resp.status || 400 },
       )
     }
 
-    // --- Parse response safely (double-parse guard) ---
-    let data: any = {}
+    // Parse safely
+    let payload: any = {}
     try {
-      data = raw ? JSON.parse(raw) : {}
+      payload = rawText ? JSON.parse(rawText) : {}
     } catch {
-      data = {}
-    }
-    if (typeof data === 'string') {
-      try {
-        data = JSON.parse(data)
-      } catch {
-        data = {}
-      }
+      payload = {}
     }
 
-    // --- Extract contacts / people ---
-    const arr: any[] = Array.isArray(data?.contacts)
-      ? data.contacts
-      : Array.isArray(data?.people)
-      ? data.people
+    // Apollo returns either `contacts` or `people`
+    const rawList: any[] = Array.isArray(payload?.contacts)
+      ? payload.contacts
+      : Array.isArray(payload?.people)
+      ? payload.people
       : []
 
-    const people = arr.map((p: any) => {
+    // Map to the exact fields your UI needs
+    const people = rawList.map((p: any) => {
       const first = (p?.first_name ?? '').toString().trim()
       const last = (p?.last_name ?? '').toString().trim()
       const name =
@@ -192,13 +185,16 @@ export async function POST(req: NextRequest) {
         (Array.isArray(p?.employment_history) && p.employment_history[0]?.title) ||
         null
 
-      const company =
+      const organization_name =
         (p?.organization?.name && String(p.organization.name).trim()) ||
         (Array.isArray(p?.employment_history) &&
           p.employment_history[0]?.organization_name) ||
         null
 
-      const location =
+      // Prefer explicit formatted address fields Apollo often returns
+      const formatted_address =
+        (typeof p?.present_raw_address === 'string' && p.present_raw_address.trim()) ||
+        (typeof p?.formatted_address === 'string' && p.formatted_address.trim()) ||
         (p?.location?.name ??
           [p?.city, p?.state, p?.country].filter(Boolean).join(', ')) ||
         null
@@ -206,39 +202,29 @@ export async function POST(req: NextRequest) {
       const linkedin_url =
         typeof p?.linkedin_url === 'string' && p.linkedin_url ? p.linkedin_url : null
 
-      const autoScore =
-        typeof p?.people_auto_score === 'number'
-          ? p.people_auto_score
-          : typeof p?.auto_score === 'number'
-          ? p.auto_score
-          : null
+      const facebook_url =
+        typeof p?.facebook_url === 'string' && p.facebook_url ? p.facebook_url : null
+
+      const headline =
+        typeof p?.headline === 'string' && p.headline.trim() ? p.headline.trim() : null
 
       return {
         id: p?.id ?? '',
         name,
         title: title ? String(title).trim() : null,
-        company: company ? String(company).trim() : null,
-        location: location || null,
+        organization_name: organization_name ? String(organization_name).trim() : null,
+        formatted_address,
         linkedin_url,
-        autoScore,
+        facebook_url,
+        headline,
       }
     })
 
-    // Sort and cap results
-    people.sort(
-      (a, b) =>
-        (b.autoScore ?? 0) - (a.autoScore ?? 0) ||
-        String(a.name).localeCompare(String(b.name)),
-    )
-
-    // --- Final response (pretty & parsed) ---
     return NextResponse.json({
       meta: { page, per_page, count: people.length },
-      breadcrumbs: data?.breadcrumbs ?? [],
-      pagination: data?.pagination ?? { page, per_page },
+      pagination: payload?.pagination ?? { page, per_page },
       people,
-      apollo: data, // full parsed Apollo object
-      apollo_pretty: JSON.stringify(data, null, 2), // pretty string for UI
+      apollo_pretty: JSON.stringify(payload, null, 2), // helpful for debugging in UI
     })
   } catch (err: any) {
     return NextResponse.json(
