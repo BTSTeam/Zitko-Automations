@@ -362,6 +362,17 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
           />
         </div>
 
+        {/* Search button only */}
+        <div className="mt-4 flex justify-end">
+          <button
+            type="submit"
+            className="rounded-full bg-orange-500 text-white px-5 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50"
+            disabled={isDown || loading}
+          >
+            {loading ? 'Searching…' : 'Search'}
+          </button>
+        </div>
+
         {/* Advanced search prompt right-aligned, with non-underlined 'here' link */}
         <div className="mt-3 flex justify-end">
           <div className="text-right text-xs text-gray-500">
