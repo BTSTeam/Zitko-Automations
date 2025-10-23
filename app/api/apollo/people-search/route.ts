@@ -65,34 +65,31 @@ export async function POST(req: NextRequest) {
   try {
     inBody = (await req.json()) as InBody
   } catch {
-    // ignore — empty body
+    // ignore empty body
   }
 
-  // ---- Map ONLY the documented fields you listed ----
+  // ---- Map ONLY the documented fields ----
   const person_titles = toArray(inBody.person_titles)
-  const include_similar_titles = toBool(inBody.include_similar_titles)
+  const include_similar_titles =
+    toBool(inBody.include_similar_titles) ?? true // default TRUE
   const q_keywords = (inBody.q_keywords || '').toString().trim()
   const person_locations = toArray(inBody.person_locations)
 
-  // Filter seniorities to allowed set (quietly drop anything else)
   const person_seniorities = toArray(inBody.person_seniorities).filter(s =>
     ALLOWED_SENIORITIES.has(s as any),
   )
 
   const page = toPosInt(inBody.page, 1)
-  const per_page = toPosInt(inBody.per_page, 50) // sensible default, user-controllable
+  const per_page = 25 // always fixed per Apollo UI design
 
-  // ---- Build Apollo querystring (Apollo accepts POST + query params) ----
+  // ---- Build Apollo querystring ----
   const params = new URLSearchParams()
   params.set('page', String(page))
   params.set('per_page', String(per_page))
-
+  params.set('include_similar_titles', include_similar_titles ? 'true' : 'false')
   person_titles.forEach(t => params.append('person_titles[]', t))
   person_locations.forEach(l => params.append('person_locations[]', l))
   person_seniorities.forEach(s => params.append('person_seniorities[]', s))
-  if (typeof include_similar_titles === 'boolean') {
-    params.set('include_similar_titles', include_similar_titles ? 'true' : 'false')
-  }
   if (q_keywords) params.set('q_keywords', q_keywords)
 
   // ---- Auth: OAuth bearer preferred; fallback to X-Api-Key ----
@@ -124,8 +121,7 @@ export async function POST(req: NextRequest) {
     fetch(urlWithQs, {
       method: 'POST',
       headers,
-      // Apollo is fine with empty body when using query params
-      body: JSON.stringify({}), // keep POST semantics; avoids some edge proxies
+      body: JSON.stringify({}), // keep POST semantics
       cache: 'no-store',
     })
 
@@ -139,7 +135,7 @@ export async function POST(req: NextRequest) {
   try {
     let resp = await call(buildHeaders())
 
-    // 401/403 → try one refresh for OAuth
+    // Retry once on 401/403 for OAuth
     if ((resp.status === 401 || resp.status === 403) && accessToken && userKey) {
       const refreshed = await refreshApolloAccessToken(userKey)
       if (refreshed) {
@@ -150,20 +146,33 @@ export async function POST(req: NextRequest) {
     }
 
     const raw = await resp.text()
+
     if (!resp.ok) {
       return NextResponse.json(
-        { error: `Apollo error: ${resp.status} ${resp.statusText}`, details: raw?.slice(0, 2000) },
+        {
+          error: `Apollo error: ${resp.status} ${resp.statusText}`,
+          details: raw?.slice(0, 2000),
+        },
         { status: resp.status || 400 },
       )
     }
 
+    // --- Parse response safely (double-parse guard) ---
     let data: any = {}
     try {
       data = raw ? JSON.parse(raw) : {}
     } catch {
       data = {}
     }
+    if (typeof data === 'string') {
+      try {
+        data = JSON.parse(data)
+      } catch {
+        data = {}
+      }
+    }
 
+    // --- Extract contacts / people ---
     const arr: any[] = Array.isArray(data?.contacts)
       ? data.contacts
       : Array.isArray(data?.people)
@@ -185,7 +194,8 @@ export async function POST(req: NextRequest) {
 
       const company =
         (p?.organization?.name && String(p.organization.name).trim()) ||
-        (Array.isArray(p?.employment_history) && p.employment_history[0]?.organization_name) ||
+        (Array.isArray(p?.employment_history) &&
+          p.employment_history[0]?.organization_name) ||
         null
 
       const location =
@@ -214,17 +224,21 @@ export async function POST(req: NextRequest) {
       }
     })
 
-    // Sort by auto score (desc) then name
-    people.sort((a, b) => (b.autoScore ?? 0) - (a.autoScore ?? 0) || String(a.name).localeCompare(String(b.name)))
+    // Sort and cap results
+    people.sort(
+      (a, b) =>
+        (b.autoScore ?? 0) - (a.autoScore ?? 0) ||
+        String(a.name).localeCompare(String(b.name)),
+    )
 
+    // --- Final response (pretty & parsed) ---
     return NextResponse.json({
-      meta: {
-        page,
-        per_page,
-        count: people.length,
-      },
+      meta: { page, per_page, count: people.length },
+      breadcrumbs: data?.breadcrumbs ?? [],
+      pagination: data?.pagination ?? { page, per_page },
       people,
-      raw, // keep for debugging in UI if needed
+      apollo: data, // full parsed Apollo object
+      apollo_pretty: JSON.stringify(data, null, 2), // pretty string for UI
     })
   } catch (err: any) {
     return NextResponse.json(
