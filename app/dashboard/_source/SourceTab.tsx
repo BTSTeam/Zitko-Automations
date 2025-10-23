@@ -9,6 +9,7 @@ type EmploymentItem = {
   title: string | null
   start_date: string | null
   end_date: string | null
+  current?: boolean | null
 }
 
 type Person = {
@@ -24,17 +25,7 @@ type Person = {
 }
 
 const SENIORITIES = [
-  'owner',
-  'founder',
-  'c_suite',
-  'partner',
-  'vp',
-  'head',
-  'director',
-  'manager',
-  'senior',
-  'entry',
-  'intern',
+  'owner','founder','c_suite','partner','vp','head','director','manager','senior','entry','intern',
 ] as const
 
 // ---------------- UI helpers ----------------
@@ -67,14 +58,7 @@ function Chip({ children, onRemove }: { children: string; onRemove: () => void }
   return (
     <span className="inline-flex items-center gap-2 rounded-full bg-gray-100 px-3 py-1 text-sm">
       <span className="truncate">{children}</span>
-      <button
-        type="button"
-        onClick={onRemove}
-        className="rounded-full w-5 h-5 grid place-items-center hover:bg-gray-200"
-        title="Remove"
-      >
-        ×
-      </button>
+      <button type="button" onClick={onRemove} className="rounded-full w-5 h-5 grid place-items-center hover:bg-gray-200" title="Remove">×</button>
     </span>
   )
 }
@@ -95,31 +79,17 @@ function IconFacebook() {
 }
 function IconGlobe({ muted }: { muted?: boolean }) {
   return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-      className={muted ? 'text-gray-300' : 'text-gray-700'}
-    >
+    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" className={muted ? 'text-gray-300' : 'text-gray-700'}>
       <path fill="currentColor" d="M12 2a10 10 0 1 0 .001 20.001A10 10 0 0 0 12 2Zm7.93 9h-3.086a15.4 15.4 0 0 0-1.02-5.02A8.01 8.01 0 0 1 19.93 11ZM12 4c.94 1.24 1.66 3.12 1.98 5H10.02C10.34 7.12 11.06 5.24 12 4ZM8.176 6.98A15.4 15.4 0 0 0 7.156 12H4.07a8.01 8.01 0 0 1 4.106-5.02ZM4.07 13h3.086a15.4 15.4 0 0 0 1.02 5.02A8.01 8.01 0 0 1 4.07 13ZM12 20c-.94-1.24-1.66-3.12-1.98-5h3.96C13.66 16.88 12.94 18.76 12 20Zm3.824-1.98A15.4 15.4 0 0 0 16.844 13h3.086a8.01 8.01 0 0 1-4.106 5.02ZM16.844 12a13.5 13.5 0 0 1-1.047-4H8.203a13.5 13.5 0 0 1-1.047 4h9.688Z"/>
     </svg>
   )
 }
 
-// Multi-select dropdown (absolute) so it doesn’t push the panel down.
+// absolute dropdown so the panel height doesn’t change
 function MultiSelect({
-  label,
-  options,
-  values,
-  setValues,
-  placeholder = 'Select…',
+  label, options, values, setValues, placeholder = 'Select…',
 }: {
-  label: string
-  options: string[]
-  values: string[]
-  setValues: (v: string[]) => void
-  placeholder?: string
+  label: string; options: string[]; values: string[]; setValues: (v: string[]) => void; placeholder?: string
 }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement | null>(null)
@@ -140,17 +110,11 @@ function MultiSelect({
   return (
     <div className="flex flex-col relative" ref={ref}>
       <label className="text-sm text-gray-600 mb-1">{label}</label>
-      <button
-        type="button"
-        onClick={() => setOpen(o => !o)}
-        className="w-full rounded-xl border px-3 py-2 text-sm text-left bg-white"
-      >
+      <button type="button" onClick={() => setOpen(o => !o)} className="w-full rounded-xl border px-3 py-2 text-sm text-left bg-white">
         {values.length ? (
           <div className="flex flex-wrap gap-2">
             {values.map(v => (
-              <span key={v} className="rounded-full bg-gray-100 px-2 py-0.5 text-xs uppercase">
-                {v.replace('_', ' ')}
-              </span>
+              <span key={v} className="rounded-full bg-gray-100 px-2 py-0.5 text-xs uppercase">{v.replace('_', ' ')}</span>
             ))}
           </div>
         ) : (
@@ -161,12 +125,7 @@ function MultiSelect({
         <div className="absolute left-0 right-0 mt-1 rounded-xl border bg-white shadow-lg max-h-60 overflow-auto z-20">
           {options.map(opt => (
             <label key={opt} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50">
-              <input
-                type="checkbox"
-                className="h-4 w-4"
-                checked={values.includes(opt)}
-                onChange={() => toggle(opt)}
-              />
+              <input type="checkbox" className="h-4 w-4" checked={values.includes(opt)} onChange={() => toggle(opt)} />
               <span className="uppercase">{opt.replace('_', ' ')}</span>
             </label>
           ))}
@@ -174,6 +133,19 @@ function MultiSelect({
       )}
     </div>
   )
+}
+
+// ---- date formatting: "Sept – 2025"
+function formatMonthYear(input: string | null | undefined): string {
+  if (!input) return '—'
+  // Accepts YYYY-MM-DD, YYYY-MM, YYYY
+  const s = String(input).trim()
+  const [y, m] = s.split('-')
+  const year = y && /^\d{4}$/.test(y) ? y : ''
+  const monthNum = m ? parseInt(m, 10) : NaN
+  const months = [ '', 'Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sept','Oct','Nov','Dec' ]
+  const month = Number.isFinite(monthNum) ? months[Math.max(0, Math.min(12, monthNum))] : ''
+  return `${month || '—'} – ${year || '—'}`
 }
 
 // Map raw Apollo contact/person → Person
@@ -200,13 +172,22 @@ function transformToPerson(p: any): Person {
 
   const employment_history: EmploymentItem[] = Array.isArray(p?.employment_history)
     ? p.employment_history.map((eh: any) => ({
-        organization_name:
-          (eh?.organization_name && String(eh.organization_name).trim()) || null,
-        title: (eh?.title && String(eh.title).trim()) || null,
-        start_date: (eh?.start_date && String(eh.start_date).trim()) || null,
-        end_date: (eh?.end_date && String(eh.end_date).trim()) || null,
+        organization_name: eh?.organization_name ? String(eh.organization_name).trim() : null,
+        title: eh?.title ? String(eh.title).trim() : null,
+        start_date: eh?.start_date ? String(eh.start_date).trim() : null,
+        end_date: eh?.end_date ? String(eh.end_date).trim() : null,
+        current: !!eh?.current,
       }))
     : []
+
+  // Sort with current first (fallback: most recent by end_date/start_date)
+  employment_history.sort((a, b) => {
+    if (a.current && !b.current) return -1
+    if (b.current && !a.current) return 1
+    const aKey = (a.end_date || a.start_date || '').toString()
+    const bKey = (b.end_date || b.start_date || '').toString()
+    return bKey.localeCompare(aKey) // descending
+  })
 
   return {
     id: p?.id ?? '',
@@ -241,7 +222,7 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
 
   // Chips: titles, locations, keywords
   const titles = useChipInput([])
-  const locations = useChipInput([]) // no default “United States”
+  const locations = useChipInput([]) // (no default)
   const keywords = useChipInput([])
 
   const [seniorities, setSeniorities] = useState<string[]>([])
@@ -272,7 +253,7 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
         person_titles: titles.chips,
         person_locations: locations.chips,
         person_seniorities: seniorities,
-        q_keywords: keywords.chips, // server joins with spaces
+        q_keywords: keywords.chips,
         page: 1,
         per_page: 25,
       }
@@ -283,15 +264,10 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
       })
       const json: any = await res.json()
       if (!res.ok) throw new Error(json?.error || `Search failed (${res.status})`)
-      // Prefer top-level people; else fall back to nested contacts/people
       let rawArr: any[] = []
-      if (Array.isArray(json.people) && json.people.length) {
-        rawArr = json.people
-      } else if (Array.isArray(json.apollo?.contacts) && json.apollo.contacts.length) {
-        rawArr = json.apollo.contacts
-      } else if (Array.isArray(json.apollo?.people)) {
-        rawArr = json.apollo.people
-      }
+      if (Array.isArray(json.people) && json.people.length) rawArr = json.people
+      else if (Array.isArray(json.apollo?.contacts) && json.apollo.contacts.length) rawArr = json.apollo.contacts
+      else if (Array.isArray(json.apollo?.people)) rawArr = json.apollo.people
       setPeople(rawArr.map(transformToPerson))
     } catch (err: any) {
       setError(err?.message || 'Unexpected error')
@@ -313,14 +289,12 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
     <div className="space-y-4">
       {/* -------- Panel 1: Search -------- */}
       <form onSubmit={runSearch} className="rounded-2xl border bg-white shadow-sm p-4">
-        <h3 className="font-semibold mb-3">Apollo People Search</h3>
+        <h3 className="font-semibold mb-3">Candidate | Contact Search</h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Person Titles (chips) */}
+          {/* Titles */}
           <div>
-            <label className="block text-sm text-gray-600 mb-1">
-              Person Titles <span className="text-gray-400">(person_titles[])</span>
-            </label>
+            <label className="block text-sm text-gray-600 mb-1">Job Titles</label>
             <div className="rounded-xl border px-2 py-1.5">
               <div className="flex flex-wrap gap-2">
                 {titles.chips.map(v => (
@@ -337,12 +311,10 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
               </div>
             </div>
           </div>
-
-          {/* Person Locations (chips) */}
+          
+          {/* Locations */}
           <div>
-            <label className="block text-sm text-gray-600 mb-1">
-              Person Locations <span className="text-gray-400">(person_locations[])</span>
-            </label>
+            <label className="block text-sm text-gray-600 mb-1">Locations</label>
             <div className="rounded-xl border px-2 py-1.5">
               <div className="flex flex-wrap gap-2">
                 {locations.chips.map(v => (
@@ -350,7 +322,7 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
                 ))}
                 <input
                   className="min-w-[10ch] flex-1 outline-none text-sm px-2 py-1"
-                  placeholder="e.g. United States, California"
+                  placeholder="e.g. California, United States"
                   value={locations.input}
                   onChange={e => locations.setInput(e.target.value)}
                   onKeyDown={locations.onKeyDown}
@@ -359,12 +331,10 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
               </div>
             </div>
           </div>
-
-          {/* Keywords (chips) */}
+          
+          {/* Keywords */}
           <div>
-            <label className="block text-sm text-gray-600 mb-1">
-              Keywords <span className="text-gray-400">(q_keywords)</span>
-            </label>
+            <label className="block text-sm text-gray-600 mb-1">Keywords</label>
             <div className="rounded-xl border px-2 py-1.5">
               <div className="flex flex-wrap gap-2">
                 {keywords.chips.map(v => (
@@ -381,10 +351,10 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
               </div>
             </div>
           </div>
-
-          {/* Seniorities (multi-select dropdown) */}
+          
+          {/* Seniorities */}
           <MultiSelect
-            label="Seniorities (person_seniorities[])"
+            label="Seniorities"
             options={SENIORITIES as unknown as string[]}
             values={seniorities}
             setValues={setSeniorities}
@@ -392,28 +362,11 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
           />
         </div>
 
-        {/* Tips & Search button */}
-        <div className="mt-4 flex items-center justify-between">
-          <span className="text-xs text-gray-500">
-            Press <kbd className="px-1 border rounded">Enter</kbd> to add a chip. Use{' '}
-            <kbd className="px-1 border rounded">Cmd/Ctrl</kbd> + <kbd className="px-1 border rounded">Enter</kbd> to search.
-          </span>
-          <button
-            type="submit"
-            className="rounded-full bg-orange-500 text-white px-5 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50"
-            disabled={isDown || loading}
-          >
-            {loading ? 'Searching…' : 'Search'}
-          </button>
-        </div>
-
-        {/* Advanced search prompt right-aligned */}
+        {/* Advanced search prompt right-aligned, with non-underlined 'here' link */}
         <div className="mt-3 flex justify-end">
-          <div className="text-right">
-            <span className="text-xs text-gray-500">
-              If you would like to request a more advanced search, please click here
-            </span>{' '}
-            <button type="button" className="text-xs text-orange-500 underline">Request</button>
+          <div className="text-right text-xs text-gray-500">
+            If you would like to request a more advanced search, please click{' '}
+            <a href="#" className="text-orange-500 hover:text-orange-600 no-underline">here</a>
           </div>
         </div>
       </form>
@@ -432,66 +385,52 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
               const hasLI = !!p.linkedin_url
               const hasFB = !!p.facebook_url
               const hasWWW = !!p.organization_website_url
-              const NameAndLocation = (
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="font-semibold text-base truncate">{p.name || '—'}</span>
-                  {p.formatted_address ? (
-                    <>
-                      <span className="text-gray-300">|</span>
-                      <span className="text-sm text-gray-600 truncate">{p.formatted_address}</span>
-                    </>
-                  ) : null}
-                </div>
-              )
+
               return (
                 <li key={p.id} className="p-4">
-                  {/* Row 1: Name | Location  +  Always-on icons at far right */}
+                  {/* Row 1: Name  |  Location (small)  +  always-on icons far right */}
                   <div className="flex items-center justify-between gap-4">
-                    {NameAndLocation}
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="font-semibold text-base truncate">{p.name || '—'}</span>
+                      {p.formatted_address ? (
+                        <>
+                          <span className="text-gray-300">|</span>
+                          <span className="text-xs text-gray-600 truncate">{p.formatted_address}</span>
+                        </>
+                      ) : null}
+                    </div>
                     <div className="shrink-0 flex items-center gap-3">
-                      {/* LinkedIn */}
-                      <a
-                        href={hasLI ? p.linkedin_url! : undefined}
-                        target={hasLI ? '_blank' : undefined}
-                        rel={hasLI ? 'noreferrer' : undefined}
-                        className={hasLI ? '' : 'opacity-30 pointer-events-none cursor-default'}
-                        title={hasLI ? 'Open LinkedIn' : 'LinkedIn not available'}
-                      >
+                      <a href={hasLI ? p.linkedin_url! : undefined}
+                         target={hasLI ? '_blank' : undefined}
+                         rel={hasLI ? 'noreferrer' : undefined}
+                         className={hasLI ? '' : 'opacity-30 pointer-events-none cursor-default'}
+                         title={hasLI ? 'Open LinkedIn' : 'LinkedIn not available'}>
                         <IconLinkedIn />
                       </a>
-                      {/* Facebook */}
-                      <a
-                        href={hasFB ? p.facebook_url! : undefined}
-                        target={hasFB ? '_blank' : undefined}
-                        rel={hasFB ? 'noreferrer' : undefined}
-                        className={hasFB ? '' : 'opacity-30 pointer-events-none cursor-default'}
-                        title={hasFB ? 'Open Facebook' : 'Facebook not available'}
-                      >
+                      <a href={hasFB ? p.facebook_url! : undefined}
+                         target={hasFB ? '_blank' : undefined}
+                         rel={hasFB ? 'noreferrer' : undefined}
+                         className={hasFB ? '' : 'opacity-30 pointer-events-none cursor-default'}
+                         title={hasFB ? 'Open Facebook' : 'Facebook not available'}>
                         <IconFacebook />
                       </a>
-                      {/* Company website */}
-                      <a
-                        href={hasWWW ? p.organization_website_url! : undefined}
-                        target={hasWWW ? '_blank' : undefined}
-                        rel={hasWWW ? 'noreferrer' : undefined}
-                        className={hasWWW ? 'text-gray-700 hover:text-gray-900' : 'opacity-30 pointer-events-none cursor-default'}
-                        title={hasWWW ? 'Open company website' : 'Company website not available'}
-                      >
+                      <a href={hasWWW ? p.organization_website_url! : undefined}
+                         target={hasWWW ? '_blank' : undefined}
+                         rel={hasWWW ? 'noreferrer' : undefined}
+                         className={hasWWW ? 'text-gray-700 hover:text-gray-900' : 'opacity-30 pointer-events-none cursor-default'}
+                         title={hasWWW ? 'Open company website' : 'Company website not available'}>
                         <IconGlobe muted={!hasWWW} />
                       </a>
                     </div>
                   </div>
 
-                  {/* Row 2: Company + Title  +  Employment history toggle (far right) */}
+                  {/* Row 2: Job Title (above) + Organization (not bold) + toggle far right */}
                   <div className="mt-1 flex items-center justify-between gap-4">
-                    <div className="text-sm">
-                      <span className="font-medium">{p.organization_name || '—'}</span>
-                      {p.title ? (
-                        <>
-                          {' '}
-                          — <span>{p.title}</span>
-                        </>
-                      ) : null}
+                    <div className="min-w-0">
+                      <div className="text-sm">{p.title || '—'}</div>
+                      <div className="text-sm flex items-center gap-2">
+                        <span className="truncate">{p.organization_name || '—'}</span>
+                      </div>
                     </div>
 
                     <button
@@ -501,36 +440,40 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
                       title="Toggle employment history"
                     >
                       Employment history
-                      <svg
-                        width="14"
-                        height="14"
-                        viewBox="0 0 20 20"
-                        fill="currentColor"
-                        className={expanded.has(p.id) ? 'rotate-180 transition-transform' : 'transition-transform'}
-                      >
+                      <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor"
+                           className={expanded.has(p.id) ? 'rotate-180 transition-transform' : 'transition-transform'}>
                         <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z" />
                       </svg>
                     </button>
                   </div>
 
-                  {/* Collapsible: Employment history table-like rows */}
+                  {/* Collapsible: Employment history */}
                   {expanded.has(p.id) && (
                     <div className="mt-3 rounded-xl border bg-gray-50">
-                      <div className="p-3 text-xs text-gray-500">
-                        organization_name | title | start_date | end_date
+                      {/* Column headers */}
+                      <div className="px-3 py-2 border-b grid grid-cols-1 md:grid-cols-4 md:gap-3 text-xs text-gray-500">
+                        <div>organization_name</div>
+                        <div>title</div>
+                        <div>start_date</div>
+                        <div>end_date</div>
                       </div>
-                      <ul className="text-sm">
+
+                      <ul className="text-xs">
                         {p.employment_history.length ? (
-                          p.employment_history.map((eh, idx) => (
-                            <li key={idx} className="px-3 py-2 border-t first:border-t-0">
-                              <div className="grid grid-cols-1 md:grid-cols-4 md:gap-3">
-                                <div>{eh.organization_name || '—'}</div>
-                                <div>{eh.title || '—'}</div>
-                                <div>{eh.start_date || '—'}</div>
-                                <div>{eh.end_date || 'Present'}</div>
-                              </div>
-                            </li>
-                          ))
+                          p.employment_history.map((eh, idx) => {
+                            const isCurrent = !!eh.current || eh.end_date === null
+                            const rowClass = isCurrent ? 'text-orange-500' : ''
+                            return (
+                              <li key={idx} className={`px-3 py-2 border-t first:border-t-0 ${rowClass}`}>
+                                <div className="grid grid-cols-1 md:grid-cols-4 md:gap-3">
+                                  <div>{eh.organization_name || '—'}</div>
+                                  <div>{eh.title || '—'}</div>
+                                  <div>{formatMonthYear(eh.start_date)}</div>
+                                  <div>{eh.end_date ? formatMonthYear(eh.end_date) : 'Present'}</div>
+                                </div>
+                              </li>
+                            )
+                          })
                         ) : (
                           <li className="px-3 py-2 border-t first:border-t-0 text-gray-500">No history available.</li>
                         )}
