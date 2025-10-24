@@ -322,7 +322,7 @@ Kind regards,`
         person_seniorities: seniorities,
         q_keywords: keywords.chips,
         page: 1,
-        per_page: 25,
+        per_page: 10,
       }
       const res = await fetch('/api/apollo/people-search', {
         method: 'POST',
