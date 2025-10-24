@@ -328,10 +328,14 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     core: true, profile: true, skills: true, work: true, education: true, extra: true,
     rawCandidate: false, rawWork: false, rawEdu: false, rawCustom: false,
   })
-
+  
   // NEW: heading switch for Skills
   const [skillsHeading, setSkillsHeading] =
     useState<'Key Skills' | 'Systems Knowledge'>('Key Skills')
+  
+  // NEW: switchable main title (Curriculum Vitae ↔ Resume)
+  const [mainTitle, setMainTitle] =
+    useState<'Curriculum Vitae' | 'Resume'>('Curriculum Vitae')
 
   // NEW: safe order for middle sections
   const [sectionOrder, setSectionOrder] =
@@ -399,7 +403,8 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     // Reset new UI bits too
     setSkillsHeading('Key Skills')
     setSectionOrder(['skills', 'work', 'education'])
-
+    setMainTitle('Curriculum Vitae')
+    
     setRawCandidate(null)
     setRawWork([])
     setRawEdu([])
@@ -1123,7 +1128,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
           <img src="/zitko-full-logo.png" alt="Zitko" className="h-10" />
         </div>
 
-        <h1 className="text-2xl font-bold mt-5">Curriculum Vitae</h1>
+        <h1 className="text-2xl font-bold mt-5">{mainTitle}</h1>
 
         <div className="mt-2 text-[12px] text-gray-800 space-y-0.5">
           <div>
@@ -1347,6 +1352,15 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
             <div className="flex items-center justify-between">
               <h3 className="font-semibold text-sm">Core Details</h3>
               <div className="flex items-center gap-3">
+                {/* NEW: toggle main title */}
+                <button
+                  type="button"
+                  className="text-[11px] text-gray-500 underline"
+                  onClick={() => setMainTitle(t => t === 'Curriculum Vitae' ? 'Resume' : 'Curriculum Vitae')}
+                  title="Switch title between 'Curriculum Vitae' and 'Resume'"
+                >
+                  Switch title
+                </button>
                 <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('core')}>
                   {open.core ? 'Hide' : 'Show'}
                 </button>
