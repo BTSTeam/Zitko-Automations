@@ -42,9 +42,11 @@ export async function POST(req: NextRequest) {
   const person_seniorities = toArray(inBody.person_seniorities).filter(s => ALLOWED_SENIORITIES.has(s as any))
 
   // q_keywords can arrive as array (chips) or string. Join chips with spaces.
-  let q_keywords = ''
-  if (Array.isArray(inBody.q_keywords)) q_keywords = inBody.q_keywords.filter(Boolean).join(' ')
-  else if (typeof inBody.q_keywords === 'string') q_keywords = inBody.q_keywords.trim()
+  const orgKeywordTags = Array.isArray(inBody.q_keywords)
+    ? inBody.q_keywords.filter(Boolean)
+    : typeof inBody.q_keywords === 'string'
+    ? [inBody.q_keywords.trim()]
+    : []
 
   const page = toPosInt(inBody.page, 1)
   const per_page = 25 // fixed by design
@@ -56,7 +58,9 @@ export async function POST(req: NextRequest) {
   person_titles.forEach(t => params.append('person_titles[]', t))
   person_locations.forEach(l => params.append('person_locations[]', l))
   person_seniorities.forEach(s => params.append('person_seniorities[]', s))
-  if (q_keywords) params.set('q_keywords', q_keywords)
+  orgKeywordTags.forEach(k => params.append('qOrganizationKeywordTags[]', k))
+  const emailStatuses = ['Verified', 'Unverified', 'Catch-All', 'Accept-All', 'Invalid']
+  emailStatuses.forEach(s => params.append('contact_email_status[]', s))
 
   // Auth
   const session = await getSession()
