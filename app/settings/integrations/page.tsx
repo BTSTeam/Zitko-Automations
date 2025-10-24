@@ -7,7 +7,6 @@ export default function IntegrationsPage() {
   const [apolloConnected, setApolloConnected] = useState(false)
   const [loadingApollo, setLoadingApollo] = useState(false)
 
-  const [jotform, setJotform] = useState('')
   const [openaiModel, setOpenaiModel] = useState('gpt-4o-mini')
   const [jobId, setJobId] = useState('')
   const [loading, setLoading] = useState(false)
@@ -67,8 +66,6 @@ export default function IntegrationsPage() {
     }
   }
 
-  // ✅ The extra stray "}" that caused the build error was here — removed.
-
   return (
     <div className="grid gap-6">
       <div className="card p-6 grid gap-6">
@@ -85,10 +82,11 @@ export default function IntegrationsPage() {
         </div>
 
         <div className="grid sm:grid-cols-2 gap-6">
+          {/* Vincere */}
           <div className="grid gap-3">
             <h2 className="font-semibold">Vincere</h2>
             <button className="btn btn-brand w-max" onClick={loginWithVincere}>
-              🔐 Login with Vincere
+              Login with Vincere
             </button>
 
             <div className="grid gap-2">
@@ -100,7 +98,7 @@ export default function IntegrationsPage() {
                 onChange={(e) => setJobId(e.target.value)}
               />
               <button className="btn btn-grey w-max" onClick={testVincereCall} disabled={loading}>
-                {loading ? 'Testing…' : '🧪 Test Vincere Call'}
+                {loading ? 'Testing…' : ' Test Vincere Call'}
               </button>
             </div>
 
@@ -121,20 +119,19 @@ export default function IntegrationsPage() {
             )}
           </div>
 
-          {/* Apollo section */}
+          {/* Apollo */}
           <div className="grid gap-3">
             <h2 className="font-semibold flex items-center gap-2">
               {/* CASE-SENSITIVE, file lives at /public/Apollo-Logo.png */}
               <img
                 src="/Apollo-Logo.png"
                 alt="Apollo"
-                className={`h-6 w-auto inline-block align-middle rounded-full p-1 transition 
-                  ${apolloConnected ? 'bg-yellow-400' : 'bg-transparent'}`}
+                className={`h-6 w-auto inline-block align-middle rounded-full p-1 transition ${apolloConnected ? 'bg-yellow-400' : 'bg-transparent'}`}
                 onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
               />
               Apollo.io
             </h2>
-          
+
             {apolloConnected ? (
               <>
                 <p className="text-sm text-green-600">✅ Connected to Apollo</p>
@@ -172,18 +169,6 @@ export default function IntegrationsPage() {
                 API key is set via environment variables.
               </p>
             </div>
-
-            <div className="mt-4">
-              <h3 className="font-medium mb-1 text-sm text-gray-700">JotForm Embed URL</h3>
-              <input
-                className="input"
-                value={jotform}
-                onChange={(e) => setJotform(e.target.value)}
-                placeholder="https://form.jotform.com/..."
-              />
-            </div>
-
-            <button className="btn btn-grey w-max mt-3">Save (demo only)</button>
           </div>
         </div>
       </div>
