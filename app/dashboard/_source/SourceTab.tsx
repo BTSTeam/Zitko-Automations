@@ -232,35 +232,34 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [searchOpen, setSearchOpen] = useState(true) // NEW: collapsed by default
   
-          // Prefilled email for Advanced Search (fixed subject)
-          const mailToSubject = "Apollo Advanced Search Request"
-        
-          // Keep the body concise to avoid URL length issues
-          const mailToBody = `Hi BTS team,
-        
-        I'd like a more advanced search.
-        
-        Role(s):
-        Locations:
-        Seniority:
-        Keywords:
-        Other notes:
-        
-        Thanks!`
-        
-          // Encoded params for the mailto link
-          const subjectEncoded = encodeURIComponent(mailToSubject)
-          const bodyEncoded = encodeURIComponent(mailToBody)
+  // Prefilled email for Advanced Search (fixed subject)
+  const mailToSubject = "Apollo Advanced Search Request"
 
-      function toggleExpanded(id: string) {
-        setExpanded(prev => {
-          const next = new Set(prev)
-          if (next.has(id)) next.delete(id)
-          else next.add(id)
-          return next
-        })
-      }
+  // Keep the body concise to avoid URL length issues
+  const mailToBody = `Hi BTS team,
 
+I'd like a more advanced search.
+
+Role(s):
+Locations:
+Seniority:
+Keywords:
+Other notes:
+
+Thanks!`
+
+  // Encoded params for the mailto link
+  const subjectEncoded = encodeURIComponent(mailToSubject)
+  const bodyEncoded = encodeURIComponent(mailToBody)
+
+  function toggleExpanded(id: string) {
+    setExpanded(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
   async function runSearch(e?: React.FormEvent) {
     e?.preventDefault()
@@ -437,8 +436,9 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
                 */}
               </div>
             </div>
-          </form>        
-        </div>           
+          </form>
+        )}
+      </div>
 
       {/* -------- Panel 2: Results (no title bar) -------- */}
       <div className="rounded-2xl border bg-white shadow-sm">
