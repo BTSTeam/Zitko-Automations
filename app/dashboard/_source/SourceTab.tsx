@@ -148,6 +148,12 @@ function formatMonthYear(input: string | null | undefined): string {
   return `${month || '—'} – ${year || '—'}`
 }
 
+// --- static LinkedIn note builder (no AI)
+function makeStaticNote(firstName?: string | null) {
+  const first = (firstName || '').trim() || 'there'
+  return `Hi ${first}, it's always nice to meet others passionate about the industry. Would be great to connect.`
+}
+
 // Map raw Apollo contact/person → Person
 function transformToPerson(p: any): Person {
   const first = (p?.first_name ?? '').toString().trim()
@@ -231,7 +237,11 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
   const [people, setPeople] = useState<Person[]>([])
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [searchOpen, setSearchOpen] = useState(true) // NEW: collapsed by default
-  
+
+  // NEW: notes state + copied indicator
+  const [notesById, setNotesById] = useState<Record<string, string>>({})
+  const [copiedId, setCopiedId] = useState<string | null>(null)
+
   // Prefilled email for Advanced Search (fixed subject)
   const mailToSubject = "Apollo Advanced Search Request"
 
@@ -259,6 +269,28 @@ Thanks!`
       else next.add(id)
       return next
     })
+  }
+
+  // NEW: copy-then-open LinkedIn icon behaviour
+  const onLinkedInClick = async (
+    e: React.MouseEvent,
+    url?: string,
+    id?: string
+  ) => {
+    if (!url) return
+    e.preventDefault()
+
+    const note = id ? notesById[id] : ''
+    if (note) {
+      try {
+        await navigator.clipboard.writeText(note)
+        setCopiedId(id || null)
+        setTimeout(() => setCopiedId(null), 1200)
+      } catch {
+        // ignore clipboard errors; still open LinkedIn
+      }
+    }
+    window.open(url, '_blank', 'noopener,noreferrer')
   }
 
   async function runSearch(e?: React.FormEvent) {
@@ -289,7 +321,32 @@ Thanks!`
       if (Array.isArray(json.people) && json.people.length) rawArr = json.people
       else if (Array.isArray(json.apollo?.contacts) && json.apollo.contacts.length) rawArr = json.apollo.contacts
       else if (Array.isArray(json.apollo?.people)) rawArr = json.apollo.people
-      setPeople(rawArr.map(transformToPerson))
+
+      // map and set
+      const mapped: Person[] = rawArr.map(transformToPerson)
+      setPeople(mapped)
+
+      // build static notes per candidate (no AI)
+      const built: Record<string, string> = {}
+      for (const p of mapped) {
+        const firstName = (p.name || '').split(' ')?.[0] || ''
+        built[p.id] = makeStaticNote(firstName)
+      }
+      setNotesById(built)
+
+      // OPTIONAL: persist notes for later reuse (safe to keep even if route not added yet)
+      try {
+        await fetch('/api/notes/bulk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            notes: Object.entries(built).map(([candidateId, note]) => ({ candidateId, note }))
+          })
+        })
+      } catch {
+        // ignore persistence failures
+      }
+
     } catch (err: any) {
       setError(err?.message || 'Unexpected error')
     } finally {
@@ -424,16 +481,6 @@ Thanks!`
                 >
                   here
                 </a>
-                {/* Optional Outlook web fallback:
-                <span className="mx-1 text-gray-300">|</span>
-                <a
-                  href={`https://outlook.office.com/mail/deeplink/compose?to=bts@zitko.co.uk&subject=${subjectEncoded}&body=${bodyEncoded}`}
-                  className="text-orange-500 hover:text-orange-600 no-underline"
-                  target="_blank" rel="noreferrer"
-                >
-                  open in Outlook web
-                </a>
-                */}
               </div>
             </div>
           </form>
@@ -469,13 +516,20 @@ Thanks!`
                       ) : null}
                     </div>
                     <div className="shrink-0 flex items-center gap-3">
-                      <a href={hasLI ? p.linkedin_url! : undefined}
-                         target={hasLI ? '_blank' : undefined}
-                         rel={hasLI ? 'noreferrer' : undefined}
-                         className={hasLI ? '' : 'opacity-30 pointer-events-none cursor-default'}
-                         title={hasLI ? 'Open LinkedIn' : 'LinkedIn not available'}>
+                      {/* LinkedIn: copy note then open */}
+                      <a
+                        href={hasLI ? p.linkedin_url! : undefined}
+                        onClick={hasLI ? (ev) => onLinkedInClick(ev, p.linkedin_url!, p.id) : undefined}
+                        className={hasLI ? '' : 'opacity-30 pointer-events-none cursor-default'}
+                        title={
+                          hasLI
+                            ? (copiedId === p.id ? 'Note copied!' : 'Open LinkedIn (note copies first)')
+                            : 'LinkedIn not available'
+                        }
+                      >
                         <IconLinkedIn />
                       </a>
+
                       <a href={hasFB ? p.facebook_url! : undefined}
                          target={hasFB ? '_blank' : undefined}
                          rel={hasFB ? 'noreferrer' : undefined}
