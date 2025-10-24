@@ -232,34 +232,28 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [searchOpen, setSearchOpen] = useState(true) // NEW: collapsed by default
   
-  // Subject for the advanced-search email (editable in the UI)
-  const [advSubject, setAdvSubject] = useState("Advanced search request")
-  
-  // Prefilled body (kept short to avoid URL length issues)
-  const advancedBody = `Hi BTS team,
-  
-  I'd like a more advanced search.
-  
-  Role(s):
-  Locations:
-  Seniority:
-  Keywords:
-  Other notes:
-  
-  Thanks!`
-  
-  // Encoded params for the mailto link
-  const subjectEncoded = encodeURIComponent(advSubject)
-  const bodyEncoded = encodeURIComponent(advancedBody)
+      // Prefilled HTML email for Advanced Search (for Outlook Web)
+      const subjectEncoded = encodeURIComponent("Apollo Advanced Search Request")
+      const bodyEncoded = encodeURIComponent(`
+    Hi BTS team,<br><br>
+    I'd like a more advanced search.<br><br>
+    <b>Role(s):</b><br>
+    <b>Locations:</b><br>
+    <b>Seniority:</b><br>
+    <b>Keywords:</b><br>
+    <b>Other notes:</b><br><br>
+    Thanks!
+    `)
+    
+      function toggleExpanded(id: string) {
+        setExpanded(prev => {
+          const next = new Set(prev)
+          if (next.has(id)) next.delete(id)
+          else next.add(id)
+          return next
+        })
+      }
 
-  function toggleExpanded(id: string) {
-    setExpanded(prev => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
 
   async function runSearch(e?: React.FormEvent) {
     e?.preventDefault()
@@ -414,37 +408,18 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
               </button>
             </div>
 
-            {/* Advanced search: subject input + mailto link */}
-            <div className="mt-3 flex flex-col md:flex-row items-end md:items-center justify-end gap-2">
-              <label className="text-xs text-gray-500 md:text-right">
-                Subject:&nbsp;
-                <input
-                  type="text"
-                  value={advSubject}
-                  onChange={(e) => setAdvSubject(e.target.value)}
-                  className="ml-1 rounded border px-2 py-1 text-xs w-64"
-                  placeholder="Advanced search request"
-                />
-              </label>
-            
+            {/* Advanced search: mailto link (Outlook Web, bold headers, spaced layout) */}
+            <div className="mt-3 flex justify-end">
               <div className="text-right text-xs text-gray-500">
                 If you would like to request a more advanced search, please click{' '}
                 <a
-                  href={`mailto:bts@zitko.co.uk?subject=${subjectEncoded}&body=${bodyEncoded}`}
+                  href={`https://outlook.office.com/mail/deeplink/compose?to=bts@zitko.co.uk&subject=${subjectEncoded}&body=${bodyEncoded}`}
                   className="text-orange-500 hover:text-orange-600 no-underline"
+                  target="_blank"
+                  rel="noreferrer"
                 >
                   here
                 </a>
-                {/* Optional Outlook web fallback:
-                <span className="mx-1 text-gray-300">|</span>
-                <a
-                  href={`https://outlook.office.com/mail/deeplink/compose?to=bts@zitko.co.uk&subject=${subjectEncoded}&body=${bodyEncoded}`}
-                  className="text-orange-500 hover:text-orange-600 no-underline"
-                  target="_blank" rel="noreferrer"
-                >
-                  open in Outlook web
-                </a>
-                */}
               </div>
             </div>
           </form>
