@@ -243,34 +243,34 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
   const [copiedId, setCopiedId] = useState<string | null>(null)
 
   // Prefilled email for Advanced Search (fixed subject)
-  const mailToSubject = "Advanced Search Request"
+  const mailToSubject = "Advanced Search Request (people)"
   
   const mailToBody = `Hi BTS Team,
   
-  Please can I request an advanced search with the criteria listed below, thank you.
+Please can I request an advanced search with the criteria listed below, thank you.
   
-  JOB TITLES:
-    - EXCLUDE:
-    
-  PAST JOB TITLES:
+Job Titles:
+  - Exclude:
   
-  LOCATIONS:
+Past Job Titles:
+
+Locations:
+
+City Radius: (provide city and radius within X miles)
+
+Company Name: (for full list of employees only)
+  - Exclude:
   
-  CITY RADIUS: (Provide city and radius within X miles)
+Seniorities:
+
+Company Keywords:
+  - Exclude:
   
-  COMPANY NAME: (For full list of employees only)
-    - EXCLUDE:
-    
-  SENIORITIES:
+People Lookalikes: (provide full names & current company name)
+
+Company Lookalikes: (Provide full company names)
   
-  COMPANY KEYWORDS:
-    - EXCLUDE:
-    
-  PEOPLE LOOKALIKES: (Provide full names & current company name)
-  
-  COMPANY LOOKALIKES: (Provide full company names)
-  
-  Kind regards,`
+Kind regards,`
     
   // Encoded params for the mailto link
   const subjectEncoded = encodeURIComponent(mailToSubject)
