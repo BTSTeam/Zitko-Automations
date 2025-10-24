@@ -4,14 +4,16 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
 
 /**
- * CvTab.tsx — full file (prefill font shrinking in editor only)
- * - Adds a "prefill" state to mark which editor fields were auto-filled from retrieve
- * - Prefilled fields render with smaller font (text-[12px]) in LEFT editor only
- * - Prefill flags clear as soon as the user edits the field
- * - Preview and upload logic unchanged
+ * CvTab.tsx — full file (adds heading switch + safe section reordering)
+ * - Switch "Key Skills" heading ↔ "Systems Knowledge" (editor button, reflected in preview)
+ * - Reorder middle sections (Skills / Employment / Education) with ▲/▼ controls
+ *   between Profile (fixed top) and Additional Information (fixed bottom)
+ * - Preview reflects both features so uploads to Vincere preserve them
+ * - Existing prefill/editor/preview/upload logic kept intact
  */
 
 type TemplateKey = 'standard' | 'sales'
+type ReorderableSection = 'skills' | 'work' | 'education'
 
 type Employment = {
   title?: string
@@ -79,7 +81,6 @@ async function fetchBytes(url: string): Promise<Uint8Array> {
  */
 async function bakeHeaderFooter(input: Blob): Promise<Blob> {
   if (input.type && !/pdf/i.test(input.type)) return input
-
   try {
     const srcBuf = await input.arrayBuffer()
     const pdfDoc = await PDFDocument.load(srcBuf, { ignoreEncryption: true })
@@ -94,7 +95,7 @@ async function bakeHeaderFooter(input: Blob): Promise<Blob> {
     const logo = await pdfDoc.embedPng(logoBytes)
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
 
-    // ---- Header (first page only) ----
+    // Header
     {
       const w = first.getWidth()
       const h = first.getHeight()
@@ -113,26 +114,21 @@ async function bakeHeaderFooter(input: Blob): Promise<Blob> {
       })
     }
 
-    // ---- Footer (last page only) ----
+    // Footer
     {
       const w = last.getWidth()
       const marginX = 28
       const stripHeight = 54
       last.drawRectangle({ x: 0, y: 0, width: w, height: stripHeight, color: rgb(1, 1, 1) })
-    
       const footerLines = [
         'Zitko™ incorporates Zitko Group Ltd, Zitko Group (Ireland) Ltd, Zitko Inc',
         'Registered office – Suite 2, 17a Huntingdon Street, St Neots, Cambridgeshire, PE19 1BL',
         'Tel: 01480 473245  Web: www.zitkogroup.com',
       ]
-    
       const fontSize = 8.5
       const lineGap = 2
       const step = fontSize + lineGap
-    
-      // draw TOP -> DOWN so visual order matches the array order
-      const yTop = stripHeight - (fontSize + 10)  // 10px top padding within strip
-    
+      const yTop = stripHeight - (fontSize + 10)
       footerLines.forEach((line, i) => {
         const textWidth = font.widthOfTextAtSize(line, fontSize)
         const x = Math.max(marginX, (w - textWidth) / 2)
@@ -149,7 +145,6 @@ async function bakeHeaderFooter(input: Blob): Promise<Blob> {
     return input
   }
 }
-
 // ---------- helpers for education/work mapping ----------
 function formatDate(dateStr?: string | null): string {
   if (!dateStr) return ''
@@ -179,22 +174,14 @@ function formatDate(dateStr?: string | null): string {
 function cleanRichTextToPlain(input: unknown): string {
   if (!input) return ''
   let s = String(input)
-
-  // Normalize line breaks first
   s = s.replace(/<\s*br\s*\/?>/gi, '\n')
-  s = s.replace(/<\/\s*p\s*>\s*<\s*p[^>]*>/gi, '\n') // paragraph boundaries → newline
-
-  // Drop remaining tags
+  s = s.replace(/<\/\s*p\s*>\s*<\s*p[^>]*>/gi, '\n')
   s = s.replace(/<\/?[^>]+>/g, '')
-
-  // Decode HTML entities using the DOM (browser only)
   if (typeof window !== 'undefined') {
     const ta = document.createElement('textarea')
     ta.innerHTML = s
     s = ta.value
   }
-
-  // Tidy whitespace/newlines
   s = s.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
   return s
 }
@@ -204,11 +191,8 @@ function mapWorkExperiences(list: any[]): Employment[] {
   return list.map((w) => {
     const start = formatDate(w?.work_from)
     const end = w?.work_to == null ? 'Present' : formatDate(w?.work_to)
-
-    // Prefer experience_in_company; fall back to description. Strip HTML to plain text
     const rawDesc = w?.experience_in_company ?? w?.description ?? ''
     const description = cleanRichTextToPlain(rawDesc)
-
     return {
       title: w?.job_title || '',
       company: w?.company_name || '',
@@ -222,16 +206,11 @@ function mapWorkExperiences(list: any[]): Employment[] {
 function mapEducation(list: any[]): Education[] {
   if (!Array.isArray(list)) return []
   return list.map(e => {
-    // Course = Institution name from API
     const course = (e?.school_name || e?.institution || e?.school || '').toString().trim()
-
-    // Institution field = Description (cleaned rich text)
     const descriptionRaw = e?.description ?? ''
     const institution = cleanRichTextToPlain(descriptionRaw)
-
     const start = formatDate(e?.start_date || e?.from_date || e?.start) || ''
     const end = formatDate(e?.end_date || e?.to_date || e?.end) || ''
-
     return { course, institution, start, end }
   })
 }
@@ -350,6 +329,14 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     rawCandidate: false, rawWork: false, rawEdu: false, rawCustom: false,
   })
 
+  // NEW: heading switch for Skills
+  const [skillsHeading, setSkillsHeading] =
+    useState<'Key Skills' | 'Systems Knowledge'>('Key Skills')
+
+  // NEW: safe order for middle sections
+  const [sectionOrder, setSectionOrder] =
+    useState<ReorderableSection[]>(['skills', 'work', 'education'])
+
   // ===== Upload modal (both Standard & Sales) =====
   const [showUploadModal, setShowUploadModal] = useState(false)
   const [uploadContext, setUploadContext] = useState<'standard' | 'sales'>('standard')
@@ -409,6 +396,10 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
       keySkills: false,
       employment: [],
     })
+    // Reset new UI bits too
+    setSkillsHeading('Key Skills')
+    setSectionOrder(['skills', 'work', 'education'])
+
     setRawCandidate(null)
     setRawWork([])
     setRawEdu([])
@@ -441,10 +432,45 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   }
 
   /* Keep prefill flag sticky so the editor font stays small even after edits */
-function clearPrefill(_path: string) {
-  // Intentionally a no-op. Calls remain for future flexibility.
-}
+  function clearPrefill(_path: string) {
+    // Intentionally a no-op. Calls remain for future flexibility.
+  }
 
+  // NEW: move section helper
+  function moveSection(k: ReorderableSection, dir: -1 | 1) {
+    setSectionOrder(prev => {
+      const i = prev.indexOf(k)
+      const ni = i + dir
+      if (i < 0 || ni < 0 || ni >= prev.length) return prev
+      const copy = [...prev]
+      ;[copy[i], copy[ni]] = [copy[ni], copy[i]]
+      return copy
+    })
+  }
+
+  // Tiny inline “grip” + arrows component
+  function ReorderControls({ id }: { id: ReorderableSection }) {
+    const i = sectionOrder.indexOf(id)
+    return (
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          className="text-[11px] text-gray-500"
+          onClick={() => moveSection(id, -1)}
+          disabled={i === 0}
+          title="Move up"
+        >▲</button>
+        <button
+          type="button"
+          className="text-[11px] text-gray-500"
+          onClick={() => moveSection(id, +1)}
+          disabled={i === sectionOrder.length - 1}
+          title="Move down"
+        >▼</button>
+        <span className="text-[14px] select-none" title="Drag handle look">⋮⋮</span>
+      </div>
+    )
+  }
   function addEmployment() {
     setForm(prev => ({
       ...prev,
@@ -483,7 +509,7 @@ function clearPrefill(_path: string) {
       return copy
     })
   }
-  
+
   // ========== AI profile (Standard) ==========
   async function generateProfile() {
     try {
@@ -496,19 +522,19 @@ function clearPrefill(_path: string) {
       const aiData = await aiRes.json()
       if (!aiRes.ok || !aiData?.ok) throw new Error(aiData?.error || 'Profile generation failed.')
       setField('profile', aiData.profile || '')
-      setPrefill(prev => ({ ...prev, profile: true }))   // << keep small after Generate
+      setPrefill(prev => ({ ...prev, profile: true }))
     } catch (e: any) {
       setError(e?.message || 'Profile generation failed.')
     } finally {
       setLoading(false)
     }
   }
-  
+
   async function generateJobProfile() {
     if (!jobId) return
     try {
       setLoading(true); setError(null)
-  
+
       let jobRes = await fetch('/api/job/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -517,20 +543,20 @@ function clearPrefill(_path: string) {
       if (!jobRes.ok) {
         jobRes = await fetch(`/api/job/extract?id=${encodeURIComponent(jobId)}`, { cache: 'no-store' })
       }
-  
+
       const jobJson = await jobRes.json()
       if (!jobRes.ok) throw new Error(jobJson?.error || `Unable to retrieve job ${jobId}`)
-  
+
       const aiRes = await fetch('/api/cv/profile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode: 'jobprofile', candidate: rawCandidate, work: rawWork, education: rawEdu, job: jobJson }),
       })
-  
+
       const aiData = await aiRes.json()
       if (!aiRes.ok || !aiData?.ok) throw new Error(aiData?.error || 'Job Profile generation failed.')
       setField('profile', aiData.profile || '')
-      setPrefill(prev => ({ ...prev, profile: true }))   // << keep small after Generate
+      setPrefill(prev => ({ ...prev, profile: true }))
     } catch (e: any) {
       setError(e?.message || 'Job Profile generation failed.')
     } finally {
@@ -629,7 +655,6 @@ function clearPrefill(_path: string) {
         additional: { drivingLicense, nationality, availability, health, criminalRecord, financialHistory },
       }))
 
-      // ===== Set prefill flags for retrieved data (used for smaller font in editor) =====
       const pfEmployment: PrefillEmployment[] = employment.map(e => ({
         title: !!e.title,
         company: !!e.company,
@@ -642,14 +667,13 @@ function clearPrefill(_path: string) {
         name: !!name,
         location: !!location,
         profile: !!(cRaw?.profile && String(cRaw.profile).trim()),
-        keySkills: !!( (Array.isArray(cRaw?.skills) && cRaw.skills.length) || (cRaw?.skills && String(cRaw.skills).trim()) ),
+        keySkills: !!((Array.isArray(cRaw?.skills) && cRaw.skills.length) || (cRaw?.skills && String(cRaw.skills).trim())),
         employment: pfEmployment,
       })
 
       const displayName = name
       setCandidateName(displayName)
 
-      // Keep Profile section open after retrieve
       setOpen({
         core: true, profile: true, skills: false, work: false, education: false, extra: false,
         rawCandidate: false, rawWork: false, rawEdu: false, rawCustom: false
@@ -666,7 +690,6 @@ function clearPrefill(_path: string) {
     fileInputRef.current?.click()
   }
 
-  // Convert a Blob to a base64 string (browser-safe)
   async function blobToBase64(blob: Blob): Promise<string> {
     const buf = await blob.arrayBuffer()
     let binary = ''
@@ -675,18 +698,17 @@ function clearPrefill(_path: string) {
     return btoa(binary)
   }
 
-  // Upload a Blob to /api/upload and get public URL back (used for large files)
   async function uploadBlobToPublicUrl(file: Blob, desiredName: string): Promise<string> {
     const fd = new FormData()
     fd.append('file', new File([file], desiredName, { type: (file as any).type || 'application/octet-stream' }))
     fd.append('filename', desiredName)
-  
+
     const res = await fetch('/api/upload', { method: 'POST', body: fd, credentials: 'include' })
-  
+
     let data: any = null
     const text = await res.text()
     try { data = text ? JSON.parse(text) : {} } catch { data = { raw: text } }
-  
+
     if (!res.ok || !data?.ok || !data?.url) {
       const errMsg =
         (typeof data?.error === 'string' && data.error) ||
@@ -699,7 +721,6 @@ function clearPrefill(_path: string) {
     return data.url as string
   }
 
-  // --- Vincere POST helpers (now accept candidate ID explicitly) ---
   async function postBase64ToVincere(fileName: string, base64: string, cid: string) {
     const payload = { file_name: fileName, document_type_id: 1, base_64_content: base64, original_cv: true }
     const res = await fetch(`/api/vincere/candidate/${encodeURIComponent(cid)}/file`, {
@@ -711,7 +732,7 @@ function clearPrefill(_path: string) {
     const raw = await res.text()
     let data: any = null
     try { data = raw ? JSON.parse(raw) : {} } catch { data = { raw } }
-  
+
     if (!res.ok || !data?.ok) {
       const errMsg =
         (typeof data?.error === 'string' && data.error) ||
@@ -734,7 +755,7 @@ function clearPrefill(_path: string) {
     const raw = await res.text()
     let data: any = null
     try { data = raw ? JSON.parse(raw) : {} } catch { data = { raw } }
-  
+
     if (!res.ok || !data?.ok) {
       const errMsg =
         (typeof data?.error === 'string' && data.error) ||
@@ -746,7 +767,6 @@ function clearPrefill(_path: string) {
     }
   }
 
-  // Handle a selected/dropped file for SALES — bake immediately so preview shows branding
   async function handleFile(f: File) {
     setSalesErr(null)
     if (salesDocUrl) URL.revokeObjectURL(salesDocUrl)
@@ -781,16 +801,12 @@ function clearPrefill(_path: string) {
         return
       }
 
-      // 🔥 Bake header/footer for preview AND upload
       const baked = await bakeHeaderFooter(sourcePdf)
 
-      // preview baked file
       const url = URL.createObjectURL(baked)
       setSalesDocUrl(url)
       setSalesDocName(isDocx ? f.name.replace(/\.docx$/i, '.pdf') : f.name)
       setSalesDocType('application/pdf')
-
-      // store baked blob for upload
       setSalesDocBlob(baked)
     } catch (e: any) {
       setSalesErr(e?.message || 'Failed to process file')
@@ -818,7 +834,7 @@ function clearPrefill(_path: string) {
     [salesDocType, salesDocName]
   )
 
-  // STANDARD: export right-panel DOM to PDF and upload (NO baking here)
+  // STANDARD: export right-panel DOM to PDF and upload
   async function uploadStandardPreviewToVincereUrl(finalName: string, cid: string) {
     const mod = await import('html2pdf.js')
     const html2pdf = (mod as any).default || (mod as any)
@@ -827,7 +843,7 @@ function clearPrefill(_path: string) {
     if (!node) throw new Error('Preview not ready')
 
     const opt = {
-      margin: 10, // mm
+      margin: 10,
       filename: finalName,
       image: { type: 'jpeg', quality: 0.95 },
       html2canvas: { scale: 2, backgroundColor: '#FFFFFF' },
@@ -848,11 +864,10 @@ function clearPrefill(_path: string) {
     }
   }
 
-  // SALES: upload the already-baked file shown in preview
+  // SALES: upload the baked file
   async function uploadSalesFileToVincereUrl(finalName: string, cid: string) {
     if (!salesDocBlob) throw new Error('No Sales document to upload')
-    const baked = salesDocBlob // already baked in handleFile()
-  
+    const baked = salesDocBlob
     if (baked.size <= BASE64_THRESHOLD_BYTES) {
       const base64 = await blobToBase64(baked)
       await postBase64ToVincere(finalName, base64, cid)
@@ -867,20 +882,20 @@ function clearPrefill(_path: string) {
       setUploadBusy(true)
       setUploadErr(null)
       setUploadSuccess(null)
-  
+
       const cid = (uploadContext === 'sales' ? uploadCandidateId : candidateId).trim()
       if (!cid) throw new Error('Please enter a Candidate ID')
       if (!uploadFileName?.trim()) throw new Error('Please enter a file name')
-  
+
       let finalName = uploadFileName.trim()
       if (!/\.pdf$/i.test(finalName)) finalName += '.pdf'
-  
+
       if (uploadContext === 'standard') {
         await uploadStandardPreviewToVincereUrl(finalName, cid)
       } else {
         await uploadSalesFileToVincereUrl(finalName, cid)
       }
-  
+
       setUploadSuccess('Upload Successful')
     } catch (e: any) {
       const msg =
@@ -896,7 +911,174 @@ function clearPrefill(_path: string) {
     }
   }
 
-  // Sales viewer — shows baked preview so you can verify branding
+  // ---- PREVIEW RENDER HELPERS ----
+  const renderSkillsPreview = () => (
+    <>
+      <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+        {skillsHeading}
+      </h2>
+      <div className="text-[12px]">
+        {(() => {
+          const items = (form.keySkills || '')
+            .split(/\r?\n|,\s*/).map(s => s.trim())
+            .filter(Boolean)
+          if (items.length === 0) return 'No Key Skills yet'
+          const mid = Math.ceil(items.length / 2)
+          const col1 = items.slice(0, mid)
+          const col2 = items.slice(mid)
+          return (
+            <div className="grid grid-cols-2 gap-x-6">
+              <div className="space-y-1">
+                {col1.map((s, i) => (<div key={`ks1-${i}`}>• {s}</div>))}
+              </div>
+              <div className="space-y-1">
+                {col2.map((s, i) => (<div key={`ks2-${i}`}>• {s}</div>))}
+              </div>
+            </div>
+          )
+        })()}
+      </div>
+    </>
+  )
+
+  const renderEmploymentPreview = () => {
+    const empPreview = (form.employment || []).filter(e =>
+      [e.title, e.company, e.start, e.end, e.description].some(v => String(v || '').trim())
+    )
+    if (empPreview.length === 0) {
+      return (
+        <div className="cv-headpair">
+          <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+            Employment History
+          </h2>
+          <div className="text-gray-500 text-[12px]">No employment history yet.</div>
+        </div>
+      )
+    }
+    const first = empPreview[0]
+    const firstRange = [first.start, first.end].filter(Boolean).join(' to ')
+    return (
+      <>
+        <div className="cv-headpair mb-4 md:mb-6">
+          <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+            Employment History
+          </h2>
+          <div className="cv-entry">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2">
+              <div className="min-w-0">
+                {!!(first.title && first.title.trim()) && (<div className="font-medium">{first.title}</div>)}
+                {!!(first.company && first.company.trim()) && (
+                  <div className="text-[11px] text-gray-500">{first.company}</div>
+                )}
+              </div>
+              {!!firstRange && (
+                <div className="text-[11px] text-gray-500 whitespace-nowrap text-right shrink-0">
+                  {firstRange}
+                </div>
+              )}
+              {!!(first.description && first.description.trim()) && (
+                <div className="text-[12px] mt-0 whitespace-pre-wrap break-words col-span-2">
+                  {first.description}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="space-y-4">
+          {empPreview.slice(1).map((e, i) => {
+            const range = [e.start, e.end].filter(Boolean).join(' to ')
+            return (
+              <div key={i} className="cv-entry">
+                <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2">
+                  <div className="min-w-0">
+                    {!!(e.title && e.title.trim()) && (<div className="font-medium">{e.title}</div>)}
+                    {!!(e.company && e.company.trim()) && (
+                      <div className="text-[11px] text-gray-500">{e.company}</div>
+                    )}
+                  </div>
+                  {!!range && (
+                    <div className="text-[11px] text-gray-500 whitespace-nowrap text-right shrink-0">
+                      {range}
+                    </div>
+                  )}
+                  {!!(e.description && e.description.trim()) && (
+                    <div className="text-[12px] mt-0 whitespace-pre-wrap break-words col-span-2">
+                      {e.description}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </>
+    )
+  }
+
+  const renderEducationPreview = () => {
+    const eduPreview = (form.education || []).filter(e =>
+      [e.course, e.institution, e.start, e.end].some(v => String(v || '').trim())
+    )
+    if (eduPreview.length === 0) {
+      return (
+        <div className="cv-headpair">
+          <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+            Education & Qualifications
+          </h2>
+          <div className="text-gray-500 text-[12px]">No education yet.</div>
+        </div>
+      )
+    }
+    const first = eduPreview[0]
+    const firstRange = [first.start, first.end].filter(Boolean).join(' to ')
+    return (
+      <>
+        <div className="cv-headpair mb-3">
+          <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+            Education & Qualifications
+          </h2>
+          <div className="cv-entry">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2">
+              <div className="min-w-0">
+                <div className="font-medium">{(first.course || '').trim()}</div>
+              </div>
+              <div className="text-[11px] text-gray-500 whitespace-nowrap text-right shrink-0">
+                {firstRange}
+              </div>
+              {!!(first.institution && first.institution.trim()) && (
+                <div className="text-[12px] whitespace-pre-wrap break-words col-span-2">
+                  {first.institution}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="space-y-3">
+          {eduPreview.slice(1).map((e, i) => {
+            const range = [e.start, e.end].filter(Boolean).join(' to ')
+            return (
+              <div key={i} className="cv-entry">
+                <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2">
+                  <div className="min-w-0">
+                    <div className="font-medium">{(e.course || '').trim()}</div>
+                  </div>
+                  <div className="text-[11px] text-gray-500 whitespace-nowrap text-right shrink-0">
+                    {range}
+                  </div>
+                  {!!(e.institution && e.institution.trim()) && (
+                    <div className="text-[12px] whitespace-pre-wrap break-words col-span-2">
+                      {e.institution}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </>
+    )
+  }
+  // Sales viewer
   function SalesViewerCard() {
     return (
       <div className="border rounded-2xl overflow-hidden bg-white">
@@ -954,6 +1136,7 @@ function clearPrefill(_path: string) {
           </div>
         </div>
 
+        {/* Profile (fixed at top) */}
         <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
           Profile
         </h2>
@@ -961,209 +1144,14 @@ function clearPrefill(_path: string) {
           {form.profile?.trim() ? form.profile : 'No Profile yet'}
         </div>
 
-        <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
-          Key Skills
-        </h2>
-        <div className="text-[12px]">
-          {(() => {
-            const items = (form.keySkills || '')
-              .split(/\r?\n|,\s*/).map(s => s.trim())
-              .filter(Boolean)
+        {/* Reorderable middle sections (Skills / Work / Education) */}
+        {sectionOrder.map(sec => {
+          if (sec === 'skills') return <div key="sec-sk">{renderSkillsPreview()}</div>
+          if (sec === 'work') return <div key="sec-wk">{renderEmploymentPreview()}</div>
+          return <div key="sec-ed">{renderEducationPreview()}</div>
+        })}
 
-            if (items.length === 0) return 'No Key Skills yet'
-
-            const mid = Math.ceil(items.length / 2)
-            const col1 = items.slice(0, mid)
-            const col2 = items.slice(mid)
-
-            return (
-              <div className="grid grid-cols-2 gap-x-6">
-                <div className="space-y-1">
-                  {col1.map((s, i) => (
-                    <div key={`ks1-${i}`}>• {s}</div>
-                  ))}
-                </div>
-                <div className="space-y-1">
-                  {col2.map((s, i) => (
-                    <div key={`ks2-${i}`}>• {s}</div>
-                  ))}
-                </div>
-              </div>
-            )
-          })()}
-        </div>
-
-        {/* Employment History (header + first entry stay together, blanks hidden) */}
-        {(() => {
-          // Only show roles that have at least ONE non-empty field
-          const empPreview = (form.employment || []).filter(e =>
-            [e.title, e.company, e.start, e.end, e.description].some(v => String(v || '').trim())
-          )
-        
-          if (empPreview.length === 0) {
-            return (
-              <div className="cv-headpair">
-                <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
-                  Employment History
-                </h2>
-                <div className="text-gray-500 text-[12px]">No employment history yet.</div>
-              </div>
-            )
-          }
-        
-          const first = empPreview[0]
-          const firstRange = [first.start, first.end].filter(Boolean).join(' to ')
-        
-          return (
-            <>
-              {/* Header + first entry */}
-              <div className="cv-headpair mb-4 md:mb-6">
-                <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
-                  Employment History
-                </h2>
-        
-                <div className="cv-entry">
-                  <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2">
-                    <div className="min-w-0">
-                      {!!(first.title && first.title.trim()) && (
-                        <div className="font-medium">{first.title}</div>
-                      )}
-                      {!!(first.company && first.company.trim()) && (
-                        <div className="text-[11px] text-gray-500">{first.company}</div>
-                      )}
-                    </div>
-        
-                    {!!firstRange && (
-                      <div className="text-[11px] text-gray-500 whitespace-nowrap text-right shrink-0">
-                        {firstRange}
-                      </div>
-                    )}
-        
-                    {!!(first.description && first.description.trim()) && (
-                      <div className="text-[12px] mt-0 whitespace-pre-wrap break-words col-span-2">
-                        {first.description}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-        
-              {/* Remaining entries */}
-              <div className="space-y-4">
-                {empPreview.slice(1).map((e, i) => {
-                  const range = [e.start, e.end].filter(Boolean).join(' to ')
-                  return (
-                    <div key={i} className="cv-entry">
-                      <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2">
-                        <div className="min-w-0">
-                          {!!(e.title && e.title.trim()) && (
-                            <div className="font-medium">{e.title}</div>
-                          )}
-                          {!!(e.company && e.company.trim()) && (
-                            <div className="text-[11px] text-gray-500">{e.company}</div>
-                          )}
-                        </div>
-        
-                        {!!range && (
-                          <div className="text-[11px] text-gray-500 whitespace-nowrap text-right shrink-0">
-                            {range}
-                          </div>
-                        )}
-        
-                        {!!(e.description && e.description.trim()) && (
-                          <div className="text-[12px] mt-0 whitespace-pre-wrap break-words col-span-2">
-                            {e.description}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </>
-          )
-        })()}
-
-        {/* Education & Qualifications (header + first entry stay together) */}
-        {(() => {
-          // Only show entries that have at least one non-empty field
-          const eduPreview = (form.education || []).filter(e =>
-            [e.course, e.institution, e.start, e.end].some(v => String(v || '').trim())
-          )
-        
-          if (eduPreview.length === 0) {
-            return (
-              <div className="cv-headpair">
-                <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
-                  Education & Qualifications
-                </h2>
-                <div className="text-gray-500 text-[12px]">No education yet.</div>
-              </div>
-            )
-          }
-        
-          const first = eduPreview[0]
-          const firstRange = [first.start, first.end].filter(Boolean).join(' to ')
-        
-          return (
-            <>
-              {/* Header + first entry (kept together) */}
-              <div className="cv-headpair mb-3">
-                <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
-                  Education & Qualifications
-                </h2>
-        
-                <div className="cv-entry">
-                  <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2">
-                    {/* Row 1: Institution name (from course) + dates */}
-                    <div className="min-w-0">
-                      <div className="font-medium">{(first.course || '').trim()}</div>
-                    </div>
-                    <div className="text-[11px] text-gray-500 whitespace-nowrap text-right shrink-0">
-                      {firstRange}
-                    </div>
-        
-                    {/* Row 2: Description (from institution) spans full width and wraps */}
-                    {!!(first.institution && first.institution.trim()) && (
-                      <div className="text-[12px] whitespace-pre-wrap break-words col-span-2">
-                        {first.institution}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-        
-              {/* Remaining entries */}
-              <div className="space-y-3">
-                {eduPreview.slice(1).map((e, i) => {
-                  const range = [e.start, e.end].filter(Boolean).join(' to ')
-                  return (
-                    <div key={i} className="cv-entry">
-                      <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2">
-                        {/* Row 1 */}
-                        <div className="min-w-0">
-                          <div className="font-medium">{(e.course || '').trim()}</div>
-                        </div>
-                        <div className="text-[11px] text-gray-500 whitespace-nowrap text-right shrink-0">
-                          {range}
-                        </div>
-        
-                        {/* Row 2: Description */}
-                        {!!(e.institution && e.institution.trim()) && (
-                          <div className="text-[12px] whitespace-pre-wrap break-words col-span-2">
-                            {e.institution}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </>
-          )
-        })()}
-
-        {/* Additional Information (keep header with content) */}
+        {/* Additional Information (fixed at bottom) */}
         <div className="cv-headpair">
           <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
             Additional Information
@@ -1198,26 +1186,16 @@ function clearPrefill(_path: string) {
     <style jsx global>{`
       @media print {
         @page { size: A4; margin: 12mm; }
-
-        /* A4 content container; makes footer stick to bottom of last page */
         .cv-standard-page {
           width: 100%;
           display: flex;
           flex-direction: column;
-          min-height: calc(297mm - 24mm); /* page height minus top+bottom margins */
+          min-height: calc(297mm - 24mm);
         }
-
-        /* keep each job/education entry intact (no splitting across pages) */
         .cv-entry { break-inside: avoid; page-break-inside: avoid; }
-
-        /* keep section header with the FIRST entry only */
         .cv-headpair { break-inside: avoid; page-break-inside: avoid; }
-
-        /* prevent headings from being orphaned/split */
         .cv-standard-page h1,
         .cv-standard-page h2 { break-inside: avoid; page-break-inside: avoid; }
-
-        /* footer pinned to bottom; never creates a blank page */
         .cv-footer {
           margin-top: auto;
           break-inside: avoid;
@@ -1226,8 +1204,6 @@ function clearPrefill(_path: string) {
           page-break-after: auto;
         }
       }
-
-      /* Also help in on-screen preview */
       .cv-entry,
       .cv-headpair { break-inside: avoid; page-break-inside: avoid; }
     `}</style>
@@ -1344,7 +1320,7 @@ function clearPrefill(_path: string) {
                   : `${baseName}_Sales.pdf`
                 setUploadFileName(defaultName)
                 setUploadContext('sales')
-                setUploadCandidateId(candidateId || '') // prefill if available, editable in modal
+                setUploadCandidateId(candidateId || '')
                 setUploadErr(null)
                 setUploadSuccess(null)
                 setShowUploadModal(true)
@@ -1366,7 +1342,6 @@ function clearPrefill(_path: string) {
     <div className={`grid gap-4 ${template === 'sales' ? '' : 'md:grid-cols-2'}`}>
       {template === 'standard' && (
         <div className="card p-4 space-y-4">
-          {/* Standard editor */}
           {/* Core */}
           <section>
             <div className="flex items-center justify-between">
@@ -1444,7 +1419,7 @@ function clearPrefill(_path: string) {
                   <textarea
                     className={`input min-h-[160px] ${prefill.profile ? '!text-[11px]' : ''}`}
                     value={form.profile}
-                    onChange={e => { /* keep small even when editing */ setField('profile', e.target.value) }}
+                    onChange={e => { setField('profile', e.target.value) }}
                     disabled={loading}
                   />
                 </label>
@@ -1452,13 +1427,24 @@ function clearPrefill(_path: string) {
             )}
           </section>
 
-          {/* Key Skills */}
+          {/* Key Skills (reorderable + switch heading) */}
           <section>
             <div className="flex items-center justify-between">
               <h3 className="font-semibold text-sm">Key Skills</h3>
-              <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('skills')}>
-                {open.skills ? 'Hide' : 'Show'}
-              </button>
+              <div className="flex items-center gap-3">
+                <ReorderControls id="skills" />
+                <button
+                  type="button"
+                  className="text-[11px] text-gray-500 underline"
+                  onClick={() => setSkillsHeading(h => h === 'Key Skills' ? 'Systems Knowledge' : 'Key Skills')}
+                  title="Switch heading between 'Key Skills' and 'Systems Knowledge'"
+                >
+                  Switch heading
+                </button>
+                <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('skills')}>
+                  {open.skills ? 'Hide' : 'Show'}
+                </button>
+              </div>
             </div>
             {open.skills && (
               <label className="grid gap-1 mt-3">
@@ -1473,11 +1459,12 @@ function clearPrefill(_path: string) {
             )}
           </section>
 
-          {/* Employment */}
+          {/* Employment (reorderable) */}
           <section>
             <div className="flex items-center justify-between">
               <h3 className="font-semibold text-sm">Employment History</h3>
               <div className="flex items-center gap-3">
+                <ReorderControls id="work" />
                 <button
                   type="button"
                   className="text-[11px] text-gray-500 underline"
@@ -1495,7 +1482,7 @@ function clearPrefill(_path: string) {
                 </button>
               </div>
             </div>
-          
+
             {open.work && (
               <div className="grid gap-3 mt-3">
                 {form.employment.length === 0 ? (
@@ -1503,7 +1490,6 @@ function clearPrefill(_path: string) {
                 ) : (
                   form.employment.map((e, i) => (
                     <div key={i} className="border rounded-xl p-3 grid gap-2 relative">
-                      {/* remove button */}
                       <button
                         type="button"
                         className="absolute right-2 top-2 text-[11px] text-gray-500 underline"
@@ -1512,7 +1498,7 @@ function clearPrefill(_path: string) {
                       >
                         Remove role
                       </button>
-          
+
                       <label className="grid gap-1">
                         <span className="text-[11px] text-gray-500">Title</span>
                         <input
@@ -1529,7 +1515,7 @@ function clearPrefill(_path: string) {
                           }}
                         />
                       </label>
-          
+
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         <label className="grid gap-1">
                           <span className="text-[11px] text-gray-500">Company</span>
@@ -1582,7 +1568,7 @@ function clearPrefill(_path: string) {
                           </label>
                         </div>
                       </div>
-          
+
                       <label className="grid gap-1">
                         <span className="text-[11px] text-gray-500">Description</span>
                         <textarea
@@ -1606,11 +1592,12 @@ function clearPrefill(_path: string) {
             )}
           </section>
 
-          {/* Education */}
+          {/* Education (reorderable) */}
           <section>
             <div className="flex items-center justify-between">
               <h3 className="font-semibold text-sm">Education & Qualifications</h3>
               <div className="flex items-center gap-3">
+                <ReorderControls id="education" />
                 <button
                   type="button"
                   className="text-[11px] text-gray-500 underline"
@@ -1628,7 +1615,7 @@ function clearPrefill(_path: string) {
                 </button>
               </div>
             </div>
-          
+
             {open.education && (
               <div className="grid gap-3 mt-3">
                 {form.education.length === 0 ? (
@@ -1636,7 +1623,6 @@ function clearPrefill(_path: string) {
                 ) : (
                   form.education.map((e, i) => (
                     <div key={i} className="border rounded-xl p-3 grid gap-2 relative">
-                      {/* remove button */}
                       <button
                         type="button"
                         className="absolute right-2 top-2 text-[11px] text-gray-500 underline"
@@ -1645,7 +1631,7 @@ function clearPrefill(_path: string) {
                       >
                         Remove qualification
                       </button>
-          
+
                       <label className="grid gap-1">
                         <span className="text-[11px] text-gray-500">Institution</span>
                         <input
@@ -1661,7 +1647,7 @@ function clearPrefill(_path: string) {
                           }}
                         />
                       </label>
-          
+
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         <label className="grid gap-1">
                           <span className="text-[11px] text-gray-500">Description</span>
@@ -1678,7 +1664,7 @@ function clearPrefill(_path: string) {
                             }}
                           />
                         </label>
-          
+
                         <div className="grid grid-cols-2 gap-2">
                           <label className="grid gap-1">
                             <span className="text-[11px] text-gray-500">Start</span>
@@ -1729,62 +1715,62 @@ function clearPrefill(_path: string) {
             </div>
 
             {open.extra && (
-            <div className="grid gap-3 mt-3">
-              <label className="grid gap-1">
-                <span className="text-[11px] text-gray-500">Driving License</span>
-                <input
-                  className="input text-[11px]"
-                  value={form.additional.drivingLicense}
-                  onChange={(e) => setForm(prev => ({ ...prev, additional: { ...prev.additional, drivingLicense: e.target.value } }))}
-                />
-              </label>
-          
-              <label className="grid gap-1">
-                <span className="text-[11px] text-gray-500">Nationality</span>
-                <input
-                  className="input text-[11px]"
-                  value={form.additional.nationality}
-                  onChange={(e) => setForm(prev => ({ ...prev, additional: { ...prev.additional, nationality: e.target.value } }))}
-                />
-              </label>
-          
-              <label className="grid gap-1">
-                <span className="text-[11px] text-gray-500">Availability</span>
-                <input
-                  className="input text-[11px]"
-                  value={form.additional.availability}
-                  onChange={(e) => setForm(prev => ({ ...prev, additional: { ...prev.additional, availability: e.target.value } }))}
-                />
-              </label>
-          
-              <label className="grid gap-1">
-                <span className="text-[11px] text-gray-500">Health</span>
-                <input
-                  className="input text-[11px]"
-                  value={form.additional.health}
-                  onChange={(e) => setForm(prev => ({ ...prev, additional: { ...prev.additional, health: e.target.value } }))}
-                />
-              </label>
-          
-              <label className="grid gap-1">
-                <span className="text-[11px] text-gray-500">Criminal Record</span>
-                <input
-                  className="input text-[11px]"
-                  value={form.additional.criminalRecord}
-                  onChange={(e) => setForm(prev => ({ ...prev, additional: { ...prev.additional, criminalRecord: e.target.value } }))}
-                />
-              </label>
-          
-              <label className="grid gap-1">
-                <span className="text-[11px] text-gray-500">Financial History</span>
-                <input
-                  className="input text-[11px]"
-                  value={form.additional.financialHistory}
-                  onChange={(e) => setForm(prev => ({ ...prev, additional: { ...prev.additional, financialHistory: e.target.value } }))}
-                />
-              </label>
-            </div>
-          )}
+              <div className="grid gap-3 mt-3">
+                <label className="grid gap-1">
+                  <span className="text-[11px] text-gray-500">Driving License</span>
+                  <input
+                    className="input text-[11px]"
+                    value={form.additional.drivingLicense}
+                    onChange={(e) => setForm(prev => ({ ...prev, additional: { ...prev.additional, drivingLicense: e.target.value } }))}
+                  />
+                </label>
+
+                <label className="grid gap-1">
+                  <span className="text-[11px] text-gray-500">Nationality</span>
+                  <input
+                    className="input text-[11px]"
+                    value={form.additional.nationality}
+                    onChange={(e) => setForm(prev => ({ ...prev, additional: { ...prev.additional, nationality: e.target.value } }))}
+                  />
+                </label>
+
+                <label className="grid gap-1">
+                  <span className="text-[11px] text-gray-500">Availability</span>
+                  <input
+                    className="input text-[11px]"
+                    value={form.additional.availability}
+                    onChange={(e) => setForm(prev => ({ ...prev, additional: { ...prev.additional, availability: e.target.value } }))}
+                  />
+                </label>
+
+                <label className="grid gap-1">
+                  <span className="text-[11px] text-gray-500">Health</span>
+                  <input
+                    className="input text-[11px]"
+                    value={form.additional.health}
+                    onChange={(e) => setForm(prev => ({ ...prev, additional: { ...prev.additional, health: e.target.value } }))}
+                  />
+                </label>
+
+                <label className="grid gap-1">
+                  <span className="text-[11px] text-gray-500">Criminal Record</span>
+                  <input
+                    className="input text-[11px]"
+                    value={form.additional.criminalRecord}
+                    onChange={(e) => setForm(prev => ({ ...prev, additional: { ...prev.additional, criminalRecord: e.target.value } }))}
+                  />
+                </label>
+
+                <label className="grid gap-1">
+                  <span className="text-[11px] text-gray-500">Financial History</span>
+                  <input
+                    className="input text-[11px]"
+                    value={form.additional.financialHistory}
+                    onChange={(e) => setForm(prev => ({ ...prev, additional: { ...prev.additional, financialHistory: e.target.value } }))}
+                  />
+                </label>
+              </div>
+            )}
           </section>
 
           {/* Debug: Raw JSON */}
