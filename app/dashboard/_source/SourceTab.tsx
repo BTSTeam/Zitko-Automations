@@ -451,7 +451,7 @@ Kind regards,`
                     ))}
                     <input
                       className="min-w-[10ch] flex-1 outline-none text-sm px-2 py-1"
-                      placeholder="e.g. Fire, IR35"
+                      placeholder="e.g. Fire, Security, CCTV"
                       value={keywords.input}
                       onChange={e => keywords.setInput(e.target.value)}
                       onKeyDown={keywords.onKeyDown}
