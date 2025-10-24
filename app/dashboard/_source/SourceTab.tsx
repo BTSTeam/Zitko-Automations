@@ -243,21 +243,35 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
   const [copiedId, setCopiedId] = useState<string | null>(null)
 
   // Prefilled email for Advanced Search (fixed subject)
-  const mailToSubject = "Apollo Advanced Search Request"
-
-  // Keep the body concise to avoid URL length issues
-  const mailToBody = `Hi BTS team,
-
-I'd like a more advanced search.
-
-Role(s):
-Locations:
-Seniority:
-Keywords:
-Other notes:
-
-Thanks!`
-
+  const mailToSubject = "Advanced Search Request"
+  
+  const mailToBody = `Hi BTS Team,
+  
+  Please can I request an advanced search with the criteria listed below, thank you.
+  
+  JOB TITLES:
+    - EXCLUDE:
+    
+  PAST JOB TITLES:
+  
+  LOCATIONS:
+  
+  CITY RADIUS: (Provide city and radius within X miles)
+  
+  COMPANY NAME: (For full list of employees only)
+    - EXCLUDE:
+    
+  SENIORITIES:
+  
+  COMPANY KEYWORDS:
+    - EXCLUDE:
+    
+  PEOPLE LOOKALIKES: (Provide full names & current company name)
+  
+  COMPANY LOOKALIKES: (Provide full company names)
+  
+  Kind regards,`
+    
   // Encoded params for the mailto link
   const subjectEncoded = encodeURIComponent(mailToSubject)
   const bodyEncoded = encodeURIComponent(mailToBody)
