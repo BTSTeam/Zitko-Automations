@@ -1,7 +1,7 @@
 'use client'
 import React, { useMemo, useRef, useState } from 'react'
 import Recorder from '../../_components/Recorder'
-import * as htmlToImage from 'html-to-image'
+import html2canvas from 'html2canvas'
 
 type SocialMode = 'jobPosts' | 'generalPosts'
 
@@ -152,15 +152,9 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
 
   async function downloadPng() {
     if (!previewRef.current) return
-    const node = previewRef.current
-    // create a 1080x1080 PNG regardless of UI scale
-    const dataUrl = await htmlToImage.toPng(node, {
-      canvasWidth: selectedTpl.width,
-      canvasHeight: selectedTpl.height,
-      pixelRatio: 1 / scale, // render at intrinsic resolution
-    })
+    const canvas = await html2canvas(previewRef.current, { scale: 2 })
     const a = document.createElement('a')
-    a.href = dataUrl
+    a.href = canvas.toDataURL('image/png')
     a.download = `${selectedTpl.id}.png`
     a.click()
   }
