@@ -20,18 +20,14 @@ type PlaceholderKey =
   | 'benefits'
   | 'email'
   | 'phone'
-  | 'video' // a rectangular slot we can mask
+  | 'video'
 
 type TemplateDef = {
   id: string
   name: string
-  // background image; put your PNGs in /public/templates/
   imageUrl: string
-  // intrinsic pixel size of the design (we’ll scale to fit preview)
   width: number
   height: number
-  // absolute positions relative to intrinsic size
-  // x,y are top-left; w,h for blocks; font info kept simple
   layout: Record<
     Exclude<PlaceholderKey, 'video'>,
     { x: number; y: number; w?: number; h?: number; fontSize?: number; align?: 'left'|'right'|'center' }
@@ -44,7 +40,7 @@ const TEMPLATES: TemplateDef[] = [
   {
     id: 'zitko-1',
     name: 'Zitko – Dark Arcs',
-    imageUrl: '/templates/zitko-dark-arcs.png',
+    imageUrl: '/templates/zitko-dark-arc.png',
     width: 1080,
     height: 1080,
     layout: {
@@ -109,36 +105,41 @@ function clipPath(mask: VideoMask, r: number) {
 export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
   const [selectedTpl, setSelectedTpl] = useState<TemplateDef>(TEMPLATES[0])
 
-  // Job data state (editable)
+  // Job data
   const [jobId, setJobId] = useState('')
   const [job, setJob] = useState({
     title: '',
     location: '',
     salary: '',
     description: '',
-    benefits: '' as string | string[], // accept bullets or raw string
+    benefits: '' as string | string[],
     email: '',
     phone: '',
   })
 
-  // Video state
+  // Video
   const [videoUrl, setVideoUrl] = useState<string | null>(null)
   const [videoMeta, setVideoMeta] = useState<{ mime: string; width: number; height: number } | null>(null)
   const [mask, setMask] = useState<VideoMask>('circle')
   const [roundedR, setRoundedR] = useState(32)
   const [videoOpen, setVideoOpen] = useState(true) // collapsible
 
-  // Preview scaling (always fit)
+  // Preview scaling — always show whole poster
   const previewBoxRef = useRef<HTMLDivElement | null>(null)
-  const [scale, setScale] = useState(0.5)
+  const [scale, setScale] = useState(0.4)
 
   useLayoutEffect(() => {
     if (!previewBoxRef.current) return
     const el = previewBoxRef.current
     const ro = new ResizeObserver(([entry]) => {
       const { width: cw, height: ch } = entry.contentRect
-      const s = Math.min(cw / selectedTpl.width, ch / selectedTpl.height)
-      setScale(Number.isFinite(s) ? Math.max(0.05, Math.min(1, s)) : 0.5)
+      // small padding so it never touches edges
+      const PAD = 12
+      const s = Math.min(
+        (cw - PAD) / selectedTpl.width,
+        (ch - PAD) / selectedTpl.height
+      )
+      setScale(Number.isFinite(s) ? Math.max(0.05, Math.min(1, s)) : 0.4)
     })
     ro.observe(el)
     return () => ro.disconnect()
@@ -150,7 +151,6 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
   async function fetchJob() {
     if (!jobId.trim()) return
     try {
-      // You: implement this API to return { title, location, salary, description, benefits[], email, phone }
       const res = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`)
       if (!res.ok) throw new Error('Not found')
       const data = await res.json()
@@ -202,7 +202,6 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     }
   }
 
-  // Normalized display strings
   const benefitsText = useMemo(() => {
     if (Array.isArray(job.benefits)) return (job.benefits as string[]).join('\n')
     return String(job.benefits || '')
@@ -230,8 +229,8 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
         </div>
       </div>
 
-      {/* Main split: left fixed rail on lg+ for more preview space */}
-      <div className="grid grid-cols-1 lg:grid-cols-[360px_minmax(0,1fr)] gap-6">
+      {/* Equal columns again */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* LEFT COLUMN */}
         <div className="flex flex-col gap-6">
           {/* A) Video Record (collapsible) */}
@@ -340,12 +339,12 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
             </div>
           </div>
 
-          {/* Fit container for preview; content is scaled inside */}
+          {/* Fit area for preview — smaller so whole image is visible */}
           <div
             ref={previewBoxRef}
-            className="mt-3 h-[78vh] min-h-[520px] w-full overflow-hidden flex items-center justify-center bg-muted/20 rounded-lg"
+            className="mt-3 h-[64vh] min-h-[420px] w-full overflow-hidden flex items-center justify-center bg-muted/20 rounded-lg"
           >
-            {/* Actual poster at intrinsic pixel size; we scale it to fit */}
+            {/* poster at intrinsic pixel size, scaled to fit */}
             <div
               ref={previewRef}
               className="relative shadow-lg"
@@ -425,8 +424,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
           </div>
 
           <p className="mt-3 text-xs text-gray-500">
-            Preview scales to fit the panel; PNG exports at the template’s intrinsic size (e.g., 1080×1080).  
-            MP4 export is server-side (e.g., Cloudinary or Mux).
+            Preview is scaled to fit the area; PNG exports at the template’s intrinsic size (e.g., 1080×1080).
           </p>
         </div>
       </div>
