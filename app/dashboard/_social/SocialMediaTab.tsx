@@ -45,7 +45,7 @@ const TEMPLATES: TemplateDef[] = [
   {
     id: 'zitko-1',
     name: 'Zitko – Dark Arcs',
-    imageUrl: '/templates/zitko-dark-arcs.png',
+    imageUrl: '/templates/zitko-dark-arc.png',
     width: 1080,
     height: 1080,
     layout: {
