@@ -1,6 +1,6 @@
 'use client'
 import React, { useMemo, useRef, useState } from 'react'
-import Recorder from '@/components/Recorder' // from previous message
+import Recorder from '../_components/Recorder'
 import * as htmlToImage from 'html-to-image'
 
 type SocialMode = 'jobPosts' | 'generalPosts'
