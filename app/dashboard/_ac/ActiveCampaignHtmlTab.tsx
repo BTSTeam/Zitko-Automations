@@ -222,10 +222,37 @@ export default function ActiveCampaignHtmlTab() {
 
   const rowsHtml = useMemo(() => htmlBlocks.join('\n'), [htmlBlocks])
 
+  // NEW: footer row with orange bold lead-in + "More Jobs" button
+  const footerHtml = useMemo(() => {
+    return `
+<tr>
+  <td align="left" bgcolor="#333333" style="padding:20px 30px;">
+    <p style="font-size:15px;margin:0 0 12px 0;color:#ffffff;">
+      <span style="color:#ff9a42;font-weight:bold;">Don't see something for you?</span>
+      <span> We've got loads more roles waiting on our website.</span>
+    </p>
+    <div style="margin-top:2px;">
+      <a href="https://www.zitkogroup.com/jobs" target="_blank" rel="noopener"
+         style="display:inline-block;background:#F7941D;color:#ffffff;text-decoration:none;
+                font-weight:600;font-size:14px;line-height:1;border-radius:8px;
+                padding:8px 14px;">
+        More Jobs
+      </a>
+    </div>
+  </td>
+</tr>`.trim()
+  }, [])
+
+  // Combine job rows + footer
+  const finalHtml = useMemo(() => {
+    const parts = [rowsHtml, footerHtml].filter(Boolean)
+    return parts.join('\n')
+  }, [rowsHtml, footerHtml])
+
   function copyHtml() {
-    if (!rowsHtml) return
+    if (!finalHtml) return
     navigator.clipboard
-      .writeText(rowsHtml)
+      .writeText(finalHtml)
       .then(() => alert('HTML rows copied. Paste between <!-- PASTE START/END -->'))
       .catch(() => alert('Failed to copy.'))
   }
@@ -361,7 +388,7 @@ export default function ActiveCampaignHtmlTab() {
             <h3 className="font-semibold">HTML Preview</h3>
             <button
               onClick={copyHtml}
-              disabled={!rowsHtml}
+              disabled={!finalHtml}
               className="rounded-full px-4 py-2 text-sm font-medium !bg-[#F7941D] !text-white hover:opacity-95 disabled:opacity-50"
             >
               Copy Code
@@ -371,7 +398,7 @@ export default function ActiveCampaignHtmlTab() {
           <div className="rounded-md bg-transparent p-3 min-h-[240px] overflow-x-auto">
             <div
               dangerouslySetInnerHTML={{
-                __html: `<table width="100%" cellspacing="0" cellpadding="0">${rowsHtml}</table>`
+                __html: `<table width="100%" cellspacing="0" cellpadding="0">${finalHtml}</table>`
               }}
             />
           </div>
