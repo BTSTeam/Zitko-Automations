@@ -11,7 +11,6 @@ import html2canvas from 'html2canvas'
 
 type SocialMode = 'jobPosts' | 'generalPosts'
 
-// ---- Template model ---------------------------------------------------------
 type PlaceholderKey =
   | 'title'
   | 'location'
@@ -22,16 +21,22 @@ type PlaceholderKey =
   | 'phone'
   | 'video'
 
+type LayoutBox = {
+  x: number
+  y: number
+  w?: number
+  h?: number
+  fontSize?: number
+  align?: 'left' | 'right' | 'center'
+}
+
 type TemplateDef = {
   id: string
   name: string
   imageUrl: string
   width: number
   height: number
-  layout: Record<
-    Exclude<PlaceholderKey, 'video'>,
-    { x: number; y: number; w?: number; h?: number; fontSize?: number; align?: 'left'|'right'|'center' }
-  > & {
+  layout: Record<Exclude<PlaceholderKey, 'video'>, LayoutBox> & {
     video?: { x: number; y: number; w: number; h: number }
   }
 }
@@ -40,10 +45,11 @@ const TEMPLATES: TemplateDef[] = [
   {
     id: 'zitko-1',
     name: 'Zitko – Dark Arcs',
-    imageUrl: '/templates/zitko-dark-arc.png',
+    imageUrl: '/templates/zitko-dark-arcs.png',
     width: 1080,
     height: 1080,
     layout: {
+      // tuned to your latest screenshot/spec
       title:       { x: 420, y: 360, w: 560, fontSize: 60 },
       location:    { x: 490, y: 460, w: 520, fontSize: 30 },
       salary:      { x: 490, y: 520, w: 520, fontSize: 28 },
@@ -51,7 +57,7 @@ const TEMPLATES: TemplateDef[] = [
       benefits:    { x: 510, y: 700, w: 520, h: 260, fontSize: 24 },
       email:       { x: 850, y: 945, w: 180, fontSize: 20, align: 'left' },
       phone:       { x: 850, y: 985, w: 180, fontSize: 20, align: 'left' },
-      video:      { x: 80, y: 80, w: 280, h: 280 },
+      video:       { x: 80,  y: 80,  w: 280, h: 280 },
     },
   },
   {
@@ -66,16 +72,16 @@ const TEMPLATES: TemplateDef[] = [
       location:   { x: 80,  y: 410, w: 520, fontSize: 20 },
       description:{ x: 80,  y: 460, w: 520, h: 120, fontSize: 18 },
       benefits:   { x: 80,  y: 600, w: 520, h: 140, fontSize: 18 },
-      email:      { x: 830, y: 970, w: 200, fontSize: 20, align: 'right' },
-      phone:      { x: 830, y: 1000, w: 200, fontSize: 20, align: 'right' },
+      email:      { x: 760, y: 940, w: 240, fontSize: 16, align:'right' },
+      phone:      { x: 760, y: 980, w: 240, fontSize: 16, align:'right' },
       video:      { x: 720, y: 360, w: 280, h: 360 },
     },
   },
 ]
 
-// ---- Helpers ----------------------------------------------------------------
+// ---------- helpers ----------
 function wrapText(text: string, maxCharsPerLine = 34) {
-  const words = text.split(/\s+/)
+  const words = String(text ?? '').split(/\s+/)
   const lines: string[] = []
   let current = ''
   for (const w of words) {
@@ -101,11 +107,16 @@ function clipPath(mask: VideoMask, r: number) {
   }
 }
 
-// ---- Main -------------------------------------------------------------------
+// ---------- main ----------
 export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
-  const [selectedTpl, setSelectedTpl] = useState<TemplateDef>(TEMPLATES[0])
+  // store only id in state so edits to TEMPLATES hot-reload correctly
+  const [selectedTplId, setSelectedTplId] = useState(TEMPLATES[0].id)
+  const selectedTpl = useMemo(
+    () => TEMPLATES.find(t => t.id === selectedTplId)!,
+    [selectedTplId]
+  )
 
-  // Job data
+  // job data
   const [jobId, setJobId] = useState('')
   const [job, setJob] = useState({
     title: '',
@@ -117,14 +128,14 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     phone: '',
   })
 
-  // Video
+  // video
   const [videoUrl, setVideoUrl] = useState<string | null>(null)
   const [videoMeta, setVideoMeta] = useState<{ mime: string; width: number; height: number } | null>(null)
   const [mask, setMask] = useState<VideoMask>('circle')
   const [roundedR, setRoundedR] = useState(32)
-  const [videoOpen, setVideoOpen] = useState(true) // collapsible
+  const [videoOpen, setVideoOpen] = useState(true)
 
-  // Preview scaling — always show whole poster
+  // preview scaling (set actual width/height to scaled values)
   const previewBoxRef = useRef<HTMLDivElement | null>(null)
   const [scale, setScale] = useState(0.4)
 
@@ -145,7 +156,6 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
 
   const previewRef = useRef<HTMLDivElement | null>(null)
 
-  // ---- Actions --------------------------------------------------------------
   async function fetchJob() {
     if (!jobId.trim()) return
     try {
@@ -205,19 +215,18 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     return String(job.benefits || '')
   }, [job.benefits])
 
-  // ---- UI -------------------------------------------------------------------
   return (
     <div className="flex flex-col gap-4">
       <h2 className="text-xl font-bold">{mode === 'jobPosts' ? 'Job Posts' : 'General Posts'}</h2>
 
-      {/* Template scroller */}
+      {/* template scroller */}
       <div className="w-full overflow-x-auto border rounded-lg p-3 bg-white">
         <div className="flex gap-3 min-w-max">
           {TEMPLATES.map(t => (
             <button
               key={t.id}
-              onClick={() => setSelectedTpl(t)}
-              className={`relative rounded-lg overflow-hidden border ${selectedTpl.id === t.id ? 'ring-2 ring-amber-500' : 'border-gray-200'} hover:opacity-90`}
+              onClick={() => setSelectedTplId(t.id)}
+              className={`relative rounded-lg overflow-hidden border ${selectedTplId === t.id ? 'ring-2 ring-amber-500' : 'border-gray-200'} hover:opacity-90`}
               title={t.name}
             >
               <img src={t.imageUrl} alt={t.name} className="h-28 w-28 object-cover" />
@@ -227,26 +236,23 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
         </div>
       </div>
 
-      {/* Equal columns again */}
+      {/* equal columns */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* LEFT COLUMN */}
+        {/* LEFT: recorder + form */}
         <div className="flex flex-col gap-6">
-          {/* A) Video Record (collapsible) */}
+          {/* recorder (collapsible) */}
           <section className="border rounded-xl bg-white overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b">
               <h3 className="font-semibold text-lg">Video record</h3>
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setVideoOpen(v => !v)}
-                  className="text-sm px-2 py-1 rounded border hover:bg-gray-50"
-                  aria-expanded={videoOpen}
-                  aria-controls="video-panel"
-                  title={videoOpen ? 'Hide' : 'Show'}
-                >
-                  {videoOpen ? 'Hide ▲' : 'Show ▼'}
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => setVideoOpen(v => !v)}
+                className="text-sm px-2 py-1 rounded border hover:bg-gray-50"
+                aria-expanded={videoOpen}
+                aria-controls="video-panel"
+              >
+                {videoOpen ? 'Hide ▲' : 'Show ▼'}
+              </button>
             </div>
 
             <div
@@ -299,7 +305,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
             </div>
           </section>
 
-          {/* B) Job ID + fields */}
+          {/* job details */}
           <section className="border rounded-xl p-4 bg-white">
             <h3 className="font-semibold text-lg">Job details</h3>
             <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -319,7 +325,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
           </section>
         </div>
 
-        {/* RIGHT COLUMN - PREVIEW + EXPORT */}
+        {/* RIGHT: preview + export */}
         <div className="border rounded-xl p-4 bg-white">
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-lg">Preview</h3>
@@ -336,14 +342,15 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
               </button>
             </div>
           </div>
-        
-          {/* Fit area for preview; whole poster must be visible */}
+
+          {/* Fit area for preview; full poster visible */}
           <div
             ref={previewBoxRef}
             className="mt-3 h-[64vh] min-h-[420px] w-full overflow-auto flex items-center justify-center bg-muted/20 rounded-lg"
           >
-            {/* Poster is sized to scaled width/height (NO transform) */}
+            {/* Poster at scaled layout size (no transform) */}
             <div
+              ref={previewRef}
               className="relative shadow-lg"
               style={{
                 width: selectedTpl.width * scale,
@@ -353,7 +360,6 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                 backgroundPosition: 'center',
               }}
             >
-              {/* Text layers – positions and font sizes multiplied by scale */}
               {(['title','location','salary','description','benefits','email','phone'] as const).map(key => {
                 const spec = selectedTpl.layout[key]
                 if (!spec) return null
@@ -376,8 +382,8 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                     key={key}
                     style={{
                       position: 'absolute',
-                      left: spec.x * scale,
-                      top: spec.y * scale,
+                      left: (spec.x) * scale,
+                      top:  (spec.y) * scale,
                       width: (spec.w ?? selectedTpl.width - spec.x - 40) * scale,
                       height: (spec.h ?? 'auto') as any,
                       fontSize: (spec.fontSize ?? 18) * scale,
@@ -392,8 +398,8 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                   </div>
                 )
               })}
-        
-              {/* Video slot – also scaled */}
+
+              {/* Video slot (scaled) */}
               {selectedTpl.layout.video && videoUrl && (
                 <div
                   style={{
@@ -417,9 +423,9 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
               )}
             </div>
           </div>
-        
+
           <p className="mt-3 text-xs text-gray-500">
-            Preview scales the poster’s actual width/height; no cropping. PNG export uses the preview DOM.
+            Preview scales the poster to fit; PNG exports at the template’s intrinsic size.
           </p>
         </div>
       </div>
