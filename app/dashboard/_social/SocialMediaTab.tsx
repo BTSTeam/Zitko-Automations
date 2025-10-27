@@ -130,10 +130,8 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
 
   useLayoutEffect(() => {
     if (!previewBoxRef.current) return
-    const el = previewBoxRef.current
     const ro = new ResizeObserver(([entry]) => {
       const { width: cw, height: ch } = entry.contentRect
-      // small padding so it never touches edges
       const PAD = 12
       const s = Math.min(
         (cw - PAD) / selectedTpl.width,
@@ -141,7 +139,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
       )
       setScale(Number.isFinite(s) ? Math.max(0.05, Math.min(1, s)) : 0.4)
     })
-    ro.observe(el)
+    ro.observe(previewBoxRef.current)
     return () => ro.disconnect()
   }, [selectedTpl.width, selectedTpl.height])
 
@@ -338,27 +336,24 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
               </button>
             </div>
           </div>
-
-          {/* Fit area for preview — smaller so whole image is visible */}
+        
+          {/* Fit area for preview; whole poster must be visible */}
           <div
             ref={previewBoxRef}
-            className="mt-3 h-[64vh] min-h-[420px] w-full overflow-hidden flex items-center justify-center bg-muted/20 rounded-lg"
+            className="mt-3 h-[64vh] min-h-[420px] w-full overflow-auto flex items-center justify-center bg-muted/20 rounded-lg"
           >
-            {/* poster at intrinsic pixel size, scaled to fit */}
+            {/* Poster is sized to scaled width/height (NO transform) */}
             <div
-              ref={previewRef}
               className="relative shadow-lg"
               style={{
-                width: selectedTpl.width,
-                height: selectedTpl.height,
-                transform: `scale(${scale})`,
-                transformOrigin: 'top left',
+                width: selectedTpl.width * scale,
+                height: selectedTpl.height * scale,
                 backgroundImage: `url(${selectedTpl.imageUrl})`,
                 backgroundSize: 'cover',
                 backgroundPosition: 'center',
               }}
             >
-              {/* Render all text boxes */}
+              {/* Text layers – positions and font sizes multiplied by scale */}
               {(['title','location','salary','description','benefits','email','phone'] as const).map(key => {
                 const spec = selectedTpl.layout[key]
                 if (!spec) return null
@@ -369,7 +364,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                     case 'salary': return job.salary || '[SALARY]'
                     case 'description': return wrapText(job.description || '[SHORT DESCRIPTION]')
                     case 'benefits': {
-                      const tx = benefitsText || '[BENEFIT 1]\n[BENEFIT 2]\n[BENEFIT 3]'
+                      const tx = (Array.isArray(job.benefits) ? job.benefits.join('\n') : job.benefits) || '[BENEFIT 1]\n[BENEFIT 2]\n[BENEFIT 3]'
                       return tx.split('\n').map(l => `• ${l}`).join('\n')
                     }
                     case 'email': return job.email || '[EMAIL]'
@@ -381,11 +376,11 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                     key={key}
                     style={{
                       position: 'absolute',
-                      left: spec.x,
-                      top: spec.y,
-                      width: (spec.w ?? selectedTpl.width - spec.x - 40),
+                      left: spec.x * scale,
+                      top: spec.y * scale,
+                      width: (spec.w ?? selectedTpl.width - spec.x - 40) * scale,
                       height: (spec.h ?? 'auto') as any,
-                      fontSize: (spec.fontSize ?? 18),
+                      fontSize: (spec.fontSize ?? 18) * scale,
                       lineHeight: 1.25,
                       whiteSpace: 'pre-wrap',
                       textAlign: spec.align ?? 'left',
@@ -397,18 +392,18 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                   </div>
                 )
               })}
-
-              {/* Video slot (masked) */}
+        
+              {/* Video slot – also scaled */}
               {selectedTpl.layout.video && videoUrl && (
                 <div
                   style={{
                     position: 'absolute',
-                    left: selectedTpl.layout.video.x,
-                    top: selectedTpl.layout.video.y,
-                    width: selectedTpl.layout.video.w,
-                    height: selectedTpl.layout.video.h,
+                    left: selectedTpl.layout.video.x * scale,
+                    top: selectedTpl.layout.video.y * scale,
+                    width: selectedTpl.layout.video.w * scale,
+                    height: selectedTpl.layout.video.h * scale,
                     overflow: 'hidden',
-                    clipPath: clipPath(mask, roundedR),
+                    clipPath: clipPath(mask, roundedR * scale),
                     background: '#111',
                   }}
                 >
@@ -422,9 +417,9 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
               )}
             </div>
           </div>
-
+        
           <p className="mt-3 text-xs text-gray-500">
-            Preview is scaled to fit the area; PNG exports at the template’s intrinsic size (e.g., 1080×1080).
+            Preview scales the poster’s actual width/height; no cropping. PNG export uses the preview DOM.
           </p>
         </div>
       </div>
