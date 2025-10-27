@@ -1,5 +1,11 @@
 'use client'
-import React, { useMemo, useRef, useState } from 'react'
+
+import React, {
+  useMemo,
+  useRef,
+  useState,
+  useLayoutEffect,
+} from 'react'
 import Recorder from '../../_components/recorder'
 import html2canvas from 'html2canvas'
 
@@ -120,10 +126,23 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
   const [videoMeta, setVideoMeta] = useState<{ mime: string; width: number; height: number } | null>(null)
   const [mask, setMask] = useState<VideoMask>('circle')
   const [roundedR, setRoundedR] = useState(32)
+  const [videoOpen, setVideoOpen] = useState(true) // collapsible
 
-  // Preview logic
-  const PREVIEW_MAX = 680 // px width of the right panel preview
-  const scale = useMemo(() => Math.min(1, PREVIEW_MAX / selectedTpl.width), [PREVIEW_MAX, selectedTpl])
+  // Preview scaling (always fit)
+  const previewBoxRef = useRef<HTMLDivElement | null>(null)
+  const [scale, setScale] = useState(0.5)
+
+  useLayoutEffect(() => {
+    if (!previewBoxRef.current) return
+    const el = previewBoxRef.current
+    const ro = new ResizeObserver(([entry]) => {
+      const { width: cw, height: ch } = entry.contentRect
+      const s = Math.min(cw / selectedTpl.width, ch / selectedTpl.height)
+      setScale(Number.isFinite(s) ? Math.max(0.05, Math.min(1, s)) : 0.5)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [selectedTpl.width, selectedTpl.height])
 
   const previewRef = useRef<HTMLDivElement | null>(null)
 
@@ -160,8 +179,6 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
   }
 
   async function downloadMp4() {
-    // Hand off to your server to compose MP4 (video + graphics) via Cloudinary/Mux.
-    // Expect the server to return a downloadable URL.
     if (!videoUrl) {
       alert('Add a video first.')
       return
@@ -213,50 +230,75 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
         </div>
       </div>
 
-      {/* Main split */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Main split: left fixed rail on lg+ for more preview space */}
+      <div className="grid grid-cols-1 lg:grid-cols-[360px_minmax(0,1fr)] gap-6">
         {/* LEFT COLUMN */}
         <div className="flex flex-col gap-6">
-          {/* A) Video Record */}
-          <section className="border rounded-xl p-4 bg-white">
-            <div className="flex items-center justify-between">
+          {/* A) Video Record (collapsible) */}
+          <section className="border rounded-xl bg-white overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b">
               <h3 className="font-semibold text-lg">Video record</h3>
-              <div className="flex items-center gap-2 text-sm">
-                <label className="inline-flex items-center gap-2">
-                  <span>Mask</span>
-                  <select
-                    className="border rounded px-2 py-1"
-                    value={mask}
-                    onChange={e => setMask(e.target.value as VideoMask)}
-                  >
-                    <option value="none">None</option>
-                    <option value="circle">Circle</option>
-                    <option value="rounded">Rounded</option>
-                    <option value="hex">Hex</option>
-                  </select>
-                </label>
-                {mask === 'rounded' && (
-                  <label className="inline-flex items-center gap-2">
-                    <span>Radius</span>
-                    <input type="number" className="w-20 border rounded px-2 py-1" value={roundedR} onChange={e => setRoundedR(Number(e.target.value || 0))} />
-                  </label>
-                )}
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setVideoOpen(v => !v)}
+                  className="text-sm px-2 py-1 rounded border hover:bg-gray-50"
+                  aria-expanded={videoOpen}
+                  aria-controls="video-panel"
+                  title={videoOpen ? 'Hide' : 'Show'}
+                >
+                  {videoOpen ? 'Hide ▲' : 'Show ▼'}
+                </button>
               </div>
             </div>
 
-            <div className="mt-3">
-              <Recorder
-                onUploaded={(url, meta) => {
-                  setVideoUrl(url)
-                  setVideoMeta(meta)
-                }}
-              />
-              {videoUrl && (
-                <p className="mt-2 text-sm text-emerald-700 break-all">
-                  Video attached ✓ <br />
-                  <span className="text-gray-500">({videoMeta?.mime})</span>
-                </p>
-              )}
+            <div
+              id="video-panel"
+              className={`transition-[max-height] duration-300 ease-in-out ${videoOpen ? 'max-h-[1200px]' : 'max-h-0'}`}
+            >
+              <div className="p-4">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <label className="inline-flex items-center gap-2 text-sm">
+                    <span>Mask</span>
+                    <select
+                      className="border rounded px-2 py-1"
+                      value={mask}
+                      onChange={e => setMask(e.target.value as VideoMask)}
+                    >
+                      <option value="none">None</option>
+                      <option value="circle">Circle</option>
+                      <option value="rounded">Rounded</option>
+                      <option value="hex">Hex</option>
+                    </select>
+                  </label>
+                  {mask === 'rounded' && (
+                    <label className="inline-flex items-center gap-2 text-sm">
+                      <span>Radius</span>
+                      <input
+                        type="number"
+                        className="w-20 border rounded px-2 py-1"
+                        value={roundedR}
+                        onChange={e => setRoundedR(Number(e.target.value || 0))}
+                      />
+                    </label>
+                  )}
+                </div>
+
+                <div className="mt-3">
+                  <Recorder
+                    onUploaded={(url, meta) => {
+                      setVideoUrl(url)
+                      setVideoMeta(meta)
+                    }}
+                  />
+                  {videoUrl && (
+                    <p className="mt-2 text-sm text-emerald-700 break-all">
+                      Video attached ✓ <br />
+                      <span className="text-gray-500">({videoMeta?.mime})</span>
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
           </section>
 
@@ -298,14 +340,20 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
             </div>
           </div>
 
-          {/* Preview board (scaled) */}
-          <div className="mt-3 flex justify-center">
+          {/* Fit container for preview; content is scaled inside */}
+          <div
+            ref={previewBoxRef}
+            className="mt-3 h-[78vh] min-h-[520px] w-full overflow-hidden flex items-center justify-center bg-muted/20 rounded-lg"
+          >
+            {/* Actual poster at intrinsic pixel size; we scale it to fit */}
             <div
               ref={previewRef}
               className="relative shadow-lg"
               style={{
-                width: selectedTpl.width * scale,
-                height: selectedTpl.height * scale,
+                width: selectedTpl.width,
+                height: selectedTpl.height,
+                transform: `scale(${scale})`,
+                transformOrigin: 'top left',
                 backgroundImage: `url(${selectedTpl.imageUrl})`,
                 backgroundSize: 'cover',
                 backgroundPosition: 'center',
@@ -334,11 +382,11 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                     key={key}
                     style={{
                       position: 'absolute',
-                      left: spec.x * scale,
-                      top: spec.y * scale,
-                      width: (spec.w ?? selectedTpl.width - spec.x - 40) * scale,
+                      left: spec.x,
+                      top: spec.y,
+                      width: (spec.w ?? selectedTpl.width - spec.x - 40),
                       height: (spec.h ?? 'auto') as any,
-                      fontSize: (spec.fontSize ?? 18) * scale,
+                      fontSize: (spec.fontSize ?? 18),
                       lineHeight: 1.25,
                       whiteSpace: 'pre-wrap',
                       textAlign: spec.align ?? 'left',
@@ -356,12 +404,12 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                 <div
                   style={{
                     position: 'absolute',
-                    left: selectedTpl.layout.video.x * scale,
-                    top: selectedTpl.layout.video.y * scale,
-                    width: selectedTpl.layout.video.w * scale,
-                    height: selectedTpl.layout.video.h * scale,
+                    left: selectedTpl.layout.video.x,
+                    top: selectedTpl.layout.video.y,
+                    width: selectedTpl.layout.video.w,
+                    height: selectedTpl.layout.video.h,
                     overflow: 'hidden',
-                    clipPath: clipPath(mask, roundedR * scale),
+                    clipPath: clipPath(mask, roundedR),
                     background: '#111',
                   }}
                 >
@@ -377,8 +425,8 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
           </div>
 
           <p className="mt-3 text-xs text-gray-500">
-            PNG export is rendered at the template’s intrinsic size (e.g., 1080×1080).  
-            MP4 export is server-side (recommended: Cloudinary or Mux).
+            Preview scales to fit the panel; PNG exports at the template’s intrinsic size (e.g., 1080×1080).  
+            MP4 export is server-side (e.g., Cloudinary or Mux).
           </p>
         </div>
       </div>
