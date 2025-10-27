@@ -6,7 +6,7 @@ import dynamic from 'next/dynamic'
 const MatchTab  = dynamic(() => import('./_match/MatchTab'),   { ssr: false })
 const SourceTab = dynamic(() => import('./_source/SourceTab'), { ssr: false })
 const CvTab     = dynamic(() => import('./_cv/CvTab'),         { ssr: false })
-const SocialMediaTab = dynamic(() => import('./_social/SocialMediaTab'), { ssr: false });
+const SocialMediaTab = dynamic(() => import('./_social/SocialMediaTab'), { ssr: false })
 const ActiveCampaignUploadTab = dynamic(() => import('./_ac/ActiveCampaignTab'), { ssr: false })
 const ActiveCampaignHtmlTab = dynamic(() => import('./_ac/ActiveCampaignHtmlTab'), { ssr: false })
 
@@ -28,14 +28,16 @@ export default function ClientShell(): JSX.Element {
 
   const [cvOpen, setCvOpen] = useState(false)
   const [cvTemplate, setCvTemplate] = useState<CvTemplate>('standard')
+
   const [socialOpen, setSocialOpen] = useState(false)
   const [socialMode, setSocialMode] = useState<SocialMode>('jobPosts')
+
   const [acOpen, setAcOpen] = useState(false)
   const [acMode, setAcMode] = useState<'upload' | 'html'>('upload')
 
   useEffect(() => {
     function onClick(e: MouseEvent) {
-      const t = (e.target as HTMLElement)
+      const t = e.target as HTMLElement
       if (!t.closest?.('[data-sourcing-root]')) setSourceOpen(false)
       if (!t.closest?.('[data-cv-root]')) setCvOpen(false)
       if (!t.closest?.('[data-social-root]')) setSocialOpen(false)
@@ -74,12 +76,12 @@ export default function ClientShell(): JSX.Element {
 
   return (
     <>
-      {/* Make the whole area fill the viewport (minus your header). Adjust 120px if needed. */}
       <div className="flex flex-col gap-6 min-h-[calc(100vh-120px)]">
         {/* Top bar */}
         <div className="flex items-center justify-between">
           {/* Left cluster */}
           <div className="flex gap-2">
+            {/* Candidate Matching */}
             <button
               onClick={() => { setTab('match'); setShowWelcome(false) }}
               className={`tab ${active('match')}`}
@@ -87,10 +89,10 @@ export default function ClientShell(): JSX.Element {
               Candidate Matching
             </button>
 
-            {/* Sourcing dropdown (temporarily disabled) */}
+            {/* Sourcing dropdown */}
             <div className="relative" data-sourcing-root>
               <button
-                onClick={(e) => { 
+                onClick={(e) => {
                   if (DISABLE_SOURCING) { e.preventDefault(); e.stopPropagation(); return }
                   setSourceOpen(v => !v)
                 }}
@@ -105,13 +107,13 @@ export default function ClientShell(): JSX.Element {
               {!DISABLE_SOURCING && sourceOpen && (
                 <div className="absolute left-1/2 -translate-x-1/2 mt-2 w-44 rounded-xl border bg-white shadow-lg overflow-hidden z-10">
                   <button
-                    className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${sourceMode==='candidates' ? 'font-medium' : ''}`}
+                    className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${sourceMode === 'candidates' ? 'font-medium' : ''}`}
                     onClick={() => { setSourceMode('candidates'); setTab('source'); setSourceOpen(false); setShowWelcome(false) }}
                   >
                     Candidates
                   </button>
                   <button
-                    className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${sourceMode==='companies' ? 'font-medium' : ''}`}
+                    className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${sourceMode === 'companies' ? 'font-medium' : ''}`}
                     onClick={() => { setSourceMode('companies'); setTab('source'); setSourceOpen(false); setShowWelcome(false) }}
                   >
                     Companies
@@ -133,13 +135,13 @@ export default function ClientShell(): JSX.Element {
               {cvOpen && (
                 <div className="absolute left-1/2 -translate-x-1/2 mt-2 w-44 rounded-xl border bg-white shadow-lg overflow-hidden z-10">
                   <button
-                    className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${cvTemplate==='standard' ? 'font-medium' : ''}`}
+                    className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${cvTemplate === 'standard' ? 'font-medium' : ''}`}
                     onClick={() => { setCvTemplate('standard'); setTab('cv'); setCvOpen(false); setShowWelcome(false) }}
                   >
                     Standard
                   </button>
                   <button
-                    className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${cvTemplate==='sales' ? 'font-medium' : ''}`}
+                    className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${cvTemplate === 'sales' ? 'font-medium' : ''}`}
                     onClick={() => { setCvTemplate('sales'); setTab('cv'); setCvOpen(false); setShowWelcome(false) }}
                   >
                     Sales
@@ -147,42 +149,42 @@ export default function ClientShell(): JSX.Element {
                 </div>
               )}
             </div>
+
+            {/* Social Media dropdown (now inside left cluster) */}
+            <div className="relative" data-social-root>
+              <button
+                onClick={(e) => {
+                  if (DISABLE_SOCIAL) { e.preventDefault(); e.stopPropagation(); return }
+                  setSocialOpen(v => !v)
+                }}
+                className={`tab ${!DISABLE_SOCIAL ? active('social') : ''} ${DISABLE_SOCIAL ? 'opacity-50 cursor-not-allowed' : ''}`}
+                title={DISABLE_SOCIAL ? 'Social Media (temporarily disabled)' : 'Social Media'}
+                disabled={DISABLE_SOCIAL}
+                aria-disabled={DISABLE_SOCIAL}
+              >
+                Social Media
+              </button>
+
+              {!DISABLE_SOCIAL && socialOpen && (
+                <div className="absolute left-1/2 -translate-x-1/2 mt-2 w-44 rounded-xl border bg-white shadow-lg overflow-hidden z-10">
+                  <button
+                    className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${socialMode === 'jobPosts' ? 'font-medium' : ''}`}
+                    onClick={() => { setSocialMode('jobPosts'); setTab('social'); setSocialOpen(false); setShowWelcome(false) }}
+                  >
+                    Job Posts
+                  </button>
+                  <button
+                    className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${socialMode === 'generalPosts' ? 'font-medium' : ''}`}
+                    onClick={() => { setSocialMode('generalPosts'); setTab('social'); setSocialOpen(false); setShowWelcome(false) }}
+                  >
+                    General Posts
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* Social Media dropdown (can be disabled) */}
-          <div className="relative" data-social-root>
-            <button
-              onClick={(e) => {
-                if (DISABLE_SOCIAL) { e.preventDefault(); e.stopPropagation(); return }
-                setSocialOpen(v => !v)
-              }}
-              className={`tab ${!DISABLE_SOCIAL ? active('social') : ''} ${DISABLE_SOCIAL ? 'opacity-50 cursor-not-allowed' : ''}`}
-              title={DISABLE_SOCIAL ? 'Social Media (temporarily disabled)' : 'Social Media'}
-              disabled={DISABLE_SOCIAL}
-              aria-disabled={DISABLE_SOCIAL}
-            >
-              Social Media
-            </button>
-          
-            {!DISABLE_SOCIAL && socialOpen && (
-              <div className="absolute left-1/2 -translate-x-1/2 mt-2 w-44 rounded-xl border bg-white shadow-lg overflow-hidden z-10">
-                <button
-                  className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${socialMode === 'jobPosts' ? 'font-medium' : ''}`}
-                  onClick={() => { setSocialMode('jobPosts'); setTab('social'); setSocialOpen(false); setShowWelcome(false) }}
-                >
-                  Job Posts
-                </button>
-                <button
-                  className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${socialMode === 'generalPosts' ? 'font-medium' : ''}`}
-                  onClick={() => { setSocialMode('generalPosts'); setTab('social'); setSocialOpen(false); setShowWelcome(false) }}
-                >
-                  General Posts
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Right-aligned Active Campaign with dropdown */}
+          {/* Right-aligned Active Campaign dropdown */}
           <div className="relative" data-ac-root>
             <button
               onClick={() => setAcOpen(v => !v)}
@@ -200,9 +202,7 @@ export default function ClientShell(): JSX.Element {
             {acOpen && (
               <div className="absolute right-0 mt-2 w-44 rounded-xl border bg-white shadow-lg overflow-hidden z-10">
                 <button
-                  className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${
-                    acMode === 'upload' ? 'font-medium' : ''
-                  }`}
+                  className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${acMode === 'upload' ? 'font-medium' : ''}`}
                   onClick={() => {
                     setAcMode('upload')
                     setTab('ac')
@@ -213,9 +213,7 @@ export default function ClientShell(): JSX.Element {
                   Upload
                 </button>
                 <button
-                  className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${
-                    acMode === 'html' ? 'font-medium' : ''
-                  }`}
+                  className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${acMode === 'html' ? 'font-medium' : ''}`}
                   onClick={() => {
                     setAcMode('html')
                     setTab('ac')
@@ -230,7 +228,7 @@ export default function ClientShell(): JSX.Element {
           </div>
         </div>
 
-        {/* Content area grows to fill height; welcome centers inside it */}
+        {/* Content area */}
         <div className="flex-1">
           {showWelcome ? (
             <WelcomeBlock />
@@ -241,7 +239,7 @@ export default function ClientShell(): JSX.Element {
               {tab === 'cv' && <CvTab templateFromShell={cvTemplate} />}
               {tab === 'social' && <SocialMediaTab mode={socialMode} />}
               {tab === 'ac' && acMode === 'upload' && <ActiveCampaignUploadTab />}
-              {tab === 'ac' && acMode === 'html' && <ActiveCampaignHtmlTab />}  
+              {tab === 'ac' && acMode === 'html' && <ActiveCampaignHtmlTab />}
             </>
           )}
         </div>
