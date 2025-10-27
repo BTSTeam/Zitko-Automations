@@ -1,6 +1,6 @@
 'use client'
 import React, { useMemo, useRef, useState } from 'react'
-import Recorder from '../../_components/Recorder'
+import Recorder from '../../_components/recorder'
 import html2canvas from 'html2canvas'
 
 type SocialMode = 'jobPosts' | 'generalPosts'
