@@ -17,7 +17,7 @@ type SocialMode = 'jobPosts' | 'generalPosts'
 
 // 🔒 Toggle to re-enable later
 const DISABLE_SOURCING = false
-const DISABLE_SOCIAL = false
+const DISABLE_SOCIAL = true
 
 export default function ClientShell(): JSX.Element {
   const [tab, setTab] = useState<TabKey>('match')
