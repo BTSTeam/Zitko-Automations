@@ -140,18 +140,19 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
   const [scale, setScale] = useState(0.4)
 
   useLayoutEffect(() => {
-    if (!previewBoxRef.current) return
+    if (!previewBoxRef.current) return;
     const ro = new ResizeObserver(([entry]) => {
-      const { width: cw, height: ch } = entry.contentRect
-      const PAD = 12
+      const { width: cw, height: ch } = entry.contentRect;
+      const PAD = 16;           // a bit more padding
+      const EPS = 0.003;        // ~0.3% safety to avoid 1px overflow
       const s = Math.min(
         (cw - PAD) / selectedTpl.width,
         (ch - PAD) / selectedTpl.height
-      )
-      setScale(Number.isFinite(s) ? Math.max(0.05, Math.min(1, s)) : 0.4)
-    })
-    ro.observe(previewBoxRef.current)
-    return () => ro.disconnect()
+      ) - EPS;
+      setScale(Number.isFinite(s) ? Math.max(0.05, Math.min(1, s)) : 0.4);
+    });
+    ro.observe(previewBoxRef.current);
+    return () => ro.disconnect();
   }, [selectedTpl.width, selectedTpl.height])
 
   const previewRef = useRef<HTMLDivElement | null>(null)
@@ -346,7 +347,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
           {/* Fit area for preview; full poster visible */}
           <div
             ref={previewBoxRef}
-            className="mt-3 h-[64vh] min-h-[420px] w-full overflow-auto flex items-center justify-center bg-muted/20 rounded-lg"
+            className="mt-3 h-[64vh] min-h-[420px] w-full overflow-hidden flex items-center justify-center bg-muted/20 rounded-lg"
           >
             {/* Poster at scaled layout size (no transform) */}
             <div
