@@ -355,11 +355,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   const standardPreviewRef = useRef<HTMLDivElement | null>(null)
   const footerRef = useRef<HTMLDivElement | null>(null)
 
-  // === In-app Preview modal ===
-  const [showPreview, setShowPreview] = useState(false)
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-  const [previewBusy, setPreviewBusy] = useState(false)
-
   // Sales local helpers
   const [salesErr, setSalesErr] = useState<string | null>(null)
   const [salesDocUrl, setSalesDocUrl] = useState<string | null>(null)
@@ -373,37 +368,36 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   // ===== Preview generation (modal) =====
   const handlePreview = async () => {
     try {
-      setPreviewBusy(true)
-      const mod = await import('html2pdf.js')
-      const html2pdf = (mod as any).default || (mod as any)
-
-      const node = standardPreviewRef.current
-      if (!node) throw new Error('Preview not ready')
-
-      const baseName = (candidateName || form.name || 'CV').replace(/\s+/g, '')
-      const suffix = template === 'us' ? 'US' : 'UK'
-      const fileName = `${baseName}_${suffix}.pdf`
-
-      // IMPORTANT: removed 'avoid-all' to prevent whole sections being bumped to next page.
+      setPreviewBusy(true);
+      const mod = await import('html2pdf.js');
+      const html2pdf = (mod as any).default || (mod as any);
+  
+      const node = standardPreviewRef.current;
+      if (!node) throw new Error('Preview not ready');
+  
+      const baseName = (candidateName || form.name || 'CV').replace(/\s+/g, '');
+      const suffix = template === 'us' ? 'US' : 'UK';
+      const fileName = `${baseName}_${suffix}.pdf`;
+  
       const opt = {
         margin: 10,
         filename: fileName,
         image: { type: 'jpeg', quality: 0.95 },
         html2canvas: { scale: 2, backgroundColor: '#FFFFFF' },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
-        pagebreak: { mode: ['css', 'legacy'] as const }, // key tweak
-      }
-
-      const worker = html2pdf().set(opt).from(node).toPdf()
-      const pdf = await worker.get('pdf')
-      const pdfBlob = new Blob([pdf.output('arraybuffer')], { type: 'application/pdf' })
-      const url = URL.createObjectURL(pdfBlob)
-      setPreviewUrl(url)
-      setShowPreview(true)
-    } catch (err) {
-      console.error(err)
+        pagebreak: { mode: ['css', 'legacy'] as const }, // keep the page-break tweak
+      };
+  
+      const worker = html2pdf().set(opt).from(node).toPdf();
+      const pdf = await worker.get('pdf');
+      const blob = new Blob([pdf.output('arraybuffer')], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+  
+      window.open(url, '_blank');
+  
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } finally {
-      setPreviewBusy(false)
+      setPreviewBusy(false);
     }
   }
 
@@ -1913,30 +1907,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
           <CVTemplatePreview />
         </div>
       </div>
-
-      {/* ===== Preview Modal ===== */}
-      {previewBusy && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="bg-white rounded-xl shadow-xl w-[90%] h-[90%] relative overflow-hidden">
-            <button
-              className="absolute top-2 right-3 text-gray-600 text-xl font-bold"
-              onClick={() => setPreviewBusy(false)}
-              title="Close Preview"
-            >
-              ×
-            </button>
-            <div className="w-full h-full overflow-auto bg-gray-100 p-4">
-              <div
-                ref={standardPreviewRef}
-                className="cv-standard-page bg-white text-[13px] leading-[1.35] p-6 mx-auto max-w-[210mm] min-h-[297mm] break-after-auto"
-                style={{ boxShadow: '0 0 8px rgba(0,0,0,0.1)' }}
-              >
-                <CVTemplatePreview />
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ===== Upload modal ===== */}
       {showUploadModal && (
