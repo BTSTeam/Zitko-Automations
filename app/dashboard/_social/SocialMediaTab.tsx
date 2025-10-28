@@ -527,8 +527,9 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                 >
                   <video
                     src={videoUrl}
-                    playsInline
                     controls
+                    playsInline
+                    preload="metadata"
                     style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                   />
                 </div>
