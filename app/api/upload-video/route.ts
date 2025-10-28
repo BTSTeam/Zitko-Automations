@@ -1,60 +1,83 @@
 // app/api/upload-video/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-export const runtime = 'nodejs' // use node if proxying big files
+import { v2 as cloudinary } from 'cloudinary'
+
+// Node runtime to allow Buffer usage
+export const runtime = 'nodejs'
+
+cloudinary.config({
+  cloud_name:
+    process.env.CLOUDINARY_CLOUD_NAME ||
+    process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY!,
+  api_secret: process.env.CLOUDINARY_API_SECRET!,
+  secure: true,
+})
 
 export async function POST(req: NextRequest) {
-  const form = await req.formData()
-  const file = form.get('file') as File | null
-  const jobId = (form.get('jobId') as string) || 'unassigned'
-  const mime = (form.get('mime') as string) || 'video/webm'
-  if (!file) return NextResponse.json({ error: 'No file' }, { status: 400 })
+  try {
+    const form = await req.formData()
+    const file = form.get('file') as File | null
+    const jobId = (form.get('jobId') as string) || 'unassigned'
+    const mime = (form.get('mime') as string) || 'video/webm'
+    if (!file) return NextResponse.json({ error: 'No file' }, { status: 400 })
 
-  const cloudName =
-    process.env.CLOUDINARY_CLOUD_NAME ||
-    process.env.CLOUDINARY_CLOUD_NAME
-  const preset = process.env.CLOUDINARY_UNSIGNED_PRESET!
-  if (!cloudName) {
-    return NextResponse.json(
-      { error: 'Cloudinary cloud name not set' },
-      { status: 500 }
-    )
-  }
+    // Read into a Buffer for upload_stream
+    const ab = await file.arrayBuffer()
+    const buffer = Buffer.from(ab)
 
-  const body = new FormData()
-  body.append('upload_preset', preset)
-  body.append('file', file)
-  body.append('folder', `job-posts/${jobId}`)
-  body.append('tags', `job:${jobId}`)
+    // Upload as *private* (requires signed delivery)
+    const result = await new Promise<cloudinary.UploadApiResponse>((resolve, reject) => {
+      const upload = cloudinary.uploader.upload_stream(
+        {
+          resource_type: 'video',
+          folder: `job-posts/${jobId}`,
+          type: 'private',                // 👈 makes the asset private
+          overwrite: true,
+          tags: [`job:${jobId}`],
+        },
+        (err, res) => (err || !res ? reject(err || new Error('Upload failed')) : resolve(res))
+      )
+      upload.end(buffer)
+    })
 
-  const r = await fetch(
-    `https://api.cloudinary.com/v1_1/${cloudName}/video/upload`,
-    {
-      method: 'POST',
-      body,
+    // Build short-lived signed MP4 URLs for preview/download
+    const expiresAt = Math.floor(Date.now() / 1000) + 60 * 60 // 1 hour
+    const commonOpts = {
+      resource_type: 'video' as const,
+      type: 'private' as const,
+      sign_url: true,
+      expires_at: expiresAt,
+      transformation: [{ quality: 'auto:good' }, { fetch_format: 'mp4' }],
+      secure: true,
+      format: 'mp4',
     }
-  )
 
-  if (!r.ok) {
-    const err = await r.text().catch(() => '')
-    return NextResponse.json({ error: 'Upload failed', detail: err }, { status: 500 })
+    // Stream/preview URL (signed)
+    const playbackMp4 = cloudinary.url(result.public_id, commonOpts)
+
+    // Download attachment URL (signed)
+    const downloadMp4 = cloudinary.url(result.public_id, {
+      ...commonOpts,
+      transformation: [
+        { quality: 'auto:good' },
+        { fetch_format: 'mp4' },
+        { flags: 'attachment:video.mp4' }, // fl_attachment
+      ],
+    })
+
+    return NextResponse.json({
+      publicId: result.public_id, // e.g. job-posts/123/ab12cd
+      url: result.secure_url,     // original upload URL (still private type)
+      playbackMp4,                // signed, expires in 1h
+      downloadMp4,                // signed, expires in 1h
+      bytes: result.bytes,
+      duration: (result as any).duration,
+      createdAt: result.created_at,
+      mime,
+    })
+  } catch (e: any) {
+    const msg = e?.message || 'Upload failed'
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
-
-  const json = await r.json()
-
-  // ✅ Build MP4 playback & download URLs
-  const base = `https://res.cloudinary.com/${cloudName}/video/upload`
-  const playbackMp4 = `${base}/q_auto:good,f_mp4/${json.public_id}.mp4`
-  const downloadMp4 = `${base}/fl_attachment:video.mp4,f_mp4/${json.public_id}.mp4`
-
-  // ✅ Return all fields needed by the app
-  return NextResponse.json({
-    publicId: json.public_id,   
-    url: json.secure_url,      
-    playbackMp4,                
-    downloadMp4,                
-    bytes: json.bytes,
-    duration: json.duration,
-    createdAt: json.created_at,
-    mime
-  })
 }
