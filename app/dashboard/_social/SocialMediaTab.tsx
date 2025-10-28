@@ -54,7 +54,7 @@ const TEMPLATES: TemplateDef[] = [
       location:    { x: 520, y: 460, w: 520, fontSize: 30 },
       salary:      { x: 520, y: 520, w: 520, fontSize: 28 },
       description: { x: 520, y: 580, w: 520, h: 80, fontSize: 18 },
-      benefits:    { x: 520, y: 700, w: 520, h: 260, fontSize: 24 },
+      benefits:    { x: 520, y: 710, w: 520, h: 260, fontSize: 24 },
       email:       { x: 800, y: 965, w: 180, fontSize: 20, align: 'left' },
       phone:       { x: 800, y: 1020, w: 180, fontSize: 20, align: 'left' },
       video:       { x: 80,  y: 80,  w: 280, h: 280 },
