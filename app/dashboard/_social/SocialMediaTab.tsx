@@ -51,12 +51,12 @@ const TEMPLATES: TemplateDef[] = [
     layout: {
       // tuned to your latest screenshot/spec
       title:       { x: 420, y: 360, w: 560, fontSize: 60 },
-      location:    { x: 490, y: 460, w: 520, fontSize: 30 },
-      salary:      { x: 490, y: 520, w: 520, fontSize: 28 },
-      description: { x: 490, y: 580, w: 520, h: 80, fontSize: 18 },
+      location:    { x: 500, y: 460, w: 520, fontSize: 30 },
+      salary:      { x: 500, y: 520, w: 520, fontSize: 28 },
+      description: { x: 500, y: 580, w: 520, h: 80, fontSize: 18 },
       benefits:    { x: 510, y: 700, w: 520, h: 260, fontSize: 24 },
-      email:       { x: 820, y: 1000, w: 180, fontSize: 20, align: 'left' },
-      phone:       { x: 820, y: 1050, w: 180, fontSize: 20, align: 'left' },
+      email:       { x: 810, y: 980, w: 180, fontSize: 20, align: 'left' },
+      phone:       { x: 810, y: 1030, w: 180, fontSize: 20, align: 'left' },
       video:       { x: 80,  y: 80,  w: 280, h: 280 },
     },
   },
