@@ -354,6 +354,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   // Preview refs (UK/US DOM→PDF export)
   const standardPreviewRef = useRef<HTMLDivElement | null>(null)
   const footerRef = useRef<HTMLDivElement | null>(null)
+  const [previewBusy, setPreviewBusy] = useState(false);
 
   // Sales local helpers
   const [salesErr, setSalesErr] = useState<string | null>(null)
