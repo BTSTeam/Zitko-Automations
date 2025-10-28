@@ -1,8 +1,8 @@
 // app/api/upload-video/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { v2 as cloudinary } from 'cloudinary'
+import type { UploadApiResponse } from 'cloudinary'
 
-// Node runtime to allow Buffer usage
 export const runtime = 'nodejs'
 
 cloudinary.config({
@@ -22,17 +22,16 @@ export async function POST(req: NextRequest) {
     const mime = (form.get('mime') as string) || 'video/webm'
     if (!file) return NextResponse.json({ error: 'No file' }, { status: 400 })
 
-    // Read into a Buffer for upload_stream
     const ab = await file.arrayBuffer()
     const buffer = Buffer.from(ab)
 
-    // Upload as *private* (requires signed delivery)
-    const result = await new Promise<cloudinary.UploadApiResponse>((resolve, reject) => {
+    // Use the type from the root 'cloudinary' module
+    const result = await new Promise<UploadApiResponse>((resolve, reject) => {
       const upload = cloudinary.uploader.upload_stream(
         {
           resource_type: 'video',
           folder: `job-posts/${jobId}`,
-          type: 'private',                // 👈 makes the asset private
+          type: 'private', // private asset (requires signed delivery)
           overwrite: true,
           tags: [`job:${jobId}`],
         },
@@ -41,8 +40,8 @@ export async function POST(req: NextRequest) {
       upload.end(buffer)
     })
 
-    // Build short-lived signed MP4 URLs for preview/download
-    const expiresAt = Math.floor(Date.now() / 1000) + 60 * 60 // 1 hour
+    // short-lived signed MP4 URLs (1 hour)
+    const expiresAt = Math.floor(Date.now() / 1000) + 60 * 60
     const commonOpts = {
       resource_type: 'video' as const,
       type: 'private' as const,
@@ -53,24 +52,21 @@ export async function POST(req: NextRequest) {
       format: 'mp4',
     }
 
-    // Stream/preview URL (signed)
     const playbackMp4 = cloudinary.url(result.public_id, commonOpts)
-
-    // Download attachment URL (signed)
     const downloadMp4 = cloudinary.url(result.public_id, {
       ...commonOpts,
       transformation: [
         { quality: 'auto:good' },
         { fetch_format: 'mp4' },
-        { flags: 'attachment:video.mp4' }, // fl_attachment
+        { flags: 'attachment:video.mp4' },
       ],
     })
 
     return NextResponse.json({
-      publicId: result.public_id, // e.g. job-posts/123/ab12cd
-      url: result.secure_url,     // original upload URL (still private type)
-      playbackMp4,                // signed, expires in 1h
-      downloadMp4,                // signed, expires in 1h
+      publicId: result.public_id,
+      url: result.secure_url,
+      playbackMp4,
+      downloadMp4,
       bytes: result.bytes,
       duration: (result as any).duration,
       createdAt: result.created_at,
