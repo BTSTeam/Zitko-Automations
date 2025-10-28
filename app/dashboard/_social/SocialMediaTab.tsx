@@ -107,6 +107,19 @@ function clipPath(mask: VideoMask, r: number) {
   }
 }
 
+// Additional helpers to strip HTML and extract contact details
+function stripTags(html: string) {
+  return String(html ?? '').replace(/<[^>]*>/g, ' ')
+}
+
+function extractEmailPhoneFallback(textOrHtml: string) {
+  const text = stripTags(textOrHtml)
+  const emailMatch = text.match(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i)
+  const phoneCandidates = (text.match(/(\+?\d[\d\s().-]{7,}\d)/g) || []).map(s => s.trim())
+  const phoneBest = phoneCandidates.sort((a, b) => b.length - a.length)[0]
+  return { email: emailMatch?.[0] ?? '', phone: phoneBest ?? '' }
+}
+
 // ---------- main ----------
 export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
   // store only id in state so edits to TEMPLATES hot-reload correctly
@@ -157,20 +170,63 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
 
   const previewRef = useRef<HTMLDivElement | null>(null)
 
+  // Updated fetchJob to pull from Vincere, summarise and extract contact details
   async function fetchJob() {
-    if (!jobId.trim()) return
+    const id = jobId.trim()
+    if (!id) return
     try {
-      const res = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`)
-      if (!res.ok) throw new Error('Not found')
-      const data = await res.json()
+      // 1. Fetch raw job details from Vincere API
+      const r = await fetch(`/api/vincere/position/${encodeURIComponent(id)}`, { cache: 'no-store' })
+      if (!r.ok) throw new Error('Not found')
+      const data = await r.json()
+      const publicDesc: string =
+        data?.public_description || data?.publicDescription || data?.description || ''
+
+      // 2. Use AI to extract structured fields (title, location, salary, benefits)
+      let extracted: any = {}
+      try {
+        const ai = await fetch('/api/job/summarize', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ description: publicDesc }),
+        })
+        if (ai.ok) extracted = await ai.json()
+      } catch {}
+
+      // 3. Use AI to produce a 196-character teaser
+      let shortDesc = ''
+      try {
+        const teaser = await fetch('/api/job/short-description', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ description: publicDesc }),
+        })
+        if (teaser.ok) {
+          const { description } = await teaser.json()
+          shortDesc = description ?? ''
+        }
+      } catch {}
+
+      // 4. Extract contact email/phone, falling back if needed
+      let contactEmail = String(extracted?.contactEmail ?? '').trim()
+      let contactPhone = String(extracted?.contactPhone ?? '').trim()
+      if (!contactEmail || !contactPhone) {
+        const fb = extractEmailPhoneFallback(publicDesc)
+        contactEmail = contactEmail || fb.email
+        contactPhone = contactPhone || fb.phone
+      }
+
+      // 5. Update state with final values
       setJob({
-        title: data.title ?? '',
-        location: data.location ?? '',
-        salary: data.salary ?? '',
-        description: data.shortDescription ?? '',
-        benefits: Array.isArray(data.benefits) ? data.benefits.join('\n') : (data.benefits ?? ''),
-        email: data.email ?? '',
-        phone: data.phone ?? '',
+        title: extracted?.title ?? data?.title ?? '',
+        location: extracted?.location ?? data?.location ?? '',
+        salary: extracted?.salary ?? data?.salary ?? '',
+        description: shortDesc,
+        benefits: Array.isArray(extracted?.benefits)
+          ? extracted.benefits.join('\n')
+          : String(data?.benefits ?? ''),
+        email: contactEmail || data?.email || '',
+        phone: contactPhone || data?.phone || '',
       })
     } catch (e) {
       console.error(e)
@@ -239,7 +295,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
 
       {/* equal columns */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* LEFT: recorder + form */}
+      {/* LEFT: recorder + form */}
         <div className="flex flex-col gap-6">
           {/* recorder (collapsible) */}
           <section className="border rounded-xl bg-white overflow-hidden">
