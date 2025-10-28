@@ -433,14 +433,17 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
               {(['title','location','salary','description','benefits','email','phone'] as const).map(key => {
                 const spec = selectedTpl.layout[key]
                 if (!spec) return null
+
                 const value = (() => {
                   switch (key) {
                     case 'title': return job.title || '[JOB TITLE]'
                     case 'location': return job.location || '[LOCATION]'
                     case 'salary': return job.salary || '[SALARY]'
-                    case 'description': return (job.description || '[SHORT DESCRIPTION]')
+                    case 'description': return job.description || '[SHORT DESCRIPTION]'
                     case 'benefits': {
-                      const tx = (Array.isArray(job.benefits) ? job.benefits.join('\n') : job.benefits) || '[BENEFIT 1]\n[BENEFIT 2]\n[BENEFIT 3]'
+                      const tx =
+                        (Array.isArray(job.benefits) ? job.benefits.join('\n') : job.benefits) ||
+                        '[BENEFIT 1]\n[BENEFIT 2]\n[BENEFIT 3]'
                       return tx.split('\n').map(l => `• ${l}`).join('\n\n')
                     }
                     case 'email': return job.email || '[EMAIL]'
@@ -449,6 +452,14 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                 })()
 
                 if (key === 'benefits') {
+                  // 🔧 Normalise to array of lines to satisfy TS
+                  const benefitsLines: string[] = Array.isArray(job.benefits)
+                    ? (job.benefits as string[]).filter(Boolean)
+                    : String(job.benefits || '')
+                        .split('\n')
+                        .map(s => s.trim())
+                        .filter(Boolean)
+
                   return (
                     <div
                       key={key}
@@ -456,7 +467,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                         position: 'absolute',
                         left: spec.x * scale,
                         top: spec.y * scale,
-                        width: (spec.w ?? selectedTpl.width - spec.x - 40) * scale,
+                        width: (spec.w ?? (selectedTpl.width - spec.x - 40)) * scale,
                         height: spec.h ? spec.h * scale : undefined,
                         fontSize: (spec.fontSize ?? 18) * scale,
                         lineHeight: 1.25,
@@ -466,22 +477,19 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                         overflowWrap: 'anywhere',
                       }}
                     >
-                      {(Array.isArray(job.benefits) ? job.benefits : String(job.benefits || ''))
-                        .split('\n')
-                        .filter(Boolean)
-                        .map((line, i) => (
-                          <div
-                            key={i}
-                            style={{
-                              paddingLeft: `${16 * scale}px`,
-                              textIndent: `-${8 * scale}px`,
-                              whiteSpace: 'pre-wrap',
-                              marginBottom: `${8 * scale}px`,
-                            }}
-                          >
-                            {`• ${line}`}
-                          </div>
-                        ))}
+                      {benefitsLines.map((line, i) => (
+                        <div
+                          key={i}
+                          style={{
+                            paddingLeft: `${16 * scale}px`,
+                            textIndent: `-${8 * scale}px`,
+                            whiteSpace: 'pre-wrap',
+                            marginBottom: `${8 * scale}px`,
+                          }}
+                        >
+                          {`• ${line}`}
+                        </div>
+                      ))}
                     </div>
                   )
                 }
@@ -493,7 +501,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                       position: 'absolute',
                       left: spec.x * scale,
                       top: spec.y * scale,
-                      width: (spec.w ?? selectedTpl.width - spec.x - 40) * scale,
+                      width: (spec.w ?? (selectedTpl.width - spec.x - 40)) * scale,
                       height: spec.h ? spec.h * scale : undefined,
                       fontSize: (spec.fontSize ?? 18) * scale,
                       lineHeight: 1.25,
