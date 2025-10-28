@@ -106,7 +106,7 @@ export default function Recorder({ jobId, onUploaded }: Props) {
         }
         const { publicId } = (await res.json()) as { publicId: string };
 
-        const cloud = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME!;
+        const cloud = process.env.CLOUDINARY_CLOUD_NAME!;
         const playbackMp4 = `https://res.cloudinary.com/${cloud}/video/upload/f_mp4/${publicId}.mp4`;
         const downloadMp4 = `https://res.cloudinary.com/${cloud}/video/upload/fl_attachment:${encodeURIComponent(
           `job-${jobId}.mp4`
