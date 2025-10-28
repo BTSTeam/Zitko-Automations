@@ -3,45 +3,46 @@
 import { useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 
-const MatchTab  = dynamic(() => import('./_match/MatchTab'),   { ssr: false })
-const SourceTab = dynamic(() => import('./_source/SourceTab'), { ssr: false })
-const CvTab     = dynamic(() => import('./_cv/CvTab'),         { ssr: false })
-const SocialMediaTab = dynamic(() => import('./_social/SocialMediaTab'), { ssr: false })
+// Dynamically import each tab to prevent SSR on client-only code
+const MatchTab               = dynamic(() => import('./_match/MatchTab'),   { ssr: false })
+const SourceTab              = dynamic(() => import('./_source/SourceTab'), { ssr: false })
+const CvTab                  = dynamic(() => import('./_cv/CvTab'),         { ssr: false })
+const SocialMediaTab         = dynamic(() => import('./_social/SocialMediaTab'), { ssr: false })
 const ActiveCampaignUploadTab = dynamic(() => import('./_ac/ActiveCampaignTab'), { ssr: false })
-const ActiveCampaignHtmlTab = dynamic(() => import('./_ac/ActiveCampaignHtmlTab'), { ssr: false })
+const ActiveCampaignHtmlTab  = dynamic(() => import('./_ac/ActiveCampaignHtmlTab'), { ssr: false })
 
-type TabKey = 'match' | 'source' | 'cv' | 'social' | 'ac'
+type TabKey     = 'match' | 'source' | 'cv' | 'social' | 'ac'
 type SourceMode = 'candidates' | 'companies'
-type CvTemplate = 'standard' | 'sales'
+type CvTemplate = 'uk' | 'us' | 'sales'   // Updated: support UK & US formats
 type SocialMode = 'jobPosts' | 'generalPosts'
 
-// 🔒 Toggle to re-enable later
+//  Toggle to re-enable later
 const DISABLE_SOURCING = false
-const DISABLE_SOCIAL = true
+const DISABLE_SOCIAL   = true
 
 export default function ClientShell(): JSX.Element {
-  const [tab, setTab] = useState<TabKey>('match')
+  const [tab, setTab]               = useState<TabKey>('match')
   const [showWelcome, setShowWelcome] = useState<boolean>(true)
 
   const [sourceOpen, setSourceOpen] = useState(false)
   const [sourceMode, setSourceMode] = useState<SourceMode>('candidates')
 
-  const [cvOpen, setCvOpen] = useState(false)
-  const [cvTemplate, setCvTemplate] = useState<CvTemplate>('standard')
+  const [cvOpen, setCvOpen]         = useState(false)
+  const [cvTemplate, setCvTemplate] = useState<CvTemplate>('uk') // default to UK
 
   const [socialOpen, setSocialOpen] = useState(false)
   const [socialMode, setSocialMode] = useState<SocialMode>('jobPosts')
 
-  const [acOpen, setAcOpen] = useState(false)
-  const [acMode, setAcMode] = useState<'upload' | 'html'>('upload')
+  const [acOpen, setAcOpen]         = useState(false)
+  const [acMode, setAcMode]         = useState<'upload' | 'html'>('upload')
 
   useEffect(() => {
     function onClick(e: MouseEvent) {
       const t = e.target as HTMLElement
       if (!t.closest?.('[data-sourcing-root]')) setSourceOpen(false)
-      if (!t.closest?.('[data-cv-root]')) setCvOpen(false)
-      if (!t.closest?.('[data-social-root]')) setSocialOpen(false)
-      if (!t.closest?.('[data-ac-root]')) setAcOpen(false)
+      if (!t.closest?.('[data-cv-root]'))       setCvOpen(false)
+      if (!t.closest?.('[data-social-root]'))   setSocialOpen(false)
+      if (!t.closest?.('[data-ac-root]'))       setAcOpen(false)
     }
     document.addEventListener('click', onClick)
     return () => document.removeEventListener('click', onClick)
@@ -135,17 +136,23 @@ export default function ClientShell(): JSX.Element {
               {cvOpen && (
                 <div className="absolute left-1/2 -translate-x-1/2 mt-2 w-44 rounded-xl border bg-white shadow-lg overflow-hidden z-10">
                   <button
-                    className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${cvTemplate === 'standard' ? 'font-medium' : ''}`}
-                    onClick={() => { setCvTemplate('standard'); setTab('cv'); setCvOpen(false); setShowWelcome(false) }}
+                    className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${cvTemplate === 'uk' ? 'font-medium' : ''}`}
+                    onClick={() => { setCvTemplate('uk'); setTab('cv'); setCvOpen(false); setShowWelcome(false) }}
                   >
-                    Standard
+                    UK Format
                   </button>
                   <button
-                    className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${cvTemplate === 'sales' ? 'font-medium' : ''}`}
-                    onClick={() => { setCvTemplate('sales'); setTab('cv'); setCvOpen(false); setShowWelcome(false) }}
+                    className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${cvTemplate === 'us' ? 'font-medium' : ''}`}
+                    onClick={() => { setCvTemplate('us'); setTab('cv'); setCvOpen(false); setShowWelcome(false) }}
                   >
-                    Sales
+                    US Format
                   </button>
+                    <button
+                      className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${cvTemplate === 'sales' ? 'font-medium' : ''}`}
+                      onClick={() => { setCvTemplate('sales'); setTab('cv'); setCvOpen(false); setShowWelcome(false) }}
+                    >
+                      Sales Format
+                    </button>
                 </div>
               )}
             </div>
@@ -239,7 +246,7 @@ export default function ClientShell(): JSX.Element {
               {tab === 'cv' && <CvTab templateFromShell={cvTemplate} />}
               {tab === 'social' && <SocialMediaTab mode={socialMode} />}
               {tab === 'ac' && acMode === 'upload' && <ActiveCampaignUploadTab />}
-              {tab === 'ac' && acMode === 'html' && <ActiveCampaignHtmlTab />}
+              {tab === 'ac' && acMode === 'html'   && <ActiveCampaignHtmlTab />}
             </>
           )}
         </div>
