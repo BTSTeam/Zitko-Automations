@@ -102,15 +102,19 @@ export default function Recorder({ jobId, onUploaded }: Props) {
         const res = await fetch('/api/upload-video', { method: 'POST', body });
         if (!res.ok) {
           const txt = await res.text().catch(() => '');
-          throw new Error(`Upload failed ${txt ? `- ${txt}` : ''}`);
+          throw new Error(`Upload failed${txt ? ` - ${txt}` : ''}`);
         }
-        const { publicId } = (await res.json()) as { publicId: string };
 
-        const cloud = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME!;
-        const playbackMp4 = `https://res.cloudinary.com/${cloud}/video/upload/f_mp4/${publicId}.mp4`;
-        const downloadMp4 = `https://res.cloudinary.com/${cloud}/video/upload/fl_attachment:${encodeURIComponent(
-          `job-${jobId}.mp4`
-        )}/f_mp4/${publicId}.mp4`;
+        // Use the playback and download URLs returned by the server
+        const {
+          publicId,
+          playbackMp4,
+          downloadMp4,
+        } = (await res.json()) as {
+          publicId: string;
+          playbackMp4: string;
+          downloadMp4: string;
+        };
 
         onUploaded({ publicId, playbackMp4, downloadMp4, mime: blob.type, width, height });
       } catch (e: any) {
