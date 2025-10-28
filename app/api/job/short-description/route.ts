@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
   }
 
   const systemPrompt =
-    'You craft concise, engaging summaries for job postings. Your output must be a single plain-text sentence no longer than 196 characters.';
+    'You craft concise, engaging summaries for job postings. Your output must be a single plain-text sentence no longer than 196 characters. Do not included the Job Title, Salary or any benefits. ';
   const userPrompt = `Job description:\n\n${String(description)}\n\nSummarize the above in no more than 196 characters.`;
 
   const resp = await fetch('https://api.openai.com/v1/chat/completions', {
