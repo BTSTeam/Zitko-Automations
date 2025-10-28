@@ -277,7 +277,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
   const benefitsText = useMemo(() => {
     if (Array.isArray(job.benefits)) return (job.benefits as string[]).join('\n')
     return String(job.benefits || '')
-  }, [job.benefits])
+  }, [job.benefits]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -431,51 +431,48 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
               }}
             >
               {(['title','location','salary','description','benefits','email','phone'] as const).map(key => {
-                const spec = selectedTpl.layout[key]
-                if (!spec) return null
-                const value = (() => {
-                  switch (key) {
-                    case 'title': return job.title || '[JOB TITLE]'
-                    case 'location': return job.location || '[LOCATION]'
-                    case 'salary': return job.salary || '[SALARY]'
-                    case 'description': return (job.description || '[SHORT DESCRIPTION]')
-                    case 'benefits': {
-                      const tx = (Array.isArray(job.benefits) ? job.benefits.join('\n') : job.benefits) || '[BENEFIT 1]\n[BENEFIT 2]\n[BENEFIT 3]'
-                      return tx.split('\n').map(l => `• ${l}`).join('\n\n')
-                    }
-                    case 'email': return job.email || '[EMAIL]'
-                    case 'phone': return job.phone || '[PHONE NUMBER]'
+              const spec = selectedTpl.layout[key]
+              if (!spec) return null
+              const value = (() => {
+                switch (key) {
+                  case 'title': return job.title || '[JOB TITLE]'
+                  case 'location': return job.location || '[LOCATION]'
+                  case 'salary': return job.salary || '[SALARY]'
+                  case 'description': return (job.description || '[SHORT DESCRIPTION]')
+                  case 'benefits': {
+                    const tx = (Array.isArray(job.benefits) ? job.benefits.join('\n') : job.benefits) || '[BENEFIT 1]\n[BENEFIT 2]\n[BENEFIT 3]'
+                    return tx.split('\n').map(l => `• ${l}`).join('\n\n')
                   }
-                })()
-                return (
-                  <div
-                    key={key}
-                    style={{
-                      position: 'absolute',
-                      left: spec.x * scale,
-                      top: spec.y * scale,
-                      width: (spec.w ?? selectedTpl.width - spec.x - 40) * scale,
-                      height: (spec.h ?? 'auto') as any,
-                      fontSize: (spec.fontSize ?? 18) * scale,
-                      lineHeight: 1.25,
-                      whiteSpace: 'pre-wrap',
-                      textAlign: spec.align ?? 'left',
-                      color: 'white',
-                      fontWeight: key === 'title' ? 700 : 500,
-                      wordBreak: 'break-word',
-                      overflowWrap: 'anywhere',
-                    
-                      // 👇 Hanging indent only for bullet-pointed benefits
-                      ...(key === 'benefits'
-                        ? {
-                            paddingLeft: `${16 * scale}px`,
-                            textIndent: `-${8 * scale}px`,
-                          }
-                        : {}),
-                    }}
-                    >
-                      {value}
-                    </div>
+                  case 'email': return job.email || '[EMAIL]'
+                  case 'phone': return job.phone || '[PHONE NUMBER]'
+                }
+              })()
+              return (
+                <div
+                  key={key}
+                  style={{
+                    position: 'absolute',
+                    left: spec.x * scale,
+                    top: spec.y * scale,
+                    width: (spec.w ?? selectedTpl.width - spec.x - 40) * scale,
+                    height: (spec.h ?? 'auto') as any,
+                    fontSize: (spec.fontSize ?? 18) * scale,
+                    lineHeight: 1.25,
+                    whiteSpace: 'pre-wrap',
+                    textAlign: spec.align ?? 'left',
+                    color: 'white',
+                    fontWeight: key === 'title' ? 700 : 500,
+                    wordBreak: 'break-word',
+                    overflowWrap: 'anywhere',
+                    ...(key === 'benefits'
+                      ? { paddingLeft: `${16 * scale}px`, textIndent: `-${8 * scale}px` }
+                      : {}),
+                  }}
+                >
+                  {value}
+                </div>
+              )
+            })}
 
               {/* Video slot (scaled) */}
               {selectedTpl.layout.video && videoUrl && (
