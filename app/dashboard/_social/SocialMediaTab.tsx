@@ -474,28 +474,28 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
               )
             })}
 
-              {/* Video slot (scaled) */}
-              {selectedTpl.layout.video && videoUrl && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    left: selectedTpl.layout.video.x * scale,
-                    top: selectedTpl.layout.video.y * scale,
-                    width: selectedTpl.layout.video.w * scale,
-                    height: selectedTpl.layout.video.h * scale,
-                    overflow: 'hidden',
-                    clipPath: clipPath(mask, roundedR * scale),
-                    background: '#111',
-                  }}
-                >
-                  <video
-                    src={videoUrl}
-                    playsInline
-                    controls
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                  />
-                </div>
-              )}
+            {/* Video slot (scaled) */}
+            {selectedTpl.layout.video && videoUrl && (
+              <div
+                style={{
+                  position: 'absolute',
+                  left: selectedTpl.layout.video.x * scale,
+                  top: selectedTpl.layout.video.y * scale,
+                  width: selectedTpl.layout.video.w * scale,
+                  height: selectedTpl.layout.video.h * scale,
+                  overflow: 'hidden',
+                  clipPath: clipPath(mask, roundedR * scale),
+                  background: '#111',
+                }}
+              >
+                <video
+                  src={videoUrl}
+                  playsInline
+                  controls
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
+              </div>
+            )}
             </div>
           </div>
 
