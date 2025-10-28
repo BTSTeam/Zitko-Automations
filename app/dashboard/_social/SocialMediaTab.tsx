@@ -50,7 +50,7 @@ const TEMPLATES: TemplateDef[] = [
     height: 1080,
     layout: {
       // tuned to your latest screenshot/spec
-      title:       { x: 420, y: 360, w: 560, fontSize: 60 },
+      title:       { x: 420, y: 320, w: 560, fontSize: 60 },
       location:    { x: 520, y: 460, w: 520, fontSize: 30 },
       salary:      { x: 520, y: 520, w: 520, fontSize: 28 },
       description: { x: 520, y: 580, w: 520, h: 80, fontSize: 18 },
@@ -169,20 +169,22 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
   }, [selectedTpl.width, selectedTpl.height])
 
   const previewRef = useRef<HTMLDivElement | null>(null)
-
+  const [fetchStatus, setFetchStatus] = useState<'idle'|'loading'|'done'|'error'>('idle')
+  
   // Updated fetchJob to pull from Vincere, summarise and extract contact details
   async function fetchJob() {
     const id = jobId.trim()
     if (!id) return
+    setFetchStatus('loading')
     try {
-      // 1. Fetch raw job details from Vincere API
+      // 1) Vincere
       const r = await fetch(`/api/vincere/position/${encodeURIComponent(id)}`, { cache: 'no-store' })
       if (!r.ok) throw new Error('Not found')
       const data = await r.json()
       const publicDesc: string =
         data?.public_description || data?.publicDescription || data?.description || ''
-
-      // 2. Use AI to extract structured fields (title, location, salary, benefits)
+  
+      // 2) Extract fields
       let extracted: any = {}
       try {
         const ai = await fetch('/api/job/summarize', {
@@ -192,8 +194,8 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
         })
         if (ai.ok) extracted = await ai.json()
       } catch {}
-
-      // 3. Use AI to produce a 196-character teaser
+  
+      // 3) Short description
       let shortDesc = ''
       try {
         const teaser = await fetch('/api/job/short-description', {
@@ -206,8 +208,8 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
           shortDesc = description ?? ''
         }
       } catch {}
-
-      // 4. Extract contact email/phone, falling back if needed
+  
+      // 4) Contacts (fallback)
       let contactEmail = String(extracted?.contactEmail ?? '').trim()
       let contactPhone = String(extracted?.contactPhone ?? '').trim()
       if (!contactEmail || !contactPhone) {
@@ -215,8 +217,8 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
         contactEmail = contactEmail || fb.email
         contactPhone = contactPhone || fb.phone
       }
-
-      // 5. Update state with final values
+  
+      // 5) Set state
       setJob({
         title: extracted?.title ?? data?.title ?? '',
         location: extracted?.location ?? data?.location ?? '',
@@ -228,9 +230,15 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
         email: contactEmail || data?.email || '',
         phone: contactPhone || data?.phone || '',
       })
+  
+      setFetchStatus('done')
+      // Reset back to "Fetch" after a couple of seconds
+      setTimeout(() => setFetchStatus('idle'), 2000)
     } catch (e) {
       console.error(e)
+      setFetchStatus('error')
       alert('Could not retrieve job data')
+      setTimeout(() => setFetchStatus('idle'), 1500)
     }
   }
 
@@ -367,9 +375,15 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
             <h3 className="font-semibold text-lg">Job details</h3>
             <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
               <input className="border rounded px-3 py-2 sm:col-span-2" placeholder="Job ID" value={jobId} onChange={e => setJobId(e.target.value)} />
-              <button className="rounded bg-gray-900 text-white px-3 py-2" onClick={fetchJob}>Fetch</button>
+              <button
+                className="rounded bg-gray-900 text-white px-3 py-2 disabled:opacity-60"
+                onClick={fetchJob}
+                disabled={fetchStatus === 'loading'}
+              >
+                {fetchStatus === 'loading' ? 'Fetching…' : fetchStatus === 'done' ? 'Fetched ✓' : 'Fetch'}
+              </button>
             </div>
-
+            
             <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
               <input className="border rounded px-3 py-2" placeholder="Job Title" value={job.title} onChange={e => setJob({ ...job, title: e.target.value })} />
               <input className="border rounded px-3 py-2" placeholder="Location" value={job.location} onChange={e => setJob({ ...job, location: e.target.value })} />
@@ -425,10 +439,10 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                     case 'title': return job.title || '[JOB TITLE]'
                     case 'location': return job.location || '[LOCATION]'
                     case 'salary': return job.salary || '[SALARY]'
-                    case 'description': return wrapText(job.description || '[SHORT DESCRIPTION]')
+                    case 'description': return (job.description || '[SHORT DESCRIPTION]')
                     case 'benefits': {
                       const tx = (Array.isArray(job.benefits) ? job.benefits.join('\n') : job.benefits) || '[BENEFIT 1]\n[BENEFIT 2]\n[BENEFIT 3]'
-                      return tx.split('\n').map(l => `• ${l}`).join('\n')
+                      return tx.split('\n').map(l => `• ${l}`).join('\n\n')
                     }
                     case 'email': return job.email || '[EMAIL]'
                     case 'phone': return job.phone || '[PHONE NUMBER]'
@@ -449,6 +463,8 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                       textAlign: spec.align ?? 'left',
                       color: 'white',
                       fontWeight: key === 'title' ? 700 : 500,
+                      wordBreak: 'break-word',
+                      overflowWrap: 'anywhere',
                     }}
                   >
                     {value}
