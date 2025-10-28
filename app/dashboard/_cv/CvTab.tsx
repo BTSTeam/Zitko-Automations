@@ -1601,15 +1601,24 @@ const handlePreview = async () => {
                 <h3 className="font-semibold text-sm">Education & Qualifications</h3>
                 <div className="flex items-center gap-3">
                   <ReorderControls id="education" />
-                  <button type="button" className="text-[11px] text-gray-500 underline" onClick={addEducation} disabled={loading}>
+                  <button
+                    type="button"
+                    className="text-[11px] text-gray-500 underline"
+                    onClick={addEducation}
+                    disabled={loading}
+                  >
                     Add qualification
                   </button>
-                  <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('education')}>
+                  <button
+                    type="button"
+                    className="text-[11px] text-gray-500 underline"
+                    onClick={() => toggle('education')}
+                  >
                     {open.education ? 'Hide' : 'Show'}
                   </button>
                 </div>
               </div>
-
+            
               {open.education && (
                 <div className="grid gap-3 mt-3">
                   {form.education.length === 0 ? (
@@ -1625,7 +1634,7 @@ const handlePreview = async () => {
                         >
                           Remove qualification
                         </button>
-              
+            
                         {/* Institution (kept bound to e.course so preview bold title remains correct) */}
                         <label className="grid gap-1">
                           <span className="text-[11px] text-gray-500">Institution</span>
@@ -1643,7 +1652,7 @@ const handlePreview = async () => {
                             placeholder="e.g. University of Cambridge"
                           />
                         </label>
-              
+            
                         {/* Dates row */}
                         <div className="grid grid-cols-2 gap-2">
                           <label className="grid gap-1">
@@ -1679,7 +1688,7 @@ const handlePreview = async () => {
                             />
                           </label>
                         </div>
-              
+            
                         {/* Description (now multi-line + larger) */}
                         <label className="grid gap-1">
                           <span className="text-[11px] text-gray-500">Description</span>
@@ -1696,24 +1705,31 @@ const handlePreview = async () => {
                             }}
                             placeholder={`Course details, modules, awards...\n(Press Enter for new lines)`}
                           />
-                          <span className="text-[10px] text-gray-400">Line breaks will be preserved in the PDF.</span>
+                          <span className="text-[10px] text-gray-400">
+                            Line breaks will be preserved in the PDF.
+                          </span>
                         </label>
                       </div>
                     ))
                   )}
                 </div>
               )}
-
-            {/* Additional (hidden entirely for US format in editor) */}
+            </section>  {/* ← closes the Education section */}
+            
+            /* Additional (hidden entirely for US format in editor) */
             {template !== 'us' && (
               <section>
                 <div className="flex items-center justify-between">
                   <h3 className="font-semibold text-sm">Additional Information</h3>
-                  <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('extra')}>
+                  <button
+                    type="button"
+                    className="text-[11px] text-gray-500 underline"
+                    onClick={() => toggle('extra')}
+                  >
                     {open.extra ? 'Hide' : 'Show'}
                   </button>
                 </div>
-
+            
                 {open.extra && (
                   <div className="grid gap-3 mt-3">
                     <label className="grid gap-1">
@@ -1721,52 +1737,82 @@ const handlePreview = async () => {
                       <input
                         className="input text-[11px]"
                         value={form.additional.drivingLicense}
-                        onChange={(e) => setForm(prev => ({ ...prev, additional: { ...prev.additional, drivingLicense: e.target.value } }))}
+                        onChange={(e) =>
+                          setForm(prev => ({
+                            ...prev,
+                            additional: { ...prev.additional, drivingLicense: e.target.value },
+                          }))
+                        }
                       />
                     </label>
-
+            
                     <label className="grid gap-1">
                       <span className="text-[11px] text-gray-500">Nationality</span>
                       <input
                         className="input text-[11px]"
                         value={form.additional.nationality}
-                        onChange={(e) => setForm(prev => ({ ...prev, additional: { ...prev.additional, nationality: e.target.value } }))}
+                        onChange={(e) =>
+                          setForm(prev => ({
+                            ...prev,
+                            additional: { ...prev.additional, nationality: e.target.value },
+                          }))
+                        }
                       />
                     </label>
-
+            
                     <label className="grid gap-1">
                       <span className="text-[11px] text-gray-500">Availability</span>
                       <input
                         className="input text-[11px]"
                         value={form.additional.availability}
-                        onChange={(e) => setForm(prev => ({ ...prev, additional: { ...prev.additional, availability: e.target.value } }))}
+                        onChange={(e) =>
+                          setForm(prev => ({
+                            ...prev,
+                            additional: { ...prev.additional, availability: e.target.value },
+                          }))
+                        }
                       />
                     </label>
-
+            
                     <label className="grid gap-1">
                       <span className="text-[11px] text-gray-500">Health</span>
                       <input
                         className="input text-[11px]"
                         value={form.additional.health}
-                        onChange={(e) => setForm(prev => ({ ...prev, additional: { ...prev.additional, health: e.target.value } }))}
+                        onChange={(e) =>
+                          setForm(prev => ({
+                            ...prev,
+                            additional: { ...prev.additional, health: e.target.value },
+                          }))
+                        }
                       />
                     </label>
-
+            
                     <label className="grid gap-1">
                       <span className="text-[11px] text-gray-500">Criminal Record</span>
                       <input
                         className="input text-[11px]"
                         value={form.additional.criminalRecord}
-                        onChange={(e) => setForm(prev => ({ ...prev, additional: { ...prev.additional, criminalRecord: e.target.value } }))}
+                        onChange={(e) =>
+                          setForm(prev => ({
+                            ...prev,
+                            additional: { ...prev.additional, criminalRecord: e.target.value },
+                          }))
+                        }
                       />
                     </label>
-
+            
                     <label className="grid gap-1">
                       <span className="text-[11px] text-gray-500">Financial History</span>
                       <input
                         className="input text-[11px]"
                         value={form.additional.financialHistory}
-                        onChange={(e) => setForm(prev => ({ ...prev, additional: { ...prev.additional, financialHistory: e.target.value } }))}
+                        onChange={(e) =>
+                          setForm(prev => ({
+                            ...prev,
+                            additional: { ...prev.additional, financialHistory: e.target.value },
+                          }))
+                        }
                       />
                     </label>
                   </div>
