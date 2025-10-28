@@ -56,7 +56,7 @@ const TEMPLATES: TemplateDef[] = [
       benefits:    { x: 520, y: 680, w: 520, h: 260, fontSize: 24 },
       email:       { x: 800, y: 965, w: 180, fontSize: 20, align: 'left' },
       phone:       { x: 800, y: 1020, w: 180, fontSize: 20, align: 'left' },
-      video:       { x: 80,  y: 80,  w: 280, h: 280 },
+      video:       { x: 80,  y: 580,  w: 300, h: 300 },
     },
   },
   {
@@ -141,8 +141,8 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
   })
 
   // video
-  const [videoUrl, setVideoUrl] = useState<string | null>(null)               // playback URL
-  const [videoRawDownload, setVideoRawDownload] = useState<string | null>(null) // raw download URL
+  const [videoUrl, setVideoUrl] = useState<string | null>(null)               // MP4 playback URL
+  const [videoPublicId, setVideoPublicId] = useState<string | null>(null)     // Cloudinary public_id
   const [videoMeta, setVideoMeta] = useState<{ mime: string; width: number; height: number } | null>(null)
   const [mask, setMask] = useState<VideoMask>('circle')
   const [roundedR, setRoundedR] = useState(32)
@@ -252,28 +252,12 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
   }
 
   async function downloadMp4() {
-    if (!videoUrl) {
+    if (!videoPublicId) {
       alert('Add a video first.')
       return
     }
-    try {
-      // NOTE: this expects a server route that renders the COMPOSITED poster+video.
-      const res = await fetch('/api/export-mp4', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          templateId: selectedTpl.id,
-          job,
-          video: { url: videoUrl, mask, roundedR },
-        }),
-      })
-      if (!res.ok) throw new Error('Export failed')
-      const { url } = await res.json()
-      window.open(url, '_blank')
-    } catch (e) {
-      console.error(e)
-      alert('MP4 export not set up yet. See /api/export-mp4 TODO.')
-    }
+    // Hit your new GET route which redirects/streams the MP4
+    window.location.href = `/api/export-mp4?publicId=${encodeURIComponent(videoPublicId)}&download=1`
   }
 
   const benefitsText = useMemo(() => {
@@ -308,8 +292,12 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
         <div className="flex flex-col gap-6">
           {/* recorder (collapsible) */}
           <section className="border rounded-xl bg-white overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b">
-              <h3 className="font-semibold text-lg">Video record</h3>
+          <div className="flex items-center justify-between px-4 py-3 border-b">
+            <h3 className="font-semibold text-lg">Video record</h3>
+            <div className="flex items-center gap-3">
+              {videoUrl && (
+                <span className="text-sm text-emerald-700">Video attached ✓</span>
+              )}
               <button
                 type="button"
                 onClick={() => setVideoOpen(v => !v)}
@@ -320,6 +308,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                 {videoOpen ? 'Hide ▲' : 'Show ▼'}
               </button>
             </div>
+          </div>
 
             <div
               id="video-panel"
@@ -357,30 +346,15 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                   <Recorder
                     jobId={jobId || 'unassigned'}
                     onUploaded={(payload) => {
-                      // Recorder returns: { publicId, playbackMp4, downloadMp4, mime, width, height }
-                      setVideoUrl(payload.playbackMp4)
-                      setVideoRawDownload(payload.downloadMp4)
+                      // { publicId, playbackMp4, mime, width, height }
+                      setVideoUrl(payload.playbackMp4)               // MP4 streaming URL
+                      setVideoPublicId(payload.publicId)            // needed for /api/export-mp4
                       setVideoMeta({ mime: payload.mime, width: payload.width, height: payload.height })
                     }}
                   />
                   {videoUrl && (
-                    <p className="mt-2 text-sm text-emerald-700 break-all">
-                      Video attached ✓ <br />
-                      <span className="text-gray-500">({videoMeta?.mime})</span>
-                      {videoRawDownload && (
-                        <>
-                          {' · '}
-                          <a
-                            href={videoRawDownload}
-                            className="underline"
-                            target="_blank"
-                            rel="noreferrer"
-                            title="Download original recorded video"
-                          >
-                            Download raw MP4
-                          </a>
-                        </>
-                      )}
+                    <p className="mt-2 text-sm text-gray-500">
+                      ({videoMeta?.mime})
                     </p>
                   )}
                 </div>
