@@ -1716,7 +1716,6 @@ const handlePreview = async () => {
               )}
             </section>  {/* ← closes the Education section */}
             
-            /* Additional (hidden entirely for US format in editor) */
             {template !== 'us' && (
               <section>
                 <div className="flex items-center justify-between">
