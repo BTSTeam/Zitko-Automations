@@ -431,106 +431,114 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
               }}
             >
               {(['title','location','salary','description','benefits','email','phone'] as const).map(key => {
-              const spec = selectedTpl.layout[key]
-              if (!spec) return null
-              const value = (() => {
-                switch (key) {
-                  case 'title': return job.title || '[JOB TITLE]'
-                  case 'location': return job.location || '[LOCATION]'
-                  case 'salary': return job.salary || '[SALARY]'
-                  case 'description': return (job.description || '[SHORT DESCRIPTION]')
-                  case 'benefits': {
-                    const tx = (Array.isArray(job.benefits) ? job.benefits.join('\n') : job.benefits) || '[BENEFIT 1]\n[BENEFIT 2]\n[BENEFIT 3]'
-                    return tx.split('\n').map(l => `• ${l}`).join('\n\n')
+                const spec = selectedTpl.layout[key]
+                if (!spec) return null
+            
+                const value = (() => {
+                  switch (key) {
+                    case 'title': return job.title || '[JOB TITLE]'
+                    case 'location': return job.location || '[LOCATION]'
+                    case 'salary': return job.salary || '[SALARY]'
+                    case 'description': return job.description || '[SHORT DESCRIPTION]'
+                    case 'benefits': {
+                      const tx =
+                        (Array.isArray(job.benefits) ? job.benefits.join('\n') : job.benefits) ||
+                        '[BENEFIT 1]\n[BENEFIT 2]\n[BENEFIT 3]'
+                      return tx.split('\n').map(l => `• ${l}`).join('\n\n')
+                    }
+                    case 'email': return job.email || '[EMAIL]'
+                    case 'phone': return job.phone || '[PHONE NUMBER]'
                   }
-                  case 'email': return job.email || '[EMAIL]'
-                  case 'phone': return job.phone || '[PHONE NUMBER]'
-                }
-              })()
-              return key === 'benefits' ? (
-              <div
-                key={key}
-                style={{
-                  position: 'absolute',
-                  left: spec.x * scale,
-                  top: spec.y * scale,
-                  width: (spec.w ?? selectedTpl.width - spec.x - 40) * scale,
-                  height: (spec.h ?? 'auto') as any,
-                  fontSize: (spec.fontSize ?? 18) * scale,
-                  lineHeight: 1.25,
-                  textAlign: spec.align ?? 'left',
-                  color: 'white',
-                  // container can keep normal wrapping
-                  wordBreak: 'break-word',
-                  overflowWrap: 'anywhere',
-                }}
-              >
-                {(Array.isArray(job.benefits) ? job.benefits : String(job.benefits || ''))
-                  .split('\n')
-                  .filter(Boolean)
-                  .map((line, i) => (
+                })()
+            
+                // benefits block (bulleted lines)
+                if (key === 'benefits') {
+                  return (
                     <div
-                      key={i}
+                      key={key}
                       style={{
-                        // hanging indent per item:
-                        paddingLeft: `${16 * scale}px`,
-                        textIndent: `-${8 * scale}px`,
-                        whiteSpace: 'pre-wrap',
-                        marginBottom: `${8 * scale}px`, // small gap between bullets
+                        position: 'absolute',
+                        left: spec.x * scale,
+                        top: spec.y * scale,
+                        width: (spec.w ?? (selectedTpl.width - spec.x - 40)) * scale,
+                        // if h provided, scale it; else auto
+                        height: spec.h ? spec.h * scale : undefined,
+                        fontSize: (spec.fontSize ?? 18) * scale,
+                        lineHeight: 1.25,
+                        textAlign: spec.align ?? 'left',
+                        color: 'white',
+                        wordBreak: 'break-word',
+                        overflowWrap: 'anywhere',
                       }}
                     >
-                      {`• ${line}`}
+                      {(Array.isArray(job.benefits) ? job.benefits : String(job.benefits || ''))
+                        .split('\n')
+                        .filter(Boolean)
+                        .map((line, i) => (
+                          <div
+                            key={i}
+                            style={{
+                              paddingLeft: `${16 * scale}px`,
+                              textIndent: `-${8 * scale}px`,
+                              whiteSpace: 'pre-wrap',
+                              marginBottom: `${8 * scale}px`,
+                            }}
+                          >
+                            {`• ${line}`}
+                          </div>
+                        ))}
                     </div>
-                  ))}
-              </div>
-            ) : (
-              <div
-                key={key}
-                style={{
-                  position: 'absolute',
-                  left: spec.x * scale,
-                  top: spec.y * scale,
-                  width: (spec.w ?? selectedTpl.width - spec.x - 40) * scale,
-                  height: (spec.h ?? 'auto') as any,
-                  fontSize: (spec.fontSize ?? 18) * scale,
-                  lineHeight: 1.25,
-                  whiteSpace: 'pre-wrap',
-                  textAlign: spec.align ?? 'left',
-                  color: 'white',
-                  fontWeight: key === 'title' ? 700 : 500,
-                  wordBreak: 'break-word',
-                  overflowWrap: 'anywhere',
-                }}
-              >
-                {value}
-              </div>
-            )
-
-            {/* Video slot (scaled) */}
-            {selectedTpl.layout.video && videoUrl && (
-              <div
-                style={{
-                  position: 'absolute',
-                  left: selectedTpl.layout.video.x * scale,
-                  top: selectedTpl.layout.video.y * scale,
-                  width: selectedTpl.layout.video.w * scale,
-                  height: selectedTpl.layout.video.h * scale,
-                  overflow: 'hidden',
-                  clipPath: clipPath(mask, roundedR * scale),
-                  background: '#111',
-                }}
-              >
-                <video
-                  src={videoUrl}
-                  playsInline
-                  controls
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                />
-              </div>
-            )}
+                  )
+                }
+            
+                // default text blocks
+                return (
+                  <div
+                    key={key}
+                    style={{
+                      position: 'absolute',
+                      left: spec.x * scale,
+                      top: spec.y * scale,
+                      width: (spec.w ?? (selectedTpl.width - spec.x - 40)) * scale,
+                      height: spec.h ? spec.h * scale : undefined,
+                      fontSize: (spec.fontSize ?? 18) * scale,
+                      lineHeight: 1.25,
+                      whiteSpace: 'pre-wrap',
+                      textAlign: spec.align ?? 'left',
+                      color: 'white',
+                      fontWeight: key === 'title' ? 700 : 500,
+                      wordBreak: 'break-word',
+                      overflowWrap: 'anywhere',
+                    }}
+                  >
+                    {value}
+                  </div>
+                )
+              })} {/* ← close the .map callback here */}
+            
+              {/* Video slot (scaled) — render OUTSIDE the map */}
+              {selectedTpl.layout.video && videoUrl && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    left: selectedTpl.layout.video.x * scale,
+                    top: selectedTpl.layout.video.y * scale,
+                    width: selectedTpl.layout.video.w * scale,
+                    height: selectedTpl.layout.video.h * scale,
+                    overflow: 'hidden',
+                    clipPath: clipPath(mask, roundedR * scale),
+                    background: '#111',
+                  }}
+                >
+                  <video
+                    src={videoUrl}
+                    playsInline
+                    controls
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
+                </div>
+              )}
             </div>
-          </div>
-
           <p className="mt-3 text-xs text-gray-500">
             Preview scales the poster to fit; PNG exports at the template’s intrinsic size.
           </p>
