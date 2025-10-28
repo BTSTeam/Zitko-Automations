@@ -363,6 +363,43 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   const [salesDocBlob, setSalesDocBlob] = useState<Blob | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
+  const [previewBusy, setPreviewBusy] = useState(false);
+
+const handlePreview = async () => {
+  try {
+    setPreviewBusy(true);
+    const mod = await import('html2pdf.js');
+    const html2pdf = (mod as any).default || (mod as any);
+
+    const node = standardPreviewRef.current;
+    if (!node) throw new Error('Preview not ready');
+
+    const baseName = (candidateName || form.name || 'CV').replace(/\s+/g, '');
+    const suffix = template === 'us' ? 'US' : 'UK';
+    const fileName = `${baseName}_${suffix}.pdf`;
+
+    const opt = {
+      margin: 10,
+      filename: fileName,
+      image: { type: 'jpeg', quality: 0.95 },
+      html2canvas: { scale: 2, backgroundColor: '#FFFFFF' },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
+      pagebreak: { mode: ['avoid-all', 'css', 'legacy'] as const },
+    };
+
+    const worker = html2pdf().set(opt).from(node).toPdf();
+    const pdf = await worker.get('pdf');
+    const pdfBlob = new Blob([pdf.output('arraybuffer')], { type: 'application/pdf' });
+    const url = URL.createObjectURL(pdfBlob);
+    // open the generated PDF in a new tab
+    window.open(url, '_blank');
+  } catch (err) {
+    console.error(err);
+  } finally {
+    setPreviewBusy(false);
+  }
+};
+
   function resetSalesState() {
     setSalesErr(null)
     if (salesDocUrl) URL.revokeObjectURL(salesDocUrl)
@@ -909,143 +946,124 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     </>
   )
 
-  const renderEmploymentPreview = () => {
-    const empPreview = (form.employment || []).filter(e =>
-      [e.title, e.company, e.start, e.end, e.description].some(v => String(v || '').trim())
-    )
-    if (empPreview.length === 0) {
-      return (
-        <div className="cv-headpair">
-          <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
-            Employment History
-          </h2>
-          <div className="text-gray-500 text-[12px]">No employment history yet.</div>
-        </div>
-      )
-    }
-    const first = empPreview[0]
-    const firstRange = [first.start, first.end].filter(Boolean).join(' to ')
-    return (
-      <>
-        <div className="cv-headpair mb-4 md:mb-6">
-          <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
-            Employment History
-          </h2>
-          <div className="cv-entry">
-            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2">
-              <div className="min-w-0">
-                {!!(first.title && first.title.trim()) && (<div className="font-medium">{first.title}</div>)}
-                {!!(first.company && first.company.trim()) && (
-                  <div className="text-[11px] text-gray-500">{first.company}</div>
-                )}
-              </div>
-              {!!firstRange && (
-                <div className="text-[11px] text-gray-500 whitespace-nowrap text-right shrink-0">
-                  {firstRange}
-                </div>
-              )}
-              {!!(first.description && first.description.trim()) && (
-                <div className="text-[12px] mt-0 whitespace-pre-wrap break-words col-span-2">
-                  {first.description}
-                </div>
-              )}
+      const renderEmploymentPreview = () => {
+        const empPreview = (form.employment || []).filter(e =>
+          [e.title, e.company, e.start, e.end, e.description].some(v => String(v || '').trim())
+        )
+      
+        if (empPreview.length === 0) {
+          return (
+            <div className="cv-headpair">
+              <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+                Employment History
+              </h2>
+              <div className="text-gray-500 text-[12px]">No employment history yet.</div>
             </div>
+          )
+        }
+      
+        return (
+          <>
+            {/* Section heading stands alone so it never forces all jobs to next page */}
+            <div className="cv-headpair mb-4 md:mb-6">
+              <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+                Employment History
+              </h2>
+            </div>
+      
+            {/* Each job is now its own block to prevent them sticking together */}
+            <div className="space-y-4">
+              {empPreview.map((e, i) => {
+                const range = [e.start, e.end].filter(Boolean).join(' to ')
+                return (
+                  <div key={i} className="cv-entry">
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2">
+                      <div className="min-w-0">
+                        {!!(e.title && e.title.trim()) && (
+                          <div className="font-medium">{e.title}</div>
+                        )}
+                        {!!(e.company && e.company.trim()) && (
+                          <div className="text-[11px] text-gray-500">{e.company}</div>
+                        )}
+                      </div>
+      
+                      {!!range && (
+                        <div className="text-[11px] text-gray-500 whitespace-nowrap text-right shrink-0">
+                          {range}
+                        </div>
+                      )}
+      
+                      {!!(e.description && e.description.trim()) && (
+                        <div className="text-[12px] mt-0 whitespace-pre-wrap break-words col-span-2">
+                          {e.description}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </>
+        )
+      }
+
+    const renderEducationPreview = () => {
+      const eduPreview = (form.education || []).filter(e =>
+        [e.course, e.institution, e.start, e.end].some(v => String(v || '').trim())
+      )
+    
+      if (eduPreview.length === 0) {
+        return (
+          <div className="cv-headpair">
+            <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+              Education & Qualifications
+            </h2>
+            <div className="text-gray-500 text-[12px]">No education yet.</div>
           </div>
-        </div>
-        <div className="space-y-4">
-          {empPreview.slice(1).map((e, i) => {
-            const range = [e.start, e.end].filter(Boolean).join(' to ')
-            return (
-              <div key={i} className="cv-entry">
-                <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2">
-                  <div className="min-w-0">
-                    {!!(e.title && e.title.trim()) && (<div className="font-medium">{e.title}</div>)}
-                    {!!(e.company && e.company.trim()) && (
-                      <div className="text-[11px] text-gray-500">{e.company}</div>
+        )
+      }
+    
+      return (
+        <>
+          {/* Heading separated so the whole section isn’t forced onto a new page */}
+          <div className="cv-headpair mb-3">
+            <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+              Education & Qualifications
+            </h2>
+          </div>
+    
+          {/* Each education item is a separate block */}
+          <div className="space-y-3">
+            {eduPreview.map((e, i) => {
+              const range = [e.start, e.end].filter(Boolean).join(' to ')
+              return (
+                <div key={i} className="cv-entry">
+                  <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2">
+                    <div className="min-w-0">
+                      {!!(e.course && e.course.trim()) && (
+                        <div className="font-medium">{e.course}</div>
+                      )}
+                    </div>
+    
+                    {!!range && (
+                      <div className="text-[11px] text-gray-500 whitespace-nowrap text-right shrink-0">
+                        {range}
+                      </div>
+                    )}
+    
+                    {!!(e.institution && e.institution.trim()) && (
+                      <div className="text-[12px] whitespace-pre-wrap break-words col-span-2">
+                        {e.institution}
+                      </div>
                     )}
                   </div>
-                  {!!range && (
-                    <div className="text-[11px] text-gray-500 whitespace-nowrap text-right shrink-0">
-                      {range}
-                    </div>
-                  )}
-                  {!!(e.description && e.description.trim()) && (
-                    <div className="text-[12px] mt-0 whitespace-pre-wrap break-words col-span-2">
-                      {e.description}
-                    </div>
-                  )}
                 </div>
-              </div>
-            )
-          })}
-        </div>
-      </>
-    )
-  }
-
-  const renderEducationPreview = () => {
-    const eduPreview = (form.education || []).filter(e =>
-      [e.course, e.institution, e.start, e.end].some(v => String(v || '').trim())
-    )
-    if (eduPreview.length === 0) {
-      return (
-        <div className="cv-headpair">
-          <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
-            Education & Qualifications
-          </h2>
-          <div className="text-gray-500 text-[12px]">No education yet.</div>
-        </div>
+              )
+            })}
+          </div>
+        </>
       )
     }
-    const first = eduPreview[0]
-    const firstRange = [first.start, first.end].filter(Boolean).join(' to ')
-    return (
-      <>
-        <div className="cv-headpair mb-3">
-          <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
-            Education & Qualifications
-          </h2>
-          <div className="cv-entry">
-            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2">
-              <div className="min-w-0">
-                <div className="font-medium">{(first.course || '').trim()}</div>
-              </div>
-              <div className="text-[11px] text-gray-500 whitespace-nowrap text-right shrink-0">
-                {firstRange}
-              </div>
-              {!!(first.institution && first.institution.trim()) && (
-                <div className="text-[12px] whitespace-pre-wrap break-words col-span-2">
-                  {first.institution}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-        <div className="space-y-3">
-          {eduPreview.slice(1).map((e, i) => {
-            const range = [e.start, e.end].filter(Boolean).join(' to ')
-            return (
-              <div key={i} className="cv-entry">
-                <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2">
-                  <div className="min-w-0">
-                    <div className="font-medium">{(e.course || '').trim()}</div>
-                  </div>
-                  <div className="text-[11px] text-gray-500 whitespace-nowrap text-right shrink-0">
-                    {range}
-                  </div>
-                  {!!(e.institution && e.institution.trim()) && (
-                    <div className="text-[12px] whitespace-pre-wrap break-words col-span-2">
-                      {e.institution}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </>
-    )
-  }
 
   function SalesViewerCard() {
     return (
@@ -1213,7 +1231,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
         {/* Top controls: UK/US vs Sales */}
         {template !== 'sales' && (
-          <div className="grid sm:grid-cols-[1fr_auto_auto] gap-2 mt-4">
+          <div className="grid sm:grid-cols-[1fr_auto_auto_auto] gap-2 mt-4">
             <input
               className="input"
               placeholder="Enter Candidate ID"
@@ -1230,21 +1248,30 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
             >
               {loading ? 'Fetching…' : 'Retrieve Candidate'}
             </button>
-
-            {/* Upload (UK/US DOM→PDF) */}
+          
+            <button
+              type="button"
+              className="btn btn-grey"
+              onClick={handlePreview}
+              disabled={previewBusy || !candidateId}
+              title="Preview the right panel CV as PDF"
+            >
+              {previewBusy ? 'Previewing…' : 'Preview'}
+            </button>
+          
             <button
               type="button"
               className="btn btn-grey"
               disabled={!candidateId}
               onClick={() => {
-                const baseName = (candidateName || form.name || 'CV').replace(/\s+/g, '')
-                const suffix = template === 'us' ? 'US' : 'UK'
-                const defaultName = `${baseName}_${suffix}.pdf`
-                setUploadFileName(defaultName)
-                setUploadContext('standard')
-                setUploadErr(null)
-                setUploadSuccess(null)
-                setShowUploadModal(true)
+                const baseName = (candidateName || form.name || 'CV').replace(/\s+/g, '');
+                const suffix = template === 'us' ? 'US' : 'UK';
+                const defaultName = `${baseName}_${suffix}.pdf`;
+                setUploadFileName(defaultName);
+                setUploadContext('standard');
+                setUploadErr(null);
+                setUploadSuccess(null);
+                setShowUploadModal(true);
               }}
               title="Export the right panel CV to PDF and upload to Vincere"
             >
@@ -1589,7 +1616,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                     <div className="text-[12px] text-gray-500">No education yet.</div>
                   ) : (
                     form.education.map((e, i) => (
-                      <div key={i} className="border rounded-xl p-3 grid gap-2 relative">
+                      <div key={i} className="border rounded-xl p-3 grid gap-3 relative">
                         <button
                           type="button"
                           className="absolute right-2 top-2 text-[11px] text-gray-500 underline"
@@ -1598,7 +1625,8 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                         >
                           Remove qualification
                         </button>
-
+              
+                        {/* Institution (kept bound to e.course so preview bold title remains correct) */}
                         <label className="grid gap-1">
                           <span className="text-[11px] text-gray-500">Institution</span>
                           <input
@@ -1612,65 +1640,69 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                                 return copy
                               })
                             }}
+                            placeholder="e.g. University of Cambridge"
                           />
                         </label>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              
+                        {/* Dates row */}
+                        <div className="grid grid-cols-2 gap-2">
                           <label className="grid gap-1">
-                            <span className="text-[11px] text-gray-500">Description</span>
+                            <span className="text-[11px] text-gray-500">Start</span>
                             <input
                               className="input text-[11px]"
-                              value={e.institution || ''}
+                              value={e.start || ''}
                               onChange={(ev) => {
                                 const v = ev.target.value
                                 setForm(prev => {
                                   const copy = structuredClone(prev)
-                                  copy.education[i].institution = v
+                                  copy.education[i].start = v
                                   return copy
                                 })
                               }}
+                              placeholder="e.g. 2019-09 or 09/2019"
                             />
                           </label>
-
-                          <div className="grid grid-cols-2 gap-2">
-                            <label className="grid gap-1">
-                              <span className="text-[11px] text-gray-500">Start</span>
-                              <input
-                                className="input text-[11px]"
-                                value={e.start || ''}
-                                onChange={(ev) => {
-                                  const v = ev.target.value
-                                  setForm(prev => {
-                                    const copy = structuredClone(prev)
-                                    copy.education[i].start = v
-                                    return copy
-                                  })
-                                }}
-                              />
-                            </label>
-                            <label className="grid gap-1">
-                              <span className="text-[11px] text-gray-500">End</span>
-                              <input
-                                className="input text-[11px]"
-                                value={e.end || ''}
-                                onChange={(ev) => {
-                                  const v = ev.target.value
-                                  setForm(prev => {
-                                    const copy = structuredClone(prev)
-                                    copy.education[i].end = v
-                                    return copy
-                                  })
-                                }}
-                              />
-                            </label>
-                          </div>
+                          <label className="grid gap-1">
+                            <span className="text-[11px] text-gray-500">End</span>
+                            <input
+                              className="input text-[11px]"
+                              value={e.end || ''}
+                              onChange={(ev) => {
+                                const v = ev.target.value
+                                setForm(prev => {
+                                  const copy = structuredClone(prev)
+                                  copy.education[i].end = v
+                                  return copy
+                                })
+                              }}
+                              placeholder="e.g. 2022-06 or 06/2022"
+                            />
+                          </label>
                         </div>
+              
+                        {/* Description (now multi-line + larger) */}
+                        <label className="grid gap-1">
+                          <span className="text-[11px] text-gray-500">Description</span>
+                          <textarea
+                            className="input min-h-[120px] resize-y text-[11px]"
+                            value={e.institution || ''}
+                            onChange={(ev) => {
+                              const v = ev.target.value
+                              setForm(prev => {
+                                const copy = structuredClone(prev)
+                                copy.education[i].institution = v
+                                return copy
+                              })
+                            }}
+                            placeholder={`Course details, modules, awards...\n(Press Enter for new lines)`}
+                          />
+                          <span className="text-[10px] text-gray-400">Line breaks will be preserved in the PDF.</span>
+                        </label>
                       </div>
                     ))
                   )}
                 </div>
               )}
-            </section>
 
             {/* Additional (hidden entirely for US format in editor) */}
             {template !== 'us' && (
