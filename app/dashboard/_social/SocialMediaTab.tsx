@@ -141,7 +141,8 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
   })
 
   // video
-  const [videoUrl, setVideoUrl] = useState<string | null>(null)
+  const [videoUrl, setVideoUrl] = useState<string | null>(null)               // playback URL
+  const [videoRawDownload, setVideoRawDownload] = useState<string | null>(null) // raw download URL
   const [videoMeta, setVideoMeta] = useState<{ mime: string; width: number; height: number } | null>(null)
   const [mask, setMask] = useState<VideoMask>('circle')
   const [roundedR, setRoundedR] = useState(32)
@@ -256,6 +257,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
       return
     }
     try {
+      // NOTE: this expects a server route that renders the COMPOSITED poster+video.
       const res = await fetch('/api/export-mp4', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -353,15 +355,32 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
 
                 <div className="mt-3">
                   <Recorder
-                    onUploaded={(url, meta) => {
-                      setVideoUrl(url)
-                      setVideoMeta(meta)
+                    jobId={jobId || 'unassigned'}
+                    onUploaded={(payload) => {
+                      // Recorder returns: { publicId, playbackMp4, downloadMp4, mime, width, height }
+                      setVideoUrl(payload.playbackMp4)
+                      setVideoRawDownload(payload.downloadMp4)
+                      setVideoMeta({ mime: payload.mime, width: payload.width, height: payload.height })
                     }}
                   />
                   {videoUrl && (
                     <p className="mt-2 text-sm text-emerald-700 break-all">
                       Video attached ✓ <br />
                       <span className="text-gray-500">({videoMeta?.mime})</span>
+                      {videoRawDownload && (
+                        <>
+                          {' · '}
+                          <a
+                            href={videoRawDownload}
+                            className="underline"
+                            target="_blank"
+                            rel="noreferrer"
+                            title="Download original recorded video"
+                          >
+                            Download raw MP4
+                          </a>
+                        </>
+                      )}
                     </p>
                   )}
                 </div>
