@@ -73,7 +73,7 @@ const TEMPLATES: TemplateDef[] = [
       description:{ x: 80,  y: 460, w: 520, h: 120, fontSize: 18 },
       benefits:   { x: 80,  y: 600, w: 520, h: 140, fontSize: 18 },
       email:      { x: 800, y: 975, w: 180, fontSize: 20, align: 'left' },
-      phone:      { x: 800, y: 1030, w: 180, fontSize: 20, align: 'left' },,
+      phone:      { x: 800, y: 1030, w: 180, fontSize: 20, align: 'left' },
       video:      { x: 720, y: 360, w: 280, h: 360 },
     },
   },
