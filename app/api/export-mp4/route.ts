@@ -1,53 +1,53 @@
 // app/api/export-mp4/route.ts
-import { NextRequest, NextResponse } from 'next/server'
-import { v2 as cloudinary } from 'cloudinary'
-import type { UploadApiResponse } from 'cloudinary'
+import { NextRequest, NextResponse } from 'next/server';
+import { v2 as cloudinary } from 'cloudinary';
 
-export const runtime = 'nodejs'
+export const runtime = 'nodejs';
 
+// Configure Cloudinary – use server-side vars, fall back to public if defined
 cloudinary.config({
   cloud_name:
-    process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME ||
+    process.env.CLOUDINARY_CLOUD_NAME ||
     process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY!,
   api_secret: process.env.CLOUDINARY_API_SECRET!,
   secure: true,
-})
+});
 
 export async function GET(req: NextRequest) {
-  const publicId = req.nextUrl.searchParams.get('publicId')
-  const asDownload = req.nextUrl.searchParams.get('download') === '1'
+  const publicId = req.nextUrl.searchParams.get('publicId');
+  const asDownload = req.nextUrl.searchParams.get('download') === '1';
+
   if (!publicId) {
-    return NextResponse.json({ error: 'Missing publicId' }, { status: 400 })
+    return NextResponse.json({ error: 'Missing publicId' }, { status: 400 });
   }
 
-  // short-lived signed MP4 (private asset)
-  const signedMp4 = cloudinary.url(publicId, {
-    resource_type: 'video',
-    type: 'private',
+  // filename used only when forcing download
+  const filename = `${publicId.split('/').pop() || 'video'}.mp4`;
+
+  // Common options for signed URL generation
+  const commonOpts = {
+    resource_type: 'video' as const,
+    type: 'authenticated' as const, // allows signed delivery
     sign_url: true,
-    expires_at: Math.floor(Date.now() / 1000) + 60 * 60, // 1h
-    transformation: [{ quality: 'auto:good' }, { fetch_format: 'mp4' }],
+    expires_at: Math.floor(Date.now() / 1000) + 60 * 60, // 1 hour
+    transformation: [
+      { quality: 'auto:good' },
+      { fetch_format: 'mp4' },
+    ],
     secure: true,
     format: 'mp4',
-  })
+  };
 
-  if (!asDownload) return NextResponse.redirect(signedMp4, 302)
+  // Add attachment flag if a file download is requested
+  const opts = asDownload
+    ? {
+        ...commonOpts,
+        flags: `attachment:${filename}`,
+      }
+    : commonOpts;
 
-  const r = await fetch(signedMp4)
-  if (!r.ok) {
-    const detail = await r.text().catch(() => '')
-    return NextResponse.json({ error: 'Transcode/download failed', detail }, { status: 502 })
-  }
-  const blob = await r.blob()
-  const filename = `${publicId.split('/').pop() || 'video'}.mp4`
-
-  return new NextResponse(blob.stream(), {
-    headers: {
-      'Content-Type': 'video/mp4',
-      'Content-Length': String(blob.size),
-      'Content-Disposition': `attachment; filename="${filename}"`,
-      'Cache-Control': 'no-store',
-    },
-  })
+  // Create the signed URL and redirect the client there
+  const signedMp4 = cloudinary.url(publicId, opts);
+  return NextResponse.redirect(signedMp4, 302);
 }
