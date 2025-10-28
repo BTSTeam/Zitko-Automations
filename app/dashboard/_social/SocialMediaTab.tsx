@@ -49,11 +49,10 @@ const TEMPLATES: TemplateDef[] = [
     width: 1080,
     height: 1080,
     layout: {
-      // tuned to your latest screenshot/spec
-      title:       { x: 280, y: 130, w: 560, fontSize: 60 },
+      title:       { x: 300, y: 115, w: 560, fontSize: 60 },
       location:    { x: 520, y: 330, w: 520, fontSize: 30 },
       salary:      { x: 520, y: 400, w: 520, fontSize: 28 },
-      description: { x: 520, y: 470, w: 520, h: 80, fontSize: 20 },
+      description: { x: 520, y: 480, w: 520, h: 80, fontSize: 20 },
       benefits:    { x: 520, y: 620, w: 520, h: 260, fontSize: 24 },
       email:       { x: 800, y: 965, w: 180, fontSize: 20, align: 'left' },
       phone:       { x: 800, y: 1020, w: 180, fontSize: 20, align: 'left' },
@@ -453,8 +452,8 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                     key={key}
                     style={{
                       position: 'absolute',
-                      left: (spec.x) * scale,
-                      top:  (spec.y) * scale,
+                      left: spec.x * scale,
+                      top: spec.y * scale,
                       width: (spec.w ?? selectedTpl.width - spec.x - 40) * scale,
                       height: (spec.h ?? 'auto') as any,
                       fontSize: (spec.fontSize ?? 18) * scale,
@@ -465,12 +464,18 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                       fontWeight: key === 'title' ? 700 : 500,
                       wordBreak: 'break-word',
                       overflowWrap: 'anywhere',
+                    
+                      // 👇 Hanging indent only for bullet-pointed benefits
+                      ...(key === 'benefits'
+                        ? {
+                            paddingLeft: `${16 * scale}px`,
+                            textIndent: `-${8 * scale}px`,
+                          }
+                        : {}),
                     }}
-                  >
-                    {value}
-                  </div>
-                )
-              })}
+                    >
+                      {value}
+                    </div>
 
               {/* Video slot (scaled) */}
               {selectedTpl.layout.video && videoUrl && (
