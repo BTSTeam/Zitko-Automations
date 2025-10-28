@@ -147,6 +147,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
   const [mask, setMask] = useState<VideoMask>('circle')
   const [roundedR, setRoundedR] = useState(32)
   const [videoOpen, setVideoOpen] = useState(true)
+  const [videoDownloadUrl, setVideoDownloadUrl] = useState<string | null>(null)
 
   // preview scaling (set actual width/height to scaled values)
   const previewBoxRef = useRef<HTMLDivElement | null>(null)
@@ -256,7 +257,12 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
       alert('Add a video first.')
       return
     }
-    // Hit your new GET route which redirects/streams the MP4
+    // Prefer the signed Cloudinary download URL if we have it (fast path).
+    if (videoDownloadUrl) {
+      window.location.href = videoDownloadUrl
+      return
+    }
+    // Fallback to server route (also sets a nice filename)
     window.location.href = `/api/export-mp4?publicId=${encodeURIComponent(videoPublicId)}&download=1`
   }
 
@@ -349,6 +355,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                       // { publicId, playbackMp4, mime, width, height }
                       setVideoUrl(payload.playbackMp4)               // MP4 streaming URL
                       setVideoPublicId(payload.publicId)            // needed for /api/export-mp4
+                      setVideoDownloadUrl(payload.downloadMp4)       // keep the signed download URL too
                       setVideoMeta({ mime: payload.mime, width: payload.width, height: payload.height })
                     }}
                   />
