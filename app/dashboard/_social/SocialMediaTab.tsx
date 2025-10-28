@@ -50,10 +50,10 @@ const TEMPLATES: TemplateDef[] = [
     height: 1080,
     layout: {
       // tuned to your latest screenshot/spec
-      title:       { x: 250, y: 130, w: 560, fontSize: 60 },
-      location:    { x: 520, y: 350, w: 520, fontSize: 30 },
+      title:       { x: 280, y: 130, w: 560, fontSize: 60 },
+      location:    { x: 520, y: 330, w: 520, fontSize: 30 },
       salary:      { x: 520, y: 400, w: 520, fontSize: 28 },
-      description: { x: 520, y: 450, w: 520, h: 80, fontSize: 20 },
+      description: { x: 520, y: 470, w: 520, h: 80, fontSize: 20 },
       benefits:    { x: 520, y: 620, w: 520, h: 260, fontSize: 24 },
       email:       { x: 800, y: 965, w: 180, fontSize: 20, align: 'left' },
       phone:       { x: 800, y: 1020, w: 180, fontSize: 20, align: 'left' },
