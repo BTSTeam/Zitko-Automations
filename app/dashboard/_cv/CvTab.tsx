@@ -5,9 +5,12 @@ import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
 
 /**
  * CvTab.tsx — UK/US/Sales formats
- * - UK & US inherit the previous “Standard” editor/preview & upload flow
- * - Sales remains “import a file then upload”, with baked header/footer
- * - Adds heading switch (Key Skills ↔ Systems Knowledge) & safe section reordering
+ * - UK & US: editor/preview/upload flow
+ * - Sales: import → (baked header/footer) → upload
+ * - Heading switch (Key Skills ↔ Systems Knowledge)
+ * - Safe section reordering
+ * - html2pdf page-break tweaks so Employment can start under Skills
+ * - In-app Preview modal (no new tab needed)
  */
 
 type TemplateKey = 'uk' | 'us' | 'sales'
@@ -158,7 +161,6 @@ function formatDate(dateStr?: string | null): string {
 
   if (ymd) { y = Number(ymd[1]); m = Number(ymd[2]) }
   else if (mmyyyy) { y = Number(mmyyyy[2]); m = Number(mmyyyy[1]) }
-  else if (yyyy) { y = Number(yyyy[1]); m = 1 }
   else {
     const d = new Date(s)
     if (!isNaN(d.getTime())) { y = d.getFullYear(); m = d.getMonth() + 1 }
@@ -340,7 +342,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   const [sectionOrder, setSectionOrder] =
     useState<ReorderableSection[]>(['skills', 'work', 'education'])
 
-  // ===== Upload modal (UK/US use 'standard'; Sales uses 'sales') =====
+  // ===== Upload modal =====
   const [showUploadModal, setShowUploadModal] = useState(false)
   const [uploadContext, setUploadContext] = useState<'standard' | 'sales'>('standard')
   const [uploadFileName, setUploadFileName] = useState<string>('CV.pdf')
@@ -353,6 +355,11 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   const standardPreviewRef = useRef<HTMLDivElement | null>(null)
   const footerRef = useRef<HTMLDivElement | null>(null)
 
+  // === In-app Preview modal ===
+  const [showPreview, setShowPreview] = useState(false)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [previewBusy, setPreviewBusy] = useState(false)
+
   // Sales local helpers
   const [salesErr, setSalesErr] = useState<string | null>(null)
   const [salesDocUrl, setSalesDocUrl] = useState<string | null>(null)
@@ -363,42 +370,42 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
   const [salesDocBlob, setSalesDocBlob] = useState<Blob | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
-  const [previewBusy, setPreviewBusy] = useState(false);
+  // ===== Preview generation (modal) =====
+  const handlePreview = async () => {
+    try {
+      setPreviewBusy(true)
+      const mod = await import('html2pdf.js')
+      const html2pdf = (mod as any).default || (mod as any)
 
-const handlePreview = async () => {
-  try {
-    setPreviewBusy(true);
-    const mod = await import('html2pdf.js');
-    const html2pdf = (mod as any).default || (mod as any);
+      const node = standardPreviewRef.current
+      if (!node) throw new Error('Preview not ready')
 
-    const node = standardPreviewRef.current;
-    if (!node) throw new Error('Preview not ready');
+      const baseName = (candidateName || form.name || 'CV').replace(/\s+/g, '')
+      const suffix = template === 'us' ? 'US' : 'UK'
+      const fileName = `${baseName}_${suffix}.pdf`
 
-    const baseName = (candidateName || form.name || 'CV').replace(/\s+/g, '');
-    const suffix = template === 'us' ? 'US' : 'UK';
-    const fileName = `${baseName}_${suffix}.pdf`;
+      // IMPORTANT: removed 'avoid-all' to prevent whole sections being bumped to next page.
+      const opt = {
+        margin: 10,
+        filename: fileName,
+        image: { type: 'jpeg', quality: 0.95 },
+        html2canvas: { scale: 2, backgroundColor: '#FFFFFF' },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
+        pagebreak: { mode: ['css', 'legacy'] as const }, // key tweak
+      }
 
-    const opt = {
-      margin: 10,
-      filename: fileName,
-      image: { type: 'jpeg', quality: 0.95 },
-      html2canvas: { scale: 2, backgroundColor: '#FFFFFF' },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
-      pagebreak: { mode: ['avoid-all', 'css', 'legacy'] as const },
-    };
-
-    const worker = html2pdf().set(opt).from(node).toPdf();
-    const pdf = await worker.get('pdf');
-    const pdfBlob = new Blob([pdf.output('arraybuffer')], { type: 'application/pdf' });
-    const url = URL.createObjectURL(pdfBlob);
-    // open the generated PDF in a new tab
-    window.open(url, '_blank');
-  } catch (err) {
-    console.error(err);
-  } finally {
-    setPreviewBusy(false);
+      const worker = html2pdf().set(opt).from(node).toPdf()
+      const pdf = await worker.get('pdf')
+      const pdfBlob = new Blob([pdf.output('arraybuffer')], { type: 'application/pdf' })
+      const url = URL.createObjectURL(pdfBlob)
+      setPreviewUrl(url)
+      setShowPreview(true)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setPreviewBusy(false)
+    }
   }
-};
 
   function resetSalesState() {
     setSalesErr(null)
@@ -439,7 +446,6 @@ const handlePreview = async () => {
     // reset UI bits
     setSkillsHeading('Key Skills')
     setSectionOrder(['skills', 'work', 'education'])
-    // UK fixed to Curriculum Vitae; US fixed to Resume
     setMainTitle(t === 'us' ? 'Resume' : 'Curriculum Vitae')
 
     setRawCandidate(null)
@@ -853,7 +859,7 @@ const handlePreview = async () => {
       image: { type: 'jpeg', quality: 0.95 },
       html2canvas: { scale: 2, backgroundColor: '#FFFFFF' },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
-      pagebreak: { mode: ['avoid-all', 'css', 'legacy'] as const },
+      pagebreak: { mode: ['css', 'legacy'] as const }, // keep consistent with preview
     }
 
     const worker = html2pdf().set(opt).from(node).toPdf()
@@ -946,124 +952,122 @@ const handlePreview = async () => {
     </>
   )
 
-      const renderEmploymentPreview = () => {
-        const empPreview = (form.employment || []).filter(e =>
-          [e.title, e.company, e.start, e.end, e.description].some(v => String(v || '').trim())
-        )
-      
-        if (empPreview.length === 0) {
-          return (
-            <div className="cv-headpair">
-              <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
-                Employment History
-              </h2>
-              <div className="text-gray-500 text-[12px]">No employment history yet.</div>
-            </div>
-          )
-        }
-      
-        return (
-          <>
-            {/* Section heading stands alone so it never forces all jobs to next page */}
-            <div className="cv-headpair mb-4 md:mb-6">
-              <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
-                Employment History
-              </h2>
-            </div>
-      
-            {/* Each job is now its own block to prevent them sticking together */}
-            <div className="space-y-4">
-              {empPreview.map((e, i) => {
-                const range = [e.start, e.end].filter(Boolean).join(' to ')
-                return (
-                  <div key={i} className="cv-entry">
-                    <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2">
-                      <div className="min-w-0">
-                        {!!(e.title && e.title.trim()) && (
-                          <div className="font-medium">{e.title}</div>
-                        )}
-                        {!!(e.company && e.company.trim()) && (
-                          <div className="text-[11px] text-gray-500">{e.company}</div>
-                        )}
-                      </div>
-      
-                      {!!range && (
-                        <div className="text-[11px] text-gray-500 whitespace-nowrap text-right shrink-0">
-                          {range}
-                        </div>
-                      )}
-      
-                      {!!(e.description && e.description.trim()) && (
-                        <div className="text-[12px] mt-0 whitespace-pre-wrap break-words col-span-2">
-                          {e.description}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </>
-        )
-      }
+  const renderEmploymentPreview = () => {
+    const empPreview = (form.employment || []).filter(e =>
+      [e.title, e.company, e.start, e.end, e.description].some(v => String(v || '').trim())
+    )
 
-    const renderEducationPreview = () => {
-      const eduPreview = (form.education || []).filter(e =>
-        [e.course, e.institution, e.start, e.end].some(v => String(v || '').trim())
-      )
-    
-      if (eduPreview.length === 0) {
-        return (
-          <div className="cv-headpair">
-            <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
-              Education & Qualifications
-            </h2>
-            <div className="text-gray-500 text-[12px]">No education yet.</div>
-          </div>
-        )
-      }
-    
+    if (empPreview.length === 0) {
       return (
-        <>
-          {/* Heading separated so the whole section isn’t forced onto a new page */}
-          <div className="cv-headpair mb-3">
-            <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
-              Education & Qualifications
-            </h2>
-          </div>
-    
-          {/* Each education item is a separate block */}
-          <div className="space-y-3">
-            {eduPreview.map((e, i) => {
-              const range = [e.start, e.end].filter(Boolean).join(' to ')
-              return (
-                <div key={i} className="cv-entry">
-                  <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2">
-                    <div className="min-w-0">
-                      {!!(e.course && e.course.trim()) && (
-                        <div className="font-medium">{e.course}</div>
-                      )}
-                    </div>
-    
-                    {!!range && (
-                      <div className="text-[11px] text-gray-500 whitespace-nowrap text-right shrink-0">
-                        {range}
-                      </div>
-                    )}
-    
-                    {!!(e.institution && e.institution.trim()) && (
-                      <div className="text-[12px] whitespace-pre-wrap break-words col-span-2">
-                        {e.institution}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </>
+        <div className="cv-headpair">
+          <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+            Employment History
+          </h2>
+          <div className="text-gray-500 text-[12px]">No employment history yet.</div>
+        </div>
       )
     }
+
+    return (
+      <div className="cv-employment">
+        {/* Standalone heading so section isn’t treated as one unbreakable block */}
+        <div className="cv-headpair mb-4 md:mb-6">
+          <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+            Employment History
+          </h2>
+        </div>
+
+        {/* Each job is its own block (keep-together per job) */}
+        <div className="space-y-4">
+          {empPreview.map((e, i) => {
+            const range = [e.start, e.end].filter(Boolean).join(' to ')
+            return (
+              <div key={i} className="cv-entry">
+                <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2">
+                  <div className="min-w-0">
+                    {!!(e.title && e.title.trim()) && (
+                      <div className="font-medium">{e.title}</div>
+                    )}
+                    {!!(e.company && e.company.trim()) && (
+                      <div className="text-[11px] text-gray-500">{e.company}</div>
+                    )}
+                  </div>
+
+                  {!!range && (
+                    <div className="text-[11px] text-gray-500 whitespace-nowrap text-right shrink-0">
+                      {range}
+                    </div>
+                  )}
+
+                  {!!(e.description && e.description.trim()) && (
+                    <div className="text-[12px] mt-0 whitespace-pre-wrap break-words col-span-2">
+                      {e.description}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
+  const renderEducationPreview = () => {
+    const eduPreview = (form.education || []).filter(e =>
+      [e.course, e.institution, e.start, e.end].some(v => String(v || '').trim())
+    )
+
+    if (eduPreview.length === 0) {
+      return (
+        <div className="cv-headpair">
+          <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+            Education & Qualifications
+          </h2>
+          <div className="text-gray-500 text-[12px]">No education yet.</div>
+        </div>
+      )
+    }
+
+    return (
+      <>
+        <div className="cv-headpair mb-3">
+          <h2 className="text-base md:text-lg font-semibold text-[#F7941D] mt-5 mb-2">
+            Education & Qualifications
+          </h2>
+        </div>
+
+        <div className="space-y-3">
+          {eduPreview.map((e, i) => {
+            const range = [e.start, e.end].filter(Boolean).join(' to ')
+            return (
+              <div key={i} className="cv-entry">
+                <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2">
+                  <div className="min-w-0">
+                    {!!(e.course && e.course.trim()) && (
+                      <div className="font-medium">{e.course}</div>
+                    )}
+                  </div>
+
+                  {!!range && (
+                    <div className="text-[11px] text-gray-500 whitespace-nowrap text-right shrink-0">
+                      {range}
+                    </div>
+                  )}
+
+                  {!!(e.institution && e.institution.trim()) && (
+                    <div className="text-[12px] whitespace-pre-wrap break-words col-span-2">
+                      {e.institution}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </>
+    )
+  }
 
   function SalesViewerCard() {
     return (
@@ -1192,6 +1196,8 @@ const handlePreview = async () => {
             page-break-after: auto;
           }
         }
+        /* Key tweaks: let sections break naturally; keep each job/edu item together */
+        .cv-employment { break-inside: auto; page-break-inside: auto; }
         .cv-entry,
         .cv-headpair { break-inside: avoid; page-break-inside: avoid; }
       `}</style>
@@ -1248,7 +1254,7 @@ const handlePreview = async () => {
             >
               {loading ? 'Fetching…' : 'Retrieve Candidate'}
             </button>
-          
+
             <button
               type="button"
               className="btn btn-grey"
@@ -1258,20 +1264,20 @@ const handlePreview = async () => {
             >
               {previewBusy ? 'Previewing…' : 'Preview'}
             </button>
-          
+
             <button
               type="button"
               className="btn btn-grey"
               disabled={!candidateId}
               onClick={() => {
-                const baseName = (candidateName || form.name || 'CV').replace(/\s+/g, '');
-                const suffix = template === 'us' ? 'US' : 'UK';
-                const defaultName = `${baseName}_${suffix}.pdf`;
-                setUploadFileName(defaultName);
-                setUploadContext('standard');
-                setUploadErr(null);
-                setUploadSuccess(null);
-                setShowUploadModal(true);
+                const baseName = (candidateName || form.name || 'CV').replace(/\s+/g, '')
+                const suffix = template === 'us' ? 'US' : 'UK'
+                const defaultName = `${baseName}_${suffix}.pdf`
+                setUploadFileName(defaultName)
+                setUploadContext('standard')
+                setUploadErr(null)
+                setUploadSuccess(null)
+                setShowUploadModal(true)
               }}
               title="Export the right panel CV to PDF and upload to Vincere"
             >
@@ -1618,7 +1624,7 @@ const handlePreview = async () => {
                   </button>
                 </div>
               </div>
-            
+
               {open.education && (
                 <div className="grid gap-3 mt-3">
                   {form.education.length === 0 ? (
@@ -1634,8 +1640,8 @@ const handlePreview = async () => {
                         >
                           Remove qualification
                         </button>
-            
-                        {/* Institution (kept bound to e.course so preview bold title remains correct) */}
+
+                        {/* Institution (bound to course for bold title) */}
                         <label className="grid gap-1">
                           <span className="text-[11px] text-gray-500">Institution</span>
                           <input
@@ -1652,8 +1658,7 @@ const handlePreview = async () => {
                             placeholder="e.g. University of Cambridge"
                           />
                         </label>
-            
-                        {/* Dates row */}
+
                         <div className="grid grid-cols-2 gap-2">
                           <label className="grid gap-1">
                             <span className="text-[11px] text-gray-500">Start</span>
@@ -1688,8 +1693,7 @@ const handlePreview = async () => {
                             />
                           </label>
                         </div>
-            
-                        {/* Description (now multi-line + larger) */}
+
                         <label className="grid gap-1">
                           <span className="text-[11px] text-gray-500">Description</span>
                           <textarea
@@ -1714,8 +1718,8 @@ const handlePreview = async () => {
                   )}
                 </div>
               )}
-            </section>  {/* ← closes the Education section */}
-            
+            </section>
+
             {template !== 'us' && (
               <section>
                 <div className="flex items-center justify-between">
@@ -1728,7 +1732,7 @@ const handlePreview = async () => {
                     {open.extra ? 'Hide' : 'Show'}
                   </button>
                 </div>
-            
+
                 {open.extra && (
                   <div className="grid gap-3 mt-3">
                     <label className="grid gap-1">
@@ -1744,7 +1748,7 @@ const handlePreview = async () => {
                         }
                       />
                     </label>
-            
+
                     <label className="grid gap-1">
                       <span className="text-[11px] text-gray-500">Nationality</span>
                       <input
@@ -1758,7 +1762,7 @@ const handlePreview = async () => {
                         }
                       />
                     </label>
-            
+
                     <label className="grid gap-1">
                       <span className="text-[11px] text-gray-500">Availability</span>
                       <input
@@ -1772,7 +1776,7 @@ const handlePreview = async () => {
                         }
                       />
                     </label>
-            
+
                     <label className="grid gap-1">
                       <span className="text-[11px] text-gray-500">Health</span>
                       <input
@@ -1786,7 +1790,7 @@ const handlePreview = async () => {
                         }
                       />
                     </label>
-            
+
                     <label className="grid gap-1">
                       <span className="text-[11px] text-gray-500">Criminal Record</span>
                       <input
@@ -1800,7 +1804,7 @@ const handlePreview = async () => {
                         }
                       />
                     </label>
-            
+
                     <label className="grid gap-1">
                       <span className="text-[11px] text-gray-500">Financial History</span>
                       <input
@@ -1828,7 +1832,11 @@ const handlePreview = async () => {
                 <div className="border rounded-lg mb-2">
                   <div className="flex items-center justify-between px-2 py-1">
                     <div className="text-[10px] font-medium">Candidate Data</div>
-                    <button type="button" className="text-[10px] text-gray-500 underline" onClick={() => toggle('rawCandidate')}>
+                    <button
+                      type="button"
+                      className="text-[10px] text-gray-500 underline"
+                      onClick={() => toggle('rawCandidate')}
+                    >
                       {open.rawCandidate ? 'Hide' : 'Show'}
                     </button>
                   </div>
@@ -1843,7 +1851,11 @@ const handlePreview = async () => {
                 <div className="border rounded-lg mb-2">
                   <div className="flex items-center justify-between px-2 py-1">
                     <div className="text-[10px] font-medium">Work Experience</div>
-                    <button type="button" className="text-[10px] text-gray-500 underline" onClick={() => toggle('rawWork')}>
+                    <button
+                      type="button"
+                      className="text-[10px] text-gray-500 underline"
+                      onClick={() => toggle('rawWork')}
+                    >
                       {open.rawWork ? 'Hide' : 'Show'}
                     </button>
                   </div>
@@ -1858,7 +1870,11 @@ const handlePreview = async () => {
                 <div className="border rounded-lg mb-2">
                   <div className="flex items-center justify-between px-2 py-1">
                     <div className="text-[10px] font-medium">Education Details</div>
-                    <button type="button" className="text-[10px] text-gray-500 underline" onClick={() => toggle('rawEdu')}>
+                    <button
+                      type="button"
+                      className="text-[10px] text-gray-500 underline"
+                      onClick={() => toggle('rawEdu')}
+                    >
                       {open.rawEdu ? 'Hide' : 'Show'}
                     </button>
                   </div>
@@ -1873,7 +1889,11 @@ const handlePreview = async () => {
                 <div className="border rounded-lg">
                   <div className="flex items-center justify-between px-2 py-1">
                     <div className="text-[10px] font-medium">Custom Fields</div>
-                    <button type="button" className="text-[10px] text-gray-500 underline" onClick={() => toggle('rawCustom')}>
+                    <button
+                      type="button"
+                      className="text-[10px] text-gray-500 underline"
+                      onClick={() => toggle('rawCustom')}
+                    >
                       {open.rawCustom ? 'Hide' : 'Show'}
                     </button>
                   </div>
@@ -1894,10 +1914,33 @@ const handlePreview = async () => {
         </div>
       </div>
 
+      {/* ===== Preview Modal ===== */}
+      {previewBusy && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-white rounded-xl shadow-xl w-[90%] h-[90%] relative overflow-hidden">
+            <button
+              className="absolute top-2 right-3 text-gray-600 text-xl font-bold"
+              onClick={() => setPreviewBusy(false)}
+              title="Close Preview"
+            >
+              ×
+            </button>
+            <div className="w-full h-full overflow-auto bg-gray-100 p-4">
+              <div
+                ref={standardPreviewRef}
+                className="cv-standard-page bg-white text-[13px] leading-[1.35] p-6 mx-auto max-w-[210mm] min-h-[297mm] break-after-auto"
+                style={{ boxShadow: '0 0 8px rgba(0,0,0,0.1)' }}
+              >
+                <CVTemplatePreview />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ===== Upload modal ===== */}
       {showUploadModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          {/* If we have success, show a separate success popup */}
           {uploadSuccess ? (
             <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl text-center">
               <div className="text-2xl mb-2 text-green-600">Upload Successful</div>
@@ -1921,7 +1964,6 @@ const handlePreview = async () => {
               <div className="mb-4">
                 <h3 className="text-base font-semibold">Upload CV to Vincere</h3>
 
-                {/* Header summary only for UK/US; Sales shows manual ID field below */}
                 {uploadContext === 'standard' && (
                   <p className="text-[12px] text-gray-600">
                     Candidate: <span className="font-medium">{candidateName || form.name || 'Unknown'}</span> · ID:{' '}
@@ -1936,7 +1978,6 @@ const handlePreview = async () => {
               </div>
 
               <div className="space-y-4">
-                {/* Manual Candidate ID entry for Sales */}
                 {uploadContext === 'sales' && (
                   <div>
                     <label className="block text-[12px] font-medium">Candidate ID</label>
@@ -1993,3 +2034,5 @@ const handlePreview = async () => {
     </div>
   )
 }
+
+           	
