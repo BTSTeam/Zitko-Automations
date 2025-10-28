@@ -49,7 +49,7 @@ const TEMPLATES: TemplateDef[] = [
     width: 1080,
     height: 1080,
     layout: {
-      title:       { x: 300, y: 115, w: 560, fontSize: 60 },
+      title:       { x: 320, y: 125, w: 560, fontSize: 60 },
       location:    { x: 520, y: 330, w: 520, fontSize: 30 },
       salary:      { x: 520, y: 400, w: 520, fontSize: 28 },
       description: { x: 520, y: 480, w: 520, h: 80, fontSize: 20 },
@@ -447,32 +447,64 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                   case 'phone': return job.phone || '[PHONE NUMBER]'
                 }
               })()
-              return (
-                <div
-                  key={key}
-                  style={{
-                    position: 'absolute',
-                    left: spec.x * scale,
-                    top: spec.y * scale,
-                    width: (spec.w ?? selectedTpl.width - spec.x - 40) * scale,
-                    height: (spec.h ?? 'auto') as any,
-                    fontSize: (spec.fontSize ?? 18) * scale,
-                    lineHeight: 1.25,
-                    whiteSpace: 'pre-wrap',
-                    textAlign: spec.align ?? 'left',
-                    color: 'white',
-                    fontWeight: key === 'title' ? 700 : 500,
-                    wordBreak: 'break-word',
-                    overflowWrap: 'anywhere',
-                    ...(key === 'benefits'
-                      ? { paddingLeft: `${16 * scale}px`, textIndent: `-${8 * scale}px` }
-                      : {}),
-                  }}
-                >
-                  {value}
-                </div>
-              )
-            })}
+              return key === 'benefits' ? (
+              <div
+                key={key}
+                style={{
+                  position: 'absolute',
+                  left: spec.x * scale,
+                  top: spec.y * scale,
+                  width: (spec.w ?? selectedTpl.width - spec.x - 40) * scale,
+                  height: (spec.h ?? 'auto') as any,
+                  fontSize: (spec.fontSize ?? 18) * scale,
+                  lineHeight: 1.25,
+                  textAlign: spec.align ?? 'left',
+                  color: 'white',
+                  // container can keep normal wrapping
+                  wordBreak: 'break-word',
+                  overflowWrap: 'anywhere',
+                }}
+              >
+                {(Array.isArray(job.benefits) ? job.benefits : String(job.benefits || ''))
+                  .split('\n')
+                  .filter(Boolean)
+                  .map((line, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        // hanging indent per item:
+                        paddingLeft: `${16 * scale}px`,
+                        textIndent: `-${8 * scale}px`,
+                        whiteSpace: 'pre-wrap',
+                        marginBottom: `${8 * scale}px`, // small gap between bullets
+                      }}
+                    >
+                      {`• ${line}`}
+                    </div>
+                  ))}
+              </div>
+            ) : (
+              <div
+                key={key}
+                style={{
+                  position: 'absolute',
+                  left: spec.x * scale,
+                  top: spec.y * scale,
+                  width: (spec.w ?? selectedTpl.width - spec.x - 40) * scale,
+                  height: (spec.h ?? 'auto') as any,
+                  fontSize: (spec.fontSize ?? 18) * scale,
+                  lineHeight: 1.25,
+                  whiteSpace: 'pre-wrap',
+                  textAlign: spec.align ?? 'left',
+                  color: 'white',
+                  fontWeight: key === 'title' ? 700 : 500,
+                  wordBreak: 'break-word',
+                  overflowWrap: 'anywhere',
+                }}
+              >
+                {value}
+              </div>
+            )
 
             {/* Video slot (scaled) */}
             {selectedTpl.layout.video && videoUrl && (
