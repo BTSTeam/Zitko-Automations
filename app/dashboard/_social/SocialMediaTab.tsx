@@ -302,7 +302,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
 
       {/* equal columns */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      {/* LEFT: recorder + form */}
+        {/* LEFT: recorder + form */}
         <div className="flex flex-col gap-6">
           {/* recorder (collapsible) */}
           <section className="border rounded-xl bg-white overflow-hidden">
@@ -433,25 +433,21 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
               {(['title','location','salary','description','benefits','email','phone'] as const).map(key => {
                 const spec = selectedTpl.layout[key]
                 if (!spec) return null
-            
                 const value = (() => {
                   switch (key) {
                     case 'title': return job.title || '[JOB TITLE]'
                     case 'location': return job.location || '[LOCATION]'
                     case 'salary': return job.salary || '[SALARY]'
-                    case 'description': return job.description || '[SHORT DESCRIPTION]'
+                    case 'description': return (job.description || '[SHORT DESCRIPTION]')
                     case 'benefits': {
-                      const tx =
-                        (Array.isArray(job.benefits) ? job.benefits.join('\n') : job.benefits) ||
-                        '[BENEFIT 1]\n[BENEFIT 2]\n[BENEFIT 3]'
+                      const tx = (Array.isArray(job.benefits) ? job.benefits.join('\n') : job.benefits) || '[BENEFIT 1]\n[BENEFIT 2]\n[BENEFIT 3]'
                       return tx.split('\n').map(l => `• ${l}`).join('\n\n')
                     }
                     case 'email': return job.email || '[EMAIL]'
                     case 'phone': return job.phone || '[PHONE NUMBER]'
                   }
                 })()
-            
-                // benefits block (bulleted lines)
+
                 if (key === 'benefits') {
                   return (
                     <div
@@ -460,8 +456,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                         position: 'absolute',
                         left: spec.x * scale,
                         top: spec.y * scale,
-                        width: (spec.w ?? (selectedTpl.width - spec.x - 40)) * scale,
-                        // if h provided, scale it; else auto
+                        width: (spec.w ?? selectedTpl.width - spec.x - 40) * scale,
                         height: spec.h ? spec.h * scale : undefined,
                         fontSize: (spec.fontSize ?? 18) * scale,
                         lineHeight: 1.25,
@@ -490,8 +485,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                     </div>
                   )
                 }
-            
-                // default text blocks
+
                 return (
                   <div
                     key={key}
@@ -499,7 +493,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                       position: 'absolute',
                       left: spec.x * scale,
                       top: spec.y * scale,
-                      width: (spec.w ?? (selectedTpl.width - spec.x - 40)) * scale,
+                      width: (spec.w ?? selectedTpl.width - spec.x - 40) * scale,
                       height: spec.h ? spec.h * scale : undefined,
                       fontSize: (spec.fontSize ?? 18) * scale,
                       lineHeight: 1.25,
@@ -514,9 +508,9 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                     {value}
                   </div>
                 )
-              })} {/* ← close the .map callback here */}
-            
-              {/* Video slot (scaled) — render OUTSIDE the map */}
+              })}{/* <-- CLOSE .map HERE */}
+
+              {/* Video slot (scaled) — OUTSIDE the map */}
               {selectedTpl.layout.video && videoUrl && (
                 <div
                   style={{
@@ -539,6 +533,8 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                 </div>
               )}
             </div>
+          </div>
+
           <p className="mt-3 text-xs text-gray-500">
             Preview scales the poster to fit; PNG exports at the template’s intrinsic size.
           </p>
