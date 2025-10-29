@@ -271,6 +271,9 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     location: job.location || 'Location',
     salary: job.salary || 'Salary',
     description: wrapText(String(job.description || 'Short description')),
+    benefits: benefitsText,   // ← add
+    email: job.email || '',   // ← add
+    phone: job.phone || '',   // ← add
     templateId: selectedTplId,
   };
 
