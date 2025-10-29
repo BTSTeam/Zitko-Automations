@@ -1,8 +1,7 @@
-// app/api/job/download-mp4/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { v2 as cloudinary } from "cloudinary";
 
-export const runtime = "nodejs"; // ensure Node (not Edge)
+export const runtime = "nodejs";
 
 cloudinary.config({
   cloud_name:
@@ -13,23 +12,17 @@ cloudinary.config({
 });
 
 type Body = {
-  // Cloudinary public_id of the uploaded video (no extension)
-  videoPublicId: string;
-
-  // dynamic text
+  videoPublicId: string;                 // e.g. "job-posts/unassigned/eodhaf3p4unjjbv7wwbj"
   title?: string;
   location?: string;
   salary?: string;
   description?: string;
-
-  // optional: choose a template public_id stored in Cloudinary
-  templatePublicId?: string; // e.g. "job-posts/templates/zitko-1"
+  templatePublicId?: string;             // e.g. "job-posts/templates/zitko-1"
 };
 
-// utility to escape text for Cloudinary l_text
 function encodeText(t?: string) {
   if (!t) return "";
-  return encodeURIComponent(t).replace(/%2C/g, "%252C"); // commas must be double-encoded
+  return encodeURIComponent(t).replace(/%2C/g, "%252C");
 }
 
 export async function POST(req: NextRequest) {
@@ -47,37 +40,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing videoPublicId" }, { status: 400 });
     }
 
-    // Canvas size — match your template (screenshot looks square).
+    // If your template image is also authenticated, set type:'authenticated' in underlay too.
     const CANVAS = 1080;
 
-    // Text styling (use a font you’ve enabled in Cloudinary; defaults are okay).
-    const font = "Montserrat_700"; // or "Arial_700"
-    const fontSmall = "Montserrat_600";
-
-    // Positions (tweak to match your artwork)
-    const titlePos = { x: 160, y: 160 };
-    const locationPos = { x: 480, y: 250 };
-    const salaryPos = { x: 480, y: 310 };
-    const descPos = { x: 480, y: 380 };
-
-    // Video circle position/size
-    const videoSize = 360;
-    const videoPos = { x: 60, y: 430 }; // top-left origin
-
-    // Build a signed Cloudinary URL that:
-    // 1) sets canvas to 1080x1080 (via resizing the base video)
-    // 2) places your template as an UNDERLAY (so it sits behind everything)
-    // 3) overlays the video as a circle at the desired spot
-    // 4) overlays dynamic text
-    // 5) returns mp4
     const composedUrl = cloudinary.url(videoPublicId, {
       resource_type: "video",
+      type: "authenticated",          // IMPORTANT: your uploads show /video/authenticated/...
       sign_url: true,
       transformation: [
-        // Make base video 1080x1080 so the canvas matches the template
         { width: CANVAS, height: CANVAS, crop: "fill" },
 
-        // Put the template image BELOW (underlay) for the whole duration
+        // Template as UNDERLAY (assumes template is a public image in 'upload' type)
         {
           underlay: `image:${templatePublicId}`,
           width: CANVAS,
@@ -85,51 +58,57 @@ export async function POST(req: NextRequest) {
           crop: "fill",
         },
 
-        // Overlay the same (or trimmed) video as a circular thumbnail where you want it
-        // This draws the video again as a small circle on top of the background
+        // Circular video overlay (must also be authenticated)
         {
-          overlay: `video:${videoPublicId}`,
-          transformation: [{ width: videoSize, height: videoSize, crop: "fill", radius: "max" }],
+          overlay: {
+            resource_type: "video",
+            type: "authenticated",
+            public_id: videoPublicId,
+            transformation: [{ width: 360, height: 360, crop: "fill", radius: "max" }],
+          },
         },
-        { gravity: "north_west", x: videoPos.x, y: videoPos.y, flags: "layer_apply" },
+        { gravity: "north_west", x: 60, y: 430, flags: "layer_apply" },
 
         // TITLE
         {
           overlay: {
-            font_family: font,
+            font_family: "Arial",
             font_size: 56,
+            font_weight: "bold",
             text: encodeText(title),
           },
           color: "#ffffff",
         },
-        { gravity: "north_west", x: titlePos.x, y: titlePos.y, flags: "layer_apply" },
+        { gravity: "north_west", x: 160, y: 160, flags: "layer_apply" },
 
         // LOCATION
         {
           overlay: {
-            font_family: fontSmall,
+            font_family: "Arial",
             font_size: 36,
+            font_weight: "bold",
             text: encodeText(location),
           },
           color: "#cfd3d7",
         },
-        { gravity: "north_west", x: locationPos.x, y: locationPos.y, flags: "layer_apply" },
+        { gravity: "north_west", x: 480, y: 250, flags: "layer_apply" },
 
         // SALARY
         {
           overlay: {
-            font_family: fontSmall,
+            font_family: "Arial",
             font_size: 32,
+            font_weight: "bold",
             text: encodeText(salary),
           },
           color: "#cfd3d7",
         },
-        { gravity: "north_west", x: salaryPos.x, y: salaryPos.y, flags: "layer_apply" },
+        { gravity: "north_west", x: 480, y: 310, flags: "layer_apply" },
 
-        // DESCRIPTION (wrap long text using Cloudinary's built-in max_width)
+        // DESCRIPTION (wrapped)
         {
           overlay: {
-            font_family: fontSmall,
+            font_family: "Arial",
             font_size: 28,
             text: encodeText(description),
           },
@@ -137,19 +116,21 @@ export async function POST(req: NextRequest) {
           width: 520,
           crop: "fit",
         },
-        { gravity: "north_west", x: descPos.x, y: descPos.y, flags: "layer_apply" },
+        { gravity: "north_west", x: 480, y: 380, flags: "layer_apply" },
 
-        // Output
         { fetch_format: "mp4", quality: "auto" },
       ],
     });
 
-    // Fetch the MP4 server-side and stream it back as a download.
     const videoRes = await fetch(composedUrl);
     if (!videoRes.ok) {
       const errText = await videoRes.text().catch(() => "");
       return NextResponse.json(
-        { error: "Failed to compose video", details: errText.slice(0, 500) },
+        {
+          error: "Failed to compose video",
+          details: errText.slice(0, 2000), // pass Cloudinary message up to the client
+          composedUrl,
+        },
         { status: 500 }
       );
     }
