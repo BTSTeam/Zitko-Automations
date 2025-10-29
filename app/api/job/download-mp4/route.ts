@@ -52,8 +52,8 @@ export async function POST(req: NextRequest) {
 
     const cleanVideoId = stripExt(videoPublicId);
 
-    // ---------- Build PUBLIC template URL ----------
-    const originFromReq = req.nextUrl.origin; // can be localhost in dev
+    // ----- Build PUBLIC template URL -----
+    const originFromReq = req.nextUrl.origin;
     const envBase = process.env.NEXT_PUBLIC_BASE_URL?.trim();
     const isLocal = /^(http:\/\/)?(localhost|127\.0\.0\.1)(:\d+)?/i.test(originFromReq);
 
@@ -69,11 +69,8 @@ export async function POST(req: NextRequest) {
       }
       effectiveTemplateUrl = `${baseForCloudinary.replace(/\/$/, "")}/templates/${filename}`;
     }
-    if (!/^https?:\/\//i.test(effectiveTemplateUrl)) {
-      return NextResponse.json({ error: "templateUrl must be absolute http(s) URL", templateUrl: effectiveTemplateUrl }, { status: 400 });
-    }
 
-    // ---------- Pre-flight: check template is reachable ----------
+    // quick reachability check
     try {
       const head = await fetch(effectiveTemplateUrl, { method: "HEAD", cache: "no-store" });
       if (!head.ok) {
@@ -96,77 +93,74 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ---------- Pre-flight: verify video exists (Admin API) ----------
+    // verify video exists & is authenticated
     try {
-      // IMPORTANT: type: 'authenticated' and resource_type: 'video'
-      // @ts-ignore (types for admin calls may require import('cloudinary').v2.api)
+      // @ts-ignore
       const info = await cloudinary.api.resource(cleanVideoId, {
         resource_type: "video",
         type: "authenticated",
       });
       if (!info || info.type !== "authenticated") {
         return NextResponse.json(
-          {
-            error: "Cloudinary video found but not 'authenticated' type",
-            foundType: info?.type,
-            hint: "Ensure the uploaded video delivery type is authenticated and use the bare public_id (no .mp4).",
-            publicId: cleanVideoId,
-          },
+          { error: "Cloudinary video found but not 'authenticated' type", foundType: info?.type, publicId: cleanVideoId },
           { status: 404 }
         );
       }
     } catch (e: any) {
-      // Admin API throws if not found
       return NextResponse.json(
-        {
-          error: "Cloudinary video not found",
-          publicId: cleanVideoId,
-          details: e?.message,
-          hint: "Make sure you pass the exact public_id returned by your Recorder onUploaded (no file extension).",
-        },
+        { error: "Cloudinary video not found", publicId: cleanVideoId, details: e?.message },
         { status: 404 }
       );
     }
 
     const CANVAS = 1080;
 
-    // ---------- Build composed URL ----------
+    // 🔧 Build a *manual* overlay layer with correct colon-separated public_id and size/radius
+    const overlayIdForLayer = cleanVideoId.replace(/\//g, ":"); // e.g. job-posts:unassigned:abc123
+    const videoSize = 360;
+    const videoX = 60;
+    const videoY = 430;
+
+    // Build composed URL
     const composedUrl = cloudinary.url(cleanVideoId, {
       resource_type: "video",
       type: "authenticated",
       sign_url: true,
       transformation: [
+        // 1) Base canvas
         { width: CANVAS, height: CANVAS, crop: "fill" },
+
+        // 2) Underlay from your public PNG
         {
           underlay: `fetch:${encodeURIComponent(effectiveTemplateUrl)}`,
           width: CANVAS,
           height: CANVAS,
           crop: "fill",
         },
-        {
-          overlay: {
-            resource_type: "video",
-            type: "authenticated",
-            public_id: cleanVideoId,
-            transformation: [{ width: 360, height: 360, crop: "fill", radius: "max" }],
-          },
-        },
-        { gravity: "north_west", x: 60, y: 430, flags: "layer_apply" },
+
+        // 3) Video overlay (manual layer so size & radius are respected AND folder colons are correct)
+        { raw_transformation: `w_${videoSize},h_${videoSize},c_fill,r_max,l_video:authenticated:${overlayIdForLayer}` },
+        { raw_transformation: `fl_layer_apply,g_north_west,x_${videoX},y_${videoY}` },
+
+        // 4) Text overlays
         {
           overlay: { font_family: "Arial", font_size: 56, font_weight: "bold", text: encodeText(title) },
           color: "#ffffff",
         },
         { gravity: "north_west", x: 160, y: 160, flags: "layer_apply" },
+
         {
           overlay: { font_family: "Arial", font_size: 36, font_weight: "bold", text: encodeText(location) },
           color: "#cfd3d7",
         },
         { gravity: "north_west", x: 480, y: 250, flags: "layer_apply" },
+
         {
           overlay: { font_family: "Arial", font_size: 32, font_weight: "bold", text: encodeText(salary) },
           color: "#cfd3d7",
         },
         { gravity: "north_west", x: 480, y: 310, flags: "layer_apply" },
+
         {
           overlay: { font_family: "Arial", font_size: 28, text: encodeText(description) },
           color: "#ffffff",
@@ -174,11 +168,13 @@ export async function POST(req: NextRequest) {
           crop: "fit",
         },
         { gravity: "north_west", x: 480, y: 380, flags: "layer_apply" },
+
+        // 5) Output
         { fetch_format: "mp4", quality: "auto" },
       ],
     });
 
-    // ---------- Debug short-circuit ----------
+    // Debug short-circuit remains
     const debug = req.nextUrl.searchParams.get("debug") === "1";
     if (debug) {
       return NextResponse.json(
@@ -186,24 +182,18 @@ export async function POST(req: NextRequest) {
           composedUrl,
           templateUsed: effectiveTemplateUrl,
           hint:
-            "Open composedUrl in a new tab to see Cloudinary's exact message (if any). " +
-            "Video existence and template reachability have already passed.",
+            "Open composedUrl in a new tab. This version forces correct l_video layer (colons) and overlay sizing/radius.",
         },
         { status: 200 }
       );
     }
 
-    // ---------- Render / stream ----------
+    // Render / stream
     const videoRes = await fetch(composedUrl);
     if (!videoRes.ok) {
       const errText = await videoRes.text().catch(() => "");
       return NextResponse.json(
-        {
-          error: "Failed to compose video",
-          details: errText.slice(0, 4000),
-          composedUrl,
-          templateUsed: effectiveTemplateUrl,
-        },
+        { error: "Failed to compose video", details: errText.slice(0, 4000), composedUrl, templateUsed: effectiveTemplateUrl },
         { status: 500 }
       );
     }
