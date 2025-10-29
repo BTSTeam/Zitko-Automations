@@ -4,21 +4,20 @@ import { v2 as cloudinary } from "cloudinary";
 export const runtime = "nodejs";
 
 cloudinary.config({
-  cloud_name:
-    process.env.CLOUDINARY_CLOUD_NAME || process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY!,
   api_secret: process.env.CLOUDINARY_API_SECRET!,
   secure: true,
 });
 
 type Body = {
-  videoPublicId: string;   // NO extension, e.g. "job-posts/unassigned/abc123"
+  videoPublicId: string;          // e.g. "job-posts/unassigned/abc123" (no extension)
   title?: string;
   location?: string;
   salary?: string;
   description?: string;
   templateId?: "zitko-1" | "zitko-2";
-  templateUrl?: string;    // absolute URL overrides templateId
+  templateUrl?: string;           // absolute URL overrides templateId
 };
 
 const TEMPLATE_FILES: Record<string, string> = {
@@ -28,8 +27,10 @@ const TEMPLATE_FILES: Record<string, string> = {
 
 function encodeText(t?: string) {
   if (!t) return "";
+  // Cloudinary text overlays: keep commas safe (double-encode)
   return encodeURIComponent(t).replace(/%2C/g, "%252C");
 }
+
 function stripExt(id: string) {
   return id.replace(/\.(mp4|mov|m4v|webm)$/i, "");
 }
@@ -52,7 +53,7 @@ export async function POST(req: NextRequest) {
 
     const cleanVideoId = stripExt(videoPublicId);
 
-    // ----- Build PUBLIC template URL -----
+    // ----- Build a PUBLIC template URL your Cloudinary 'fetch' can access -----
     const originFromReq = req.nextUrl.origin;
     const envBase = process.env.NEXT_PUBLIC_BASE_URL?.trim();
     const isLocal = /^(http:\/\/)?(localhost|127\.0\.0\.1)(:\d+)?/i.test(originFromReq);
@@ -70,7 +71,7 @@ export async function POST(req: NextRequest) {
       effectiveTemplateUrl = `${baseForCloudinary.replace(/\/$/, "")}/templates/${filename}`;
     }
 
-    // quick reachability check
+    // Quick reachability check (this doesn’t guarantee Cloudinary will fetch it — see “Allowed fetch domains”)
     try {
       const head = await fetch(effectiveTemplateUrl, { method: "HEAD", cache: "no-store" });
       if (!head.ok) {
@@ -93,7 +94,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // verify video exists & is authenticated
+    // Verify the Cloudinary video exists & is authenticated
     try {
       // @ts-ignore
       const info = await cloudinary.api.resource(cleanVideoId, {
@@ -114,31 +115,26 @@ export async function POST(req: NextRequest) {
     }
 
     const CANVAS = 1080;
-
-    // 🔧 Build a *manual* overlay layer with correct colon-separated public_id and size/radius
-    const overlayIdForLayer = cleanVideoId.replace(/\//g, ":"); // e.g. job-posts:unassigned:abc123
+    const overlayIdForLayer = cleanVideoId.replace(/\//g, ":"); // job-posts:unassigned:abc123
     const videoSize = 360;
     const videoX = 60;
     const videoY = 430;
 
-    // Build composed URL
+    // IMPORTANT: Apply underlay using raw u_fetch + fl_layer_apply so it sits behind the video
+    const encodedFetchUrl = encodeURIComponent(effectiveTemplateUrl);
+
     const composedUrl = cloudinary.url(cleanVideoId, {
       resource_type: "video",
       type: "authenticated",
       sign_url: true,
       transformation: [
-        // 1) Base canvas
+        // 1) Base canvas/frame
         { width: CANVAS, height: CANVAS, crop: "fill" },
 
-        // 2) Underlay from your public PNG
-        {
-          underlay: `fetch:${encodeURIComponent(effectiveTemplateUrl)}`,
-          width: CANVAS,
-          height: CANVAS,
-          crop: "fill",
-        },
+        // 2) Template underlay (explicit layer apply)
+        { raw_transformation: `u_fetch:${encodedFetchUrl}/c_fill,w_${CANVAS},h_${CANVAS}/fl_layer_apply,g_north_west,x_0,y_0` },
 
-        // 3) Video overlay (manual layer so size & radius are respected AND folder colons are correct)
+        // 3) Video overlay (authenticated video in a rounded square)
         { raw_transformation: `w_${videoSize},h_${videoSize},c_fill,r_max,l_video:authenticated:${overlayIdForLayer}` },
         { raw_transformation: `fl_layer_apply,g_north_west,x_${videoX},y_${videoY}` },
 
@@ -174,26 +170,34 @@ export async function POST(req: NextRequest) {
       ],
     });
 
-    // Debug short-circuit remains
+    // Optional debug switch
     const debug = req.nextUrl.searchParams.get("debug") === "1";
     if (debug) {
       return NextResponse.json(
         {
           composedUrl,
           templateUsed: effectiveTemplateUrl,
-          hint:
-            "Open composedUrl in a new tab. This version forces correct l_video layer (colons) and overlay sizing/radius.",
+          hint: "Open composedUrl in a new tab. If it errors, check Cloudinary 'Allowed fetch domains' and the x-cld-error header.",
         },
         { status: 200 }
       );
     }
 
-    // Render / stream
+    // Stream from Cloudinary
     const videoRes = await fetch(composedUrl);
     if (!videoRes.ok) {
       const errText = await videoRes.text().catch(() => "");
+      // Cloudinary often returns an x-cld-error header – surface it if present
+      const cldError = videoRes.headers.get("x-cld-error") || undefined;
       return NextResponse.json(
-        { error: "Failed to compose video", details: errText.slice(0, 4000), composedUrl, templateUsed: effectiveTemplateUrl },
+        {
+          error: "Failed to compose video",
+          status: videoRes.status,
+          cloudinaryError: cldError,
+          details: errText.slice(0, 2000),
+          composedUrl,
+          templateUsed: effectiveTemplateUrl,
+        },
         { status: 500 }
       );
     }
