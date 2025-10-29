@@ -27,6 +27,18 @@ const TEMPLATE_FILES: Record<string, string> = {
 
 function encodeText(t?: string) {
   if (!t) return "";
+  return encodeURIComponent(t)
+    .replace(/%2C/g, "%252C")   // comma
+    .replace(/%26/g, "%2526")   // ampersand
+    .replace(/%2F/g, "%252F")   // slash
+    .replace(/%3A/g, "%253A")   // colon
+    .replace(/%3D/g, "%253D")   // equals
+    .replace(/%23/g, "%2523")   // hash
+    .replace(/%3F/g, "%253F");  // question mark
+}
+
+function encodeText(t?: string) {
+  if (!t) return "";
   return encodeURIComponent(t).replace(/%2C/g, "%252C");
 }
 
@@ -172,6 +184,29 @@ export async function POST(req: NextRequest) {
           crop: "fit",
         },
         { gravity: "north_west", x: 480, y: 380, flags: "layer_apply" },
+
+        // Benefits (multi-line block)
+        {
+          overlay: { font_family: "Arial", font_size: 24, text: encodeText(benefits || "BENEFITS") },
+          color: "#ffffff",
+          width: 520,
+          crop: "fit",
+        },
+        { gravity: "north_west", x: 480, y: 700, flags: "layer_apply" },
+        
+        // Email
+        {
+          overlay: { font_family: "Arial", font_size: 22, text: encodeText(email || "EMAIL") },
+          color: "#cfd3d7",
+        },
+        { gravity: "north_west", x: 850, y: 945, flags: "layer_apply" },
+        
+        // Phone
+        {
+          overlay: { font_family: "Arial", font_size: 22, text: encodeText(phone || "PHONE") },
+          color: "#cfd3d7",
+        },
+        { gravity: "north_west", x: 850, y: 985, flags: "layer_apply" },
 
         // 5) Output
         { fetch_format: "mp4", quality: "auto" },
