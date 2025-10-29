@@ -46,11 +46,10 @@ const LAYOUTS: Record<"zitko-1" | "zitko-2", Layout> = {
     title:       { x: 520, y: 125, w: 560, fs: 60, color: "#ffffff", bold: true },
     location:    { x: 520, y: 330, w: 520, fs: 30, color: "#ffffff", bold: true },
     salary:      { x: 520, y: 400, w: 520, fs: 28, color: "#ffffff", bold: true },
-    description: { x: 520, y: 480, w: 520, h: 80,  fs: 24, color: "#ffffff" },
+    description: { x: 520, y: 480, w: 520, h: 200,  fs: 24, color: "#ffffff" },
     benefits:    { x: 520, y: 680, w: 520, h: 260, fs: 24, color: "#ffffff" },
-    // ↑ keep exact coords/widths from SocialMediaTab
-    email:       { x: 800, y: 950, w: 180, fs: 20, color: "#ffffff" }, // was 965 → baseline bump
-    phone:       { x: 800, y: 1000, w: 180, fs: 20, color: "#ffffff" }, // was 1020 → baseline bump
+    email:       { x: 800, y: 960, w: 180, fs: 20, color: "#ffffff" }, // was 965 → baseline bump
+    phone:       { x: 800, y: 1010, w: 180, fs: 20, color: "#ffffff" }, // was 1020 → baseline bump
     video:       { x:  80, y: 400, w: 300, h: 300 },
   },
   "zitko-2": {
