@@ -50,8 +50,6 @@ export async function GET(req: NextRequest) {
     let signedMp4 = cloudinary.url(publicId, opts);
     if (asDownload) signedMp4 += `&download=${encodeURIComponent(filename)}`;
 
-    // Generate the short-lived signed URL and redirect
-    const signedMp4 = cloudinary.url(publicId, opts);
     return NextResponse.redirect(signedMp4, 302);
   } catch (err: any) {
     console.error('Error generating MP4 export URL:', err);
