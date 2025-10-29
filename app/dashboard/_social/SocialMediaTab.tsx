@@ -438,7 +438,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
               </button>
               <button
                 className={`rounded px-3 py-2 ${videoUrl ? 'bg-amber-600 text-white' : 'bg-gray-200 text-gray-500'}`}
-                onClick={handleDownloadMp4}
+                onClick={downloadMp4}
                 title={videoUrl ? 'Compose MP4 on server' : 'Add a video to enable'}
               >
                 Download MP4
