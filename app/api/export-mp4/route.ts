@@ -48,11 +48,7 @@ export async function GET(req: NextRequest) {
     
     // Add download name separately, after URL generation
     let signedMp4 = cloudinary.url(publicId, opts);
-if (asDownload) signedMp4 += `&download=${encodeURIComponent(filename)}`;
-
-// Add download name separately, after URL generation
-let signedMp4 = cloudinary.url(publicId, opts);
-if (asDownload) signedMp4 += `&download=${encodeURIComponent(filename)}`;
+    if (asDownload) signedMp4 += `&download=${encodeURIComponent(filename)}`;
 
     // Generate the short-lived signed URL and redirect
     const signedMp4 = cloudinary.url(publicId, opts);
