@@ -18,7 +18,7 @@ type Body = {
   salary?: string;
   description?: string;
   templateId?: "zitko-1" | "zitko-2";
-  templateUrl?: string;    // optional absolute https URL (overrides templateId)
+  templateUrl?: string;    // absolute https URL; overrides templateId
 };
 
 const TEMPLATE_FILES: Record<string, string> = {
@@ -31,7 +31,6 @@ function encodeText(t?: string) {
   // encodeURIComponent handles newlines; Cloudinary also needs commas double-encoded
   return encodeURIComponent(t).replace(/%2C/g, "%252C");
 }
-
 function stripExt(id: string) {
   return id.replace(/\.(mp4|mov|m4v|webm)$/i, "");
 }
@@ -52,7 +51,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing videoPublicId" }, { status: 400 });
     }
 
-    // Enforce public_id has NO extension (common source of 404s)
     const cleanVideoId = stripExt(videoPublicId);
 
     // ----- Build a PUBLIC, ABSOLUTE URL for the template PNG -----
@@ -84,8 +82,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Quick sanity check: can *your server* fetch the PNG?
-    // (If this fails, Cloudinary definitely can't fetch it either.)
+    // Quick sanity check: ensure the PNG is publicly reachable
     try {
       const head = await fetch(effectiveTemplateUrl, { method: "HEAD", cache: "no-store" });
       if (!head.ok) {
@@ -118,21 +115,7 @@ export async function POST(req: NextRequest) {
 
     const CANVAS = 1080;
 
-    // --- DEBUG: return composed URL instead of streaming the video ---
-    const debug = req.nextUrl.searchParams.get('debug') === '1';
-    if (debug) {
-      return NextResponse.json(
-        {
-          composedUrl,
-          templateUsed: effectiveTemplateUrl,
-          hint:
-            "Open composedUrl in a new browser tab. Cloudinary will show the exact error " +
-            "(e.g. 404 public_id, fetch blocked, invalid font, auth mismatch).",
-        },
-        { status: 200 }
-      );
-    }
-
+    // --- Build the Cloudinary signed URL FIRST ---
     const composedUrl = cloudinary.url(cleanVideoId, {
       resource_type: "video",
       type: "authenticated", // your uploads are delivered as /video/authenticated/...
@@ -191,6 +174,21 @@ export async function POST(req: NextRequest) {
         { fetch_format: "mp4", quality: "auto" },
       ],
     });
+
+    // --- NOW: optional debug short-circuit (uses composedUrl safely) ---
+    const debug = req.nextUrl.searchParams.get("debug") === "1";
+    if (debug) {
+      return NextResponse.json(
+        {
+          composedUrl,
+          templateUsed: effectiveTemplateUrl,
+          hint:
+            "Open composedUrl in a new browser tab. Cloudinary will show the exact error " +
+            "(e.g. 404 public_id, fetch blocked, invalid font, auth mismatch).",
+        },
+        { status: 200 }
+      );
+    }
 
     // Ask Cloudinary to render it; if they error, we bubble up the reason
     const videoRes = await fetch(composedUrl);
