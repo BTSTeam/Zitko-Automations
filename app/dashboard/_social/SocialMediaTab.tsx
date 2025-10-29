@@ -261,8 +261,8 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
   // ⬇️ New: compose & download MP4 via your API (users stay in-app)
   async function downloadMp4() {
   if (!videoPublicId) {
-    alert('Add a video first.')
-    return
+    alert('Add a video first.');
+    return;
   }
 
   const payload = {
@@ -271,39 +271,48 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     location: job.location || 'Location',
     salary: job.salary || 'Salary',
     description: wrapText(String(job.description || 'Short description')),
-    templateId: selectedTplId, // e.g. "zitko-1"
+    templateId: selectedTplId,
+  };
+
+  const res = await fetch('/api/job/download-mp4', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  // If API returned JSON (error or debug), parse & handle. Otherwise stream the blob.
+  const contentType = res.headers.get('content-type') || '';
+  const isJson = contentType.includes('application/json');
+
+  if (!res.ok) {
+    const errPayload = isJson ? await res.json().catch(() => ({})) : {};
+    alert(`Failed: ${errPayload.error || res.statusText}`);
+    console.error('Download MP4 error payload:', errPayload);
+    return;
   }
 
-    const res = await fetch('/api/job/download-mp4', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    
+  if (isJson) {
+    // Debug mode path
     const j = await res.json().catch(() => ({}));
-    console.log('DEBUG response:', j);
-    
-    if (!res.ok) {
-      alert(`Failed: ${j.error || res.statusText}`);
-      return;
-    }
-    
-    // In debug mode we don't download a file; we just show you the URL:
     if (j.composedUrl) {
-      alert('Copy the URL from the console (DEBUG response).');
-      // or: window.open(j.composedUrl, '_blank');
+      console.log('DEBUG composedUrl:', j.composedUrl);
+      alert('Debug: composedUrl logged to console.');
       return;
     }
+    alert('Unexpected JSON response from server.');
+    return;
+  }
 
-  const blob = await res.blob()
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = 'job-post.mp4'
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  URL.revokeObjectURL(url)
+  // Success: binary MP4
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'job-post.mp4';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
   const benefitsText = useMemo(() => {
