@@ -29,7 +29,7 @@ const TEMPLATE_FILES: Record<string, string> = {
 };
 
 // ---------- Layout types + maps ----------
-type TextBox = { x: number; y: number; w: number; fs: number; color: string; bold?: boolean; h?: number };
+type TextBox = { x:number; y:number; w:number; fs:number; color:string; bold?:boolean; h?:number; lineSpacing?: number };
 type VideoBox = { x: number; y: number; w: number; h: number };
 type Layout = {
   title: TextBox; location: TextBox; salary: TextBox;
@@ -46,10 +46,10 @@ const LAYOUTS: Record<"zitko-1" | "zitko-2", Layout> = {
     title:       { x: 520, y: 125, w: 560, fs: 60, color: "#ffffff", bold: true },
     location:    { x: 520, y: 330, w: 520, fs: 30, color: "#ffffff", bold: true },
     salary:      { x: 520, y: 400, w: 520, fs: 28, color: "#ffffff", bold: true },
-    description: { x: 520, y: 480, w: 520, h: 200,  fs: 24, color: "#ffffff" },
+    description: { x: 520, y: 480, w: 520, h: 200,  fs: 24, color: "#ffffff", lineSpacing: -4 },
     benefits:    { x: 520, y: 680, w: 520, h: 260, fs: 24, color: "#ffffff" },
-    email:       { x: 800, y: 960, w: 180, fs: 20, color: "#ffffff" }, // was 965 → baseline bump
-    phone:       { x: 800, y: 1010, w: 180, fs: 20, color: "#ffffff" }, // was 1020 → baseline bump
+    email:       { x: 800, y: 980, w: 180, fs: 20, color: "#ffffff" },
+    phone:       { x: 800, y: 1030, w: 180, fs: 20, color: "#ffffff" },
     video:       { x:  80, y: 400, w: 300, h: 300 },
   },
   "zitko-2": {
@@ -215,14 +215,14 @@ export async function POST(req: NextRequest) {
         },
         { gravity: "north_west", x: L.salary.x, y: L.salary.y, flags: "layer_apply" },
 
-        // description (force ~1.25 line-height via line_spacing)
+        // description (wider box + optional tighter spacing to match PNG)
         {
           overlay: {
             font_family: "Arial",
             font_size: L.description.fs,
             text: description,
             text_align: "left",
-            line_spacing: LINE_SPACING(L.description.fs),
+            line_spacing: (L.description.lineSpacing ?? LINE_SPACING(L.description.fs)),
           },
           color: L.description.color,
           width: L.description.w,
