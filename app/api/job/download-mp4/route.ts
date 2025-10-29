@@ -12,16 +12,15 @@ cloudinary.config({
 });
 
 type Body = {
-  videoPublicId: string;   // e.g. "job-posts/unassigned/abc123"
+  videoPublicId: string;   // NO extension, e.g. "job-posts/unassigned/abc123"
   title?: string;
   location?: string;
   salary?: string;
   description?: string;
-  templateId?: string;     // "zitko-1" | "zitko-2"
-  templateUrl?: string;    // optional absolute HTTPS URL; overrides templateId
+  templateId?: "zitko-1" | "zitko-2";
+  templateUrl?: string;    // optional absolute https URL (overrides templateId)
 };
 
-// Map your UI template IDs -> PNG filenames under /public/templates
 const TEMPLATE_FILES: Record<string, string> = {
   "zitko-1": "zitko-dark-arc.png",
   "zitko-2": "zitko-looking.png",
@@ -29,8 +28,12 @@ const TEMPLATE_FILES: Record<string, string> = {
 
 function encodeText(t?: string) {
   if (!t) return "";
-  // Cloudinary text overlay needs commas double-encoded; encodeURIComponent handles newlines (%0A)
+  // encodeURIComponent handles newlines; Cloudinary also needs commas double-encoded
   return encodeURIComponent(t).replace(/%2C/g, "%252C");
+}
+
+function stripExt(id: string) {
+  return id.replace(/\.(mp4|mov|m4v|webm)$/i, "");
 }
 
 export async function POST(req: NextRequest) {
@@ -49,28 +52,28 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing videoPublicId" }, { status: 400 });
     }
 
+    // Enforce public_id has NO extension (common source of 404s)
+    const cleanVideoId = stripExt(videoPublicId);
+
     // ----- Build a PUBLIC, ABSOLUTE URL for the template PNG -----
-    const originFromReq = req.nextUrl.origin; // may be http://localhost:3000 in dev
+    const originFromReq = req.nextUrl.origin; // may be http://localhost:3000
     const envBase = process.env.NEXT_PUBLIC_BASE_URL?.trim();
     const isLocal = /^(http:\/\/)?(localhost|127\.0\.0\.1)(:\d+)?/i.test(originFromReq);
 
-    // If running locally and no public base was provided, fail early with a helpful message.
-    if (isLocal && !templateUrl && !envBase) {
-      return NextResponse.json(
-        {
-          error:
-            "Template URL not publicly reachable. Set NEXT_PUBLIC_BASE_URL to your public site (e.g. https://yourapp.vercel.app) or pass a full templateUrl.",
-          hint: "Cloudinary cannot fetch localhost URLs. Use a deployed URL or a tunnel (ngrok/cloudflared).",
-        },
-        { status: 500 }
-      );
-    }
-
-    // Prefer explicit templateUrl if provided (must be absolute https)
+    // Prefer explicit templateUrl if provided
     let effectiveTemplateUrl = templateUrl?.trim();
     if (!effectiveTemplateUrl) {
       const filename = TEMPLATE_FILES[templateId] || TEMPLATE_FILES["zitko-1"];
-      const baseForCloudinary = isLocal ? envBase! : originFromReq; // on prod, origin is already public
+      const baseForCloudinary = isLocal ? envBase : originFromReq;
+      if (!baseForCloudinary) {
+        return NextResponse.json(
+          {
+            error:
+              "No public base URL available. Set NEXT_PUBLIC_BASE_URL to your deployed domain or pass a full templateUrl.",
+          },
+          { status: 500 }
+        );
+      }
       effectiveTemplateUrl = `${baseForCloudinary.replace(/\/$/, "")}/templates/${filename}`;
     }
 
@@ -81,17 +84,49 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Quick sanity check: can *your server* fetch the PNG?
+    // (If this fails, Cloudinary definitely can't fetch it either.)
+    try {
+      const head = await fetch(effectiveTemplateUrl, { method: "HEAD", cache: "no-store" });
+      if (!head.ok) {
+        return NextResponse.json(
+          {
+            error: "Template PNG not reachable (HEAD failed)",
+            status: head.status,
+            templateUrl: effectiveTemplateUrl,
+          },
+          { status: 502 }
+        );
+      }
+      const ct = head.headers.get("content-type") || "";
+      if (!ct.includes("image")) {
+        return NextResponse.json(
+          {
+            error: "Template URL did not return an image content-type",
+            contentType: ct,
+            templateUrl: effectiveTemplateUrl,
+          },
+          { status: 502 }
+        );
+      }
+    } catch (e: any) {
+      return NextResponse.json(
+        { error: "Failed to reach template URL", templateUrl: effectiveTemplateUrl, details: e?.message },
+        { status: 502 }
+      );
+    }
+
     const CANVAS = 1080;
 
-    const composedUrl = cloudinary.url(videoPublicId, {
+    const composedUrl = cloudinary.url(cleanVideoId, {
       resource_type: "video",
-      type: "authenticated", // your upload delivery type
+      type: "authenticated", // your uploads are delivered as /video/authenticated/...
       sign_url: true,
       transformation: [
         // 1) Base canvas
         { width: CANVAS, height: CANVAS, crop: "fill" },
 
-        // 2) Underlay = your PNG served by Next.js public/ via a PUBLIC URL
+        // 2) Underlay = your PNG via public HTTPS
         {
           underlay: `fetch:${encodeURIComponent(effectiveTemplateUrl)}`,
           width: CANVAS,
@@ -99,12 +134,12 @@ export async function POST(req: NextRequest) {
           crop: "fill",
         },
 
-        // 3) Video overlay (small circular window on top)
+        // 3) Video overlay (small circular)
         {
           overlay: {
             resource_type: "video",
             type: "authenticated",
-            public_id: videoPublicId,
+            public_id: cleanVideoId,
             transformation: [{ width: 360, height: 360, crop: "fill", radius: "max" }],
           },
         },
@@ -137,21 +172,25 @@ export async function POST(req: NextRequest) {
         },
         { gravity: "north_west", x: 480, y: 380, flags: "layer_apply" },
 
-        // 5) Output format
+        // 5) Output
         { fetch_format: "mp4", quality: "auto" },
       ],
     });
 
+    // Ask Cloudinary to render it; if they error, we bubble up the reason
     const videoRes = await fetch(composedUrl);
     if (!videoRes.ok) {
       const errText = await videoRes.text().catch(() => "");
       return NextResponse.json(
         {
           error: "Failed to compose video",
-          details: errText.slice(0, 2000),
+          details: errText.slice(0, 4000),
           composedUrl,
           templateUsed: effectiveTemplateUrl,
-          baseDetected: isLocal ? envBase : originFromReq,
+          note:
+            "Open composedUrl in a browser to see Cloudinary's exact error. " +
+            "Common causes: wrong public_id (must be without .mp4), video not authenticated, " +
+            "template URL not reachable, or invalid font name.",
         },
         { status: 500 }
       );
