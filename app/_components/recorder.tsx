@@ -29,17 +29,31 @@ export default function Recorder({ jobId, onUploaded }: Props) {
   const [selectedMic, setSelectedMic] = useState<string | undefined>();
   const [error, setError] = useState<string | null>(null);
 
-  // Discover devices on mount
+  const [recorded, setRecorded] = useState<{
+    blob: Blob;
+    url: string;
+    width: number;
+    height: number;
+    mime: string;
+  } | null>(null);
+  
+  // Optional: clean up blob URL on unmount
   useEffect(() => {
-    navigator.mediaDevices
-      .enumerateDevices()
-      .then((list) => {
-        setDevices(list);
-        setSelectedCam(list.find((d) => d.kind === 'videoinput')?.deviceId);
-        setSelectedMic(list.find((d) => d.kind === 'audioinput')?.deviceId);
-      })
-      .catch((e) => setError(e?.message || 'Could not access devices'));
-  }, []);
+    return () => {
+      if (recorded?.url) URL.revokeObjectURL(recorded.url);
+    };
+  }, [recorded?.url]);
+    // Discover devices on mount
+    useEffect(() => {
+      navigator.mediaDevices
+        .enumerateDevices()
+        .then((list) => {
+          setDevices(list);
+          setSelectedCam(list.find((d) => d.kind === 'videoinput')?.deviceId);
+          setSelectedMic(list.find((d) => d.kind === 'audioinput')?.deviceId);
+        })
+        .catch((e) => setError(e?.message || 'Could not access devices'));
+    }, []);
 
   // Open camera/mic
   async function getStream() {
@@ -86,42 +100,14 @@ export default function Recorder({ jobId, onUploaded }: Props) {
       if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
     };
 
-    mr.onstop = async () => {
+    mr.onstop = () => {
       const blob = new Blob(chunksRef.current, { type: mr.mimeType || 'video/webm' });
       const width = videoRef.current?.videoWidth || 0;
       const height = videoRef.current?.videoHeight || 0;
-
-      setIsUploading(true);
-      setError(null);
-      try {
-        const body = new FormData();
-        body.append('file', blob, `recording.${blob.type.includes('mp4') ? 'mp4' : 'webm'}`);
-        body.append('mime', blob.type);
-        body.append('jobId', jobId);
-
-        const res = await fetch('/api/upload-video', { method: 'POST', body });
-        if (!res.ok) {
-          const txt = await res.text().catch(() => '');
-          throw new Error(`Upload failed${txt ? ` - ${txt}` : ''}`);
-        }
-
-        // Use the playback and download URLs returned by the server
-        const {
-          publicId,
-          playbackMp4,
-          downloadMp4,
-        } = (await res.json()) as {
-          publicId: string;
-          playbackMp4: string;
-          downloadMp4: string;
-        };
-
-        onUploaded({ publicId, playbackMp4, downloadMp4, mime: blob.type, width, height });
-      } catch (e: any) {
-        setError(e?.message || 'Upload failed');
-      } finally {
-        setIsUploading(false);
-      }
+    
+      // Create a local blob URL for review (no upload yet)
+      const url = URL.createObjectURL(blob);
+      setRecorded({ blob, url, width, height, mime: blob.type });
     };
 
     mr.start(150); // collect data every 150ms
@@ -136,6 +122,50 @@ export default function Recorder({ jobId, onUploaded }: Props) {
   function stopStream() {
     stream?.getTracks().forEach((t) => t.stop());
     setStream(null);
+  }
+
+  async function uploadRecorded() {
+    if (!recorded) return;
+    setIsUploading(true);
+    setError(null);
+    try {
+      const body = new FormData();
+      body.append('file', recorded.blob, `recording.${recorded.mime.includes('mp4') ? 'mp4' : 'webm'}`);
+      body.append('mime', recorded.mime);
+      body.append('jobId', jobId);
+  
+      const res = await fetch('/api/upload-video', { method: 'POST', body });
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '');
+        throw new Error(`Upload failed${txt ? ` - ${txt}` : ''}`);
+      }
+  
+      const { publicId, playbackMp4, downloadMp4 } = (await res.json()) as {
+        publicId: string; playbackMp4: string; downloadMp4: string;
+      };
+  
+      onUploaded({
+        publicId,
+        playbackMp4,
+        downloadMp4,
+        mime: recorded.mime,
+        width: recorded.width,
+        height: recorded.height,
+      });
+  
+      // Clear local review state after successful upload
+      URL.revokeObjectURL(recorded.url);
+      setRecorded(null);
+    } catch (e: any) {
+      setError(e?.message || 'Upload failed');
+    } finally {
+      setIsUploading(false);
+    }
+  }
+  
+  function discardRecorded() {
+    if (recorded?.url) URL.revokeObjectURL(recorded.url);
+    setRecorded(null);
   }
 
   return (
