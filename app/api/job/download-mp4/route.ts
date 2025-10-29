@@ -12,16 +12,24 @@ cloudinary.config({
 });
 
 type Body = {
-  videoPublicId: string;                 // e.g. "job-posts/unassigned/eodhaf3p4unjjbv7wwbj"
+  videoPublicId: string;          // e.g. "job-posts/unassigned/abc123"
   title?: string;
   location?: string;
   salary?: string;
   description?: string;
-  templatePublicId?: string;             // e.g. "job-posts/templates/zitko-1"
+  templateId?: string;            // e.g. "zitko-1" (maps to /public/templates/zitko-dark-arc.png)
+  templateUrl?: string;           // optional: pass a full URL directly instead of templateId
+};
+
+// Map your UI template IDs -> png filenames under /public/templates
+const TEMPLATE_FILES: Record<string, string> = {
+  "zitko-1": "zitko-dark-arc.png",
+  "zitko-2": "zitko-looking.png",
 };
 
 function encodeText(t?: string) {
   if (!t) return "";
+  // Cloudinary text overlay needs commas double-encoded
   return encodeURIComponent(t).replace(/%2C/g, "%252C");
 }
 
@@ -33,32 +41,40 @@ export async function POST(req: NextRequest) {
       location = "LOCATION",
       salary = "SALARY",
       description = "SHORT DESCRIPTION",
-      templatePublicId = "job-posts/templates/zitko-1",
+      templateId = "zitko-1",
+      templateUrl, // if provided, overrides templateId mapping
     } = (await req.json()) as Body;
 
     if (!videoPublicId) {
       return NextResponse.json({ error: "Missing videoPublicId" }, { status: 400 });
     }
 
-    // If your template image is also authenticated, set type:'authenticated' in underlay too.
+    // Build absolute URL to the PNG in /public/templates
+    const origin = req.nextUrl.origin; // e.g. https://yourdomain.com
+    const filename = TEMPLATE_FILES[templateId] || TEMPLATE_FILES["zitko-1"];
+    const localTemplateUrl = `${origin}/templates/${filename}`;
+    const effectiveTemplateUrl = templateUrl || localTemplateUrl;
+
     const CANVAS = 1080;
 
     const composedUrl = cloudinary.url(videoPublicId, {
       resource_type: "video",
-      type: "authenticated",          // IMPORTANT: your uploads show /video/authenticated/...
+      type: "authenticated", // your video is served from /video/authenticated/...
       sign_url: true,
       transformation: [
+        // Base canvas
         { width: CANVAS, height: CANVAS, crop: "fill" },
 
-        // Template as UNDERLAY (assumes template is a public image in 'upload' type)
+        // UNDERLAY from your Next.js public asset using "fetch:"
+        // IMPORTANT: the URL must be URL-encoded after "fetch:"
         {
-          underlay: `image:${templatePublicId}`,
+          underlay: `fetch:${encodeURIComponent(effectiveTemplateUrl)}`,
           width: CANVAS,
           height: CANVAS,
           crop: "fill",
         },
 
-        // Circular video overlay (must also be authenticated)
+        // Circular video overlay (also authenticated)
         {
           overlay: {
             resource_type: "video",
@@ -128,8 +144,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           error: "Failed to compose video",
-          details: errText.slice(0, 2000), // pass Cloudinary message up to the client
+          details: errText.slice(0, 2000),
+          // helpful for debugging:
           composedUrl,
+          templateUsed: effectiveTemplateUrl,
         },
         { status: 500 }
       );
