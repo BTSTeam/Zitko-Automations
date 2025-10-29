@@ -27,12 +27,20 @@ const TEMPLATE_FILES: Record<string, string> = {
 
 function encodeText(t?: string) {
   if (!t) return "";
-  // Cloudinary text overlays: keep commas safe (double-encode)
   return encodeURIComponent(t).replace(/%2C/g, "%252C");
 }
 
 function stripExt(id: string) {
   return id.replace(/\.(mp4|mov|m4v|webm)$/i, "");
+}
+
+// 🔧 New helper for Base64-URL encoding
+function toBase64Url(s: string) {
+  return Buffer.from(s, "utf8")
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
 }
 
 export async function POST(req: NextRequest) {
@@ -53,7 +61,7 @@ export async function POST(req: NextRequest) {
 
     const cleanVideoId = stripExt(videoPublicId);
 
-    // ----- Build a PUBLIC template URL your Cloudinary 'fetch' can access -----
+    // ----- Build public template URL Cloudinary can fetch -----
     const originFromReq = req.nextUrl.origin;
     const envBase = process.env.NEXT_PUBLIC_BASE_URL?.trim();
     const isLocal = /^(http:\/\/)?(localhost|127\.0\.0\.1)(:\d+)?/i.test(originFromReq);
@@ -71,7 +79,7 @@ export async function POST(req: NextRequest) {
       effectiveTemplateUrl = `${baseForCloudinary.replace(/\/$/, "")}/templates/${filename}`;
     }
 
-    // Quick reachability check (this doesn’t guarantee Cloudinary will fetch it — see “Allowed fetch domains”)
+    // HEAD check for reachability
     try {
       const head = await fetch(effectiveTemplateUrl, { method: "HEAD", cache: "no-store" });
       if (!head.ok) {
@@ -94,7 +102,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Verify the Cloudinary video exists & is authenticated
+    // Verify video exists & is authenticated
     try {
       // @ts-ignore
       const info = await cloudinary.api.resource(cleanVideoId, {
@@ -115,26 +123,26 @@ export async function POST(req: NextRequest) {
     }
 
     const CANVAS = 1080;
-    const overlayIdForLayer = cleanVideoId.replace(/\//g, ":"); // job-posts:unassigned:abc123
+    const overlayIdForLayer = cleanVideoId.replace(/\//g, ":");
     const videoSize = 360;
     const videoX = 60;
     const videoY = 430;
 
-    // IMPORTANT: Apply underlay using raw u_fetch + fl_layer_apply so it sits behind the video
-    const encodedFetchUrl = encodeURIComponent(effectiveTemplateUrl);
+    // ✅ Correct Base64-URL encoded fetch for template overlay
+    const fetchB64 = toBase64Url(effectiveTemplateUrl);
 
     const composedUrl = cloudinary.url(cleanVideoId, {
       resource_type: "video",
       type: "authenticated",
       sign_url: true,
       transformation: [
-        // 1) Base canvas/frame
+        // 1) Base canvas
         { width: CANVAS, height: CANVAS, crop: "fill" },
 
-        // 2) Template underlay (explicit layer apply)
-        { raw_transformation: `u_fetch:${encodedFetchUrl}/c_fill,w_${CANVAS},h_${CANVAS}/fl_layer_apply,g_north_west,x_0,y_0` },
+        // 2) Template overlay (fetch layer)
+        { raw_transformation: `l_fetch:${fetchB64}/c_fill,w_${CANVAS},h_${CANVAS}/fl_layer_apply,g_north_west,x_0,y_0` },
 
-        // 3) Video overlay (authenticated video in a rounded square)
+        // 3) Authenticated video overlay
         { raw_transformation: `w_${videoSize},h_${videoSize},c_fill,r_max,l_video:authenticated:${overlayIdForLayer}` },
         { raw_transformation: `fl_layer_apply,g_north_west,x_${videoX},y_${videoY}` },
 
@@ -170,24 +178,21 @@ export async function POST(req: NextRequest) {
       ],
     });
 
-    // Optional debug switch
     const debug = req.nextUrl.searchParams.get("debug") === "1";
     if (debug) {
       return NextResponse.json(
         {
           composedUrl,
           templateUsed: effectiveTemplateUrl,
-          hint: "Open composedUrl in a new tab. If it errors, check Cloudinary 'Allowed fetch domains' and the x-cld-error header.",
+          hint: "Open composedUrl in a new tab. If it errors, check 'Allowed fetch domains' in Cloudinary settings.",
         },
         { status: 200 }
       );
     }
 
-    // Stream from Cloudinary
     const videoRes = await fetch(composedUrl);
     if (!videoRes.ok) {
       const errText = await videoRes.text().catch(() => "");
-      // Cloudinary often returns an x-cld-error header – surface it if present
       const cldError = videoRes.headers.get("x-cld-error") || undefined;
       return NextResponse.json(
         {
