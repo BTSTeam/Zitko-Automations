@@ -201,10 +201,41 @@ export default function Recorder({ jobId, onUploaded }: Props) {
         </select>
       </div>
 
-      {/* Preview */}
+      {/* Live camera preview */}
       <div className="rounded-lg overflow-hidden bg-black">
         <video ref={videoRef} autoPlay playsInline muted className="w-full h-auto" />
       </div>
+      
+      {/* Local review player (only shown after you stop recording) */}
+      {recorded && (
+        <div className="mt-3 space-y-2">
+          <div className="rounded-lg overflow-hidden bg-black">
+            <video
+              src={recorded.url}
+              controls
+              playsInline
+              className="w-full h-auto"
+            />
+          </div>
+          <div className="flex gap-2">
+            <button
+              className="border rounded px-3 py-1 bg-emerald-600 text-white disabled:opacity-60"
+              onClick={uploadRecorded}
+              disabled={isUploading}
+            >
+              Use this video (upload)
+            </button>
+            <button
+              className="border rounded px-3 py-1"
+              onClick={discardRecorded}
+              disabled={isUploading}
+            >
+              Discard
+            </button>
+            {isUploading && <span className="text-sm opacity-80">Uploading…</span>}
+          </div>
+        </div>
+      )}
 
       {/* Controls */}
       <div className="flex flex-wrap gap-2">
@@ -220,7 +251,7 @@ export default function Recorder({ jobId, onUploaded }: Props) {
         )}
         {isRecording && (
           <button className="border rounded px-3 py-1" onClick={stopRecording}>
-            Stop
+            Stop recording
           </button>
         )}
         {stream && !isRecording && (
