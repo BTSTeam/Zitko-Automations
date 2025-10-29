@@ -229,13 +229,13 @@ export async function POST(req: NextRequest) {
             text_align: "left",
           },
           color: L.description.color,
-            width: L.description.w,
-            height: L.description.h,
-            crop: "crop", // <-- was "fit"
+          width: L.description.w,
+          height: L.description.h,
+          crop: "crop",
+          gravity: "north_west",
         },
         { gravity: "north_west", x: L.description.x, y: L.description.y, flags: "layer_apply" },
         
-        // benefits — same idea (bulleted text, cropped instead of scaled)
         {
           overlay: {
             font_family: "Arial",
@@ -244,9 +244,10 @@ export async function POST(req: NextRequest) {
             text_align: "left",
           },
           color: L.benefits.color,
-            width: L.benefits.w,
-            height: L.benefits.h,
-            crop: "crop", // <-- was "fit"
+          width: L.benefits.w,
+          height: L.benefits.h,
+          crop: "crop",
+          gravity: "north_west",
         },
         { gravity: "north_west", x: L.benefits.x, y: L.benefits.y, flags: "layer_apply" },
 
