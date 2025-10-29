@@ -265,20 +265,13 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
       return
     }
 
-    // Prefer the signed Cloudinary download URL if we have it (fast path).
-    // But only if you actually want the raw video. For the branded composite, call the API:
-    // if (videoDownloadUrl) { window.location.href = videoDownloadUrl; return }
-
-    const templatePublicId =
-      CLOUDINARY_TEMPLATES[selectedTplId] || 'job-posts/templates/zitko-1'
-
     const payload = {
-      videoPublicId,                         // e.g. "job-posts/unassigned/abc123"
+      videoPublicId,
       title: job.title || 'Job Title',
       location: job.location || 'Location',
       salary: job.salary || 'Salary',
       description: wrapText(String(job.description || 'Short description')),
-      templatePublicId,
+      templateId: selectedTplId, // e.g. "zitko-1"
     }
 
     const res = await fetch('/api/job/download-mp4', {
