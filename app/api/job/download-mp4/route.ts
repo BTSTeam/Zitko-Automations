@@ -28,8 +28,20 @@ const TEMPLATE_FILES: Record<string, string> = {
   "zitko-2": "zitko-looking.png",
 };
 
-// Mirror SocialMediaTab coords/sizes
-const LAYOUTS = {
+// ---------- Layout types + maps ----------
+type TextBox = {
+  x: number; y: number; w: number; fs: number; color: string;
+  bold?: boolean; h?: number;
+};
+type VideoBox = { x: number; y: number; w: number; h: number };
+type Layout = {
+  title: TextBox; location: TextBox; salary: TextBox;
+  description: TextBox; benefits: TextBox;
+  email: TextBox; phone: TextBox;
+  video: VideoBox;
+};
+
+const LAYOUTS: Record<"zitko-1" | "zitko-2", Layout> = {
   "zitko-1": {
     title:       { x: 520, y: 125, w: 560, fs: 60, color: "#ffffff", bold: true },
     location:    { x: 520, y: 330, w: 520, fs: 30, color: "#ffffff", bold: true },
@@ -38,20 +50,21 @@ const LAYOUTS = {
     benefits:    { x: 520, y: 680, w: 520, h: 260, fs: 24, color: "#ffffff" },
     email:       { x: 800, y: 965, w: 180, fs: 20, color: "#ffffff" },
     phone:       { x: 800, y: 1020, w: 180, fs: 20, color: "#ffffff" },
-    video:       { x: 80, y: 400, w: 300, h: 300 },
+    video:       { x:  80, y: 400, w: 300, h: 300 },
   },
   "zitko-2": {
     title:       { x:  80, y: 320, w: 520, fs: 34, color: "#ffffff", bold: true },
     salary:      { x:  80, y: 370, w: 520, fs: 22, color: "#ffffff", bold: true },
     location:    { x:  80, y: 410, w: 520, fs: 20, color: "#ffffff", bold: true },
-    description: { x:  80, y: 460, w: 520, fs: 18, color: "#ffffff" },
-    benefits:    { x:  80, y: 600, w: 520, fs: 18, color: "#ffffff" },
-    email:       { x: 800, y: 975,          fs: 20, color: "#ffffff" },
-    phone:       { x: 800, y: 1030,         fs: 20, color: "#ffffff" },
+    description: { x:  80, y: 460, w: 520, h: 120, fs: 18, color: "#ffffff" }, // include h
+    benefits:    { x:  80, y: 600, w: 520, h: 140, fs: 18, color: "#ffffff" }, // include h
+    email:       { x: 800, y: 975, w: 180, fs: 20, color: "#ffffff" },
+    phone:       { x: 800, y: 1030, w: 180, fs: 20, color: "#ffffff" },
     video:       { x: 720, y: 360, w: 280, h: 360 },
   },
-} as const;
+};
 
+// bullets helper
 function formatBenefits(raw: string) {
   const lines = String(raw || "")
     .split("\n")
@@ -159,6 +172,7 @@ export async function POST(req: NextRequest) {
     const L = LAYOUTS[templateId] || LAYOUTS["zitko-1"];
 
     // video slot from layout
+    const overlayIdForLayer = cleanVideoId.replace(/\//g, ":");
     const videoSize = Math.min(L.video.w, L.video.h);
     const videoX = L.video.x;
     const videoY = L.video.y;
@@ -177,13 +191,13 @@ export async function POST(req: NextRequest) {
         { raw_transformation: `l_fetch:${fetchB64}/c_fill,w_${CANVAS},h_${CANVAS}/fl_layer_apply,g_north_west,x_0,y_0` },
 
         // 3) Authenticated video overlay
-        { raw_transformation: `w_${videoSize},h_${videoSize},c_fill,r_max,l_video:authenticated:${cleanVideoId.replace(/\//g, ":")}` },
+        { raw_transformation: `w_${videoSize},h_${videoSize},c_fill,r_max,l_video:authenticated:${overlayIdForLayer}` },
         { raw_transformation: `fl_layer_apply,g_north_west,x_${videoX},y_${videoY}` },
 
         // 4) Text overlays using the same coordinates/fonts as the preview
         // Title
         {
-          overlay: { font_family: "Arial", font_size: L.title.fs, font_weight: L.title.bold ? "bold" : "normal", text: title },
+          overlay: { font_family: "Arial", font_size: L.title.fs, font_weight: L.title.bold ? "bold" : "normal", text: title, text_align: "left" },
           color: L.title.color,
           width: L.title.w,
           crop: "fit",
@@ -192,7 +206,7 @@ export async function POST(req: NextRequest) {
 
         // Location
         {
-          overlay: { font_family: "Arial", font_size: L.location.fs, font_weight: L.location.bold ? "bold" : "normal", text: location },
+          overlay: { font_family: "Arial", font_size: L.location.fs, font_weight: L.location.bold ? "bold" : "normal", text: location, text_align: "left" },
           color: L.location.color,
           width: L.location.w,
           crop: "fit",
@@ -201,7 +215,7 @@ export async function POST(req: NextRequest) {
 
         // Salary
         {
-          overlay: { font_family: "Arial", font_size: L.salary.fs, font_weight: L.salary.bold ? "bold" : "normal", text: salary },
+          overlay: { font_family: "Arial", font_size: L.salary.fs, font_weight: L.salary.bold ? "bold" : "normal", text: salary, text_align: "left" },
           color: L.salary.color,
           width: L.salary.w,
           crop: "fit",
@@ -210,58 +224,38 @@ export async function POST(req: NextRequest) {
 
         // Description
         {
-          overlay: {
-            font_family: "Arial",
-            font_size: L.description.fs,
-            text: description,
-            text_align: "left",
-          },
+          overlay: { font_family: "Arial", font_size: L.description.fs, text: description, text_align: "left" },
           color: L.description.color,
           width: L.description.w,
-          height: L.description.h,  // NEW
+          height: L.description.h,
           crop: "fit",
         },
         { gravity: "north_west", x: L.description.x, y: L.description.y, flags: "layer_apply" },
 
-        // Benefits (bulleted already via formatBenefits)
+        // Benefits (bulleted)
         {
-          overlay: {
-            font_family: "Arial",
-            font_size: L.benefits.fs,
-            text: formatBenefits(benefits),
-            text_align: "left",
-          },
+          overlay: { font_family: "Arial", font_size: L.benefits.fs, text: formatBenefits(benefits), text_align: "left" },
           color: L.benefits.color,
           width: L.benefits.w,
-          height: L.benefits.h,     // NEW
+          height: L.benefits.h,
           crop: "fit",
         },
         { gravity: "north_west", x: L.benefits.x, y: L.benefits.y, flags: "layer_apply" },
-        
+
         // Email
         {
-          overlay: {
-            font_family: "Arial",
-            font_size: L.email.fs,
-            text: email,
-            text_align: "left",
-          },
+          overlay: { font_family: "Arial", font_size: L.email.fs, text: email, text_align: "left" },
           color: L.email.color,
-          width: L.email.w,         // NEW
+          width: L.email.w,
           crop: "fit",
         },
         { gravity: "north_west", x: L.email.x, y: L.email.y, flags: "layer_apply" },
-        
+
         // Phone
         {
-          overlay: {
-            font_family: "Arial",
-            font_size: L.phone.fs,
-            text: phone,
-            text_align: "left",
-          },
+          overlay: { font_family: "Arial", font_size: L.phone.fs, text: phone, text_align: "left" },
           color: L.phone.color,
-          width: L.phone.w,         // NEW
+          width: L.phone.w,
           crop: "fit",
         },
         { gravity: "north_west", x: L.phone.x, y: L.phone.y, flags: "layer_apply" },
