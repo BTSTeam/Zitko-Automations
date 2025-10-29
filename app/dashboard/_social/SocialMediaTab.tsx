@@ -274,7 +274,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     templateId: selectedTplId, // e.g. "zitko-1"
   }
 
-  const res = await fetch('/api/job/download-mp4', {
+  const res = await fetch('/api/job/download-mp4?debug=1', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
