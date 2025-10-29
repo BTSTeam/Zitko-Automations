@@ -31,11 +31,11 @@ export async function GET(req: NextRequest) {
     // Signed URL expiry (1 hour)
     const expiresAt = Math.floor(Date.now() / 1000) + 60 * 60;
 
-    // Build transformation; put flags:attachment inside the array
+    // app/api/export-mp4/route.ts
     const transformation = asDownload
-      ? [{ quality: 'auto:good' }, { fetch_format: 'mp4' }, { flags: `attachment:${filename}` }]
+      ? [{ quality: 'auto:good' }, { fetch_format: 'mp4' }, { flags: 'attachment' }]
       : [{ quality: 'auto:good' }, { fetch_format: 'mp4' }];
-
+    
     const opts = {
       resource_type: 'video' as const,
       type: 'authenticated' as const,
@@ -45,6 +45,14 @@ export async function GET(req: NextRequest) {
       format: 'mp4',
       transformation,
     };
+    
+    // Add download name separately, after URL generation
+    let signedMp4 = cloudinary.url(publicId, opts);
+if (asDownload) signedMp4 += `&download=${encodeURIComponent(filename)}`;
+
+// Add download name separately, after URL generation
+let signedMp4 = cloudinary.url(publicId, opts);
+if (asDownload) signedMp4 += `&download=${encodeURIComponent(filename)}`;
 
     // Generate the short-lived signed URL and redirect
     const signedMp4 = cloudinary.url(publicId, opts);
