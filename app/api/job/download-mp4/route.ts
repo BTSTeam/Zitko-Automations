@@ -83,18 +83,27 @@ function toBase64Url(s: string) {
 
 export async function POST(req: NextRequest) {
   try {
-    const {
-      videoPublicId,
-      title = "JOB TITLE",
-      location = "LOCATION",
-      salary = "SALARY",
-      description = "SHORT DESCRIPTION",
-      benefits = "BENEFITS",
-      email = "EMAIL",
-      phone = "PHONE",
-      templateId = "zitko-1",
-      templateUrl,
-    } = (await req.json()) as Body;
+  const {
+    videoPublicId,
+    title = "JOB TITLE",
+    location = "LOCATION",
+    salary = "SALARY",
+    description = "SHORT DESCRIPTION",
+    benefits = "BENEFITS",
+    email = "EMAIL",
+    phone = "PHONE",
+    templateId = "zitko-1",
+    templateUrl,
+  } = (await req.json()) as Body;
+  
+  // NEW: sanitize description to avoid manual wraps
+  const cleanDescription = String(description || "")
+    .replace(/\r\n|\r|\n/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  
+  // (optional) also trim benefits lines (we still bullet them below)
+  const cleanBenefits = String(benefits || "").trim();
 
     if (!videoPublicId) {
       return NextResponse.json({ error: "Missing videoPublicId" }, { status: 400 });
@@ -212,33 +221,32 @@ export async function POST(req: NextRequest) {
         },
         { gravity: "north_west", x: L.salary.x, y: L.salary.y, flags: "layer_apply" },
 
-        // description (no custom spacings)
         {
           overlay: {
             font_family: "Arial",
             font_size: L.description.fs,
-            text: description,
+            text: cleanDescription,
             text_align: "left",
           },
           color: L.description.color,
-          width: L.description.w,
-          height: L.description.h,
-          crop: "fit",
+            width: L.description.w,
+            height: L.description.h,
+            crop: "crop", // <-- was "fit"
         },
         { gravity: "north_west", x: L.description.x, y: L.description.y, flags: "layer_apply" },
         
-        // benefits (no custom spacings)
+        // benefits — same idea (bulleted text, cropped instead of scaled)
         {
           overlay: {
             font_family: "Arial",
             font_size: L.benefits.fs,
-            text: formatBenefits(benefits),
+            text: formatBenefits(cleanBenefits),
             text_align: "left",
           },
           color: L.benefits.color,
-          width: L.benefits.w,
-          height: L.benefits.h,
-          crop: "fit",
+            width: L.benefits.w,
+            height: L.benefits.h,
+            crop: "crop", // <-- was "fit"
         },
         { gravity: "north_west", x: L.benefits.x, y: L.benefits.y, flags: "layer_apply" },
 
