@@ -259,43 +259,45 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
   }
 
   // ⬇️ New: compose & download MP4 via your API (users stay in-app)
-  async function handleDownloadMp4() {
-    if (!videoPublicId) {
-      alert('Add a video first.')
-      return
-    }
-
-    const payload = {
-      videoPublicId,
-      title: job.title || 'Job Title',
-      location: job.location || 'Location',
-      salary: job.salary || 'Salary',
-      description: wrapText(String(job.description || 'Short description')),
-      templateId: selectedTplId, // e.g. "zitko-1"
-    }
-
-    const res = await fetch('/api/job/download-mp4', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-
-    if (!res.ok) {
-      const j = await res.json().catch(() => ({}))
-      alert(`Failed to download: ${j.error || res.statusText}`)
-      return
-    }
-
-    const blob = await res.blob()
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'job-post.mp4'
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    URL.revokeObjectURL(url)
+  async function downloadMp4() {
+  if (!videoPublicId) {
+    alert('Add a video first.')
+    return
   }
+
+  const payload = {
+    videoPublicId,
+    title: job.title || 'Job Title',
+    location: job.location || 'Location',
+    salary: job.salary || 'Salary',
+    description: wrapText(String(job.description || 'Short description')),
+    templateId: selectedTplId, // e.g. "zitko-1"
+  }
+
+  const res = await fetch('/api/job/download-mp4', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+
+  // 👇 This is the bit you asked about — it handles and logs any Cloudinary errors
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}))
+    console.error('Compose error details:', j) // View this in browser dev tools console
+    alert(`Failed to download: ${j.error || res.statusText}`)
+    return
+  }
+
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'job-post.mp4'
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
 
   const benefitsText = useMemo(() => {
     if (Array.isArray(job.benefits)) return (job.benefits as string[]).join('\n')
