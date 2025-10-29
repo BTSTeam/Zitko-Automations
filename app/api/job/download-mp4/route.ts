@@ -210,33 +210,59 @@ export async function POST(req: NextRequest) {
 
         // Description
         {
-          overlay: { font_family: "Arial", font_size: L.description.fs, text: description },
+          overlay: {
+            font_family: "Arial",
+            font_size: L.description.fs,
+            text: description,
+            text_align: "left",
+          },
           color: L.description.color,
           width: L.description.w,
+          height: L.description.h,  // NEW
           crop: "fit",
         },
         { gravity: "north_west", x: L.description.x, y: L.description.y, flags: "layer_apply" },
 
-        // Benefits (with bullets)
+        // Benefits (bulleted already via formatBenefits)
         {
-          overlay: { font_family: "Arial", font_size: L.benefits.fs, text: formatBenefits(benefits) },
+          overlay: {
+            font_family: "Arial",
+            font_size: L.benefits.fs,
+            text: formatBenefits(benefits),
+            text_align: "left",
+          },
           color: L.benefits.color,
           width: L.benefits.w,
+          height: L.benefits.h,     // NEW
           crop: "fit",
         },
         { gravity: "north_west", x: L.benefits.x, y: L.benefits.y, flags: "layer_apply" },
-
+        
         // Email
         {
-          overlay: { font_family: "Arial", font_size: L.email.fs, text: email },
+          overlay: {
+            font_family: "Arial",
+            font_size: L.email.fs,
+            text: email,
+            text_align: "left",
+          },
           color: L.email.color,
+          width: L.email.w,         // NEW
+          crop: "fit",
         },
         { gravity: "north_west", x: L.email.x, y: L.email.y, flags: "layer_apply" },
-
+        
         // Phone
         {
-          overlay: { font_family: "Arial", font_size: L.phone.fs, text: phone },
+          overlay: {
+            font_family: "Arial",
+            font_size: L.phone.fs,
+            text: phone,
+            text_align: "left",
+          },
           color: L.phone.color,
+          width: L.phone.w,         // NEW
+          crop: "fit",
         },
         { gravity: "north_west", x: L.phone.x, y: L.phone.y, flags: "layer_apply" },
 
