@@ -29,7 +29,7 @@ const TEMPLATE_FILES: Record<string, string> = {
 };
 
 // ---------- Layout types + maps ----------
-type TextBox = { x:number; y:number; w:number; fs:number; color:string; bold?:boolean; h?:number; lineSpacing?: number };
+type TextBox = { x:number; y:number; w:number; fs:number; color:string; bold?:boolean; h?:number; lineSpacing?: number; letterSpacing?: number };
 type VideoBox = { x: number; y: number; w: number; h: number };
 type Layout = {
   title: TextBox; location: TextBox; salary: TextBox;
@@ -38,7 +38,6 @@ type Layout = {
   video: VideoBox;
 };
 
-// CSS preview uses line-height ≈ 1.25 → add ~0.25*fontSize px between lines
 const LINE_SPACING = (fs: number) => Math.round(fs * 0.25);
 
 const LAYOUTS: Record<"zitko-1" | "zitko-2", Layout> = {
@@ -46,7 +45,7 @@ const LAYOUTS: Record<"zitko-1" | "zitko-2", Layout> = {
     title:       { x: 520, y: 125, w: 560, fs: 60, color: "#ffffff", bold: true },
     location:    { x: 520, y: 330, w: 520, fs: 30, color: "#ffffff", bold: true },
     salary:      { x: 520, y: 400, w: 520, fs: 28, color: "#ffffff", bold: true },
-    description: { x: 520, y: 480, w: 560, h: 200,  fs: 24, color: "#ffffff", lineSpacing: -3 },
+    description: { x: 520, y: 480, w: 560, h: 200, fs: 24, color: "#ffffff", lineSpacing: -3, letterSpacing: -1.5 },
     benefits:    { x: 520, y: 680, w: 520, h: 260, fs: 24, color: "#ffffff" },
     email:       { x: 800, y: 980, w: 180, fs: 20, color: "#ffffff" },
     phone:       { x: 800, y: 1035, w: 180, fs: 20, color: "#ffffff" },
@@ -223,6 +222,7 @@ export async function POST(req: NextRequest) {
             text: description,
             text_align: "left",
             line_spacing: (L.description.lineSpacing ?? LINE_SPACING(L.description.fs)),
+            letter_spacing: (L.description.letterSpacing ?? 0),
           },
           color: L.description.color,
           width: L.description.w,
