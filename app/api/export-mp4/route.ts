@@ -7,7 +7,6 @@ export const runtime = 'nodejs';
 // Configure Cloudinary – prefer server env vars, fall back to public if needed
 cloudinary.config({
   cloud_name:
-    process.env.CLOUDINARY_CLOUD_NAME ||
     process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY!,
   api_secret: process.env.CLOUDINARY_API_SECRET!,
@@ -32,7 +31,7 @@ export async function GET(req: NextRequest) {
     const expiresAt = Math.floor(Date.now() / 1000) + 60 * 60; // 1 hour
     const commonOpts = {
       resource_type: 'video' as const,
-      type: 'authenticated' as const, // signed delivery for private videos
+      type: 'authenticated' as const,
       sign_url: true,
       expires_at: expiresAt,
       transformation: [
