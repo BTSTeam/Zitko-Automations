@@ -16,6 +16,9 @@ type Body = {
   location?: string;
   salary?: string;
   description?: string;
+  benefits?: string;
+  email?: string;
+  phone?: string;
   templateId?: "zitko-1" | "zitko-2";
   templateUrl?: string;           // absolute URL overrides templateId
 };
@@ -25,6 +28,7 @@ const TEMPLATE_FILES: Record<string, string> = {
   "zitko-2": "zitko-looking.png",
 };
 
+// ✅ single enhanced encodeText (remove any duplicate)
 function encodeText(t?: string) {
   if (!t) return "";
   return encodeURIComponent(t)
@@ -37,16 +41,11 @@ function encodeText(t?: string) {
     .replace(/%3F/g, "%253F");  // question mark
 }
 
-function encodeText(t?: string) {
-  if (!t) return "";
-  return encodeURIComponent(t).replace(/%2C/g, "%252C");
-}
-
 function stripExt(id: string) {
   return id.replace(/\.(mp4|mov|m4v|webm)$/i, "");
 }
 
-// 🔧 New helper for Base64-URL encoding
+// For l_fetch remote overlays
 function toBase64Url(s: string) {
   return Buffer.from(s, "utf8")
     .toString("base64")
@@ -63,6 +62,9 @@ export async function POST(req: NextRequest) {
       location = "LOCATION",
       salary = "SALARY",
       description = "SHORT DESCRIPTION",
+      benefits = "BENEFITS",
+      email = "EMAIL",
+      phone = "PHONE",
       templateId = "zitko-1",
       templateUrl,
     } = (await req.json()) as Body;
@@ -140,7 +142,6 @@ export async function POST(req: NextRequest) {
     const videoX = 60;
     const videoY = 430;
 
-    // ✅ Correct Base64-URL encoded fetch for template overlay
     const fetchB64 = toBase64Url(effectiveTemplateUrl);
 
     const composedUrl = cloudinary.url(cleanVideoId, {
@@ -151,14 +152,14 @@ export async function POST(req: NextRequest) {
         // 1) Base canvas
         { width: CANVAS, height: CANVAS, crop: "fill" },
 
-        // 2) Template overlay (fetch layer)
+        // 2) Template overlay (remote fetch)
         { raw_transformation: `l_fetch:${fetchB64}/c_fill,w_${CANVAS},h_${CANVAS}/fl_layer_apply,g_north_west,x_0,y_0` },
 
         // 3) Authenticated video overlay
         { raw_transformation: `w_${videoSize},h_${videoSize},c_fill,r_max,l_video:authenticated:${overlayIdForLayer}` },
         { raw_transformation: `fl_layer_apply,g_north_west,x_${videoX},y_${videoY}` },
 
-        // 4) Text overlays
+        // 4) Text overlays (title, location, salary, description)
         {
           overlay: { font_family: "Arial", font_size: 56, font_weight: "bold", text: encodeText(title) },
           color: "#ffffff",
@@ -185,30 +186,28 @@ export async function POST(req: NextRequest) {
         },
         { gravity: "north_west", x: 480, y: 380, flags: "layer_apply" },
 
-        // Benefits (multi-line block)
+        // 5) NEW: benefits, email, phone overlays
         {
-          overlay: { font_family: "Arial", font_size: 24, text: encodeText(benefits || "BENEFITS") },
+          overlay: { font_family: "Arial", font_size: 24, text: encodeText(benefits) },
           color: "#ffffff",
           width: 520,
           crop: "fit",
         },
         { gravity: "north_west", x: 480, y: 700, flags: "layer_apply" },
-        
-        // Email
+
         {
-          overlay: { font_family: "Arial", font_size: 22, text: encodeText(email || "EMAIL") },
+          overlay: { font_family: "Arial", font_size: 22, text: encodeText(email) },
           color: "#cfd3d7",
         },
         { gravity: "north_west", x: 850, y: 945, flags: "layer_apply" },
-        
-        // Phone
+
         {
-          overlay: { font_family: "Arial", font_size: 22, text: encodeText(phone || "PHONE") },
+          overlay: { font_family: "Arial", font_size: 22, text: encodeText(phone) },
           color: "#cfd3d7",
         },
         { gravity: "north_west", x: 850, y: 985, flags: "layer_apply" },
 
-        // 5) Output
+        // 6) Output
         { fetch_format: "mp4", quality: "auto" },
       ],
     });
@@ -219,7 +218,7 @@ export async function POST(req: NextRequest) {
         {
           composedUrl,
           templateUsed: effectiveTemplateUrl,
-          hint: "Open composedUrl in a new tab. If it errors, check 'Allowed fetch domains' in Cloudinary settings.",
+          hint: "Open composedUrl in a new tab. If it errors, check 'Allowed fetch domains' and x-cld-error.",
         },
         { status: 200 }
       );
