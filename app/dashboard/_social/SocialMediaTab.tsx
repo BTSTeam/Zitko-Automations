@@ -78,6 +78,12 @@ const TEMPLATES: TemplateDef[] = [
   },
 ]
 
+// Map UI template IDs -> Cloudinary template public IDs
+const CLOUDINARY_TEMPLATES: Record<string, string> = {
+  'zitko-1': 'job-posts/templates/zitko-1',
+  'zitko-2': 'job-posts/templates/zitko-2',
+}
+
 // ---------- helpers ----------
 function wrapText(text: string, maxCharsPerLine = 34) {
   const words = String(text ?? '').split(/\s+/)
@@ -201,7 +207,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
       try {
         const teaser = await fetch('/api/job/short-description', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: 'Content-Type' in Headers.prototype ? { 'Content-Type': 'application/json' } : ({} as any),
           body: JSON.stringify({ description: publicDesc }),
         })
         if (teaser.ok) {
@@ -252,18 +258,50 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     a.click()
   }
 
-  async function downloadMp4() {
+  // ⬇️ New: compose & download MP4 via your API (users stay in-app)
+  async function handleDownloadMp4() {
     if (!videoPublicId) {
       alert('Add a video first.')
       return
     }
+
     // Prefer the signed Cloudinary download URL if we have it (fast path).
-    if (videoDownloadUrl) {
-      window.location.href = videoDownloadUrl
+    // But only if you actually want the raw video. For the branded composite, call the API:
+    // if (videoDownloadUrl) { window.location.href = videoDownloadUrl; return }
+
+    const templatePublicId =
+      CLOUDINARY_TEMPLATES[selectedTplId] || 'job-posts/templates/zitko-1'
+
+    const payload = {
+      videoPublicId,                         // e.g. "job-posts/unassigned/abc123"
+      title: job.title || 'Job Title',
+      location: job.location || 'Location',
+      salary: job.salary || 'Salary',
+      description: wrapText(String(job.description || 'Short description')),
+      templatePublicId,
+    }
+
+    const res = await fetch('/api/job/download-mp4', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}))
+      alert(`Failed to download: ${j.error || res.statusText}`)
       return
     }
-    // Fallback to server route (also sets a nice filename)
-    window.location.href = `/api/export-mp4?publicId=${encodeURIComponent(videoPublicId)}&download=1`
+
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'job-post.mp4'
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
   }
 
   const benefitsText = useMemo(() => {
@@ -354,8 +392,8 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                     onUploaded={(payload) => {
                       // { publicId, playbackMp4, mime, width, height }
                       setVideoUrl(payload.playbackMp4)               // MP4 streaming URL
-                      setVideoPublicId(payload.publicId)            // needed for /api/export-mp4
-                      setVideoDownloadUrl(payload.downloadMp4)       // keep the signed download URL too
+                      setVideoPublicId(payload.publicId)            // needed for /api/job/download-mp4
+                      setVideoDownloadUrl(payload.downloadMp4)      // optional: raw video download
                       setVideoMeta({ mime: payload.mime, width: payload.width, height: payload.height })
                     }}
                   />
@@ -405,7 +443,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
               </button>
               <button
                 className={`rounded px-3 py-2 ${videoUrl ? 'bg-amber-600 text-white' : 'bg-gray-200 text-gray-500'}`}
-                onClick={downloadMp4}
+                onClick={handleDownloadMp4}
                 title={videoUrl ? 'Compose MP4 on server' : 'Add a video to enable'}
               >
                 Download MP4
