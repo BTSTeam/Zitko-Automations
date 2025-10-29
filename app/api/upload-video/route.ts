@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
         {
           resource_type: 'video',
           folder: `job-posts/${jobId}`,
-          type: 'private', // private asset (requires signed delivery)
+          type: 'authenticated',
           overwrite: true,
           tags: [`job:${jobId}`],
         },
@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
     const expiresAt = Math.floor(Date.now() / 1000) + 60 * 60
     const commonOpts = {
       resource_type: 'video' as const,
-      type: 'private' as const,
+      type: 'authenticated' as const,
       sign_url: true,
       expires_at: expiresAt,
       transformation: [{ quality: 'auto:good' }, { fetch_format: 'mp4' }],
