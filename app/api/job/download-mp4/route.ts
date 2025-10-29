@@ -31,23 +31,23 @@ const TEMPLATE_FILES: Record<string, string> = {
 // Mirror SocialMediaTab coords/sizes
 const LAYOUTS = {
   "zitko-1": {
-    title:       { x: 320, y: 125, w: 560, fs: 60, color: "#ffffff", bold: true },
-    location:    { x: 520, y: 330, w: 520, fs: 30, color: "#cfd3d7", bold: true },
-    salary:      { x: 520, y: 400, w: 520, fs: 28, color: "#cfd3d7", bold: true },
+    title:       { x: 520, y: 125, w: 560, fs: 60, color: "#ffffff", bold: true },
+    location:    { x: 520, y: 330, w: 520, fs: 30, color: "#ffffff", bold: true },
+    salary:      { x: 520, y: 400, w: 520, fs: 28, color: "#ffffff", bold: true },
     description: { x: 520, y: 480, w: 520, fs: 24, color: "#ffffff" },
     benefits:    { x: 520, y: 680, w: 520, fs: 24, color: "#ffffff" },
-    email:       { x: 800, y: 965,          fs: 20, color: "#cfd3d7" },
-    phone:       { x: 800, y: 1020,         fs: 20, color: "#cfd3d7" },
+    email:       { x: 800, y: 965, w:180, fs: 20, color: "#ffffff" },
+    phone:       { x: 800, y: 1020, w:180, fs: 20, color: "#ffffff" },
     video:       { x:  80, y: 480, w: 300, h: 300 },
   },
   "zitko-2": {
     title:       { x:  80, y: 320, w: 520, fs: 34, color: "#ffffff", bold: true },
-    salary:      { x:  80, y: 370, w: 520, fs: 22, color: "#cfd3d7", bold: true },
-    location:    { x:  80, y: 410, w: 520, fs: 20, color: "#cfd3d7", bold: true },
+    salary:      { x:  80, y: 370, w: 520, fs: 22, color: "#ffffff", bold: true },
+    location:    { x:  80, y: 410, w: 520, fs: 20, color: "#ffffff", bold: true },
     description: { x:  80, y: 460, w: 520, fs: 18, color: "#ffffff" },
     benefits:    { x:  80, y: 600, w: 520, fs: 18, color: "#ffffff" },
-    email:       { x: 800, y: 975,          fs: 20, color: "#cfd3d7" },
-    phone:       { x: 800, y: 1030,         fs: 20, color: "#cfd3d7" },
+    email:       { x: 800, y: 975,          fs: 20, color: "#ffffff" },
+    phone:       { x: 800, y: 1030,         fs: 20, color: "#ffffff" },
     video:       { x: 720, y: 360, w: 280, h: 360 },
   },
 } as const;
