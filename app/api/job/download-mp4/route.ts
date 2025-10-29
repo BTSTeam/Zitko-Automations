@@ -11,7 +11,7 @@ cloudinary.config({
 });
 
 type Body = {
-  videoPublicId: string;          // e.g. "job-posts/unassigned/abc123" (no extension)
+  videoPublicId: string;
   title?: string;
   location?: string;
   salary?: string;
@@ -20,7 +20,7 @@ type Body = {
   email?: string;
   phone?: string;
   templateId?: "zitko-1" | "zitko-2";
-  templateUrl?: string;           // absolute URL overrides templateId
+  templateUrl?: string;
 };
 
 const TEMPLATE_FILES: Record<string, string> = {
@@ -29,10 +29,7 @@ const TEMPLATE_FILES: Record<string, string> = {
 };
 
 // ---------- Layout types + maps ----------
-type TextBox = {
-  x: number; y: number; w: number; fs: number; color: string;
-  bold?: boolean; h?: number;
-};
+type TextBox = { x: number; y: number; w: number; fs: number; color: string; bold?: boolean; h?: number };
 type VideoBox = { x: number; y: number; w: number; h: number };
 type Layout = {
   title: TextBox; location: TextBox; salary: TextBox;
@@ -41,6 +38,9 @@ type Layout = {
   video: VideoBox;
 };
 
+// CSS preview uses line-height ≈ 1.25 → add ~0.25*fontSize px between lines
+const LINE_SPACING = (fs: number) => Math.round(fs * 0.25);
+
 const LAYOUTS: Record<"zitko-1" | "zitko-2", Layout> = {
   "zitko-1": {
     title:       { x: 520, y: 125, w: 560, fs: 60, color: "#ffffff", bold: true },
@@ -48,23 +48,23 @@ const LAYOUTS: Record<"zitko-1" | "zitko-2", Layout> = {
     salary:      { x: 520, y: 400, w: 520, fs: 28, color: "#ffffff", bold: true },
     description: { x: 520, y: 480, w: 520, h: 80,  fs: 24, color: "#ffffff" },
     benefits:    { x: 520, y: 680, w: 520, h: 260, fs: 24, color: "#ffffff" },
-    email:       { x: 800, y: 965, w: 180, fs: 20, color: "#ffffff" },
-    phone:       { x: 800, y: 1020, w: 180, fs: 20, color: "#ffffff" },
+    // ↑ keep exact coords/widths from SocialMediaTab
+    email:       { x: 800, y: 950, w: 180, fs: 20, color: "#ffffff" }, // was 965 → baseline bump
+    phone:       { x: 800, y: 1000, w: 180, fs: 20, color: "#ffffff" }, // was 1020 → baseline bump
     video:       { x:  80, y: 400, w: 300, h: 300 },
   },
   "zitko-2": {
     title:       { x:  80, y: 320, w: 520, fs: 34, color: "#ffffff", bold: true },
     salary:      { x:  80, y: 370, w: 520, fs: 22, color: "#ffffff", bold: true },
     location:    { x:  80, y: 410, w: 520, fs: 20, color: "#ffffff", bold: true },
-    description: { x:  80, y: 460, w: 520, h: 120, fs: 18, color: "#ffffff" }, // include h
-    benefits:    { x:  80, y: 600, w: 520, h: 140, fs: 18, color: "#ffffff" }, // include h
-    email:       { x: 800, y: 975, w: 180, fs: 20, color: "#ffffff" },
-    phone:       { x: 800, y: 1030, w: 180, fs: 20, color: "#ffffff" },
+    description: { x:  80, y: 460, w: 520, h: 120, fs: 18, color: "#ffffff" },
+    benefits:    { x:  80, y: 600, w: 520, h: 140, fs: 18, color: "#ffffff" },
+    email:       { x: 800, y: 960, w: 180, fs: 20, color: "#ffffff" }, // slight lift
+    phone:       { x: 800, y: 1010, w: 180, fs: 20, color: "#ffffff" }, // slight lift
     video:       { x: 720, y: 360, w: 280, h: 360 },
   },
 };
 
-// bullets helper
 function formatBenefits(raw: string) {
   const lines = String(raw || "")
     .split("\n")
@@ -77,7 +77,6 @@ function stripExt(id: string) {
   return id.replace(/\.(mp4|mov|m4v|webm)$/i, "");
 }
 
-// For l_fetch remote overlays
 function toBase64Url(s: string) {
   return Buffer.from(s, "utf8")
     .toString("base64")
@@ -107,7 +106,7 @@ export async function POST(req: NextRequest) {
 
     const cleanVideoId = stripExt(videoPublicId);
 
-    // ----- Build public template URL Cloudinary can fetch -----
+    // Build public template URL
     const originFromReq = req.nextUrl.origin;
     const envBase = process.env.NEXT_PUBLIC_BASE_URL?.trim();
     const isLocal = /^(http:\/\/)?(localhost|127\.0\.0\.1)(:\d+)?/i.test(originFromReq);
@@ -125,7 +124,7 @@ export async function POST(req: NextRequest) {
       effectiveTemplateUrl = `${baseForCloudinary.replace(/\/$/, "")}/templates/${filename}`;
     }
 
-    // HEAD check for reachability
+    // HEAD check
     try {
       const head = await fetch(effectiveTemplateUrl, { method: "HEAD", cache: "no-store" });
       if (!head.ok) {
@@ -171,12 +170,9 @@ export async function POST(req: NextRequest) {
     const CANVAS = 1080;
     const L = LAYOUTS[templateId] || LAYOUTS["zitko-1"];
 
-    // video slot from layout
+    // video slot
     const overlayIdForLayer = cleanVideoId.replace(/\//g, ":");
     const videoSize = Math.min(L.video.w, L.video.h);
-    const videoX = L.video.x;
-    const videoY = L.video.y;
-
     const fetchB64 = toBase64Url(effectiveTemplateUrl);
 
     const composedUrl = cloudinary.url(cleanVideoId, {
@@ -184,18 +180,16 @@ export async function POST(req: NextRequest) {
       type: "authenticated",
       sign_url: true,
       transformation: [
-        // 1) Base canvas
         { width: CANVAS, height: CANVAS, crop: "fill" },
 
-        // 2) Template overlay (remote fetch)
+        // template
         { raw_transformation: `l_fetch:${fetchB64}/c_fill,w_${CANVAS},h_${CANVAS}/fl_layer_apply,g_north_west,x_0,y_0` },
 
-        // 3) Authenticated video overlay
+        // video
         { raw_transformation: `w_${videoSize},h_${videoSize},c_fill,r_max,l_video:authenticated:${overlayIdForLayer}` },
-        { raw_transformation: `fl_layer_apply,g_north_west,x_${videoX},y_${videoY}` },
+        { raw_transformation: `fl_layer_apply,g_north_west,x_${L.video.x},y_${L.video.y}` },
 
-        // 4) Text overlays using the same coordinates/fonts as the preview
-        // Title
+        // title
         {
           overlay: { font_family: "Arial", font_size: L.title.fs, font_weight: L.title.bold ? "bold" : "normal", text: title, text_align: "left" },
           color: L.title.color,
@@ -204,7 +198,7 @@ export async function POST(req: NextRequest) {
         },
         { gravity: "north_west", x: L.title.x, y: L.title.y, flags: "layer_apply" },
 
-        // Location
+        // location
         {
           overlay: { font_family: "Arial", font_size: L.location.fs, font_weight: L.location.bold ? "bold" : "normal", text: location, text_align: "left" },
           color: L.location.color,
@@ -213,7 +207,7 @@ export async function POST(req: NextRequest) {
         },
         { gravity: "north_west", x: L.location.x, y: L.location.y, flags: "layer_apply" },
 
-        // Salary
+        // salary
         {
           overlay: { font_family: "Arial", font_size: L.salary.fs, font_weight: L.salary.bold ? "bold" : "normal", text: salary, text_align: "left" },
           color: L.salary.color,
@@ -222,9 +216,15 @@ export async function POST(req: NextRequest) {
         },
         { gravity: "north_west", x: L.salary.x, y: L.salary.y, flags: "layer_apply" },
 
-        // Description
+        // description (force ~1.25 line-height via line_spacing)
         {
-          overlay: { font_family: "Arial", font_size: L.description.fs, text: description, text_align: "left" },
+          overlay: {
+            font_family: "Arial",
+            font_size: L.description.fs,
+            text: description,
+            text_align: "left",
+            line_spacing: LINE_SPACING(L.description.fs),
+          },
           color: L.description.color,
           width: L.description.w,
           height: L.description.h,
@@ -232,9 +232,15 @@ export async function POST(req: NextRequest) {
         },
         { gravity: "north_west", x: L.description.x, y: L.description.y, flags: "layer_apply" },
 
-        // Benefits (bulleted)
+        // benefits (bulleted + same line spacing)
         {
-          overlay: { font_family: "Arial", font_size: L.benefits.fs, text: formatBenefits(benefits), text_align: "left" },
+          overlay: {
+            font_family: "Arial",
+            font_size: L.benefits.fs,
+            text: formatBenefits(benefits),
+            text_align: "left",
+            line_spacing: LINE_SPACING(L.benefits.fs),
+          },
           color: L.benefits.color,
           width: L.benefits.w,
           height: L.benefits.h,
@@ -242,25 +248,34 @@ export async function POST(req: NextRequest) {
         },
         { gravity: "north_west", x: L.benefits.x, y: L.benefits.y, flags: "layer_apply" },
 
-        // Email
+        // email
         {
-          overlay: { font_family: "Arial", font_size: L.email.fs, text: email, text_align: "left" },
+          overlay: {
+            font_family: "Arial",
+            font_size: L.email.fs,
+            text: email,
+            text_align: "left",
+          },
           color: L.email.color,
           width: L.email.w,
           crop: "fit",
         },
         { gravity: "north_west", x: L.email.x, y: L.email.y, flags: "layer_apply" },
 
-        // Phone
+        // phone
         {
-          overlay: { font_family: "Arial", font_size: L.phone.fs, text: phone, text_align: "left" },
+          overlay: {
+            font_family: "Arial",
+            font_size: L.phone.fs,
+            text: phone,
+            text_align: "left",
+          },
           color: L.phone.color,
           width: L.phone.w,
           crop: "fit",
         },
         { gravity: "north_west", x: L.phone.x, y: L.phone.y, flags: "layer_apply" },
 
-        // 5) Output
         { fetch_format: "mp4", quality: "auto" },
       ],
     });
@@ -268,11 +283,7 @@ export async function POST(req: NextRequest) {
     const debug = req.nextUrl.searchParams.get("debug") === "1";
     if (debug) {
       return NextResponse.json(
-        {
-          composedUrl,
-          templateUsed: effectiveTemplateUrl,
-          hint: "Open composedUrl in a new tab. If it errors, check 'Allowed fetch domains' and x-cld-error.",
-        },
+        { composedUrl, templateUsed: effectiveTemplateUrl, hint: "Open composedUrl in a new tab if you need to inspect Cloudinary output directly." },
         { status: 200 }
       );
     }
@@ -282,14 +293,7 @@ export async function POST(req: NextRequest) {
       const errText = await videoRes.text().catch(() => "");
       const cldError = videoRes.headers.get("x-cld-error") || undefined;
       return NextResponse.json(
-        {
-          error: "Failed to compose video",
-          status: videoRes.status,
-          cloudinaryError: cldError,
-          details: errText.slice(0, 2000),
-          composedUrl,
-          templateUsed: effectiveTemplateUrl,
-        },
+        { error: "Failed to compose video", status: videoRes.status, cloudinaryError: cldError, details: errText.slice(0, 2000), composedUrl, templateUsed: effectiveTemplateUrl },
         { status: 500 }
       );
     }
