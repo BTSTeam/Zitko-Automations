@@ -1,25 +1,13 @@
 'use client'
 
-import React, {
-  useMemo,
-  useRef,
-  useState,
-  useLayoutEffect,
-} from 'react'
+import React, { useMemo, useRef, useState, useLayoutEffect, useEffect } from 'react'
 import Recorder from '../../_components/recorder'
 import html2canvas from 'html2canvas'
 
 type SocialMode = 'jobPosts' | 'generalPosts'
 
 type PlaceholderKey =
-  | 'title'
-  | 'location'
-  | 'salary'
-  | 'description'
-  | 'benefits'
-  | 'email'
-  | 'phone'
-  | 'video'
+  | 'title' | 'location' | 'salary' | 'description' | 'benefits' | 'email' | 'phone' | 'video'
 
 type LayoutBox = {
   x: number
@@ -78,7 +66,6 @@ const TEMPLATES: TemplateDef[] = [
   },
 ]
 
-// Map UI template IDs -> Cloudinary template public IDs
 const CLOUDINARY_TEMPLATES: Record<string, string> = {
   'zitko-1': 'job-posts/templates/zitko-1',
   'zitko-2': 'job-posts/templates/zitko-2',
@@ -112,11 +99,9 @@ function clipPath(mask: VideoMask, r: number) {
   }
 }
 
-// Additional helpers to strip HTML and extract contact details
 function stripTags(html: string) {
   return String(html ?? '').replace(/<[^>]*>/g, ' ')
 }
-
 function extractEmailPhoneFallback(textOrHtml: string) {
   const text = stripTags(textOrHtml)
   const emailMatch = text.match(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i)
@@ -127,96 +112,84 @@ function extractEmailPhoneFallback(textOrHtml: string) {
 
 // ---------- main ----------
 export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
-  // store only id in state so edits to TEMPLATES hot-reload correctly
   const [selectedTplId, setSelectedTplId] = useState(TEMPLATES[0].id)
-  const selectedTpl = useMemo(
-    () => TEMPLATES.find(t => t.id === selectedTplId)!,
-    [selectedTplId]
-  )
+  const selectedTpl = useMemo(() => TEMPLATES.find(t => t.id === selectedTplId)!, [selectedTplId])
 
   // job data
   const [jobId, setJobId] = useState('')
   const [job, setJob] = useState({
-    title: '',
-    location: '',
-    salary: '',
-    description: '',
-    benefits: '' as string | string[],
-    email: '',
-    phone: '',
+    title: '', location: '', salary: '', description: '', benefits: '' as string | string[], email: '', phone: '',
   })
 
-  // video
-  const [videoUrl, setVideoUrl] = useState<string | null>(null)               // MP4 playback URL
-  const [videoPublicId, setVideoPublicId] = useState<string | null>(null)     // Cloudinary public_id
+  // video state
+  const [videoUrl, setVideoUrl] = useState<string | null>(null)
+  const [videoPublicId, setVideoPublicId] = useState<string | null>(null)
   const [videoMeta, setVideoMeta] = useState<{ mime: string; width: number; height: number } | null>(null)
   const [mask, setMask] = useState<VideoMask>('circle')
   const [roundedR, setRoundedR] = useState(32)
-  const [videoOpen, setVideoOpen] = useState(true)
-  const [videoDownloadUrl, setVideoDownloadUrl] = useState<string | null>(null)
+  const [videoOpen, setVideoOpen] = useState(false)
 
-  // preview scaling (set actual width/height to scaled values)
+  // preview scaling
   const previewBoxRef = useRef<HTMLDivElement | null>(null)
   const [scale, setScale] = useState(0.4)
-
   useLayoutEffect(() => {
-    if (!previewBoxRef.current) return;
+    if (!previewBoxRef.current) return
     const ro = new ResizeObserver(([entry]) => {
-      const { width: cw, height: ch } = entry.contentRect;
-      const PAD = 16;           // a bit more padding
-      const EPS = 0.003;        // ~0.3% safety to avoid 1px overflow
-      const s = Math.min(
-        (cw - PAD) / selectedTpl.width,
-        (ch - PAD) / selectedTpl.height
-      ) - EPS;
-      setScale(Number.isFinite(s) ? Math.max(0.05, Math.min(1, s)) : 0.4);
-    });
-    ro.observe(previewBoxRef.current);
-    return () => ro.disconnect();
+      const { width: cw, height: ch } = entry.contentRect
+      const PAD = 16
+      const EPS = 0.003
+      const s = Math.min((cw - PAD) / selectedTpl.width, (ch - PAD) / selectedTpl.height) - EPS
+      setScale(Number.isFinite(s) ? Math.max(0.05, Math.min(1, s)) : 0.4)
+    })
+    ro.observe(previewBoxRef.current)
+    return () => ro.disconnect()
   }, [selectedTpl.width, selectedTpl.height])
 
   const previewRef = useRef<HTMLDivElement | null>(null)
   const [fetchStatus, setFetchStatus] = useState<'idle'|'loading'|'done'|'error'>('idle')
-  
-  // Updated fetchJob to pull from Vincere, summarise and extract contact details
+
+  // === Recorder UI tweaks (purely cosmetic, doesn’t touch Recorder code) ===
+  const recorderWrapRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const root = recorderWrapRef.current
+    if (!root) return
+
+    // Make “Record” / “Recording…” w/ red text.
+    const mo = new MutationObserver(() => {
+      const btn = root.querySelector<HTMLButtonElement>('button[data-recorder-start]')
+      if (btn) {
+        const isActive = btn.getAttribute('aria-pressed') === 'true' || btn.dataset.state === 'recording'
+        btn.textContent = isActive ? 'Recording…' : 'Record'
+        btn.classList.toggle('text-red-600', !!isActive)
+      }
+    })
+    mo.observe(root, { subtree: true, attributes: true, childList: true })
+    return () => mo.disconnect()
+  }, [])
+
+  // ------------ data fetch (unchanged except for brevity) ------------
   async function fetchJob() {
     const id = jobId.trim()
     if (!id) return
     setFetchStatus('loading')
     try {
-      // 1) Vincere
       const r = await fetch(`/api/vincere/position/${encodeURIComponent(id)}`, { cache: 'no-store' })
       if (!r.ok) throw new Error('Not found')
       const data = await r.json()
-      const publicDesc: string =
-        data?.public_description || data?.publicDescription || data?.description || ''
-  
-      // 2) Extract fields
+      const publicDesc: string = data?.public_description || data?.publicDescription || data?.description || ''
+
       let extracted: any = {}
       try {
-        const ai = await fetch('/api/job/summarize', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ description: publicDesc }),
-        })
+        const ai = await fetch('/api/job/summarize', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ description: publicDesc }) })
         if (ai.ok) extracted = await ai.json()
       } catch {}
-  
-      // 3) Short description
+
       let shortDesc = ''
       try {
-        const teaser = await fetch('/api/job/short-description', {
-          method: 'POST',
-          headers: 'Content-Type' in Headers.prototype ? { 'Content-Type': 'application/json' } : ({} as any),
-          body: JSON.stringify({ description: publicDesc }),
-        })
-        if (teaser.ok) {
-          const { description } = await teaser.json()
-          shortDesc = description ?? ''
-        }
+        const teaser = await fetch('/api/job/short-description', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ description: publicDesc }) })
+        if (teaser.ok) shortDesc = (await teaser.json()).description ?? ''
       } catch {}
-  
-      // 4) Contacts (fallback)
+
       let contactEmail = String(extracted?.contactEmail ?? '').trim()
       let contactPhone = String(extracted?.contactPhone ?? '').trim()
       if (!contactEmail || !contactPhone) {
@@ -224,22 +197,17 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
         contactEmail = contactEmail || fb.email
         contactPhone = contactPhone || fb.phone
       }
-  
-      // 5) Set state
+
       setJob({
         title: extracted?.title ?? data?.title ?? '',
         location: extracted?.location ?? data?.location ?? '',
         salary: extracted?.salary ?? data?.salary ?? '',
         description: shortDesc,
-        benefits: Array.isArray(extracted?.benefits)
-          ? extracted.benefits.join('\n')
-          : String(data?.benefits ?? ''),
+        benefits: Array.isArray(extracted?.benefits) ? extracted.benefits.join('\n') : String(data?.benefits ?? ''),
         email: contactEmail || data?.email || '',
         phone: contactPhone || data?.phone || '',
       })
-  
       setFetchStatus('done')
-      // Reset back to "Fetch" after a couple of seconds
       setTimeout(() => setFetchStatus('idle'), 2000)
     } catch (e) {
       console.error(e)
@@ -258,70 +226,65 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     a.click()
   }
 
-  // ⬇️ New: compose & download MP4 via your API (users stay in-app)
   async function downloadMp4() {
-  if (!videoPublicId) {
-    alert('Add a video first.');
-    return;
-  }
-
-  const payload = {
-    videoPublicId,
-    title: job.title || 'Job Title',
-    location: job.location || 'Location',
-    salary: job.salary || 'Salary',
-    description: wrapText(String(job.description || 'Short description')),
-    benefits: benefitsText,   // ← add
-    email: job.email || '',   // ← add
-    phone: job.phone || '',   // ← add
-    templateId: selectedTplId,
-  };
-
-  const res = await fetch('/api/job/download-mp4', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-
-  // If API returned JSON (error or debug), parse & handle. Otherwise stream the blob.
-  const contentType = res.headers.get('content-type') || '';
-  const isJson = contentType.includes('application/json');
-
-  if (!res.ok) {
-    const errPayload = isJson ? await res.json().catch(() => ({})) : {};
-    alert(`Failed: ${errPayload.error || res.statusText}`);
-    console.error('Download MP4 error payload:', errPayload);
-    return;
-  }
-
-  if (isJson) {
-    // Debug mode path
-    const j = await res.json().catch(() => ({}));
-    if (j.composedUrl) {
-      console.log('DEBUG composedUrl:', j.composedUrl);
-      alert('Debug: composedUrl logged to console.');
-      return;
+    if (!videoPublicId) {
+      alert('Add a video first.')
+      return
     }
-    alert('Unexpected JSON response from server.');
-    return;
+    const payload = {
+      videoPublicId,
+      title: job.title || 'Job Title',
+      location: job.location || 'Location',
+      salary: job.salary || 'Salary',
+      description: wrapText(String(job.description || 'Short description')),
+      benefits: benefitsText,
+      email: job.email || '',
+      phone: job.phone || '',
+      templateId: selectedTplId,
+    }
+    const res = await fetch('/api/job/download-mp4', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+    })
+    const contentType = res.headers.get('content-type') || ''
+    const isJson = contentType.includes('application/json')
+    if (!res.ok) {
+      const errPayload = isJson ? await res.json().catch(() => ({})) : {}
+      alert(`Failed: ${errPayload.error || res.statusText}`)
+      console.error('Download MP4 error payload:', errPayload)
+      return
+    }
+    if (isJson) {
+      const j = await res.json().catch(() => ({}))
+      if (j.composedUrl) {
+        console.log('DEBUG composedUrl:', j.composedUrl)
+        alert('Debug: composedUrl logged to console.')
+        return
+      }
+      alert('Unexpected JSON response from server.')
+      return
+    }
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'job-post.mp4'
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
   }
-
-  // Success: binary MP4
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'job-post.mp4';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
 
   const benefitsText = useMemo(() => {
     if (Array.isArray(job.benefits)) return (job.benefits as string[]).join('\n')
     return String(job.benefits || '')
-  }, [job.benefits]);
+  }, [job.benefits])
+
+  const clearVideo = () => {
+    setVideoUrl(null)
+    setVideoPublicId(null)
+    setVideoMeta(null)
+    setVideoOpen(true)
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -344,29 +307,27 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
         </div>
       </div>
 
-      {/* equal columns */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* LEFT: recorder + form */}
         <div className="flex flex-col gap-6">
           {/* recorder (collapsible) */}
           <section className="border rounded-xl bg-white overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b">
-            <h3 className="font-semibold text-lg">Video record</h3>
-            <div className="flex items-center gap-3">
-              {videoUrl && (
-                <span className="text-sm text-emerald-700">Video attached ✓</span>
-              )}
-              <button
-                type="button"
-                onClick={() => setVideoOpen(v => !v)}
-                className="text-sm px-2 py-1 rounded border hover:bg-gray-50"
-                aria-expanded={videoOpen}
-                aria-controls="video-panel"
-              >
-                {videoOpen ? 'Hide ▲' : 'Show ▼'}
-              </button>
+            <div className="flex items-center justify-between px-4 py-3 border-b">
+              <h3 className="font-semibold text-lg">Video record</h3>
+              <div className="flex items-center gap-3">
+                {/* removed “Video attached ✓” message */}
+                <button
+                  type="button"
+                  onClick={() => setVideoOpen(v => !v)}
+                  className="text-sm px-2 py-1 rounded border hover:bg-gray-50"
+                  aria-expanded={videoOpen}
+                  aria-controls="video-panel"
+                  title={videoOpen ? 'Hide' : 'Show'}
+                >
+                  {videoOpen ? '▴' : '▾'}
+                </button>
+              </div>
             </div>
-          </div>
 
             <div
               id="video-panel"
@@ -377,7 +338,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                   <label className="inline-flex items-center gap-2 text-sm">
                     <span>Mask</span>
                     <select
-                      className="border rounded px-2 py-1"
+                      className="border rounded px-2 py-1 h-8 text-sm"
                       value={mask}
                       onChange={e => setMask(e.target.value as VideoMask)}
                     >
@@ -392,7 +353,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                       <span>Radius</span>
                       <input
                         type="number"
-                        className="w-20 border rounded px-2 py-1"
+                        className="w-20 border rounded px-2 py-1 h-8 text-sm"
                         value={roundedR}
                         onChange={e => setRoundedR(Number(e.target.value || 0))}
                       />
@@ -400,21 +361,43 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                   )}
                 </div>
 
+                {/* If a video has been captured/uploaded, show playback in place of the live feed */}
                 <div className="mt-3">
-                  <Recorder
-                    jobId={jobId || 'unassigned'}
-                    onUploaded={(payload) => {
-                      // { publicId, playbackMp4, mime, width, height }
-                      setVideoUrl(payload.playbackMp4)               // MP4 streaming URL
-                      setVideoPublicId(payload.publicId)            // needed for /api/job/download-mp4
-                      setVideoDownloadUrl(payload.downloadMp4)      // optional: raw video download
-                      setVideoMeta({ mime: payload.mime, width: payload.width, height: payload.height })
-                    }}
-                  />
-                  {videoUrl && (
-                    <p className="mt-2 text-sm text-gray-500">
-                      ({videoMeta?.mime})
-                    </p>
+                  {videoUrl ? (
+                    <div className="space-y-3">
+                      <div className="aspect-video bg-black rounded-lg overflow-hidden">
+                        <video src={videoUrl} controls playsInline className="w-full h-full object-contain" />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          className="px-3 py-2 rounded bg-gray-200 hover:bg-gray-300 text-gray-900"
+                          onClick={() => setVideoOpen(false)}
+                          title="Hide panel"
+                        >
+                          Close
+                        </button>
+                        <button
+                          type="button"
+                          className="px-3 py-2 rounded bg-orange-500 hover:bg-orange-600 text-white"
+                          onClick={clearVideo}
+                          title="Remove this video so you can record/upload a new one"
+                        >
+                          Remove video
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div ref={recorderWrapRef} className="recorder-slim">
+                      <Recorder
+                        jobId={jobId || 'unassigned'}
+                        onUploaded={(payload: any) => {
+                          setVideoUrl(payload.playbackMp4)
+                          setVideoPublicId(payload.publicId)
+                          setVideoMeta({ mime: payload.mime, width: payload.width, height: payload.height })
+                        }}
+                      />
+                    </div>
                   )}
                 </div>
               </div>
@@ -434,7 +417,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                 {fetchStatus === 'loading' ? 'Fetching…' : fetchStatus === 'done' ? 'Fetched ✓' : 'Fetch'}
               </button>
             </div>
-            
+
             <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
               <input className="border rounded px-3 py-2" placeholder="Job Title" value={job.title} onChange={e => setJob({ ...job, title: e.target.value })} />
               <input className="border rounded px-3 py-2" placeholder="Location" value={job.location} onChange={e => setJob({ ...job, location: e.target.value })} />
@@ -465,12 +448,10 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
             </div>
           </div>
 
-          {/* Fit area for preview; full poster visible */}
           <div
             ref={previewBoxRef}
             className="mt-3 h-[64vh] min-h-[420px] w-full overflow-hidden flex items-center justify-center bg-muted/20 rounded-lg"
           >
-            {/* Poster at scaled layout size (no transform) */}
             <div
               ref={previewRef}
               className="relative shadow-lg"
@@ -485,7 +466,6 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
               {(['title','location','salary','description','benefits','email','phone'] as const).map(key => {
                 const spec = selectedTpl.layout[key]
                 if (!spec) return null
-
                 const value = (() => {
                   switch (key) {
                     case 'title': return job.title || '[JOB TITLE]'
@@ -493,9 +473,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                     case 'salary': return job.salary || '[SALARY]'
                     case 'description': return job.description || '[SHORT DESCRIPTION]'
                     case 'benefits': {
-                      const tx =
-                        (Array.isArray(job.benefits) ? job.benefits.join('\n') : job.benefits) ||
-                        '[BENEFIT 1]\n[BENEFIT 2]\n[BENEFIT 3]'
+                      const tx = (Array.isArray(job.benefits) ? job.benefits.join('\n') : job.benefits) || '[BENEFIT 1]\n[BENEFIT 2]\n[BENEFIT 3]'
                       return tx.split('\n').map(l => `• ${l}`).join('\n\n')
                     }
                     case 'email': return job.email || '[EMAIL]'
@@ -504,13 +482,9 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                 })()
 
                 if (key === 'benefits') {
-                  // 🔧 Normalise to array of lines to satisfy TS
                   const benefitsLines: string[] = Array.isArray(job.benefits)
                     ? (job.benefits as string[]).filter(Boolean)
-                    : String(job.benefits || '')
-                        .split('\n')
-                        .map(s => s.trim())
-                        .filter(Boolean)
+                    : String(job.benefits || '').split('\n').map(s => s.trim()).filter(Boolean)
 
                   return (
                     <div
@@ -568,9 +542,8 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                     {value}
                   </div>
                 )
-              })}{/* <-- CLOSE .map HERE */}
+              })}
 
-              {/* Video slot (scaled) — OUTSIDE the map */}
               {selectedTpl.layout.video && videoUrl && (
                 <div
                   style={{
@@ -584,13 +557,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                     background: '#111',
                   }}
                 >
-                  <video
-                    src={videoUrl}
-                    controls
-                    playsInline
-                    preload="metadata"
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                  />
+                  <video src={videoUrl} controls playsInline preload="metadata" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 </div>
               )}
             </div>
@@ -601,6 +568,23 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
           </p>
         </div>
       </div>
+
+      {/* Recorder-specific style tweaks */}
+      <style jsx global>{`
+        /* 4) Upload button orange + 7) shrink camera/mic selects inside the panel */
+        .recorder-slim select { height: 2rem; font-size: 0.875rem; max-width: 280px; }
+        .recorder-slim input[type="number"] { height: 2rem; font-size: 0.875rem; }
+        /* Try to hit common “Upload” button(s) the Recorder renders */
+        .recorder-slim button[data-upload],
+        .recorder-slim button.upload,
+        .recorder-slim button[aria-label="Upload"],
+        .recorder-slim button:where(:not([disabled])):is(.upload-btn) {
+          background: #f97316 !important; /* orange-500 */
+          color: #fff !important;
+        }
+        /* 2) Start button text via data attribute (we also adjust it via MutationObserver) */
+        .recorder-slim button[data-recorder-start].text-red-600 { color: #dc2626 !important; }
+      `}</style>
     </div>
   )
 }
