@@ -46,10 +46,10 @@ const LAYOUTS: Record<"zitko-1" | "zitko-2", Layout> = {
     title:       { x: 520, y: 125, w: 560, fs: 60, color: "#ffffff", bold: true },
     location:    { x: 520, y: 330, w: 520, fs: 30, color: "#ffffff", bold: true },
     salary:      { x: 520, y: 400, w: 520, fs: 28, color: "#ffffff", bold: true },
-    description: { x: 520, y: 480, w: 520, h: 200,  fs: 24, color: "#ffffff", lineSpacing: -2 },
+    description: { x: 520, y: 480, w: 560, h: 200,  fs: 24, color: "#ffffff", lineSpacing: -3 },
     benefits:    { x: 520, y: 680, w: 520, h: 260, fs: 24, color: "#ffffff" },
     email:       { x: 800, y: 980, w: 180, fs: 20, color: "#ffffff" },
-    phone:       { x: 800, y: 1040, w: 180, fs: 20, color: "#ffffff" },
+    phone:       { x: 800, y: 1035, w: 180, fs: 20, color: "#ffffff" },
     video:       { x:  80, y: 400, w: 300, h: 300 },
   },
   "zitko-2": {
