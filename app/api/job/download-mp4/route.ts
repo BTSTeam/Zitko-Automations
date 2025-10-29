@@ -118,6 +118,21 @@ export async function POST(req: NextRequest) {
 
     const CANVAS = 1080;
 
+    // --- DEBUG: return composed URL instead of streaming the video ---
+    const debug = req.nextUrl.searchParams.get('debug') === '1';
+    if (debug) {
+      return NextResponse.json(
+        {
+          composedUrl,
+          templateUsed: effectiveTemplateUrl,
+          hint:
+            "Open composedUrl in a new browser tab. Cloudinary will show the exact error " +
+            "(e.g. 404 public_id, fetch blocked, invalid font, auth mismatch).",
+        },
+        { status: 200 }
+      );
+    }
+
     const composedUrl = cloudinary.url(cleanVideoId, {
       resource_type: "video",
       type: "authenticated", // your uploads are delivered as /video/authenticated/...
