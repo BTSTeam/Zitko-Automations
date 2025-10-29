@@ -274,19 +274,26 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     templateId: selectedTplId, // e.g. "zitko-1"
   }
 
-  const res = await fetch('/api/job/download-mp4?debug=1', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  })
-
-  // 👇 This is the bit you asked about — it handles and logs any Cloudinary errors
-  if (!res.ok) {
-    const j = await res.json().catch(() => ({}))
-    console.error('Compose error details:', j) // View this in browser dev tools console
-    alert(`Failed to download: ${j.error || res.statusText}`)
-    return
-  }
+    const res = await fetch('/api/job/download-mp4?debug=1', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    
+    const j = await res.json().catch(() => ({}));
+    console.log('DEBUG response:', j);
+    
+    if (!res.ok) {
+      alert(`Failed: ${j.error || res.statusText}`);
+      return;
+    }
+    
+    // In debug mode we don't download a file; we just show you the URL:
+    if (j.composedUrl) {
+      alert('Copy the URL from the console (DEBUG response).');
+      // or: window.open(j.composedUrl, '_blank');
+      return;
+    }
 
   const blob = await res.blob()
   const url = URL.createObjectURL(blob)
