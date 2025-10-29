@@ -4,9 +4,10 @@ import { v2 as cloudinary } from 'cloudinary';
 
 export const runtime = 'nodejs';
 
-// Configure Cloudinary – prefer server env vars, fall back to public if needed
+// Cloudinary config (prefer server var, fallback to public if needed)
 cloudinary.config({
   cloud_name:
+    process.env.CLOUDINARY_CLOUD_NAME ||
     process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY!,
   api_secret: process.env.CLOUDINARY_API_SECRET!,
@@ -22,38 +23,31 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Missing publicId' }, { status: 400 });
     }
 
-    // Clean up potential slashes/spaces for a safe filename
+    // Safe filename for attachment
     const safeName =
       publicId.split('/').pop()?.replace(/[^\w.-]/g, '_') || 'video';
     const filename = `${safeName}.mp4`;
 
-    // Shared options for generating signed MP4 URL
-    const expiresAt = Math.floor(Date.now() / 1000) + 60 * 60; // 1 hour
-    const commonOpts = {
+    // Signed URL expiry (1 hour)
+    const expiresAt = Math.floor(Date.now() / 1000) + 60 * 60;
+
+    // Build transformation; put flags:attachment inside the array
+    const transformation = asDownload
+      ? [{ quality: 'auto:good' }, { fetch_format: 'mp4' }, { flags: `attachment:${filename}` }]
+      : [{ quality: 'auto:good' }, { fetch_format: 'mp4' }];
+
+    const opts = {
       resource_type: 'video' as const,
       type: 'authenticated' as const,
       sign_url: true,
       expires_at: expiresAt,
-      transformation: [
-        { quality: 'auto:good' },
-        { fetch_format: 'mp4' },
-      ],
       secure: true,
       format: 'mp4',
+      transformation,
     };
 
-    // Add attachment flag if download=1
-    const opts = asDownload
-      ? {
-          ...commonOpts,
-          flags: `attachment:${filename}`,
-        }
-      : commonOpts;
-
-    // Generate a short-lived signed URL
+    // Generate the short-lived signed URL and redirect
     const signedMp4 = cloudinary.url(publicId, opts);
-
-    // Redirect the browser directly to Cloudinary
     return NextResponse.redirect(signedMp4, 302);
   } catch (err: any) {
     console.error('Error generating MP4 export URL:', err);
