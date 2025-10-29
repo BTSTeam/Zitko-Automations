@@ -221,6 +221,7 @@ export async function POST(req: NextRequest) {
         },
         { gravity: "north_west", x: L.salary.x, y: L.salary.y, flags: "layer_apply" },
 
+        // DESCRIPTION
         {
           overlay: {
             font_family: "Arial",
@@ -229,13 +230,14 @@ export async function POST(req: NextRequest) {
             text_align: "left",
           },
           color: L.description.color,
-          width: L.description.w,
-          height: L.description.h,
-          crop: "crop",
+          width: L.description.w,   
+          height: L.description.h,  
+          crop: "fit",
           gravity: "north_west",
         },
         { gravity: "north_west", x: L.description.x, y: L.description.y, flags: "layer_apply" },
         
+        // BENEFITS
         {
           overlay: {
             font_family: "Arial",
@@ -246,11 +248,11 @@ export async function POST(req: NextRequest) {
           color: L.benefits.color,
           width: L.benefits.w,
           height: L.benefits.h,
-          crop: "crop",
+          crop: "fit",
           gravity: "north_west",
         },
         { gravity: "north_west", x: L.benefits.x, y: L.benefits.y, flags: "layer_apply" },
-
+        
         // email
         {
           overlay: {
