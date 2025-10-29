@@ -40,7 +40,7 @@ type Layout = {
 
 const LAYOUTS: Record<"zitko-1" | "zitko-2", Layout> = {
   "zitko-1": {
-    title:       { x: 520, y: 125, w: 560, fs: 60, color: "#ffffff", bold: true },
+    title:       { x: 520, y: 140, w: 560, fs: 60, color: "#ffffff", bold: true },
     location:    { x: 520, y: 330, w: 560, fs: 30, color: "#ffffff", bold: true },
     salary:      { x: 520, y: 400, w: 560, fs: 28, color: "#ffffff", bold: true },
     description: { x: 520, y: 480, w: 555, h: 220, fs: 24, color: "#ffffff" },
