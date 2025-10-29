@@ -159,50 +159,50 @@ export async function POST(req: NextRequest) {
         { raw_transformation: `w_${videoSize},h_${videoSize},c_fill,r_max,l_video:authenticated:${overlayIdForLayer}` },
         { raw_transformation: `fl_layer_apply,g_north_west,x_${videoX},y_${videoY}` },
 
-        // 4) Text overlays (title, location, salary, description)
+        // 4) Text overlays (title, location, salary, description, Benefits, Email & Phone)
         {
-          overlay: { font_family: "Arial", font_size: 56, font_weight: "bold", text: encodeText(title) },
+          overlay: { font_family: "Arial", font_size: 56, font_weight: "bold", text: title },
           color: "#ffffff",
         },
         { gravity: "north_west", x: 160, y: 160, flags: "layer_apply" },
-
+        
         {
-          overlay: { font_family: "Arial", font_size: 36, font_weight: "bold", text: encodeText(location) },
+          overlay: { font_family: "Arial", font_size: 36, font_weight: "bold", text: location },
           color: "#cfd3d7",
         },
         { gravity: "north_west", x: 480, y: 250, flags: "layer_apply" },
-
+        
         {
-          overlay: { font_family: "Arial", font_size: 32, font_weight: "bold", text: encodeText(salary) },
+          overlay: { font_family: "Arial", font_size: 32, font_weight: "bold", text: salary },
           color: "#cfd3d7",
         },
         { gravity: "north_west", x: 480, y: 310, flags: "layer_apply" },
-
+        
         {
-          overlay: { font_family: "Arial", font_size: 28, text: encodeText(description) },
+          overlay: { font_family: "Arial", font_size: 28, text: description },
           color: "#ffffff",
           width: 520,
           crop: "fit",
         },
         { gravity: "north_west", x: 480, y: 380, flags: "layer_apply" },
-
-        // 5) NEW: benefits, email, phone overlays
+        
+        // NEW: benefits / email / phone (raw strings, NO encodeText)
         {
-          overlay: { font_family: "Arial", font_size: 24, text: encodeText(benefits) },
+          overlay: { font_family: "Arial", font_size: 24, text: benefits },
           color: "#ffffff",
           width: 520,
           crop: "fit",
         },
         { gravity: "north_west", x: 480, y: 700, flags: "layer_apply" },
-
+        
         {
-          overlay: { font_family: "Arial", font_size: 22, text: encodeText(email) },
+          overlay: { font_family: "Arial", font_size: 22, text: email },
           color: "#cfd3d7",
         },
         { gravity: "north_west", x: 850, y: 945, flags: "layer_apply" },
-
+        
         {
-          overlay: { font_family: "Arial", font_size: 22, text: encodeText(phone) },
+          overlay: { font_family: "Arial", font_size: 22, text: phone },
           color: "#cfd3d7",
         },
         { gravity: "north_west", x: 850, y: 985, flags: "layer_apply" },
