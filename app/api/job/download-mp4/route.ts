@@ -49,8 +49,6 @@ const LAYOUTS: Record<"zitko-1" | "zitko-2", Layout> = {
     phone:       { x: 800, y: 1035, w: 180, fs: 20, color: "#ffffff" },
     video:       { x:  80, y: 400, w: 300, h: 300 },
   },
-
-  },
   "zitko-2": {
     title:       { x:  80, y: 320, w: 520, fs: 34, color: "#ffffff", bold: true },
     salary:      { x:  80, y: 370, w: 520, fs: 22, color: "#ffffff", bold: true },
