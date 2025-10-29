@@ -40,26 +40,29 @@ export async function POST(req: NextRequest) {
     })
 
     // short-lived signed MP4 URLs (1 hour)
-    const expiresAt = Math.floor(Date.now() / 1000) + 60 * 60
-    const commonOpts = {
+    const expiresAt = Math.floor(Date.now() / 1000) + 60 * 60;
+    
+    const baseOpts = {
       resource_type: 'video' as const,
       type: 'authenticated' as const,
       sign_url: true,
       expires_at: expiresAt,
-      transformation: [{ quality: 'auto:good' }, { fetch_format: 'mp4' }],
       secure: true,
       format: 'mp4',
-    }
-
-    const playbackMp4 = cloudinary.url(result.public_id, commonOpts)
-    const downloadMp4 = cloudinary.url(result.public_id, {
-      ...commonOpts,
-      transformation: [
-        { quality: 'auto:good' },
-        { fetch_format: 'mp4' },
-        { flags: 'attachment:video.mp4' },
-      ],
-    })
+    };
+    
+    // playback (no attachment)
+    const playbackMp4 = cloudinary.url(result.public_id, {
+      ...baseOpts,
+      transformation: [{ quality: 'auto:good' }, { fetch_format: 'mp4' }],
+    });
+    
+    // download (attachment flag INSIDE transformation; filename via ?download=)
+    let downloadMp4 = cloudinary.url(result.public_id, {
+      ...baseOpts,
+      transformation: [{ quality: 'auto:good' }, { fetch_format: 'mp4' }, { flags: 'attachment' }],
+    });
+    downloadMp4 += (downloadMp4.includes('?') ? '&' : '?') + 'download=' + encodeURIComponent('video.mp4');
 
     return NextResponse.json({
       publicId: result.public_id,
