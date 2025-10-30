@@ -169,53 +169,50 @@ export default function Recorder({ jobId, onUploaded }: Props) {
   }
 
   return (
-    <div className="flex items-center gap-3 flex-wrap sm:flex-nowrap">
-      {/* Camera select */}
-      <select
-        className="border rounded px-2 py-1 w-auto shrink-0 sm:min-w-[240px]"
-        value={selectedCam}
-        onChange={(e) => setSelectedCam(e.target.value)}
-      >
-        {devices
-          .filter((d) => d.kind === 'videoinput')
-          .map((d) => (
-            <option key={d.deviceId} value={d.deviceId}>
-              {d.label || 'Camera'}
-            </option>
-          ))}
-      </select>
-    
-      {/* Microphone select */}
-      <select
-        className="border rounded px-2 py-1 w-auto shrink-0 sm:min-w-[240px]"
-        value={selectedMic}
-        onChange={(e) => setSelectedMic(e.target.value)}
-      >
-        {devices
-          .filter((d) => d.kind === 'audioinput')
-          .map((d) => (
-            <option key={d.deviceId} value={d.deviceId}>
-              {d.label || 'Microphone'}
-            </option>
-          ))}
-      </select>
-    </div>
-
+    <div className="space-y-3">
+      {/* Device selectors */}
+      <div className="flex items-center gap-3 flex-wrap sm:flex-nowrap">
+        {/* Camera select */}
+        <select
+          className="border rounded px-2 py-1 w-auto shrink-0 sm:min-w-[240px]"
+          value={selectedCam}
+          onChange={(e) => setSelectedCam(e.target.value)}
+        >
+          {devices
+            .filter((d) => d.kind === 'videoinput')
+            .map((d) => (
+              <option key={d.deviceId} value={d.deviceId}>
+                {d.label || 'Camera'}
+              </option>
+            ))}
+        </select>
+  
+        {/* Microphone select */}
+        <select
+          className="border rounded px-2 py-1 w-auto shrink-0 sm:min-w-[240px]"
+          value={selectedMic}
+          onChange={(e) => setSelectedMic(e.target.value)}
+        >
+          {devices
+            .filter((d) => d.kind === 'audioinput')
+            .map((d) => (
+              <option key={d.deviceId} value={d.deviceId}>
+                {d.label || 'Microphone'}
+              </option>
+            ))}
+        </select>
+      </div>
+  
       {/* Live camera preview */}
       <div className="rounded-lg overflow-hidden bg-black">
         <video ref={videoRef} autoPlay playsInline muted className="w-full h-auto" />
       </div>
-      
+  
       {/* Local review player (only shown after you stop recording) */}
       {recorded && (
         <div className="mt-3 space-y-2">
           <div className="rounded-lg overflow-hidden bg-black">
-            <video
-              src={recorded.url}
-              controls
-              playsInline
-              className="w-full h-auto"
-            />
+            <video src={recorded.url} controls playsInline className="w-full h-auto" />
           </div>
           <div className="flex gap-2">
             <button
@@ -226,7 +223,7 @@ export default function Recorder({ jobId, onUploaded }: Props) {
               Use this video (upload)
             </button>
             <button
-              className="border rounded px-3 py-1"
+              className="border rounded px-3 py-1 bg-red-600 text-white"
               onClick={discardRecorded}
               disabled={isUploading}
             >
@@ -236,7 +233,7 @@ export default function Recorder({ jobId, onUploaded }: Props) {
           </div>
         </div>
       )}
-
+  
       {/* Controls */}
       <div className="flex flex-wrap gap-2">
         {!stream && (
@@ -250,7 +247,7 @@ export default function Recorder({ jobId, onUploaded }: Props) {
           </button>
         )}
         {isRecording && (
-          <button className="border rounded px-3 py-1" onClick={stopRecording}>
+          <button className="border rounded px-3 py-1 text-red-600" onClick={stopRecording}>
             Stop recording
           </button>
         )}
@@ -261,7 +258,7 @@ export default function Recorder({ jobId, onUploaded }: Props) {
         )}
         {isUploading && <span className="text-sm opacity-80">Uploading…</span>}
       </div>
-
+  
       {error && <p className="text-red-600 text-sm">{error}</p>}
     </div>
   );
