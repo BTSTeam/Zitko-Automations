@@ -482,9 +482,18 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                 })()
 
                 if (key === 'benefits') {
-                  const benefitsLines: string[] = Array.isArray(job.benefits)
-                    ? (job.benefits as string[]).filter(Boolean)
-                    : String(job.benefits || '').split('\n').map(s => s.trim()).filter(Boolean)
+                // Normalise to array of lines
+                let benefitsLines: string[] = Array.isArray(job.benefits)
+                  ? (job.benefits as string[]).map(s => String(s).trim()).filter(Boolean)
+                  : String(job.benefits || '')
+                      .split('\n')
+                      .map(s => s.trim())
+                      .filter(Boolean)
+              
+                // 🔧 Fallback placeholders if nothing provided
+                if (benefitsLines.length === 0) {
+                  benefitsLines = ['[BENEFIT 1]', '[BENEFIT 2]', '[BENEFIT 3]']
+                }
 
                   return (
                     <div
