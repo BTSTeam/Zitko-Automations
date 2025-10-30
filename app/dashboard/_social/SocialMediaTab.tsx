@@ -311,23 +311,22 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
         {/* LEFT: recorder + form */}
         <div className="flex flex-col gap-6">
           {/* recorder (collapsible) */}
-          <section className="border rounded-xl bg-white overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b">
+          <section className="rounded-2xl border bg-white shadow-sm overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setVideoOpen(o => !o)}
+              className="w-full flex items-center justify-between px-4 py-3 border-b"
+              aria-expanded={videoOpen}
+              aria-controls="video-panel"
+            >
               <h3 className="font-semibold text-lg">Video record</h3>
-              <div className="flex items-center gap-3">
-                {/* removed “Video attached ✓” message */}
-                <button
-                  type="button"
-                  onClick={() => setVideoOpen(v => !v)}
-                  className="text-sm px-2 py-1 rounded border hover:bg-gray-50"
-                  aria-expanded={videoOpen}
-                  aria-controls="video-panel"
-                  title={videoOpen ? 'Hide' : 'Show'}
-                >
-                  {videoOpen ? '▴' : '▾'}
-                </button>
-              </div>
-            </div>
+              <svg
+                width="16" height="16" viewBox="0 0 20 20" fill="currentColor"
+                className={`${videoOpen ? 'rotate-180' : ''} transition-transform`}
+              >
+                <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z" />
+              </svg>
+            </button>
 
             <div
               id="video-panel"
