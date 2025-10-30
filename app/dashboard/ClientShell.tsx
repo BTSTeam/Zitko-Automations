@@ -12,7 +12,7 @@ const ActiveCampaignUploadTab = dynamic(() => import('./_ac/ActiveCampaignTab'),
 const ActiveCampaignHtmlTab  = dynamic(() => import('./_ac/ActiveCampaignHtmlTab'), { ssr: false })
 
 type TabKey     = 'match' | 'source' | 'cv' | 'social' | 'ac'
-type SourceMode = 'candidates' | 'companies'
+type SourceMode = 'people' | 'companies'
 type CvTemplate = 'uk' | 'us' | 'sales'   // Updated: support UK & US formats
 type SocialMode = 'jobPosts' | 'generalPosts'
 
@@ -25,7 +25,7 @@ export default function ClientShell(): JSX.Element {
   const [showWelcome, setShowWelcome] = useState<boolean>(true)
 
   const [sourceOpen, setSourceOpen] = useState(false)
-  const [sourceMode, setSourceMode] = useState<SourceMode>('candidates')
+  const [sourceMode, setSourceMode] = useState<SourceMode>('people')
 
   const [cvOpen, setCvOpen]         = useState(false)
   const [cvTemplate, setCvTemplate] = useState<CvTemplate>('uk') // default to UK
@@ -108,10 +108,10 @@ export default function ClientShell(): JSX.Element {
               {!DISABLE_SOURCING && sourceOpen && (
                 <div className="absolute left-1/2 -translate-x-1/2 mt-2 w-44 rounded-xl border bg-white shadow-lg overflow-hidden z-10">
                   <button
-                    className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${sourceMode === 'candidates' ? 'font-medium' : ''}`}
+                    className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${sourceMode === 'people' ? 'font-medium' : ''}`}
                     onClick={() => { setSourceMode('candidates'); setTab('source'); setSourceOpen(false); setShowWelcome(false) }}
                   >
-                    Candidates
+                    People
                   </button>
                   <button
                     className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${sourceMode === 'companies' ? 'font-medium' : ''}`}
