@@ -16,8 +16,6 @@ type Props = {
   onUploaded: (payload: UploadedPayload) => void;
 };
 
-type Mask = 'None' | 'Circle';
-
 export default function Recorder({ jobId, onUploaded }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -26,227 +24,242 @@ export default function Recorder({ jobId, onUploaded }: Props) {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedCam, setSelectedCam] = useState<string | undefined>();
   const [selectedMic, setSelectedMic] = useState<string | undefined>();
+  const [error, setError] = useState<string | null>(null);
 
-  const [mask, setMask] = useState<Mask>('Circle');
-
-  const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
-
-  // Helpers
-  const cams = devices.filter((d) => d.kind === 'videoinput');
-  const mics = devices.filter((d) => d.kind === 'audioinput');
-
+  const [recorded, setRecorded] = useState<{
+    blob: Blob;
+    url: string;
+    width: number;
+    height: number;
+    mime: string;
+  } | null>(null);
+  
+  // Optional: clean up blob URL on unmount
   useEffect(() => {
-    navigator.mediaDevices
-      .enumerateDevices()
-      .then((list) => {
-        setDevices(list);
-        // sensible defaults
-        const firstCam = list.find((d) => d.kind === 'videoinput');
-        const firstMic = list.find((d) => d.kind === 'audioinput');
-        setSelectedCam((c) => c ?? firstCam?.deviceId);
-        setSelectedMic((m) => m ?? firstMic?.deviceId);
-      })
-      .catch(() => {});
-  }, []);
+    return () => {
+      if (recorded?.url) URL.revokeObjectURL(recorded.url);
+    };
+  }, [recorded?.url]);
+    // Discover devices on mount
+    useEffect(() => {
+      navigator.mediaDevices
+        .enumerateDevices()
+        .then((list) => {
+          setDevices(list);
+          setSelectedCam(list.find((d) => d.kind === 'videoinput')?.deviceId);
+          setSelectedMic(list.find((d) => d.kind === 'audioinput')?.deviceId);
+        })
+        .catch((e) => setError(e?.message || 'Could not access devices'));
+    }, []);
 
-  // Start camera with current selections
-  const startCamera = async () => {
+  // Open camera/mic
+  async function getStream() {
     try {
       const s = await navigator.mediaDevices.getUserMedia({
-        video: selectedCam ? { deviceId: { exact: selectedCam } } : true,
-        audio: selectedMic ? { deviceId: { exact: selectedMic } } : true,
+        video: {
+          deviceId: selectedCam ? { exact: selectedCam } : undefined,
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+        audio: {
+          deviceId: selectedMic ? { exact: selectedMic } : undefined,
+          echoCancellation: true,
+          noiseSuppression: true,
+        },
       });
       setStream(s);
-      if (videoRef.current) {
-        videoRef.current.srcObject = s;
-        await videoRef.current.play();
-      }
-    } catch (err) {
-      console.error(err);
+      if (videoRef.current) videoRef.current.srcObject = s;
+      setError(null);
+    } catch (e: any) {
+      setError(e?.message || 'Failed to enable camera/mic');
     }
-  };
+  }
 
-  // Turn off camera
-  const stopCamera = () => {
-    if (stream) {
-      stream.getTracks().forEach((t) => t.stop());
-      setStream(null);
-    }
-  };
+  function getBestMime(): string {
+    const candidates = [
+      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=vp8,opus',
+      'video/mp4;codecs=h264,aac',
+      'video/webm',
+    ];
+    for (const t of candidates) if (MediaRecorder.isTypeSupported(t)) return t;
+    return ''; // let browser choose
+  }
 
-  // Restart camera if device selection changes
-  useEffect(() => {
-    if (stream) {
-      stopCamera();
-      startCamera();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCam, selectedMic]);
+  function startRecording() {
+    if (!stream) return;
+    const mime = getBestMime();
+    const mr = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+    mediaRecorderRef.current = mr;
+    chunksRef.current = [];
 
-  // Recording handlers
-  const handleStartStop = async () => {
-    // If not recording, start
-    if (!isRecording) {
-      if (!stream) await startCamera();
+    mr.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
+    };
 
-      chunksRef.current = [];
-      const mr = new MediaRecorder((videoRef.current?.srcObject as MediaStream) ?? stream!, {
-        mimeType:
-          MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
-            ? 'video/webm;codecs=vp9'
-            : 'video/webm',
-      });
+    mr.onstop = () => {
+      const blob = new Blob(chunksRef.current, { type: mr.mimeType || 'video/webm' });
+      const width = videoRef.current?.videoWidth || 0;
+      const height = videoRef.current?.videoHeight || 0;
+    
+      // Create a local blob URL for review (no upload yet)
+      const url = URL.createObjectURL(blob);
+      setRecorded({ blob, url, width, height, mime: blob.type });
+    };
 
-      mr.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
-      };
+    mr.start(150); // collect data every 150ms
+    setIsRecording(true);
+  }
 
-      mr.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: 'video/webm' });
-        setRecordedBlob(blob);
-      };
-
-      mr.start();
-      mediaRecorderRef.current = mr;
-      setIsRecording(true);
-      return;
-    }
-
-    // If recording, stop
+  function stopRecording() {
     mediaRecorderRef.current?.stop();
     setIsRecording(false);
-  };
+  }
 
-  const handleUpload = async () => {
-    if (!recordedBlob) return;
+  function stopStream() {
+    stream?.getTracks().forEach((t) => t.stop());
+    setStream(null);
+  }
+
+  async function uploadRecorded() {
+    if (!recorded) return;
     setIsUploading(true);
+    setError(null);
     try {
-      const form = new FormData();
-      form.append('file', recordedBlob, 'recording.webm');
-      form.append('jobId', jobId);
-
-      const res = await fetch('/api/upload-video', {
-        method: 'POST',
-        body: form,
+      const body = new FormData();
+      body.append('file', recorded.blob, `recording.${recorded.mime.includes('mp4') ? 'mp4' : 'webm'}`);
+      body.append('mime', recorded.mime);
+      body.append('jobId', jobId);
+  
+      const res = await fetch('/api/upload-video', { method: 'POST', body });
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '');
+        throw new Error(`Upload failed${txt ? ` - ${txt}` : ''}`);
+      }
+  
+      const { publicId, playbackMp4, downloadMp4 } = (await res.json()) as {
+        publicId: string; playbackMp4: string; downloadMp4: string;
+      };
+  
+      onUploaded({
+        publicId,
+        playbackMp4,
+        downloadMp4,
+        mime: recorded.mime,
+        width: recorded.width,
+        height: recorded.height,
       });
-
-      if (!res.ok) throw new Error('Upload failed');
-
-      const payload = (await res.json()) as UploadedPayload;
-      onUploaded(payload);
-      // Optionally clear the local blob after successful upload
-      setRecordedBlob(null);
-    } catch (e) {
-      console.error(e);
+  
+      // Clear local review state after successful upload
+      URL.revokeObjectURL(recorded.url);
+      setRecorded(null);
+    } catch (e: any) {
+      setError(e?.message || 'Upload failed');
     } finally {
       setIsUploading(false);
     }
-  };
+  }
+  
+  function discardRecorded() {
+    if (recorded?.url) URL.revokeObjectURL(recorded.url);
+    setRecorded(null);
+  }
 
   return (
     <div className="space-y-3">
-      {/* Controls row 1 */}
-      <div className="flex flex-wrap gap-3 items-center">
-        <label className="text-sm">Mask</label>
+      {/* Device selectors */}
+      <div className="flex items-center gap-3 flex-wrap sm:flex-nowrap">
+        {/* Camera select */}
         <select
-          value={mask}
-          onChange={(e) => setMask(e.target.value as Mask)}
-          className="border rounded px-2 py-1"
-        >
-          <option>None</option>
-          <option>Circle</option>
-        </select>
-
-        <select
+          className="border rounded px-2 py-1 w-auto shrink-0 sm:min-w-[240px]"
           value={selectedCam}
           onChange={(e) => setSelectedCam(e.target.value)}
-          className="border rounded px-2 py-1"
-          style={{ minWidth: 220, maxWidth: 360, flex: '1 1 260px' }}
         >
-          {cams.map((c) => (
-            <option key={c.deviceId} value={c.deviceId}>
-              {c.label || 'Camera'}
-            </option>
-          ))}
+          {devices
+            .filter((d) => d.kind === 'videoinput')
+            .map((d) => (
+              <option key={d.deviceId} value={d.deviceId}>
+                {d.label || 'Camera'}
+              </option>
+            ))}
         </select>
-
-        {/* Mic dropdown: slightly reduced so it never overflows */}
+  
+        {/* Microphone select */}
         <select
+          className="border rounded px-2 py-1 w-auto shrink-0 sm:min-w-[240px]"
           value={selectedMic}
           onChange={(e) => setSelectedMic(e.target.value)}
-          className="border rounded px-2 py-1"
-          style={{ minWidth: 200, maxWidth: 300, flex: '1 1 220px' }}
-          title="Microphone"
         >
-          {mics.map((m) => (
-            <option key={m.deviceId} value={m.deviceId}>
-              {m.label || 'Microphone'}
-            </option>
-          ))}
+          {devices
+            .filter((d) => d.kind === 'audioinput')
+            .map((d) => (
+              <option key={d.deviceId} value={d.deviceId}>
+                {d.label || 'Microphone'}
+              </option>
+            ))}
         </select>
       </div>
-
-      {/* Video */}
-      <div
-        className="bg-black rounded overflow-hidden"
-        style={{ width: '100%', maxWidth: 920, aspectRatio: '16 / 9' }}
-      >
-        <video
-          ref={videoRef}
-          playsInline
-          muted={false}
-          autoPlay
-          style={{
-            width: '100%',
-            height: '100%',
-            objectFit: 'cover',
-            // Masking
-            WebkitMaskImage: mask === 'Circle' ? 'radial-gradient(circle, #000 70%, transparent 71%)' : undefined,
-            maskImage: mask === 'Circle' ? 'radial-gradient(circle, #000 70%, transparent 71%)' : undefined,
-          }}
-        />
+  
+      {/* Live camera preview */}
+      <div className="rounded-lg overflow-hidden bg-black">
+        <video ref={videoRef} autoPlay playsInline muted className="w-full h-auto" />
       </div>
-
-      {/* Controls row 2 */}
-      <div className="flex items-center gap-3 justify-between">
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={handleStartStop}
-            className={
-              isRecording
-                ? 'px-3 py-2 rounded bg-red-600 text-white'
-                : 'px-3 py-2 rounded bg-blue-600 text-white'
-            }
-          >
-            {isRecording ? 'Stop' : 'Start recording'}
-          </button>
-
-          <button
-            type="button"
-            onClick={stopCamera}
-            className="px-3 py-2 rounded border"
-          >
-            Turn off camera
-          </button>
+  
+      {/* Local review player (only shown after you stop recording) */}
+      {recorded && (
+        <div className="mt-3 space-y-2">
+          <div className="rounded-lg overflow-hidden bg-black">
+            <video src={recorded.url} controls playsInline className="w-full h-auto" />
+          </div>
+          <div className="flex gap-2">
+            <button
+              className="border rounded px-3 py-1 bg-emerald-600 text-white disabled:opacity-60"
+              onClick={uploadRecorded}
+              disabled={isUploading}
+            >
+              Use this video (upload)
+            </button>
+            <button
+              className="border rounded px-3 py-1 bg-red-600 text-white"
+              onClick={discardRecorded}
+              disabled={isUploading}
+            >
+              Discard
+            </button>
+            {isUploading && <span className="text-sm opacity-80">Uploading…</span>}
+          </div>
         </div>
-
-        {/* Upload at far right, only when a recording exists and we're not currently recording */}
-        {recordedBlob && !isRecording && (
-          <button
-            type="button"
-            onClick={handleUpload}
-            disabled={isUploading}
-            className="px-3 py-2 rounded bg-emerald-600 text-white disabled:opacity-60"
-          >
-            {isUploading ? 'Uploading…' : 'Upload'}
+      )}
+  
+      {/* Controls */}
+      <div className="flex flex-wrap gap-2">
+        {!stream && (
+          <button className="border rounded px-3 py-1" onClick={getStream}>
+            Enable camera
           </button>
         )}
+        {stream && !isRecording && (
+          <button className="border rounded px-3 py-1" onClick={startRecording}>
+            Start recording
+          </button>
+        )}
+        {isRecording && (
+          <button className="border rounded px-3 py-1 text-red-600" onClick={stopRecording}>
+            Stop recording
+          </button>
+        )}
+        {stream && !isRecording && (
+          <button className="border rounded px-3 py-1" onClick={stopStream}>
+            Turn off camera
+          </button>
+        )}
+        {isUploading && <span className="text-sm opacity-80">Uploading…</span>}
       </div>
+  
+      {error && <p className="text-red-600 text-sm">{error}</p>}
     </div>
   );
 }
