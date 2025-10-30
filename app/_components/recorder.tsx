@@ -169,37 +169,37 @@ export default function Recorder({ jobId, onUploaded }: Props) {
   }
 
   return (
-    <div className="space-y-3">
-      {/* Device selectors */}
-      <div className="flex flex-wrap gap-2 items-center">
-        <select
-          className="border rounded px-2 py-1"
-          value={selectedCam}
-          onChange={(e) => setSelectedCam(e.target.value)}
-        >
-          {devices
-            .filter((d) => d.kind === 'videoinput')
-            .map((d) => (
-              <option key={d.deviceId} value={d.deviceId}>
-                {d.label || 'Camera'}
-              </option>
-            ))}
-        </select>
-
-        <select
-          className="border rounded px-2 py-1"
-          value={selectedMic}
-          onChange={(e) => setSelectedMic(e.target.value)}
-        >
-          {devices
-            .filter((d) => d.kind === 'audioinput')
-            .map((d) => (
-              <option key={d.deviceId} value={d.deviceId}>
-                {d.label || 'Microphone'}
-              </option>
-            ))}
-        </select>
-      </div>
+    <div className="flex items-center gap-3 flex-wrap sm:flex-nowrap">
+      {/* Camera select */}
+      <select
+        className="border rounded px-2 py-1 w-auto shrink-0 sm:min-w-[240px]"
+        value={selectedCam}
+        onChange={(e) => setSelectedCam(e.target.value)}
+      >
+        {devices
+          .filter((d) => d.kind === 'videoinput')
+          .map((d) => (
+            <option key={d.deviceId} value={d.deviceId}>
+              {d.label || 'Camera'}
+            </option>
+          ))}
+      </select>
+    
+      {/* Microphone select */}
+      <select
+        className="border rounded px-2 py-1 w-auto shrink-0 sm:min-w-[240px]"
+        value={selectedMic}
+        onChange={(e) => setSelectedMic(e.target.value)}
+      >
+        {devices
+          .filter((d) => d.kind === 'audioinput')
+          .map((d) => (
+            <option key={d.deviceId} value={d.deviceId}>
+              {d.label || 'Microphone'}
+            </option>
+          ))}
+      </select>
+    </div>
 
       {/* Live camera preview */}
       <div className="rounded-lg overflow-hidden bg-black">
