@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 
-type SourceMode = 'people' | 'companies'
+type SourceMode = 'candidate' | 'companies'
 
 type EmploymentItem = {
   organization_name: string | null
