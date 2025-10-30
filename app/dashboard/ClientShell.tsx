@@ -109,7 +109,7 @@ export default function ClientShell(): JSX.Element {
                 <div className="absolute left-1/2 -translate-x-1/2 mt-2 w-44 rounded-xl border bg-white shadow-lg overflow-hidden z-10">
                   <button
                     className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${sourceMode === 'people' ? 'font-medium' : ''}`}
-                    onClick={() => { setSourceMode('candidates'); setTab('source'); setSourceOpen(false); setShowWelcome(false) }}
+                    onClick={() => { setSourceMode('people'); setTab('source'); setSourceOpen(false); setShowWelcome(false) }}
                   >
                     People
                   </button>
