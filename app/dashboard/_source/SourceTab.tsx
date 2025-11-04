@@ -455,6 +455,7 @@ Kind regards,`
       const json: any = await res.json()
       if (!res.ok) throw new Error(json?.error || `Search failed (${res.status})`)
       const arr: any[] = Array.isArray(json.companies) ? json.companies : []
+      
       // Map to Company type with defensive checks
       const mapped: Company[] = arr.map((c: any) => {
         const job_postings: JobPosting[] = Array.isArray(c?.job_postings)
@@ -482,10 +483,13 @@ Kind regards,`
         return {
           id: (c?.id ?? c?.organization_id ?? '').toString(),
           name: c?.name ?? c?.company_name ?? null,
-          formatted_address: c?.formatted_address ?? c?.location ?? null,
-          num_employees: typeof c?.num_employees === 'number' ? c.num_employees : c?.employee_count ?? null,
           website_url: c?.website_url ?? c?.domain ?? null,
           linkedin_url: c?.linkedin_url ?? null,
+          exact_location: c?.formatted_address ?? c?.location ?? null,
+          city: c?.city ?? null,
+          state: c?.state ?? null,
+          short_description: c?.short_description ?? null,
+      
           job_postings,
           hiring_people,
           news_articles,
@@ -891,4 +895,8 @@ Kind regards,`
 ) : (
   <p className="text-sm text-gray-500 italic">No companies found.</p>
 )}
+    </div>
+  </div>
+ )
+}
 
