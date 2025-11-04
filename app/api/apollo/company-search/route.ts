@@ -1,244 +1,152 @@
-// app/api/apollo/company-search/route.ts
-export const runtime = 'nodejs'
-export const dynamic = 'force-dynamic'
-export const revalidate = 0
-
-import { NextRequest, NextResponse } from 'next/server'
-import { getSession } from '@/lib/session'
-import { refreshApolloAccessToken } from '@/lib/apolloRefresh'
-
-// Apollo endpoints
-const APOLLO_COMPANY_SEARCH_URL = 'https://api.apollo.io/api/v1/mixed_companies/search'
-const APOLLO_PEOPLE_SEARCH_URL  = 'https://api.apollo.io/api/v1/mixed_people/search'
-const APOLLO_NEWS_SEARCH_URL    = 'https://api.apollo.io/api/v1/news_articles/search'
-const APOLLO_ORG_GET_URL        = (id: string) => `https://api.apollo.io/api/v1/organizations/${id}`
-const APOLLO_ORG_JOBS_URL       = (id: string) => `https://api.apollo.io/api/v1/organizations/${id}/job_postings?per_page=10`
-
-function toArray(v?: string[] | string): string[] {
-  if (!v) return []
-  if (Array.isArray(v)) return v.map(s => s.trim()).filter(Boolean)
-  return v.split(',').map(s => s.trim()).filter(Boolean)
-}
-function buildQS(params: Record<string, string[] | string>): string {
-  const p = new URLSearchParams()
-  for (const [k, v] of Object.entries(params)) {
-    if (Array.isArray(v)) v.forEach(x => p.append(k, x))
-    else if (v) p.append(k, v)
-  }
-  return p.toString()
-}
-function dateNDaysAgo(days: number): string {
-  const d = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
-  return d.toISOString().split('T')[0]
+// --- Company type (with org details) ---
+type Company = {
+  id: string
+  name: string | null
+  website_url: string | null
+  linkedin_url: string | null
+  exact_location?: string | null
+  city?: string | null
+  state?: string | null
+  short_description?: string | null
+  job_postings?: any[]
+  hiring_people?: any[]
+  news_articles?: any[]
 }
 
-export async function POST(req: NextRequest) {
-  // ---- input ----
-  let inBody: {
-    locations?: string[] | string          // -> organization_locations[]
-    keywords?: string[] | string           // -> q_organization_keyword_tags[]
-    page?: number | string
-    per_page?: number | string
-  } = {}
-  try { inBody = (await req.json()) || {} } catch {}
-
-  const locations = toArray(inBody.locations)
-  const tags      = toArray(inBody.keywords)
-  const page      = Math.max(1, parseInt(String(inBody.page ?? '1'), 10) || 1)
-  const per_page  = Math.max(1, Math.min(25, parseInt(String(inBody.per_page ?? '25'), 10) || 25))
-
-  // ---- auth ----
-  const session   = await getSession()
-  const userKey   = session.user?.email || session.sessionId || ''
-  let accessToken = session.tokens?.apolloAccessToken
-  const apiKey    = process.env.APOLLO_API_KEY
-
-  if (!accessToken && !apiKey) {
-    return NextResponse.json(
-      { error: 'Not authenticated: missing Apollo OAuth token or APOLLO_API_KEY' },
-      { status: 401 },
-    )
-  }
-
-  const buildHeaders = (): Record<string, string> => {
-    const h: Record<string, string> = {
-      accept: 'application/json',
-      'Cache-Control': 'no-cache',
-      'Content-Type': 'application/json',
-    }
-    if (accessToken) h.Authorization = `Bearer ${accessToken}`
-    else if (apiKey) h['X-Api-Key'] = apiKey
-    return h
-  }
-
-  const postWithRetry = async (url: string) => {
-    const call = (headers: Record<string, string>) =>
-      fetch(url, { method: 'POST', headers, body: JSON.stringify({}), cache: 'no-store' })
-
-    let resp = await call(buildHeaders())
-    if ((resp.status === 401 || resp.status === 403) && accessToken && userKey) {
-      const refreshed = await refreshApolloAccessToken(userKey)
-      if (refreshed) {
-        const s2 = await getSession()
-        accessToken = s2.tokens?.apolloAccessToken
-        resp = await call(buildHeaders())
-      }
-    }
-    return resp
-  }
-
-  // ---- 1) Primary company search (docs-accurate minimal filters) ----
-  const companyQS: Record<string, string[] | string> = {
-    page: String(page),
-    per_page: String(per_page),
-  }
-  locations.forEach(loc => {
-    companyQS['organization_locations[]'] =
-      (companyQS['organization_locations[]'] as string[] | undefined)?.concat(loc) || [loc]
-  })
-  tags.forEach(tag => {
-    companyQS['q_organization_keyword_tags[]'] =
-      (companyQS['q_organization_keyword_tags[]'] as string[] | undefined)?.concat(tag) || [tag]
-  })
-
-  const companySearchUrl = `${APOLLO_COMPANY_SEARCH_URL}?${buildQS(companyQS)}`
-  const compResp = await postWithRetry(companySearchUrl)
-  const compRaw  = await compResp.text()
-
-  if (!compResp.ok) {
-    return NextResponse.json(
-      { error: `Apollo company search error: ${compResp.status} ${compResp.statusText}`, details: compRaw?.slice(0, 2000) },
-      { status: compResp.status || 400 }
-    )
-  }
-
-  let compData: any = {}
-  try { compData = compRaw ? JSON.parse(compRaw) : {} } catch {}
-  const companies: any[] = Array.isArray(compData?.organizations) ? compData.organizations : []
-
-  if (!companies.length) {
-    return NextResponse.json({ companies: [], page, per_page })
-  }
-
-  // ---- 2) Enrich each company ----
-  const published_after = dateNDaysAgo(90)
-
-  const enriched = await Promise.all(companies.map(async (c) => {
-    const orgId = c?.id
-    const base: any = {
-      id: orgId,
-      name: c?.name ?? null,
-      website_url: c?.website_url ?? null,
-      linkedin_url: c?.linkedin_url ?? null,
-      // will be replaced by org GET:
-      num_employees: c?.num_employees ?? null,
-      exact_location: c?.location ?? null,
-      // new fields:
-      city: null as string | null,
-      state: null as string | null,
-      short_description: null as string | null,
-
-      job_postings: [] as any[],
-      hiring_people: [] as any[],
-      news_articles: [] as any[],
-    }
-
-    // 2a) Org details (city, state, short_description)
-    try {
-      const orgResp = await fetch(APOLLO_ORG_GET_URL(orgId), {
-        method: 'GET',
-        headers: buildHeaders(),
-        cache: 'no-store',
-      })
-      const orgRaw = await orgResp.text()
-      if (orgResp.ok) {
-        let org: any = {}
-        try { org = orgRaw ? JSON.parse(orgRaw) : {} } catch {}
-        const o = org?.organization || {}
-        base.city = (o?.city ?? null)
-        base.state = (o?.state ?? null)
-        base.short_description = (o?.short_description ?? null)
-        // Optionally override exact_location with richer info
-        if (base.city || base.state) {
-          base.exact_location = [base.city, base.state].filter(Boolean).join(', ') || base.exact_location
-        }
-      }
-    } catch { /* ignore per-org failure */ }
-
-    // 2b) Job postings
-    try {
-      const jobsResp = await fetch(APOLLO_ORG_JOBS_URL(orgId), {
-        method: 'GET',
-        headers: buildHeaders(),
-        cache: 'no-store',
-      })
-      const jobsRaw = await jobsResp.text()
-      if (jobsResp.ok) {
-        let jobs: any = {}
-        try { jobs = jobsRaw ? JSON.parse(jobsRaw) : {} } catch {}
-        base.job_postings = Array.isArray(jobs?.job_postings) ? jobs.job_postings : []
-      }
-    } catch { /* ignore per-org failure */ }
-
-    // 2c) Hiring contacts (titles + keywords, POST + empty body)
-    try {
-      const peopleQS = buildQS({
-        'organization_ids[]': [orgId],
-        // Exact titles (common)
-        'person_titles[]': [
-          'Head of Recruitment',
-          'Head of Talent',
-          'Talent Acquisition',
-          'Talent Acquisition Manager',
-          'Talent Acquisition Partner',
-          'Recruitment Manager',
-          'Recruiting Manager',
-          'Recruiter',
-          'Talent Manager',
-          'Hiring Manager',
-        ],
-        // Broaden using title keywords (helps when titles vary)
-        'q_person_title_keywords[]': [
-          'recruit',
-          'recruitment',
-          'talent',
-          'acquisition',
-          'hiring',
-        ],
-        per_page: '5',
-      })
-      const peopleUrl = `${APOLLO_PEOPLE_SEARCH_URL}?${peopleQS}`
-      const hpResp = await postWithRetry(peopleUrl)
-      const hpRaw  = await hpResp.text()
-      if (hpResp.ok) {
-        let hp: any = {}
-        try { hp = hpRaw ? JSON.parse(hpRaw) : {} } catch {}
-        const arr = Array.isArray(hp?.contacts) ? hp.contacts
-                  : Array.isArray(hp?.people)   ? hp.people
-                  : []
-        base.hiring_people = arr
-      }
-    } catch { /* ignore per-org failure */ }
-
-    // 2d) News (last 90 days)
-    try {
-      const newsQS = buildQS({
-        'organization_ids[]': [orgId],
-        published_after,
-        per_page: '5',
-      })
-      const newsUrl = `${APOLLO_NEWS_SEARCH_URL}?${newsQS}`
-      const newsResp = await postWithRetry(newsUrl)
-      const newsRaw  = await newsResp.text()
-      if (newsResp.ok) {
-        let news: any = {}
-        try { news = newsRaw ? JSON.parse(newsRaw) : {} } catch {}
-        base.news_articles = Array.isArray(news?.news_articles) ? news.news_articles : []
-      }
-    } catch { /* ignore per-org failure */ }
-
-    return base
-  }))
-
-  return NextResponse.json({ companies: enriched, page, per_page })
+// --- Helper to nicely format city/state display ---
+function formatCityState(c: Company) {
+  const city = (c.city || '').trim()
+  const state = (c.state || '').trim()
+  if (city && state) return `${city}, ${state}`
+  return city || state || null
 }
+
+// --- Company Results Section ---
+{companies.length > 0 ? (
+  <ul className="divide-y divide-gray-200">
+    {companies.map((c) => (
+      <li key={c.id} className="p-4">
+        {/* --- Row 1: Company name + City, State --- */}
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="font-semibold text-base truncate">
+              {c.name || '—'}
+            </span>
+
+            {/* City + State next to name */}
+            {formatCityState(c) ? (
+              <>
+                <span className="text-gray-300">|</span>
+                <span className="text-xs text-gray-600 truncate">
+                  {formatCityState(c)}
+                </span>
+              </>
+            ) : null}
+          </div>
+
+          {/* --- Right-side icons --- */}
+          <div className="shrink-0 flex items-center gap-3">
+            {/* LinkedIn */}
+            <a
+              href={c.linkedin_url || undefined}
+              target={c.linkedin_url ? '_blank' : undefined}
+              rel={c.linkedin_url ? 'noreferrer' : undefined}
+              className={
+                c.linkedin_url
+                  ? 'text-gray-700 hover:text-gray-900'
+                  : 'opacity-30 pointer-events-none cursor-default'
+              }
+              title={c.linkedin_url ? 'Open LinkedIn' : 'LinkedIn not available'}
+            >
+              <IconLinkedIn />
+            </a>
+
+            {/* Website */}
+            <a
+              href={c.website_url || undefined}
+              target={c.website_url ? '_blank' : undefined}
+              rel={c.website_url ? 'noreferrer' : undefined}
+              className={
+                c.website_url
+                  ? 'text-gray-700 hover:text-gray-900'
+                  : 'opacity-30 pointer-events-none cursor-default'
+              }
+              title={c.website_url ? 'Open company website' : 'Company website not available'}
+            >
+              <IconGlobe muted={!c.website_url} />
+            </a>
+          </div>
+        </div>
+
+        {/* --- Row 2: short_description (replaces employees) --- */}
+        <div className="mt-1 text-sm text-gray-700">
+          {c.short_description || '—'}
+        </div>
+
+        {/* --- Dropdown panels for extra data --- */}
+        {c.job_postings?.length > 0 && (
+          <details className="mt-3">
+            <summary className="cursor-pointer font-medium text-sm text-orange-600">
+              Job Postings ({c.job_postings.length})
+            </summary>
+            <ul className="mt-1 ml-3 list-disc text-sm text-gray-600">
+              {c.job_postings.map((job) => (
+                <li key={job.id}>
+                  {job.title || 'Untitled Job'}{' '}
+                  {job.location && (
+                    <span className="text-xs text-gray-500">
+                      ({job.location})
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+
+        {c.hiring_people?.length > 0 && (
+          <details className="mt-3">
+            <summary className="cursor-pointer font-medium text-sm text-orange-600">
+              Hiring / Recruitment Contacts ({c.hiring_people.length})
+            </summary>
+            <ul className="mt-1 ml-3 list-disc text-sm text-gray-600">
+              {c.hiring_people.map((p) => (
+                <li key={p.id}>
+                  {p.name}
+                  {p.title ? ` – ${p.title}` : ''}
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+
+        {c.news_articles?.length > 0 && (
+          <details className="mt-3">
+            <summary className="cursor-pointer font-medium text-sm text-orange-600">
+              News Articles ({c.news_articles.length})
+            </summary>
+            <ul className="mt-1 ml-3 list-disc text-sm text-gray-600">
+              {c.news_articles.map((n) => (
+                <li key={n.id}>
+                  {n.title}{' '}
+                  {n.url && (
+                    <a
+                      href={n.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-orange-600 hover:underline"
+                    >
+                      (view)
+                    </a>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+      </li>
+    ))}
+  </ul>
+) : (
+  <p className="text-sm text-gray-500 italic">No companies found.</p>
+)}
