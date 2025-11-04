@@ -1,11 +1,4 @@
 // app/api/apollo/company-search/route.ts
-//
-// This route proxies requests to the Apollo `mixed_companies/search` endpoint
-// and performs additional lookups per organization for job postings,
-// internal recruiters (hiring managers), and recent news articles.  
-// It mirrors the people-search route in authentication and response parsing,
-// while augmenting results with extra data for the sourcing UI.
-
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -14,158 +7,179 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/session'
 import { refreshApolloAccessToken } from '@/lib/apolloRefresh'
 
-// Apollo base URLs
 const APOLLO_COMPANY_SEARCH_URL = 'https://api.apollo.io/api/v1/mixed_companies/search'
-const APOLLO_PEOPLE_SEARCH_URL = 'https://api.apollo.io/api/v1/mixed_people/search'
-const APOLLO_NEWS_SEARCH_URL = 'https://api.apollo.io/api/v1/news_articles/search'
+const APOLLO_PEOPLE_SEARCH_URL  = 'https://api.apollo.io/api/v1/mixed_people/search'
+const APOLLO_NEWS_SEARCH_URL    = 'https://api.apollo.io/api/v1/news_articles/search'
 
-// ---------------- Helpers ----------------
 function toArray(v?: string[] | string): string[] {
   if (!v) return []
   if (Array.isArray(v)) return v.map(s => s.trim()).filter(Boolean)
   return v.split(',').map(s => s.trim()).filter(Boolean)
 }
-
-function buildQueryString(params: Record<string, string[] | string>): string {
-  const search = new URLSearchParams()
-  Object.entries(params).forEach(([key, value]) => {
-    if (Array.isArray(value)) {
-      value.forEach(v => search.append(key, v))
-    } else if (value) {
-      search.append(key, value)
-    }
-  })
-  return search.toString()
+function buildQS(params: Record<string, string[] | string>): string {
+  const p = new URLSearchParams()
+  for (const [k, v] of Object.entries(params)) {
+    if (Array.isArray(v)) v.forEach(x => p.append(k, x))
+    else if (v) p.append(k, v)
+  }
+  return p.toString()
 }
-
 function dateNDaysAgo(days: number): string {
   const d = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
   return d.toISOString().split('T')[0]
 }
 
-// ---------------- Main Route ----------------
 export async function POST(req: NextRequest) {
-  let body: { locations?: string[] | string; keywords?: string[] | string; page?: number | string; per_page?: number | string } = {}
-  try {
-    body = (await req.json()) || {}
-  } catch {}
+  // ---- Input ----
+  let body: {
+    locations?: string[] | string
+    keywords?: string[] | string
+    page?: number | string
+    per_page?: number | string
+  } = {}
+  try { body = (await req.json()) || {} } catch {}
 
   const locations = toArray(body.locations)
-  const keywords = toArray(body.keywords)
-  const page = Math.max(1, parseInt(String(body.page ?? '1'), 10) || 1)
-  const perPage = Math.max(1, Math.min(25, parseInt(String(body.per_page ?? '25'), 10) || 25))
+  const keywords  = toArray(body.keywords)
+  const page     = Math.max(1, parseInt(String(body.page ?? '1'), 10) || 1)
+  const per_page = Math.max(1, Math.min(25, parseInt(String(body.per_page ?? '25'), 10) || 25))
 
-  const companyParams: Record<string, string[] | string> = {
-    page: String(page),
-    per_page: String(perPage),
-  }
-
-  // location & keyword filters
-  locations.forEach(loc => {
-    companyParams['organization_locations[]'] = companyParams['organization_locations[]']
-      ? ([] as string[]).concat(companyParams['organization_locations[]'] as string[], [loc])
-      : [loc]
-    companyParams['company_locations[]'] = companyParams['company_locations[]']
-      ? ([] as string[]).concat(companyParams['company_locations[]'] as string[], [loc])
-      : [loc]
-  })
-
-  keywords.forEach(kw => {
-    companyParams['q_organization_keyword_tags[]'] = companyParams['q_organization_keyword_tags[]']
-      ? ([] as string[]).concat(companyParams['q_organization_keyword_tags[]'] as string[], [kw])
-      : [kw]
-    companyParams['q_keywords[]'] = companyParams['q_keywords[]']
-      ? ([] as string[]).concat(companyParams['q_keywords[]'] as string[], [kw])
-      : [kw]
-  })
-
-  const session = await getSession()
-  const userKey = session.user?.email || session.sessionId || ''
+  // ---- Auth ----
+  const session   = await getSession()
+  const userKey   = session.user?.email || session.sessionId || ''
   let accessToken = session.tokens?.apolloAccessToken
-  const apiKey = process.env.APOLLO_API_KEY
+  const apiKey    = process.env.APOLLO_API_KEY
 
   if (!accessToken && !apiKey) {
-    return NextResponse.json({ error: 'Not authenticated: no Apollo OAuth token or API key' }, { status: 401 })
+    return NextResponse.json(
+      { error: 'Not authenticated: missing Apollo OAuth token or APOLLO_API_KEY' },
+      { status: 401 }
+    )
   }
 
   const buildHeaders = (): Record<string, string> => {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-    if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`
-    if (apiKey) headers['x-api-key'] = apiKey
-    return headers
+    const h: Record<string, string> = {
+      accept: 'application/json',
+      'Cache-Control': 'no-cache',
+      'Content-Type': 'application/json',
+    }
+    if (accessToken) h.Authorization = `Bearer ${accessToken}`
+    else if (apiKey) h['X-Api-Key'] = apiKey
+    return h
   }
 
-  // ---- Company Search ----
-  const queryString = buildQueryString(companyParams)
-  const companyRes = await fetch(`${APOLLO_COMPANY_SEARCH_URL}?${queryString}`, {
-    headers: buildHeaders(),
+  // ---- Company search params ----
+  const compParams: Record<string, string[] | string> = {
+    page: String(page),
+    per_page: String(per_page),
+  }
+  locations.forEach(loc => {
+    compParams['organization_locations[]'] =
+      (compParams['organization_locations[]'] as string[] | undefined)?.concat(loc) || [loc]
+    compParams['company_locations[]'] =
+      (compParams['company_locations[]'] as string[] | undefined)?.concat(loc) || [loc]
   })
+  keywords.forEach(kw => {
+    compParams['q_organization_keyword_tags[]'] =
+      (compParams['q_organization_keyword_tags[]'] as string[] | undefined)?.concat(kw) || [kw]
+    compParams['q_keywords[]'] =
+      (compParams['q_keywords[]'] as string[] | undefined)?.concat(kw) || [kw]
+  })
+  const compQS = buildQS(compParams)
 
-  if (!companyRes.ok) {
-    return NextResponse.json({ error: 'Company search failed', status: companyRes.status }, { status: companyRes.status })
+  // Helper to POST with retry-on-refresh
+  const postWithRetry = async (url: string) => {
+    const call = (headers: Record<string, string>) =>
+      fetch(url, { method: 'POST', headers, body: JSON.stringify({}), cache: 'no-store' })
+
+    let resp = await call(buildHeaders())
+    if ((resp.status === 401 || resp.status === 403) && accessToken && userKey) {
+      const refreshed = await refreshApolloAccessToken(userKey)
+      if (refreshed) {
+        const s2 = await getSession()
+        accessToken = s2.tokens?.apolloAccessToken
+        resp = await call(buildHeaders())
+      }
+    }
+    return resp
   }
 
-  const companyData = await companyRes.json()
-  const companies = companyData?.organizations || []
+  // ---- 1) Company search (POST + empty body) ----
+  const compResp = await postWithRetry(`${APOLLO_COMPANY_SEARCH_URL}?${compQS}`)
+  const compRaw = await compResp.text()
+  if (!compResp.ok) {
+    return NextResponse.json(
+      { error: `Apollo company search error: ${compResp.status} ${compResp.statusText}`, details: compRaw?.slice(0, 2000) },
+      { status: compResp.status || 400 }
+    )
+  }
+  let compData: any = {}
+  try { compData = compRaw ? JSON.parse(compRaw) : {} } catch {}
+  const companies: any[] = Array.isArray(compData?.organizations) ? compData.organizations : []
 
-  // ---- For each company, fetch Job Postings, People & News ----
-  const enriched = await Promise.all(
-    companies.map(async (company: any) => {
-      const id = company.id
-      const base: any = {
-        id,
-        name: company.name,
-        website_url: company.website_url,
-        linkedin_url: company.linkedin_url,
-        num_employees: company.num_employees,
-        exact_location: company.location,
-        job_postings: [],
-        hiring_people: [],
-        news_articles: [],
+  // ---- Enrich each company ----
+  const enriched = await Promise.all(companies.map(async (c) => {
+    const orgId = c?.id
+    const out: any = {
+      id: orgId,
+      name: c?.name ?? null,
+      website_url: c?.website_url ?? null,
+      linkedin_url: c?.linkedin_url ?? null,
+      num_employees: c?.num_employees ?? null,
+      exact_location: c?.location ?? null,
+      job_postings: [] as any[],
+      hiring_people: [] as any[],
+      news_articles: [] as any[],
+    }
+
+    // 2) Job postings (GET is fine here)
+    try {
+      const jobsResp = await fetch(`https://api.apollo.io/api/v1/organizations/${orgId}/job_postings?per_page=10`, {
+        method: 'GET', headers: buildHeaders(), cache: 'no-store'
+      })
+      const jobsRaw = await jobsResp.text()
+      if (jobsResp.ok) {
+        let jobs: any = {}
+        try { jobs = jobsRaw ? JSON.parse(jobsRaw) : {} } catch {}
+        out.job_postings = Array.isArray(jobs?.job_postings) ? jobs.job_postings : []
       }
+    } catch {}
 
-      // Job postings
-      try {
-        const jobsRes = await fetch(`https://api.apollo.io/api/v1/organizations/${id}/job_postings?per_page=10`, {
-          headers: buildHeaders(),
-        })
-        if (jobsRes.ok) {
-          const jobsData = await jobsRes.json()
-          base.job_postings = jobsData?.job_postings || []
-        }
-      } catch {}
+    // 3) Hiring people (POST + empty body)
+    try {
+      const hpQS = buildQS({
+        'organization_ids[]': [orgId],
+        'person_titles[]': ['Hiring Manager', 'Talent Acquisition', 'Head of Recruitment'],
+        per_page: '5',
+      })
+      const hpResp = await postWithRetry(`${APOLLO_PEOPLE_SEARCH_URL}?${hpQS}`)
+      const hpRaw = await hpResp.text()
+      if (hpResp.ok) {
+        let hp: any = {}
+        try { hp = hpRaw ? JSON.parse(hpRaw) : {} } catch {}
+        const arr = Array.isArray(hp?.contacts) ? hp.contacts : Array.isArray(hp?.people) ? hp.people : []
+        out.hiring_people = arr
+      }
+    } catch {}
 
-      // Hiring people
-      try {
-        const peopleQuery = buildQueryString({
-          'organization_ids[]': [id],
-          'q_titles[]': ['Hiring Manager', 'Talent Acquisition', 'Head of Recruitment'],
-          per_page: '5',
-        })
-        const peopleRes = await fetch(`${APOLLO_PEOPLE_SEARCH_URL}?${peopleQuery}`, { headers: buildHeaders() })
-        if (peopleRes.ok) {
-          const peopleData = await peopleRes.json()
-          base.hiring_people = peopleData?.people || []
-        }
-      } catch {}
+    // 4) News (POST + empty body)
+    try {
+      const newsQS = buildQS({
+        'organization_ids[]': [orgId],
+        published_after: dateNDaysAgo(90),
+        per_page: '5',
+      })
+      const newsResp = await postWithRetry(`${APOLLO_NEWS_SEARCH_URL}?${newsQS}`)
+      const newsRaw = await newsResp.text()
+      if (newsResp.ok) {
+        let news: any = {}
+        try { news = newsRaw ? JSON.parse(newsRaw) : {} } catch {}
+        out.news_articles = Array.isArray(news?.news_articles) ? news.news_articles : []
+      }
+    } catch {}
 
-      // News articles
-      try {
-        const newsQuery = buildQueryString({
-          'organization_ids[]': [id],
-          published_after: dateNDaysAgo(90),
-          per_page: '5',
-        })
-        const newsRes = await fetch(`${APOLLO_NEWS_SEARCH_URL}?${newsQuery}`, { headers: buildHeaders() })
-        if (newsRes.ok) {
-          const newsData = await newsRes.json()
-          base.news_articles = newsData?.news_articles || []
-        }
-      } catch {}
+    return out
+  }))
 
-      return base
-    })
-  )
-
-  return NextResponse.json({ companies: enriched, page, per_page: perPage })
+  return NextResponse.json({ companies: enriched, page, per_page })
 }
