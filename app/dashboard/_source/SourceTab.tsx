@@ -774,7 +774,7 @@ Kind regards,`
         {companySearchOpen && (
           <form onSubmit={runCompanySearch} className="p-4 pt-0">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Locations (chips) */}
+              {/* Locations */}
               <div>
                 <label className="block text-sm text-gray-600 mb-1">Locations</label>
                 <div className="rounded-xl border px-2 py-1.5">
@@ -794,7 +794,7 @@ Kind regards,`
                 </div>
               </div>
   
-              {/* Keywords (chips) */}
+              {/* Keywords */}
               <div>
                 <label className="block text-sm text-gray-600 mb-1">Keywords</label>
                 <div className="rounded-xl border px-2 py-1.5">
@@ -815,7 +815,7 @@ Kind regards,`
               </div>
             </div>
   
-            {/* Tips & Search button */}
+            {/* Search button */}
             <div className="mt-4 flex items-center justify-between">
               <span className="text-xs text-gray-500">
                 Please press <kbd className="px-1 border rounded">Enter</kbd> to submit each chip.
@@ -842,12 +842,10 @@ Kind regards,`
           <ul className="divide-y divide-gray-200">
             {companies.map((c: Company) => (
               <li key={c.id} className="p-4">
-                {/* Row 1: Company name | city, state + icons */}
+                {/* Row 1: Company name + city/state + icons */}
                 <div className="flex items-center justify-between gap-4">
                   <div className="flex items-center gap-2 min-w-0">
-                    <span className="font-semibold text-base truncate">
-                      {c.name || '—'}
-                    </span>
+                    <span className="font-semibold text-base truncate">{c.name || '—'}</span>
                     {formatCityState(c) ? (
                       <>
                         <span className="text-gray-300">|</span>
@@ -869,6 +867,7 @@ Kind regards,`
                     >
                       <IconLinkedIn />
                     </a>
+  
                     {/* Website */}
                     <a
                       href={c.website_url || undefined}
@@ -882,88 +881,88 @@ Kind regards,`
                   </div>
                 </div>
   
-                  <div className="shrink-0 flex items-center gap-6 text-sm">
-                    {/* Job postings */}
-                    <details className="inline-block group">
-                      <summary className="list-none cursor-pointer text-gray-700 hover:text-gray-900 inline-flex items-center gap-1">
-                        Job postings
-                        <svg width="12" height="12" viewBox="0 0 20 20" className="text-gray-500 group-open:rotate-180 transition-transform">
-                          <path fill="currentColor" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z"/>
-                        </svg>
-                      </summary>
-                      <div className="mt-2 p-3 rounded-xl border bg-gray-50 min-w-[280px]">
-                        {c.job_postings?.length ? (
-                          <ul className="text-xs text-gray-700 space-y-1">
-                            {c.job_postings.map((job: any) => (
-                              <li key={job.id}>
-                                <span className="font-medium">{job.title || 'Untitled job'}</span>
-                                {job.location && <span className="text-gray-500"> — {job.location}</span>}
-                              </li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <div className="text-xs text-gray-500">No job postings.</div>
-                        )}
-                      </div>
-                    </details>
+                {/* Inline details (Job postings, Hiring contacts, News) */}
+                <div className="mt-2 flex flex-wrap items-start gap-6 text-sm">
+                  {/* Job postings */}
+                  <details className="inline-block group">
+                    <summary className="list-none cursor-pointer text-gray-700 hover:text-gray-900 inline-flex items-center gap-1">
+                      Job postings
+                      <svg width="12" height="12" viewBox="0 0 20 20" className="text-gray-500 group-open:rotate-180 transition-transform">
+                        <path fill="currentColor" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z"/>
+                      </svg>
+                    </summary>
+                    <div className="mt-2 p-3 rounded-xl border bg-gray-50 min-w-[280px]">
+                      {c.job_postings?.length ? (
+                        <ul className="text-xs text-gray-700 space-y-1">
+                          {c.job_postings.map((job: any) => (
+                            <li key={job.id}>
+                              <span className="font-medium">{job.title || 'Untitled job'}</span>
+                              {job.location && <span className="text-gray-500"> — {job.location}</span>}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <div className="text-xs text-gray-500">No job postings.</div>
+                      )}
+                    </div>
+                  </details>
   
-                    {/* Hiring contacts */}
-                    <details className="inline-block group">
-                      <summary className="list-none cursor-pointer text-gray-700 hover:text-gray-900 inline-flex items-center gap-1">
-                        Hiring contacts
-                        <svg width="12" height="12" viewBox="0 0 20 20" className="text-gray-500 group-open:rotate-180 transition-transform">
-                          <path fill="currentColor" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z"/>
-                        </svg>
-                      </summary>
-                      <div className="mt-2 p-3 rounded-xl border bg-gray-50 min-w-[280px]">
-                        {c.hiring_people?.length ? (
-                          <ul className="text-xs text-gray-700 space-y-1">
-                            {c.hiring_people.map((p: any) => (
-                              <li key={p.id}>
-                                <span className="font-medium">{p.name || '—'}</span>
-                                {p.title && <span className="text-gray-500"> — {p.title}</span>}
-                              </li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <div className="text-xs text-gray-500">No hiring contacts.</div>
-                        )}
-                      </div>
-                    </details>
+                  {/* Hiring contacts */}
+                  <details className="inline-block group">
+                    <summary className="list-none cursor-pointer text-gray-700 hover:text-gray-900 inline-flex items-center gap-1">
+                      Hiring contacts
+                      <svg width="12" height="12" viewBox="0 0 20 20" className="text-gray-500 group-open:rotate-180 transition-transform">
+                        <path fill="currentColor" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z"/>
+                      </svg>
+                    </summary>
+                    <div className="mt-2 p-3 rounded-xl border bg-gray-50 min-w-[280px]">
+                      {c.hiring_people?.length ? (
+                        <ul className="text-xs text-gray-700 space-y-1">
+                          {c.hiring_people.map((p: any) => (
+                            <li key={p.id}>
+                              <span className="font-medium">{p.name || '—'}</span>
+                              {p.title && <span className="text-gray-500"> — {p.title}</span>}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <div className="text-xs text-gray-500">No hiring contacts.</div>
+                      )}
+                    </div>
+                  </details>
   
-                    {/* News articles */}
-                    <details className="inline-block group">
-                      <summary className="list-none cursor-pointer text-gray-700 hover:text-gray-900 inline-flex items-center gap-1">
-                        News articles
-                        <svg width="12" height="12" viewBox="0 0 20 20" className="text-gray-500 group-open:rotate-180 transition-transform">
-                          <path fill="currentColor" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z"/>
-                        </svg>
-                      </summary>
-                      <div className="mt-2 p-3 rounded-xl border bg-gray-50 min-w-[280px]">
-                        {c.news_articles?.length ? (
-                          <ul className="text-xs text-gray-700 space-y-1">
-                            {c.news_articles.map((n: any) => (
-                              <li key={n.id}>
-                                <span className="font-medium">{n.title || '—'}</span>
-                                {n.url && (
-                                  <a
-                                    className="text-orange-600 hover:underline ml-1"
-                                    href={n.url}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                  >
-                                    (view)
-                                  </a>
-                                )}
-                              </li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <div className="text-xs text-gray-500">No news articles.</div>
-                        )}
-                      </div>
-                    </details>
-                  </div>
+                  {/* News articles */}
+                  <details className="inline-block group">
+                    <summary className="list-none cursor-pointer text-gray-700 hover:text-gray-900 inline-flex items-center gap-1">
+                      News articles
+                      <svg width="12" height="12" viewBox="0 0 20 20" className="text-gray-500 group-open:rotate-180 transition-transform">
+                        <path fill="currentColor" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z"/>
+                      </svg>
+                    </summary>
+                    <div className="mt-2 p-3 rounded-xl border bg-gray-50 min-w-[280px]">
+                      {c.news_articles?.length ? (
+                        <ul className="text-xs text-gray-700 space-y-1">
+                          {c.news_articles.map((n: any) => (
+                            <li key={n.id}>
+                              <span className="font-medium">{n.title || '—'}</span>
+                              {n.url && (
+                                <a
+                                  className="text-orange-600 hover:underline ml-1"
+                                  href={n.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  (view)
+                                </a>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <div className="text-xs text-gray-500">No news articles.</div>
+                      )}
+                    </div>
+                  </details>
                 </div>
               </li>
             ))}
