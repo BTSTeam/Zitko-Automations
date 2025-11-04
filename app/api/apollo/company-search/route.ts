@@ -34,15 +34,16 @@ function dateNDaysAgo(days: number): string {
 export async function POST(req: NextRequest) {
   // ---- input ----
   let inBody: {
-    locations?: string[] | string          // -> organization_locations[]
-    keywords?: string[] | string           // -> q_organization_keyword_tags[]
+    locations?: string[] | string
+    keywords?: string[] | string
+    employeeRanges?: string[] | string // <— NEW
     page?: number | string
     per_page?: number | string
   } = {}
-  try { inBody = (await req.json()) || {} } catch {}
-
+  
   const locations = toArray(inBody.locations)
   const tags      = toArray(inBody.keywords)
+  const employeeRanges = toArray(inBody.employeeRanges)
   const page      = Math.max(1, parseInt(String(inBody.page ?? '1'), 10) || 1)
   const per_page  = Math.max(1, Math.min(25, parseInt(String(inBody.per_page ?? '25'), 10) || 25))
 
@@ -92,14 +93,26 @@ export async function POST(req: NextRequest) {
     page: String(page),
     per_page: String(per_page),
   }
+  
+  // locations
   locations.forEach(loc => {
     companyQS['organization_locations[]'] =
       (companyQS['organization_locations[]'] as string[] | undefined)?.concat(loc) || [loc]
   })
-  tags.forEach(tag => {
+  
+  // merge user keywords + hard-coded industry keywords
+  const hardcoded = ['Security & Investigations', 'Facilities Services']
+  const mergedTags = Array.from(new Set([...(tags || []), ...hardcoded]))
+  mergedTags.forEach(tag => {
     companyQS['q_organization_keyword_tags[]'] =
       (companyQS['q_organization_keyword_tags[]'] as string[] | undefined)?.concat(tag) || [tag]
   })
+  
+  // employee ranges → organization_num_employees_ranges[]
+  if (employeeRanges.length) {
+    companyQS['organization_num_employees_ranges[]'] = employeeRanges
+  }
+
   companyQS['organizationIndustryTagIds[]'] = [
     '5567e19b7369641ead740000',
     '5567ce9c7369643bc9980000',
