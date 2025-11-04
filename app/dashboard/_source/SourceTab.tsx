@@ -134,12 +134,12 @@ function MultiSelect({
     return () => document.removeEventListener('click', onClick)
   }, [open])
 
-  function toggleOpt(opt: string) {
-    setValues(prev => {
-      if (prev.includes(opt)) return prev.filter(o => o !== opt)
-      return [...prev, opt]
-    })
-  }
+function toggleOpt(opt: string) {
+  const next = values.includes(opt)
+    ? values.filter(o => o !== opt)
+    : [...values, opt]
+  setValues(next)
+}
 
   return (
     <div>
