@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
   const locations = toArray(body.locations)
   const keywords = toArray(body.keywords)
   const page = Math.max(1, parseInt(String(body.page ?? '1'), 10) || 1)
-  const perPage = Math.max(1, Math.min(10, parseInt(String(body.per_page ?? '10'), 10) || 10))
+  const perPage = Math.max(1, Math.min(25, parseInt(String(body.per_page ?? '25'), 10) || 25))
 
   const companyParams: Record<string, string[] | string> = {
     page: String(page),
