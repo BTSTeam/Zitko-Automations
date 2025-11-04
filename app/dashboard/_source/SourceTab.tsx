@@ -396,6 +396,8 @@ Kind regards,`
   // ------ Company search state ------
   const companyLocations = useChipInput([])
   const companyKeywords = useChipInput([])
+  const [empUnder100, setEmpUnder100] = useState(false)
+  const [empOver100, setEmpOver100] = useState(false)
   const [companyLoading, setCompanyLoading] = useState(false)
   const [companyError, setCompanyError] = useState<string | null>(null)
   const [companies, setCompanies] = useState<Company[]>([])
@@ -444,6 +446,11 @@ Kind regards,`
       const payload = {
         locations: companyLocations.chips,
         keywords: companyKeywords.chips,
+        // map UI checkboxes to Apollo ranges
+        employeeRanges: [
+          ...(empUnder100 ? ['1,100'] : []),
+          ...(empOver100 ? ['101,500000'] : []),
+        ],
         page: 1,
         per_page: 25,
       }
@@ -811,6 +818,33 @@ Kind regards,`
                       disabled={isDown}
                     />
                   </div>
+                </div>
+              
+                {/* small fixed note */}
+                <p className="mt-1 text-xs text-gray-500">
+                  Security &amp; Investigations + Facilities Services are already included within the search
+                </p>
+              
+                {/* employee size checkboxes */}
+                <div className="mt-2 flex items-center gap-6">
+                  <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      className="rounded"
+                      checked={empUnder100}
+                      onChange={(e) => setEmpUnder100(e.target.checked)}
+                    />
+                    &lt;100 Employees
+                  </label>
+                  <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      className="rounded"
+                      checked={empOver100}
+                      onChange={(e) => setEmpOver100(e.target.checked)}
+                    />
+                    &gt;100 Employees
+                  </label>
                 </div>
               </div>
             </div>
