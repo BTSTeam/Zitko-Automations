@@ -882,12 +882,6 @@ Kind regards,`
                   </div>
                 </div>
   
-                {/* Row 2: short_description (left) + inline dropdowns (right) */}
-                <div className="mt-1 flex items-start justify-between gap-4">
-                  <div className="text-sm text-gray-700 min-w-0">
-                    {c.short_description || '—'}
-                  </div>
-  
                   <div className="shrink-0 flex items-center gap-6 text-sm">
                     {/* Job postings */}
                     <details className="inline-block group">
