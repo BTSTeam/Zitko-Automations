@@ -100,8 +100,13 @@ export async function POST(req: NextRequest) {
     companyQS['q_organization_keyword_tags[]'] =
       (companyQS['q_organization_keyword_tags[]'] as string[] | undefined)?.concat(tag) || [tag]
   })
-
+  companyQS['organizationIndustryTagIds[]'] = [
+    '5567e19b7369641ead740000',
+    '5567ce9c7369643bc9980000',
+  ]
+  
   const companySearchUrl = `${APOLLO_COMPANY_SEARCH_URL}?${buildQS(companyQS)}`
+
   const compResp = await postWithRetry(companySearchUrl)
   const compRaw  = await compResp.text()
 
