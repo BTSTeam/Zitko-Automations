@@ -40,6 +40,8 @@ export async function POST(req: NextRequest) {
     page?: number | string
     per_page?: number | string
   } = {}
+
+  try { inBody = (await req.json()) || {} } catch {}
   
   const locations = toArray(inBody.locations)
   const tags      = toArray(inBody.keywords)
@@ -112,11 +114,6 @@ export async function POST(req: NextRequest) {
   if (employeeRanges.length) {
     companyQS['organization_num_employees_ranges[]'] = employeeRanges
   }
-
-  companyQS['organizationIndustryTagIds[]'] = [
-    '5567e19b7369641ead740000',
-    '5567ce9c7369643bc9980000',
-  ]
   
   const companySearchUrl = `${APOLLO_COMPANY_SEARCH_URL}?${buildQS(companyQS)}`
 
