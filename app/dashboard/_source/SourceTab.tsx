@@ -751,152 +751,149 @@ Kind regards,`
     </div>
   )
 
-  // Render Company search UI
-  {companies.length > 0 ? (
-  <ul className="divide-y divide-gray-200">
-    {companies.map((c: Company) => (
-      <li key={c.id} className="p-4">
-        {/* Row 1: Company name | city, state   +   icons (right) */}
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="font-semibold text-base truncate">
-              {c.name || '—'}
-            </span>
-
-            {formatCityState(c) ? (
-              <>
-                <span className="text-gray-300">|</span>
-                <span className="text-xs text-gray-600 truncate">
-                  {formatCityState(c)}
+  // Render Company results UI
+const renderCompanies = () => (
+  <>
+    {companies.length > 0 ? (
+      <ul className="divide-y divide-gray-200">
+        {companies.map((c: Company) => (
+          <li key={c.id} className="p-4">
+            {/* Row 1: Company name | city, state + icons */}
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="font-semibold text-base truncate">
+                  {c.name || '—'}
                 </span>
-              </>
-            ) : null}
-          </div>
-
-          <div className="shrink-0 flex items-center gap-3">
-            {/* LinkedIn */}
-            <a
-              href={c.linkedin_url || undefined}
-              target={c.linkedin_url ? '_blank' : undefined}
-              rel={c.linkedin_url ? 'noreferrer' : undefined}
-              className={c.linkedin_url ? '' : 'opacity-30 pointer-events-none cursor-default'}
-              title={c.linkedin_url ? 'Open LinkedIn' : 'LinkedIn not available'}
-            >
-              <IconLinkedIn />
-            </a>
-
-            {/* Website */}
-            <a
-              href={c.website_url || undefined}
-              target={c.website_url ? '_blank' : undefined}
-              rel={c.website_url ? 'noreferrer' : undefined}
-              className={c.website_url ? 'text-gray-700 hover:text-gray-900' : 'opacity-30 pointer-events-none cursor-default'}
-              title={c.website_url ? 'Open company website' : 'Company website not available'}
-            >
-              <IconGlobe muted={!c.website_url} />
-            </a>
-          </div>
-        </div>
-
-        {/* Row 2: short_description (left)  +  inline dropdowns (right) */}
-        <div className="mt-1 flex items-start justify-between gap-4">
-          {/* replaces the old "Employees: —" line but keeps the look/position */}
-          <div className="text-sm text-gray-700 min-w-0">
-            {c.short_description || '—'}
-          </div>
-
-          {/* right-aligned, inline details like your screenshot */}
-          <div className="shrink-0 flex items-center gap-6 text-sm">
-            {/* Job postings */}
-            <details className="inline-block group">
-              <summary className="list-none cursor-pointer text-gray-700 hover:text-gray-900 inline-flex items-center gap-1">
-                Job postings
-                <svg width="12" height="12" viewBox="0 0 20 20" className="text-gray-500 group-open:rotate-180 transition-transform">
-                  <path fill="currentColor" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z"/>
-                </svg>
-              </summary>
-              <div className="mt-2 p-3 rounded-xl border bg-gray-50 min-w-[280px]">
-                {c.job_postings?.length ? (
-                  <ul className="text-xs text-gray-700 space-y-1">
-                    {c.job_postings.map((job: any) => (
-                      <li key={job.id}>
-                        <span className="font-medium">{job.title || 'Untitled job'}</span>
-                        {job.location && <span className="text-gray-500"> — {job.location}</span>}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <div className="text-xs text-gray-500">No job postings.</div>
-                )}
+                {formatCityState(c) ? (
+                  <>
+                    <span className="text-gray-300">|</span>
+                    <span className="text-xs text-gray-600 truncate">
+                      {formatCityState(c)}
+                    </span>
+                  </>
+                ) : null}
               </div>
-            </details>
 
-            {/* Hiring contacts */}
-            <details className="inline-block group">
-              <summary className="list-none cursor-pointer text-gray-700 hover:text-gray-900 inline-flex items-center gap-1">
-                Hiring contacts
-                <svg width="12" height="12" viewBox="0 0 20 20" className="text-gray-500 group-open:rotate-180 transition-transform">
-                  <path fill="currentColor" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z"/>
-                </svg>
-              </summary>
-              <div className="mt-2 p-3 rounded-xl border bg-gray-50 min-w-[280px]">
-                {c.hiring_people?.length ? (
-                  <ul className="text-xs text-gray-700 space-y-1">
-                    {c.hiring_people.map((p: any) => (
-                      <li key={p.id}>
-                        <span className="font-medium">{p.name || '—'}</span>
-                        {p.title && <span className="text-gray-500"> — {p.title}</span>}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <div className="text-xs text-gray-500">No hiring contacts.</div>
-                )}
+              <div className="shrink-0 flex items-center gap-3">
+                <a
+                  href={c.linkedin_url || undefined}
+                  target={c.linkedin_url ? '_blank' : undefined}
+                  rel={c.linkedin_url ? 'noreferrer' : undefined}
+                  className={c.linkedin_url ? '' : 'opacity-30 pointer-events-none cursor-default'}
+                  title={c.linkedin_url ? 'Open LinkedIn' : 'LinkedIn not available'}
+                >
+                  <IconLinkedIn />
+                </a>
+                <a
+                  href={c.website_url || undefined}
+                  target={c.website_url ? '_blank' : undefined}
+                  rel={c.website_url ? 'noreferrer' : undefined}
+                  className={c.website_url ? 'text-gray-700 hover:text-gray-900' : 'opacity-30 pointer-events-none cursor-default'}
+                  title={c.website_url ? 'Open company website' : 'Company website not available'}
+                >
+                  <IconGlobe muted={!c.website_url} />
+                </a>
               </div>
-            </details>
+            </div>
 
-            {/* News articles */}
-            <details className="inline-block group">
-              <summary className="list-none cursor-pointer text-gray-700 hover:text-gray-900 inline-flex items-center gap-1">
-                News articles
-                <svg width="12" height="12" viewBox="0 0 20 20" className="text-gray-500 group-open:rotate-180 transition-transform">
-                  <path fill="currentColor" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z"/>
-                </svg>
-              </summary>
-              <div className="mt-2 p-3 rounded-xl border bg-gray-50 min-w-[280px]">
-                {c.news_articles?.length ? (
-                  <ul className="text-xs text-gray-700 space-y-1">
-                    {c.news_articles.map((n: any) => (
-                      <li key={n.id}>
-                        <span className="font-medium">{n.title || '—'}</span>
-                        {n.url && (
-                          <a
-                            className="text-orange-600 hover:underline ml-1"
-                            href={n.url}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            (view)
-                          </a>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <div className="text-xs text-gray-500">No news articles.</div>
-                )}
+            {/* Row 2: short_description (left) + inline dropdowns (right) */}
+            <div className="mt-1 flex items-start justify-between gap-4">
+              <div className="text-sm text-gray-700 min-w-0">
+                {c.short_description || '—'}
               </div>
-            </details>
-          </div>
-        </div>
-      </li>
-    ))}
-  </ul>
-) : (
-  <p className="text-sm text-gray-500 italic">No companies found.</p>
-)}
-    </div>
+
+              <div className="shrink-0 flex items-center gap-6 text-sm">
+                <details className="inline-block group">
+                  <summary className="list-none cursor-pointer text-gray-700 hover:text-gray-900 inline-flex items-center gap-1">
+                    Job postings
+                    <svg width="12" height="12" viewBox="0 0 20 20" className="text-gray-500 group-open:rotate-180 transition-transform">
+                      <path fill="currentColor" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z"/>
+                    </svg>
+                  </summary>
+                  <div className="mt-2 p-3 rounded-xl border bg-gray-50 min-w-[280px]">
+                    {c.job_postings?.length ? (
+                      <ul className="text-xs text-gray-700 space-y-1">
+                        {c.job_postings.map((job: any) => (
+                          <li key={job.id}>
+                            <span className="font-medium">{job.title || 'Untitled job'}</span>
+                            {job.location && <span className="text-gray-500"> — {job.location}</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <div className="text-xs text-gray-500">No job postings.</div>
+                    )}
+                  </div>
+                </details>
+
+                <details className="inline-block group">
+                  <summary className="list-none cursor-pointer text-gray-700 hover:text-gray-900 inline-flex items-center gap-1">
+                    Hiring contacts
+                    <svg width="12" height="12" viewBox="0 0 20 20" className="text-gray-500 group-open:rotate-180 transition-transform">
+                      <path fill="currentColor" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z"/>
+                    </svg>
+                  </summary>
+                  <div className="mt-2 p-3 rounded-xl border bg-gray-50 min-w-[280px]">
+                    {c.hiring_people?.length ? (
+                      <ul className="text-xs text-gray-700 space-y-1">
+                        {c.hiring_people.map((p: any) => (
+                          <li key={p.id}>
+                            <span className="font-medium">{p.name || '—'}</span>
+                            {p.title && <span className="text-gray-500"> — {p.title}</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <div className="text-xs text-gray-500">No hiring contacts.</div>
+                    )}
+                  </div>
+                </details>
+
+                <details className="inline-block group">
+                  <summary className="list-none cursor-pointer text-gray-700 hover:text-gray-900 inline-flex items-center gap-1">
+                    News articles
+                    <svg width="12" height="12" viewBox="0 0 20 20" className="text-gray-500 group-open:rotate-180 transition-transform">
+                      <path fill="currentColor" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z"/>
+                    </svg>
+                  </summary>
+                  <div className="mt-2 p-3 rounded-xl border bg-gray-50 min-w-[280px]">
+                    {c.news_articles?.length ? (
+                      <ul className="text-xs text-gray-700 space-y-1">
+                        {c.news_articles.map((n: any) => (
+                          <li key={n.id}>
+                            <span className="font-medium">{n.title || '—'}</span>
+                            {n.url && (
+                              <a
+                                className="text-orange-600 hover:underline ml-1"
+                                href={n.url}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                (view)
+                              </a>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <div className="text-xs text-gray-500">No news articles.</div>
+                    )}
+                  </div>
+                </details>
+              </div>
+            </div>
+          </li>
+        ))}
+      </ul>
+    ) : (
+      <p className="text-sm text-gray-500 italic">No companies found.</p>
+    )}
+  </>
+)
+  return (
+  <div className="space-y-4">
+    {mode === 'people' ? renderPeople() : renderCompanies()}
   </div>
- )
+)
 }
 
