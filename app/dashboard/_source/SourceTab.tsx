@@ -396,8 +396,8 @@ Kind regards,`
   }
 
   // ------ Company search state ------
-  const companyLocations = useChipInput([])
-  const companyKeywords = useChipInput([])
+  const [activeJobsOnly, setActiveJobsOnly] = useState(false)
+  const [activeJobsDays, setActiveJobsDays] = useState<number | ''>('')  // ← no default
   const activeJobTitles = useChipInput([])
 
   // NEW: Active jobs & numeric employee range
@@ -453,16 +453,18 @@ Kind regards,`
       const payload = {
         locations: companyLocations.chips,
         keywords: companyKeywords.chips,
-
-        activeJobsOnly,
         employeesMin: employeesMin === '' ? null : Number(employeesMin),
         employeesMax: employeesMax === '' ? null : Number(employeesMax),
-
-        // only include if the checkbox is ticked and there are chips
+      
+        // Only send these when relevant
+        activeJobsOnly,
+        activeJobsDays:
+          activeJobsOnly && activeJobsDays !== '' ? Number(activeJobsDays) : null,
+      
         ...(activeJobsOnly && activeJobTitles.chips.length
           ? { q_organization_job_titles: activeJobTitles.chips }
           : {}),
-
+      
         page: 1,
         per_page: 25,
       }
@@ -869,37 +871,61 @@ Kind regards,`
                 </div>
               </div>
 
-              {/* Active Job Listings (checkbox + titles chips when checked) */}
+              {/* Active Job Listings (checkbox + inline days + titles) */}
               <div>
                 <label className="block text-sm text-gray-600 mb-1">&nbsp;</label>
-                <div className="flex items-start md:items-center gap-3">
-                  <input
-                    id="activeJobsOnly"
-                    type="checkbox"
-                    className="h-4 w-4 mt-1 md:mt-0 accent-orange-500"
-                    checked={activeJobsOnly}
-                    onChange={(e) => setActiveJobsOnly(e.target.checked)}
-                    disabled={isDown}
-                    aria-describedby="activeJobsHelp"
-                  />
-                  <div className="flex-1">
-                    <label htmlFor="activeJobsOnly" className="text-sm text-gray-700">
-                      Active Job Listings (posted in last 7 days)
-                    </label>
-
-                    {/* Revealed only when checked */}
-                    {activeJobsOnly && (
-                      <div className="mt-2 rounded-xl border px-2 py-1.5">
-                        <div id="activeJobsHelp" className="text-xs text-gray-500 mb-1">
-                          Filter by job titles (optional)
-                        </div>
+                <div className="flex items-start md:items-center gap-4">
+                  {/* Checkbox with caption underneath */}
+                  <div className="flex flex-col items-center">
+                    <input
+                      id="activeJobsOnly"
+                      type="checkbox"
+                      className="h-4 w-4 accent-orange-500"
+                      checked={activeJobsOnly}
+                      onChange={(e) => setActiveJobsOnly(e.target.checked)}
+                      disabled={isDown}
+                      aria-describedby="activeJobsCaption"
+                    />
+                    <span
+                      id="activeJobsCaption"
+                      className="mt-1 text-xs text-gray-700 text-center max-w-[14ch] leading-snug"
+                    >
+                      Active Job Listings
+                    </span>
+                  </div>
+              
+                  {/* Inline inputs appear only when ticked */}
+                  {activeJobsOnly && (
+                    <div className="flex flex-1 items-center gap-3 min-w-0">
+                      {/* Days window (required by you; blank = no date filter) */}
+                      <div className="shrink-0">
+                        <input
+                          type="number"
+                          min={1}
+                          max={365}
+                          className="w-24 rounded-md border px-2 py-1 text-sm"
+                          value={activeJobsDays}
+                          onChange={(e) => {
+                            const v = e.target.value
+                            if (v === '') return setActiveJobsDays('')
+                            const n = Math.max(1, Math.min(365, Number(v)))
+                            setActiveJobsDays(Number.isFinite(n) ? n : '')
+                          }}
+                          placeholder="days"
+                          title="Days to look back from today"
+                          disabled={isDown}
+                        />
+                      </div>
+              
+                      {/* Titles chip input */}
+                      <div className="flex-1 rounded-xl border px-2 py-1.5">
                         <div className="flex flex-wrap gap-2">
                           {activeJobTitles.chips.map(v => (
                             <Chip key={v} onRemove={() => activeJobTitles.removeChip(v)}>{v}</Chip>
                           ))}
                           <input
-                            className="min-w-[10ch] flex-1 outline-none text-sm px-2 py-1"
-                            placeholder="e.g. Installation Engineer"
+                            className="min-w-[14ch] flex-1 outline-none text-sm px-2 py-1"
+                            placeholder="(posted Job Titles)"
                             value={activeJobTitles.input}
                             onChange={e => activeJobTitles.setInput(e.target.value)}
                             onKeyDown={activeJobTitles.onKeyDown}
@@ -907,9 +933,10 @@ Kind regards,`
                           />
                         </div>
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
+              </div>
               </div>
             </div>
 
