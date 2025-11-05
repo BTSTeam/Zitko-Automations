@@ -406,7 +406,7 @@ Kind regards,`
   const companyLocations = useChipInput([])
   const companyKeywords  = useChipInput([])
   const [activeJobsOnly, setActiveJobsOnly] = useState(false)
-  const [activeJobsDays, setActiveJobsDays] = useState<number | ''>('')
+  const activeJobDays = useChipInput([])
   const activeJobTitles = useChipInput([])
 
   // Numeric employee range
@@ -466,13 +466,20 @@ Kind regards,`
 
         // Only send these when relevant
         activeJobsOnly,
-        activeJobsDays:
-          activeJobsOnly && activeJobsDays !== '' ? Number(activeJobsDays) : null,
-
+        activeJobsDays: null,
+        
+        ...(activeJobsOnly && activeJobDays.chips.length
+          ? {
+              // send as list of numbers
+              activeJobsDaysList: activeJobDays.chips
+                .map(d => Number(String(d).trim()))
+                .filter(n => Number.isFinite(n) && n >= 1 && n <= 365),
+            }
+          : {}),
+        
         ...(activeJobsOnly && activeJobTitles.chips.length
           ? { q_organization_job_titles: activeJobTitles.chips }
           : {}),
-
         page: 1,
         per_page: 25,
       }
@@ -547,7 +554,7 @@ Kind regards,`
   }, [mode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Render People search UI (block body + return to avoid SWC parse bug)
-  const renderPeople = () => {
+  const renderPeople = () {
     return (
       <div className="space-y-4">
         {/* Panel 1: People search */}
@@ -785,10 +792,10 @@ Kind regards,`
         </div>
       </div>
     )
-  } // end renderPeople
+  }
 
   // ---------------- Company search + results UI ----------------
-  const renderCompanies = () => {
+  const renderCompanies = () {
     return (
       <div className="space-y-4">
         {/* Panel 1: Company search */}
@@ -886,11 +893,11 @@ Kind regards,`
                   </div>
                 </div>
 
-                {/* Active Job Listings (checkbox + inline days + titles) */}
+                {/* Active Job Listings (checkbox + days chips + titles chips) */}
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">&nbsp;</label>
                   <div className="flex items-start md:items-center gap-4">
-                    {/* Checkbox + caption */}
+                    {/* Checkbox + caption (white box, orange accent; tick appears white) */}
                     <div className="flex flex-col items-center">
                       <input
                         id="activeJobsOnly"
@@ -911,30 +918,45 @@ Kind regards,`
                 
                     {/* Always rendered, greyed out & disabled until checked */}
                     <div
-                      className={
-                        `flex flex-1 items-center gap-3 min-w-0 ` +
-                        (!activeJobsOnly ? 'opacity-50' : '')
-                      }
+                      className={`flex flex-1 items-center gap-3 min-w-0 ${!activeJobsOnly ? 'opacity-50' : ''}`}
                       aria-disabled={!activeJobsOnly}
                     >
-                      {/* Days window */}
-                      <div className="shrink-0">
-                        <input
-                          type="number"
-                          min={1}
-                          max={365}
-                          className="w-24 rounded-md border px-2 py-1 text-sm"
-                          value={activeJobsDays}
-                          onChange={(e) => {
-                            const v = e.target.value
-                            if (v === '') return setActiveJobsDays('')
-                            const n = Math.max(1, Math.min(365, Number(v)))
-                            setActiveJobsDays(Number.isFinite(n) ? n : '')
-                          }}
-                          placeholder="Days"
-                          title="Days to look back from today"
-                          disabled={isDown || !activeJobsOnly}
-                        />
+                      {/* Days chip input */}
+                      <div className="shrink-0 flex-1 rounded-xl border px-2 py-1.5">
+                        <div className="flex flex-wrap gap-2">
+                          {activeJobDays.chips.map(v => (
+                            <Chip key={v} onRemove={() => activeJobDays.removeChip(v)}>{v}</Chip>
+                          ))}
+                          <input
+                            className="min-w-[10ch] flex-1 outline-none text-sm px-2 py-1"
+                            placeholder="Days (e.g. 7, 30, 90)"
+                            value={activeJobDays.input}
+                            onChange={e => activeJobDays.setInput(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault()
+                                const raw = activeJobDays.input.trim()
+                                if (!raw) return
+                                // allow comma-separated or single values; keep 1..365 only
+                                const candidates = raw.split(',').map(s => Number(s.trim()))
+                                const valid = candidates
+                                  .filter(n => Number.isFinite(n) && n >= 1 && n <= 365)
+                                  .map(n => String(n))
+                                if (valid.length) {
+                                  activeJobDays.setChips(prev => {
+                                    const set = new Set(prev)
+                                    valid.forEach(v => set.add(v))
+                                    return Array.from(set)
+                                  })
+                                }
+                                activeJobDays.setInput('')
+                              } else {
+                                activeJobDays.onKeyDown(e)
+                              }
+                            }}
+                            disabled={isDown || !activeJobsOnly}
+                          />
+                        </div>
                       </div>
                 
                       {/* Titles chip input */}
