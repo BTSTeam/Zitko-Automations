@@ -1,5 +1,6 @@
 'use client'
 
+import type React from 'react'
 import { useEffect, useRef, useState } from 'react'
 
 // Mode indicates which sourcing tab is currently active
@@ -57,6 +58,7 @@ type JobPosting = {
   employment_type: string | null
   remote: boolean | null
   url: string | null
+  posted_at?: string | null
 }
 type HiringPerson = Person
 type NewsArticle = {
@@ -397,6 +399,7 @@ Kind regards,`
   const companyLocations = useChipInput([])
   const companyKeywords = useChipInput([])
   const activeJobTitles = useChipInput([])
+
   // NEW: Active jobs & numeric employee range
   const [activeJobsOnly, setActiveJobsOnly] = useState(false)
   const [employeesMin, setEmployeesMin] = useState<number | ''>('')
@@ -448,21 +451,21 @@ Kind regards,`
     setExpandedNews(new Set())
     try {
       const payload = {
-          locations: companyLocations.chips,
-          keywords: companyKeywords.chips,
-        
-          activeJobsOnly,
-          employeesMin: employeesMin === '' ? null : Number(employeesMin),
-          employeesMax: employeesMax === '' ? null : Number(employeesMax),
-        
-          // NEW: only include if the checkbox is ticked and you actually have chips
-          ...(activeJobsOnly && activeJobTitles.chips.length
-            ? { q_organization_job_titles: activeJobTitles.chips }
-            : {}),
-        
-          page: 1,
-          per_page: 25,
-        }
+        locations: companyLocations.chips,
+        keywords: companyKeywords.chips,
+
+        activeJobsOnly,
+        employeesMin: employeesMin === '' ? null : Number(employeesMin),
+        employeesMax: employeesMax === '' ? null : Number(employeesMax),
+
+        // only include if the checkbox is ticked and there are chips
+        ...(activeJobsOnly && activeJobTitles.chips.length
+          ? { q_organization_job_titles: activeJobTitles.chips }
+          : {}),
+
+        page: 1,
+        per_page: 25,
+      }
       const res = await fetch('/api/apollo/company-search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -471,7 +474,7 @@ Kind regards,`
       const json: any = await res.json()
       if (!res.ok) throw new Error(json?.error || `Search failed (${res.status})`)
       const arr: any[] = Array.isArray(json.companies) ? json.companies : []
-      
+
       // Map to Company type with defensive checks
       const mapped: Company[] = arr.map((c: any) => {
         const job_postings: JobPosting[] = Array.isArray(c?.job_postings)
@@ -482,6 +485,7 @@ Kind regards,`
               employment_type: jp?.employment_type ?? jp?.job_type ?? null,
               remote: typeof jp?.remote === 'boolean' ? jp.remote : null,
               url: jp?.url ?? jp?.job_posting_url ?? null,
+              posted_at: jp?.posted_at ?? null,
             }))
           : []
         const hiring_people: HiringPerson[] = Array.isArray(c?.hiring_people)
@@ -505,7 +509,7 @@ Kind regards,`
           city: c?.city ?? null,
           state: c?.state ?? null,
           short_description: c?.short_description ?? null,
-      
+
           job_postings,
           hiring_people,
           news_articles,
@@ -530,7 +534,7 @@ Kind regards,`
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [mode])
+  }, [mode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Render People search UI
   const renderPeople = () => (
@@ -765,9 +769,9 @@ Kind regards,`
         )}
       </div>
     </div>
-  )
+  ); // <- end renderPeople
 
-  // Render Company search + results UI
+  // ---------------- Company search + results UI ----------------
   const renderCompanies = () => (
     <div className="space-y-4">
       {/* Panel 1: Company search */}
@@ -786,7 +790,7 @@ Kind regards,`
             <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z" />
           </svg>
         </button>
-  
+
         {companySearchOpen && (
           <form onSubmit={runCompanySearch} className="p-4 pt-0">
             {/* Row 1: Locations / Keywords */}
@@ -810,7 +814,7 @@ Kind regards,`
                   </div>
                 </div>
               </div>
-        
+
               {/* Keywords */}
               <div>
                 <label className="block text-sm text-gray-600 mb-1">Keywords</label>
@@ -834,12 +838,14 @@ Kind regards,`
                 </p>
               </div>
             </div>
-        
+
             {/* Row 2: Employees (from & to)  |  Active jobs (+ titles when ticked) */}
             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Employees (from & to) */}
               <div>
-                <label className="block text-sm text-gray-600 mb-1">Employees <span className="text-xs text-gray-400">(from &amp; to)</span></label>
+                <label className="block text-sm text-gray-600 mb-1">
+                  Employees <span className="text-xs text-gray-400">(from &amp; to)</span>
+                </label>
                 <div className="flex items-center gap-2">
                   <input
                     type="number"
@@ -862,7 +868,7 @@ Kind regards,`
                   />
                 </div>
               </div>
-        
+
               {/* Active Job Listings (checkbox + titles chips when checked) */}
               <div>
                 <label className="block text-sm text-gray-600 mb-1">&nbsp;</label>
@@ -874,16 +880,19 @@ Kind regards,`
                     checked={activeJobsOnly}
                     onChange={(e) => setActiveJobsOnly(e.target.checked)}
                     disabled={isDown}
+                    aria-describedby="activeJobsHelp"
                   />
                   <div className="flex-1">
                     <label htmlFor="activeJobsOnly" className="text-sm text-gray-700">
                       Active Job Listings (posted in last 7 days)
                     </label>
-        
+
                     {/* Revealed only when checked */}
                     {activeJobsOnly && (
                       <div className="mt-2 rounded-xl border px-2 py-1.5">
-                        <div className="text-xs text-gray-500 mb-1">Filter by job titles (optional)</div>
+                        <div id="activeJobsHelp" className="text-xs text-gray-500 mb-1">
+                          Filter by job titles (optional)
+                        </div>
                         <div className="flex flex-wrap gap-2">
                           {activeJobTitles.chips.map(v => (
                             <Chip key={v} onRemove={() => activeJobTitles.removeChip(v)}>{v}</Chip>
@@ -903,7 +912,7 @@ Kind regards,`
                 </div>
               </div>
             </div>
-        
+
             {/* Tips + Search button */}
             <div className="mt-4 flex items-center justify-between">
               <span className="text-xs text-gray-500">
@@ -917,12 +926,6 @@ Kind regards,`
                 {companyLoading ? 'Searching…' : 'Search'}
               </button>
             </div>
-        
-            {companyError && (
-              <div className="mt-3 text-sm text-red-600">{companyError}</div>
-            )}
-          </form>
-        )}
 
             {companyError && (
               <div className="mt-3 text-sm text-red-600">{companyError}</div>
@@ -930,7 +933,7 @@ Kind regards,`
           </form>
         )}
       </div>
-  
+
       {/* Panel 2: Company results */}
       <div className="rounded-2xl border bg-white shadow-sm">
         {companies.length > 0 ? (
@@ -950,7 +953,7 @@ Kind regards,`
                       </>
                     ) : null}
                   </div>
-  
+
                   <div className="shrink-0 flex items-center gap-3">
                     {/* LinkedIn */}
                     <a
@@ -962,7 +965,7 @@ Kind regards,`
                     >
                       <IconLinkedIn />
                     </a>
-  
+
                     {/* Website */}
                     <a
                       href={c.website_url || undefined}
@@ -975,7 +978,7 @@ Kind regards,`
                     </a>
                   </div>
                 </div>
-  
+
                 {/* Row 2: small toggles on the right */}
                 <div className="mt-2 flex items-start justify-between">
                   <div /> {/* spacer to push toggles right */}
@@ -1012,7 +1015,7 @@ Kind regards,`
                     </button>
                   </div>
                 </div>
-                
+
                 {/* FULL-WIDTH PANELS */}
                 {expandedJobs.has(c.id) && (
                   <div className="mt-3 rounded-xl border bg-gray-50 overflow-hidden">
@@ -1064,7 +1067,7 @@ Kind regards,`
                     </div>
                   </div>
                 )}
-                
+
                 {expandedHiring.has(c.id) && (
                   <div className="mt-3 rounded-xl border bg-gray-50 overflow-hidden">
                     <div className="px-3 py-2 border-b text-xs text-gray-500 grid grid-cols-12">
@@ -1089,7 +1092,7 @@ Kind regards,`
                     </ul>
                   </div>
                 )}
-                
+
                 {expandedNews.has(c.id) && (
                   <div className="mt-3 rounded-xl border bg-gray-50 overflow-hidden">
                     <div className="px-3 py-2 border-b text-xs text-gray-500 grid grid-cols-12">
@@ -1124,7 +1127,7 @@ Kind regards,`
         )}
       </div>
     </div>
-  )
+  ); // <- end renderCompanies
 
   return (
     <div className="space-y-4">
