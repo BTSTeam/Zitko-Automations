@@ -961,19 +961,41 @@ Kind regards,`
                       <div className="col-span-2 text-right">Type</div>
                     </div>
                     <ul className="text-sm">
-                      {c.job_postings?.length ? c.job_postings.map((j: any) => (
-                        <li key={j.id} className="px-3 py-2 border-t first:border-t-0 grid grid-cols-12">
-                          <div className="col-span-6 truncate">
-                            {j.url
-                              ? <a className="text-orange-600 hover:underline" href={j.url} target="_blank" rel="noreferrer">{j.title || 'Untitled job'}</a>
-                              : (j.title || 'Untitled job')}
-                          </div>
-                          <div className="col-span-4 truncate">{j.location || '—'}</div>
-                          <div className="col-span-2 text-right">{j.employment_type || '—'}</div>
-                        </li>
-                      )) : (
-                        <li className="px-3 py-2 text-xs text-gray-500">No job postings.</li>
-                      )}
+                      {c.job_postings?.length
+                        ? [...c.job_postings]
+                            .sort((a: any, b: any) => {
+                              const da = a?.posted_at ? new Date(a.posted_at).getTime() : 0
+                              const db = b?.posted_at ? new Date(b.posted_at).getTime() : 0
+                              return db - da // most recent first
+                            })
+                            .map((j: any) => (
+                              <li key={j.id} className="px-3 py-2 border-t first:border-t-0 grid grid-cols-12">
+                                <div className="col-span-6 truncate">
+                                  {j.url ? (
+                                    <a
+                                      className="text-orange-600 hover:underline"
+                                      href={j.url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                    >
+                                      {j.title || 'Untitled job'}
+                                    </a>
+                                  ) : (
+                                    j.title || 'Untitled job'
+                                  )}
+                                  {j.posted_at && (
+                                    <span className="ml-2 text-gray-400">
+                                      {new Date(j.posted_at).toLocaleDateString()}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="col-span-4 truncate">{j.location || '—'}</div>
+                                <div className="col-span-2 text-right">{j.employment_type || '—'}</div>
+                              </li>
+                            ))
+                        : (
+                          <li className="px-3 py-2 text-xs text-gray-500">No job postings.</li>
+                        )}
                     </ul>
                   </div>
                 )}
