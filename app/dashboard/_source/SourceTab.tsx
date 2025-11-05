@@ -841,7 +841,7 @@ Kind regards,`
                     <input
                       type="number"
                       min={0}
-                      className="w-full rounded-md border px-2 py-1 text-sm"
+                      className="w-full rounded-xl border h-10 px-3 text-sm"
                       value={employeesMin}
                       onChange={(e) => setEmployeesMin(e.target.value === '' ? '' : Number(e.target.value))}
                       placeholder="e.g. 50"
@@ -851,7 +851,7 @@ Kind regards,`
                     <input
                       type="number"
                       min={0}
-                      className="w-full rounded-md border px-2 py-1 text-sm"
+                      className="w-full rounded-xl border h-10 px-3 text-sm"
                       value={employeesMax}
                       onChange={(e) => setEmployeesMax(e.target.value === '' ? '' : Number(e.target.value))}
                       placeholder="e.g. 250"
@@ -866,7 +866,7 @@ Kind regards,`
                     <input
                       id="activeJobsOnly"
                       type="checkbox"
-                      className="h-4 w-4 accent-orange-500"
+                      className="h-4 w-4 border-gray-300 rounded accent-orange-500 checked:bg-orange-500 checked:border-orange-500 checked:text-white"
                       checked={activeJobsOnly}
                       onChange={(e) => setActiveJobsOnly(e.target.checked)}
                       disabled={isDown}
