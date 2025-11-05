@@ -758,7 +758,7 @@ Kind regards,`
         </div>
       </div>
     )
-  } // end renderPeople
+  };
 
   // ---------------- Company search + results UI ----------------
   const renderCompanies = () => {
@@ -915,6 +915,7 @@ Kind regards,`
                     </div>
                   </div>
                 </div>
+              </div>
 
               {/* Tips + Search button */}
               <div className="mt-4 flex items-center justify-between">
@@ -1123,7 +1124,7 @@ Kind regards,`
         </div>
       </div>
     )
-  } // end renderCompanies
+  };
 
   return (
     <div className="space-y-4">
