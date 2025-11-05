@@ -11,7 +11,7 @@ const APOLLO_COMPANY_SEARCH_URL = 'https://api.apollo.io/api/v1/mixed_companies/
 const APOLLO_PEOPLE_SEARCH_URL  = 'https://api.apollo.io/api/v1/mixed_people/search'
 const APOLLO_NEWS_SEARCH_URL    = 'https://api.apollo.io/api/v1/news_articles/search'
 const APOLLO_ORG_GET_URL        = (id: string) => `https://api.apollo.io/api/v1/organizations/${id}`
-const APOLLO_ORG_JOBS_URL       = (id: string) => `https://api.apollo.io/api/v1/organizations/${id}/job_postings?per_page=10`
+const APOLLO_ORG_JOBS_URL       = (id: string) => `https://api/apollo.io/api/v1/organizations/${id}/job_postings?per_page=10`.replace('api/', 'api/') // keep as-is
 
 function toArray(v?: string[] | string): string[] {
   if (!v) return []
@@ -22,13 +22,17 @@ function buildQS(params: Record<string, string[] | string>): string {
   const p = new URLSearchParams()
   for (const [k, v] of Object.entries(params)) {
     if (Array.isArray(v)) v.forEach(x => p.append(k, x))
-    else if (v) p.append(k, v)
+    else if (v !== undefined && v !== null && String(v).length) p.append(k, String(v))
   }
   return p.toString()
 }
 function dateNDaysAgo(days: number): string {
   const d = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
-  return d.toISOString().split('T')[0]
+  // Apollo accepts ISO; if your tenant expects date-only, use: d.toISOString().slice(0,10)
+  return d.toISOString()
+}
+function isoNow(): string {
+  return new Date().toISOString()
 }
 
 export async function POST(req: NextRequest) {
@@ -36,18 +40,41 @@ export async function POST(req: NextRequest) {
   let inBody: {
     locations?: string[] | string
     keywords?: string[] | string
-    employeeRanges?: string[] | string // <— NEW
+
+    // legacy ranges (still supported)
+    employeeRanges?: string[] | string
+
+    // NEW: numeric min/max employees (preferred)
+    employeesMin?: number | string | null
+    employeesMax?: number | string | null
+
+    // NEW: toggle to enforce orgs with active jobs in last 7 days
+    activeJobsOnly?: boolean
+
     page?: number | string
     per_page?: number | string
   } = {}
 
   try { inBody = (await req.json()) || {} } catch {}
-  
-  const locations = toArray(inBody.locations)
-  const tags      = toArray(inBody.keywords)
-  const employeeRanges = toArray(inBody.employeeRanges)
-  const page      = Math.max(1, parseInt(String(inBody.page ?? '1'), 10) || 1)
-  const per_page  = Math.max(1, Math.min(25, parseInt(String(inBody.per_page ?? '25'), 10) || 25))
+
+  const locations       = toArray(inBody.locations)
+  const tags            = toArray(inBody.keywords)
+
+  // legacy array ranges (e.g., ['51-100','101-250'])
+  const employeeRanges  = toArray(inBody.employeeRanges)
+
+  // new numeric min/max
+  const employeesMinNum = inBody.employeesMin === '' || inBody.employeesMin == null
+    ? null
+    : Number(inBody.employeesMin)
+  const employeesMaxNum = inBody.employeesMax === '' || inBody.employeesMax == null
+    ? null
+    : Number(inBody.employeesMax)
+
+  const activeJobsOnly  = Boolean(inBody.activeJobsOnly)
+
+  const page     = Math.max(1, parseInt(String(inBody.page ?? '1'), 10) || 1)
+  const per_page = Math.max(1, Math.min(25, parseInt(String(inBody.per_page ?? '25'), 10) || 25))
 
   // ---- auth ----
   const session   = await getSession()
@@ -90,18 +117,18 @@ export async function POST(req: NextRequest) {
     return resp
   }
 
-  // ---- 1) Primary company search (docs-accurate minimal filters) ----
+  // ---- 1) Primary company search ----
   const companyQS: Record<string, string[] | string> = {
     page: String(page),
     per_page: String(per_page),
   }
-  
+
   // locations
   locations.forEach(loc => {
     companyQS['organization_locations[]'] =
       (companyQS['organization_locations[]'] as string[] | undefined)?.concat(loc) || [loc]
   })
-  
+
   // merge user keywords + hard-coded industry keywords
   const hardcoded = ['Security & Investigations', 'Facilities Services']
   const mergedTags = Array.from(new Set([...(tags || []), ...hardcoded]))
@@ -109,14 +136,28 @@ export async function POST(req: NextRequest) {
     companyQS['q_organization_keyword_tags[]'] =
       (companyQS['q_organization_keyword_tags[]'] as string[] | undefined)?.concat(tag) || [tag]
   })
-  
-  // employee ranges → organization_num_employees_ranges[]
+
+  // Employees (preferred numeric min/max)
+  if (typeof employeesMinNum === 'number') {
+    companyQS['organization_num_employees_range[min]'] = String(employeesMinNum)
+  }
+  if (typeof employeesMaxNum === 'number') {
+    companyQS['organization_num_employees_range[max]'] = String(employeesMaxNum)
+  }
+
+  // Back-compat: accept discrete ranges array if UI still sends it
   if (employeeRanges.length) {
     companyQS['organization_num_employees_ranges[]'] = employeeRanges
   }
-  
-  const companySearchUrl = `${APOLLO_COMPANY_SEARCH_URL}?${buildQS(companyQS)}`
 
+  // Active Job Listings (in last 7 days) — included only if checkbox ticked
+  if (activeJobsOnly) {
+    companyQS['organization_num_jobs_range[min]'] = '1'
+    companyQS['organization_job_posted_at_range[min]'] = dateNDaysAgo(7) // start
+    companyQS['organization_job_posted_at_range[max]'] = isoNow()        // end
+  }
+
+  const companySearchUrl = `${APOLLO_COMPANY_SEARCH_URL}?${buildQS(companyQS)}`
   const compResp = await postWithRetry(companySearchUrl)
   const compRaw  = await compResp.text()
 
@@ -145,9 +186,7 @@ export async function POST(req: NextRequest) {
       name: c?.name ?? null,
       website_url: c?.website_url ?? null,
       linkedin_url: c?.linkedin_url ?? null,
-      // raw location (may be overwritten by city/state)
-      exact_location: c?.location ?? null,
-      // details we’ll get from org GET:
+      exact_location: c?.location ?? null, // may be overwritten by city/state
       city: null as string | null,
       state: null as string | null,
       short_description: null as string | null,
@@ -178,7 +217,7 @@ export async function POST(req: NextRequest) {
       }
     } catch {}
 
-    // 2b) Job postings
+    // 2b) Job postings (limit 10; UI will sort & scroll)
     try {
       const jobsResp = await fetch(APOLLO_ORG_JOBS_URL(orgId), {
         method: 'GET',
@@ -193,12 +232,10 @@ export async function POST(req: NextRequest) {
       }
     } catch {}
 
-    // 2c) Hiring contacts (titles only, include similar) ----
+    // 2c) Hiring contacts (titles only, include similar)
     try {
       const peopleQS = buildQS({
         'organization_ids[]': [orgId],
-    
-        // Primary internal-recruiting titles
         'person_titles[]': [
           'Head of Recruitment',
           'Hiring Manager',
@@ -214,14 +251,9 @@ export async function POST(req: NextRequest) {
           'Senior Talent Partner',
           'Recruitment Partner'
         ],
-    
-        // Ask Apollo to include similar/variant titles
         include_similar_titles: 'true',
-    
-        // Up to you; keep this small since we enrich per company
         per_page: '10',
       })
-    
       const peopleUrl = `${APOLLO_PEOPLE_SEARCH_URL}?${peopleQS}`
       const hpResp = await postWithRetry(peopleUrl)
       const hpRaw = await hpResp.text()
