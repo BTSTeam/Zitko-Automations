@@ -193,42 +193,46 @@ export async function POST(req: NextRequest) {
       }
     } catch {}
 
-    // 2c) Hiring contacts (titles + keywords)
+    // 2c) Hiring contacts (titles only, include similar) ----
     try {
       const peopleQS = buildQS({
         'organization_ids[]': [orgId],
-        // exact/common titles
+    
+        // Primary internal-recruiting titles
         'person_titles[]': [
           'Head of Recruitment',
-          'Head of Talent',
+          'Hiring Manager',
           'Talent Acquisition',
           'Talent Acquisition Manager',
-          'Talent Acquisition Partner',
+          'Talent Acquisition Lead',
           'Recruitment Manager',
           'Recruiting Manager',
-          'Recruiter',
-          'Talent Manager',
-          'Hiring Manager',
+          'Head of Talent',
+          'Head of People',
+          'People & Talent',
+          'Talent Partner',
+          'Senior Talent Partner',
+          'Recruitment Partner'
         ],
-        // helpful keyword fallback for varied titles
-        'q_person_title_keywords[]': [
-          'recruit',
-          'recruitment',
-          'talent',
-          'acquisition',
-          'hiring',
-        ],
-        per_page: '5',
+    
+        // Ask Apollo to include similar/variant titles
+        include_similar_titles: 'true',
+    
+        // Up to you; keep this small since we enrich per company
+        per_page: '10',
       })
+    
       const peopleUrl = `${APOLLO_PEOPLE_SEARCH_URL}?${peopleQS}`
       const hpResp = await postWithRetry(peopleUrl)
-      const hpRaw  = await hpResp.text()
+      const hpRaw = await hpResp.text()
       if (hpResp.ok) {
         let hp: any = {}
         try { hp = hpRaw ? JSON.parse(hpRaw) : {} } catch {}
         base.hiring_people = Array.isArray(hp?.contacts) ? hp.contacts
-                            : Array.isArray(hp?.people)   ? hp.people
-                            : []
+                         : Array.isArray(hp?.people)   ? hp.people
+                         : []
+      } else {
+        base.hiring_people = []
       }
     } catch {}
 
