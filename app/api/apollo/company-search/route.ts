@@ -51,6 +51,9 @@ export async function POST(req: NextRequest) {
     // NEW: toggle to enforce orgs with active jobs in last 7 days
     activeJobsOnly?: boolean
 
+    // NEW: specific active job titles filter (chips)
+    q_organization_job_titles?: string[] | string
+
     page?: number | string
     per_page?: number | string
   } = {}
@@ -62,6 +65,9 @@ export async function POST(req: NextRequest) {
 
   // legacy array ranges (e.g., ['51-100','101-250'])
   const employeeRanges  = toArray(inBody.employeeRanges)
+
+  // NEW: job titles to filter orgs' active postings
+  const jobTitleFilters = toArray(inBody.q_organization_job_titles)
 
   // new numeric min/max
   const employeesMinNum = inBody.employeesMin === '' || inBody.employeesMin == null
@@ -155,6 +161,11 @@ export async function POST(req: NextRequest) {
     companyQS['organization_num_jobs_range[min]'] = '1'
     companyQS['organization_job_posted_at_range[min]'] = dateNDaysAgo(7) // start
     companyQS['organization_job_posted_at_range[max]'] = isoNow()        // end
+  }
+
+  // NEW: optional filter by specific active job titles
+  if (jobTitleFilters.length) {
+    companyQS['q_organization_job_titles[]'] = jobTitleFilters
   }
 
   const companySearchUrl = `${APOLLO_COMPANY_SEARCH_URL}?${buildQS(companyQS)}`
