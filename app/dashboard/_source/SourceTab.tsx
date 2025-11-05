@@ -396,12 +396,13 @@ Kind regards,`
   }
 
   // ------ Company search state ------
+  const companyLocations = useChipInput([])
+  const companyKeywords  = useChipInput([])
   const [activeJobsOnly, setActiveJobsOnly] = useState(false)
   const [activeJobsDays, setActiveJobsDays] = useState<number | ''>('')  // ← no default
   const activeJobTitles = useChipInput([])
 
   // NEW: Active jobs & numeric employee range
-  const [activeJobsOnly, setActiveJobsOnly] = useState(false)
   const [employeesMin, setEmployeesMin] = useState<number | ''>('')
   const [employeesMax, setEmployeesMax] = useState<number | ''>('')
 
