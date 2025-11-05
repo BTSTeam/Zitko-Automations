@@ -146,12 +146,12 @@ function MultiSelect({
     return () => document.removeEventListener('click', onClick)
   }, [open])
 
-function toggleOpt(opt: string) {
-  const next = values.includes(opt)
-    ? values.filter(o => o !== opt)
-    : [...values, opt]
-  setValues(next)
-}
+  function toggleOpt(opt: string) {
+    const next = values.includes(opt)
+      ? values.filter(o => o !== opt)
+      : [...values, opt]
+    setValues(next)
+  }
 
   return (
     <div>
@@ -396,8 +396,12 @@ Kind regards,`
   // ------ Company search state ------
   const companyLocations = useChipInput([])
   const companyKeywords = useChipInput([])
-  const [empUnder100, setEmpUnder100] = useState(false)
-  const [empOver100, setEmpOver100] = useState(false)
+
+  // NEW: Active jobs & numeric employee range
+  const [activeJobsOnly, setActiveJobsOnly] = useState(false)
+  const [employeesMin, setEmployeesMin] = useState<number | ''>('')
+  const [employeesMax, setEmployeesMax] = useState<number | ''>('')
+
   const [companyLoading, setCompanyLoading] = useState(false)
   const [companyError, setCompanyError] = useState<string | null>(null)
   const [companies, setCompanies] = useState<Company[]>([])
@@ -446,11 +450,12 @@ Kind regards,`
       const payload = {
         locations: companyLocations.chips,
         keywords: companyKeywords.chips,
-        // map UI checkboxes to Apollo ranges
-        employeeRanges: [
-          ...(empUnder100 ? ['1,100'] : []),
-          ...(empOver100 ? ['101,500000'] : []),
-        ],
+
+        // NEW: direct flags for server to build mixed_companies filters
+        activeJobsOnly,
+        employeesMin: employeesMin === '' ? null : Number(employeesMin),
+        employeesMax: employeesMax === '' ? null : Number(employeesMax),
+
         page: 1,
         per_page: 25,
       }
@@ -827,40 +832,64 @@ Kind regards,`
               </div>
             </div>
 
-            {/* Search button + employee checkboxes inline */}
-            <div className="mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            {/* NEW: Active jobs + Employees From/To */}
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Active jobs (last 7 days) */}
+              <div className="flex items-center gap-2">
+                <input
+                  id="activeJobsOnly"
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={activeJobsOnly}
+                  onChange={(e) => setActiveJobsOnly(e.target.checked)}
+                  disabled={isDown}
+                />
+                <label htmlFor="activeJobsOnly" className="text-sm text-gray-700">
+                  Active Job Listings (posted in last 7 days)
+                </label>
+              </div>
+
+              {/* Employees From / To */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Employees (From)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    className="w-full rounded-md border px-2 py-1 text-sm"
+                    value={employeesMin}
+                    onChange={(e) => setEmployeesMin(e.target.value === '' ? '' : Number(e.target.value))}
+                    placeholder="e.g. 50"
+                    disabled={isDown}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Employees (To)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    className="w-full rounded-md border px-2 py-1 text-sm"
+                    value={employeesMax}
+                    onChange={(e) => setEmployeesMax(e.target.value === '' ? '' : Number(e.target.value))}
+                    placeholder="e.g. 250"
+                    disabled={isDown}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Tips + Search button */}
+            <div className="mt-4 flex items-center justify-between">
               <span className="text-xs text-gray-500">
                 Please press <kbd className="px-1 border rounded">Enter</kbd> to submit each chip.
               </span>
-            
-              <div className="flex items-center gap-4">
-                <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-                  <input
-                    type="checkbox"
-                    className="rounded"
-                    checked={empUnder100}
-                    onChange={(e) => setEmpUnder100(e.target.checked)}
-                  />
-                  &lt;100 Employees
-                </label>
-                <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-                  <input
-                    type="checkbox"
-                    className="rounded"
-                    checked={empOver100}
-                    onChange={(e) => setEmpOver100(e.target.checked)}
-                  />
-                  &gt;100 Employees
-                </label>
-            
-                <button
-                  type="submit"
-                  className="rounded-full bg-orange-500 text-white px-5 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50"
-                  disabled={isDown || companyLoading}
-                >
-                  {companyLoading ? 'Searching…' : 'Search'}
-                </button>
-              </div>
+              <button
+                type="submit"
+                className="rounded-full bg-orange-500 text-white px-5 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50"
+                disabled={isDown || companyLoading}
+              >
+                {companyLoading ? 'Searching…' : 'Search'}
+              </button>
             </div>
 
             {companyError && (
@@ -960,43 +989,47 @@ Kind regards,`
                       <div className="col-span-4">Location</div>
                       <div className="col-span-2 text-right">Type</div>
                     </div>
-                    <ul className="text-sm">
-                      {c.job_postings?.length
-                        ? [...c.job_postings]
-                            .sort((a: any, b: any) => {
-                              const da = a?.posted_at ? new Date(a.posted_at).getTime() : 0
-                              const db = b?.posted_at ? new Date(b.posted_at).getTime() : 0
-                              return db - da // most recent first
-                            })
-                            .map((j: any) => (
-                              <li key={j.id} className="px-3 py-2 border-t first:border-t-0 grid grid-cols-12">
-                                <div className="col-span-6 truncate">
-                                  {j.url ? (
-                                    <a
-                                      className="text-orange-600 hover:underline"
-                                      href={j.url}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                    >
-                                      {j.title || 'Untitled job'}
-                                    </a>
-                                  ) : (
-                                    j.title || 'Untitled job'
-                                  )}
-                                  {j.posted_at && (
-                                    <span className="ml-2 text-gray-400">
-                                      {new Date(j.posted_at).toLocaleDateString()}
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="col-span-4 truncate">{j.location || '—'}</div>
-                                <div className="col-span-2 text-right">{j.employment_type || '—'}</div>
-                              </li>
-                            ))
-                        : (
-                          <li className="px-3 py-2 text-xs text-gray-500">No job postings.</li>
-                        )}
-                    </ul>
+
+                    {/* Scroll container ~5 rows visible */}
+                    <div className="max-h-60 overflow-auto">
+                      <ul className="text-sm">
+                        {c.job_postings?.length
+                          ? [...c.job_postings]
+                              .sort((a: any, b: any) => {
+                                const da = a?.posted_at ? new Date(a.posted_at).getTime() : 0
+                                const db = b?.posted_at ? new Date(b.posted_at).getTime() : 0
+                                return db - da // most recent first
+                              })
+                              .map((j: any) => (
+                                <li key={j.id} className="px-3 py-2 border-t first:border-t-0 grid grid-cols-12">
+                                  <div className="col-span-6 truncate">
+                                    {j.url ? (
+                                      <a
+                                        className="text-orange-600 hover:underline"
+                                        href={j.url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                      >
+                                        {j.title || 'Untitled job'}
+                                      </a>
+                                    ) : (
+                                      j.title || 'Untitled job'
+                                    )}
+                                    {j.posted_at && (
+                                      <span className="ml-2 text-gray-400">
+                                        {new Date(j.posted_at).toLocaleDateString()}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="col-span-4 truncate">{j.location || '—'}</div>
+                                  <div className="col-span-2 text-right">{j.employment_type || '—'}</div>
+                                </li>
+                              ))
+                          : (
+                            <li className="px-3 py-2 text-xs text-gray-500">No job postings.</li>
+                          )}
+                      </ul>
+                    </div>
                   </div>
                 )}
                 
@@ -1062,9 +1095,8 @@ Kind regards,`
   )
 
   return (
-  <div className="space-y-4">
-    {mode === 'people' ? renderPeople() : renderCompanies()}
-  </div>
-)
+    <div className="space-y-4">
+      {mode === 'people' ? renderPeople() : renderCompanies()}
+    </div>
+  )
 }
-
