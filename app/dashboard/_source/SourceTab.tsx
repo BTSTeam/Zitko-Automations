@@ -860,85 +860,61 @@ Kind regards,`
                   </div>
                 </div>
 
-                {/* Active Job Listings (always visible; greyed until ticked) */}
+                {/* Active Job Listings (section heading with tick, aligned inputs) */}
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">&nbsp;</label>
-                  <div className="flex items-start md:items-center gap-4">
-                    {/* Checkbox + caption */}
-                    <div className="flex flex-col items-center">
-                      <input
-                        id="activeJobsOnly"
-                        type="checkbox"
-                        className="h-4 w-4 accent-orange-500"
-                        checked={activeJobsOnly}
-                        onChange={(e) => setActiveJobsOnly(e.target.checked)}
-                        disabled={isDown}
-                        aria-describedby="activeJobsCaption"
-                      />
-                      <span
-                        id="activeJobsCaption"
-                        className="mt-1 text-xs text-gray-700 text-center max-w-[14ch] leading-snug"
-                      >
-                        Active Job Listings
-                      </span>
-                    </div>
-
-                    {/* Controls are always rendered but disabled/grey until checked */}
-                    <div className={`flex flex-1 items-center gap-3 min-w-0 ${disabledLook}`} aria-disabled={isInputsDisabled}>
-                      {/* Little badge "Days" to match screenshot */}
-                      <span className="shrink-0 rounded-md border px-3 py-2 text-xs text-gray-700 bg-white">Days</span>
-
-                      {/* Days chip input */}
-                      <div className="shrink-0 rounded-xl border px-2 py-1.5 w-28">
-                        <div className="flex flex-wrap gap-2">
-                          {activeJobsDays.chips.map(v => (
-                            <Chip key={v} onRemove={() => activeJobsDays.removeChip(v)}>{v}</Chip>
-                          ))}
-                          <input
-                            className="min-w-[6ch] flex-1 outline-none text-sm px-2 py-1"
-                            placeholder="e.g. 30"
-                            inputMode="numeric"
-                            pattern="[0-9]*"
-                            value={activeJobsDays.input}
-                            onChange={(e) => {
-                              // keep only digits
-                              const digits = e.target.value.replace(/\D+/g, '')
-                              activeJobsDays.setInput(digits)
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                // If user adds multiple, that's fine — we'll use the last chip when searching
-                              }
-                              activeJobsDays.onKeyDown(e)
-                            }}
-                            disabled={isInputsDisabled}
-                          />
-                        </div>
+                  <label className="block text-sm text-gray-600 mb-1 flex items-center gap-2">
+                    <input
+                      id="activeJobsOnly"
+                      type="checkbox"
+                      className="h-4 w-4 accent-orange-500"
+                      checked={activeJobsOnly}
+                      onChange={(e) => setActiveJobsOnly(e.target.checked)}
+                      disabled={isDown}
+                    />
+                    Active Job Listings
+                  </label>
+                
+                  <div className={`flex items-center gap-3 ${disabledLook}`} aria-disabled={isInputsDisabled}>
+                    {/* Days input (chip style) */}
+                    <div className="shrink-0 rounded-xl border px-2 py-1.5 w-28">
+                      <div className="flex flex-wrap gap-2">
+                        {activeJobsDays.chips.map(v => (
+                          <Chip key={v} onRemove={() => activeJobsDays.removeChip(v)}>{v}</Chip>
+                        ))}
+                        <input
+                          className="min-w-[6ch] flex-1 outline-none text-sm px-2 py-1"
+                          placeholder="Days (e.g. 30)"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          value={activeJobsDays.input}
+                          onChange={(e) => {
+                            const digits = e.target.value.replace(/\D+/g, '')
+                            activeJobsDays.setInput(digits)
+                          }}
+                          onKeyDown={(e) => activeJobsDays.onKeyDown(e)}
+                          disabled={isInputsDisabled}
+                        />
                       </div>
-
-                      {/* Little badge "Job Titles" to match screenshot */}
-                      <span className="shrink-0 rounded-md border px-3 py-2 text-xs text-gray-700 bg-white">Job Titles</span>
-
-                      {/* Titles chip input */}
-                      <div className="flex-1 rounded-xl border px-2 py-1.5">
-                        <div className="flex flex-wrap gap-2">
-                          {activeJobTitles.chips.map(v => (
-                            <Chip key={v} onRemove={() => activeJobTitles.removeChip(v)}>{v}</Chip>
-                          ))}
-                          <input
-                            className="min-w-[14ch] flex-1 outline-none text-sm px-2 py-1"
-                            placeholder="e.g. Engineer, Manager"
-                            value={activeJobTitles.input}
-                            onChange={e => activeJobTitles.setInput(e.target.value)}
-                            onKeyDown={activeJobTitles.onKeyDown}
-                            disabled={isInputsDisabled}
-                          />
-                        </div>
+                    </div>
+                
+                    {/* Job Titles input (chip style) */}
+                    <div className="flex-1 rounded-xl border px-2 py-1.5">
+                      <div className="flex flex-wrap gap-2">
+                        {activeJobTitles.chips.map(v => (
+                          <Chip key={v} onRemove={() => activeJobTitles.removeChip(v)}>{v}</Chip>
+                        ))}
+                        <input
+                          className="min-w-[14ch] flex-1 outline-none text-sm px-2 py-1"
+                          placeholder="Job Titles (e.g. Engineer, Manager)"
+                          value={activeJobTitles.input}
+                          onChange={e => activeJobTitles.setInput(e.target.value)}
+                          onKeyDown={activeJobTitles.onKeyDown}
+                          disabled={isInputsDisabled}
+                        />
                       </div>
                     </div>
                   </div>
                 </div>
-              </div>
 
               {/* Tips + Search button */}
               <div className="mt-4 flex items-center justify-between">
