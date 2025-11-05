@@ -396,7 +396,7 @@ Kind regards,`
   // ------ Company search state ------
   const companyLocations = useChipInput([])
   const companyKeywords = useChipInput([])
-
+  const activeJobTitles = useChipInput([])
   // NEW: Active jobs & numeric employee range
   const [activeJobsOnly, setActiveJobsOnly] = useState(false)
   const [employeesMin, setEmployeesMin] = useState<number | ''>('')
@@ -448,17 +448,21 @@ Kind regards,`
     setExpandedNews(new Set())
     try {
       const payload = {
-        locations: companyLocations.chips,
-        keywords: companyKeywords.chips,
-
-        // NEW: direct flags for server to build mixed_companies filters
-        activeJobsOnly,
-        employeesMin: employeesMin === '' ? null : Number(employeesMin),
-        employeesMax: employeesMax === '' ? null : Number(employeesMax),
-
-        page: 1,
-        per_page: 25,
-      }
+          locations: companyLocations.chips,
+          keywords: companyKeywords.chips,
+        
+          activeJobsOnly,
+          employeesMin: employeesMin === '' ? null : Number(employeesMin),
+          employeesMax: employeesMax === '' ? null : Number(employeesMax),
+        
+          // NEW: only include if the checkbox is ticked and you actually have chips
+          ...(activeJobsOnly && activeJobTitles.chips.length
+            ? { q_organization_job_titles: activeJobTitles.chips }
+            : {}),
+        
+          page: 1,
+          per_page: 25,
+        }
       const res = await fetch('/api/apollo/company-search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -785,6 +789,7 @@ Kind regards,`
   
         {companySearchOpen && (
           <form onSubmit={runCompanySearch} className="p-4 pt-0">
+            {/* Row 1: Locations / Keywords */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Locations */}
               <div>
@@ -805,7 +810,7 @@ Kind regards,`
                   </div>
                 </div>
               </div>
-  
+        
               {/* Keywords */}
               <div>
                 <label className="block text-sm text-gray-600 mb-1">Keywords</label>
@@ -824,35 +829,18 @@ Kind regards,`
                     />
                   </div>
                 </div>
-              
-                {/* small fixed note */}
                 <p className="mt-1 text-xs text-gray-500">
                   Security &amp; Investigations + Facilities Services are already included within the search
                 </p>
               </div>
             </div>
-
-            {/* NEW: Active jobs + Employees From/To */}
+        
+            {/* Row 2: Employees (from & to)  |  Active jobs (+ titles when ticked) */}
             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Active jobs (last 7 days) */}
-              <div className="flex items-center gap-2">
-                <input
-                  id="activeJobsOnly"
-                  type="checkbox"
-                  className="h-4 w-4"
-                  checked={activeJobsOnly}
-                  onChange={(e) => setActiveJobsOnly(e.target.checked)}
-                  disabled={isDown}
-                />
-                <label htmlFor="activeJobsOnly" className="text-sm text-gray-700">
-                  Active Job Listings (posted in last 7 days)
-                </label>
-              </div>
-
-              {/* Employees From / To */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Employees (From)</label>
+              {/* Employees (from & to) */}
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">Employees <span className="text-xs text-gray-400">(from &amp; to)</span></label>
+                <div className="flex items-center gap-2">
                   <input
                     type="number"
                     min={0}
@@ -862,9 +850,7 @@ Kind regards,`
                     placeholder="e.g. 50"
                     disabled={isDown}
                   />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Employees (To)</label>
+                  <span className="text-gray-400 text-sm">to</span>
                   <input
                     type="number"
                     min={0}
@@ -876,8 +862,48 @@ Kind regards,`
                   />
                 </div>
               </div>
+        
+              {/* Active Job Listings (checkbox + titles chips when checked) */}
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">&nbsp;</label>
+                <div className="flex items-start md:items-center gap-3">
+                  <input
+                    id="activeJobsOnly"
+                    type="checkbox"
+                    className="h-4 w-4 mt-1 md:mt-0 accent-orange-500"
+                    checked={activeJobsOnly}
+                    onChange={(e) => setActiveJobsOnly(e.target.checked)}
+                    disabled={isDown}
+                  />
+                  <div className="flex-1">
+                    <label htmlFor="activeJobsOnly" className="text-sm text-gray-700">
+                      Active Job Listings (posted in last 7 days)
+                    </label>
+        
+                    {/* Revealed only when checked */}
+                    {activeJobsOnly && (
+                      <div className="mt-2 rounded-xl border px-2 py-1.5">
+                        <div className="text-xs text-gray-500 mb-1">Filter by job titles (optional)</div>
+                        <div className="flex flex-wrap gap-2">
+                          {activeJobTitles.chips.map(v => (
+                            <Chip key={v} onRemove={() => activeJobTitles.removeChip(v)}>{v}</Chip>
+                          ))}
+                          <input
+                            className="min-w-[10ch] flex-1 outline-none text-sm px-2 py-1"
+                            placeholder="e.g. Installation Engineer"
+                            value={activeJobTitles.input}
+                            onChange={e => activeJobTitles.setInput(e.target.value)}
+                            onKeyDown={activeJobTitles.onKeyDown}
+                            disabled={isDown}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
-
+        
             {/* Tips + Search button */}
             <div className="mt-4 flex items-center justify-between">
               <span className="text-xs text-gray-500">
@@ -891,6 +917,12 @@ Kind regards,`
                 {companyLoading ? 'Searching…' : 'Search'}
               </button>
             </div>
+        
+            {companyError && (
+              <div className="mt-3 text-sm text-red-600">{companyError}</div>
+            )}
+          </form>
+        )}
 
             {companyError && (
               <div className="mt-3 text-sm text-red-600">{companyError}</div>
