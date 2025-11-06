@@ -112,8 +112,13 @@ export async function POST(req: NextRequest) {
       'Cache-Control': 'no-cache',
       'Content-Type': 'application/json',
     }
-    if (accessToken) h.Authorization = `Bearer ${accessToken}`
-    else if (apiKey) h['X-Api-Key'] = apiKey
+    if (accessToken) {
+      h.Authorization = `Bearer ${accessToken}`
+    } else if (apiKey) {
+      // send BOTH – Job Postings prefers Bearer
+      h.Authorization = `Bearer ${apiKey}`
+      h['X-Api-Key'] = apiKey
+    }
     return h
   }
 
@@ -249,12 +254,24 @@ export async function POST(req: NextRequest) {
           cache: 'no-store',
         })
         const jobsRaw = await jobsResp.text()
+      
         if (jobsResp.ok) {
           let jobs: any = {}
           try { jobs = jobsRaw ? JSON.parse(jobsRaw) : {} } catch {}
           base.job_postings = Array.isArray(jobs?.job_postings) ? jobs.job_postings : []
+        } else {
+          // expose status & short body to help debugging in UI
+          base.job_postings = []
+          ;(base as any).job_postings_error = {
+            status: jobsResp.status,
+            statusText: jobsResp.statusText,
+            body: jobsRaw.slice(0, 500),
+          }
         }
-      } catch {}
+      } catch (err: any) {
+        base.job_postings = []
+        ;(base as any).job_postings_error = { exception: String(err?.message ?? err) }
+      }
 
       // 2c) Hiring contacts (titles only, include similar)
       try {
