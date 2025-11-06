@@ -318,7 +318,7 @@ export async function POST(req: NextRequest) {
         const newsQS = buildQS({
           'organization_ids[]': [orgId],
           published_after, // YYYY-MM-DD
-          per_page: '5',
+          per_page: '2',
         })
         const newsUrl  = `${APOLLO_NEWS_SEARCH_URL}?${newsQS}`
         const newsResp = await postWithRetry(newsUrl)
