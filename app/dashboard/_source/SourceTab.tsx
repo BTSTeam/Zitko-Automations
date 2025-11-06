@@ -205,8 +205,8 @@ function MultiSelect({
                   type="checkbox"
                   checked={values.includes(opt)}
                   onChange={() => toggleOpt(opt)}
-                  className="mr-2 accent-orange-500"
-                />
+                  className="mr-2 accent-orange-500 text-white"
+                />  
                 {opt}
               </label>
             ))}
@@ -421,8 +421,8 @@ Kind regards,`
   const activeJobTitles = useChipInput([])
 
   // Numeric employee range
-  const [employeesMin, setEmployeesMin] = useState<number | ''>('')
-  const [employeesMax, setEmployeesMax] = useState<number | ''>('')
+  const employeesMin = useChipInput([])
+  const employeesMax = useChipInput([])
 
   const [companyLoading, setCompanyLoading] = useState(false)
   const [companyError, setCompanyError] = useState<string | null>(null)
@@ -859,25 +859,45 @@ Kind regards,`
                     Employees <span className="text-xs text-gray-400">(from &amp; to)</span>
                   </label>
                   <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      min={0}
-                      className="w-full rounded-xl border h-10 px-3 text-sm"
-                      value={employeesMin}
-                      onChange={(e) => setEmployeesMin(e.target.value === '' ? '' : Number(e.target.value))}
-                      placeholder="e.g. 50"
-                      disabled={isDown}
-                    />
+                    {/* Employees Min */}
+                    <div className="rounded-xl border h-10 px-2 flex-1">
+                      <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
+                        {employeesMin.chips?.map((v: string) => (
+                          <Chip key={v} onRemove={() => employeesMin.removeChip(v)}>{v}</Chip>
+                        ))}
+                        <input
+                          className="min-w-[5rem] grow outline-none text-sm h-8 px-2"
+                          placeholder={phIfEmpty(employeesMin.input, employeesMin.chips, 'From (e.g. 50)')}
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          value={employeesMin.input}
+                          onChange={(e) => employeesMin.setInput(e.target.value.replace(/\D+/g, ''))}
+                          onKeyDown={employeesMin.onKeyDown}
+                          disabled={isDown}
+                        />
+                      </div>
+                    </div>
+                
                     <span className="text-gray-400 text-sm">to</span>
-                    <input
-                      type="number"
-                      min={0}
-                      className="w-full rounded-xl border h-10 px-3 text-sm"
-                      value={employeesMax}
-                      onChange={(e) => setEmployeesMax(e.target.value === '' ? '' : Number(e.target.value))}
-                      placeholder="e.g. 250"
-                      disabled={isDown}
-                    />
+                
+                    {/* Employees Max */}
+                    <div className="rounded-xl border h-10 px-2 flex-1">
+                      <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
+                        {employeesMax.chips?.map((v: string) => (
+                          <Chip key={v} onRemove={() => employeesMax.removeChip(v)}>{v}</Chip>
+                        ))}
+                        <input
+                          className="min-w-[5rem] grow outline-none text-sm h-8 px-2"
+                          placeholder={phIfEmpty(employeesMax.input, employeesMax.chips, 'To (e.g. 250)')}
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          value={employeesMax.input}
+                          onChange={(e) => employeesMax.setInput(e.target.value.replace(/\D+/g, ''))}
+                          onKeyDown={employeesMax.onKeyDown}
+                          disabled={isDown}
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
 
