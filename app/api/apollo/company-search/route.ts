@@ -66,6 +66,9 @@ export async function POST(req: NextRequest) {
     employeesMin?: number | string | null
     employeesMax?: number | string | null
     activeJobsOnly?: boolean
+    /** NEW: legacy support */
+    activeJobsDays?: number | string | null
+    /** Preferred param */
     activeJobsWindowDays?: number | string | null
     q_organization_job_titles?: string[] | string
     page?: number | string
@@ -87,8 +90,12 @@ export async function POST(req: NextRequest) {
     inBody.employeesMax === '' || inBody.employeesMax == null ? null : Number(inBody.employeesMax)
 
   const activeJobsOnly = Boolean(inBody.activeJobsOnly)
+
+  // ---- FIX #1: accept legacy 'activeJobsDays' when 'activeJobsWindowDays' is not provided ----
   const activeJobsWindowDays = (() => {
-    const n = Number(inBody.activeJobsWindowDays)
+    // Prefer the new param; fall back to legacy
+    const raw = inBody.activeJobsWindowDays ?? inBody.activeJobsDays
+    const n = Number(raw)
     return Number.isFinite(n) && n > 0 ? Math.floor(n) : 30
   })()
 
@@ -187,7 +194,7 @@ export async function POST(req: NextRequest) {
 
   const companySearchUrl = `${APOLLO_COMPANY_SEARCH_URL}?${buildQS(companyQS)}`
   const topLevelDebug: any = DEBUG
-    ? { companySearchUrl, headers: redactHeaders(buildHeaders('search')) }
+    ? { companySearchUrl, headers: redactHeaders(buildHeaders('search')), activeJobsWindowDays }
     : undefined
 
   const compResp = await postWithRetry(companySearchUrl)
@@ -253,7 +260,7 @@ export async function POST(req: NextRequest) {
             base.exact_location = [base.city, base.state].filter(Boolean).join(', ')
           }
           if (DEBUG) {
-            (base as any)._debug = {
+            ;(base as any)._debug = {
               ...(base as any)._debug,
               organization: { url: APOLLO_ORG_GET_URL(orgId), headers: redactHeaders(orgHeaders) },
             }
@@ -335,7 +342,7 @@ export async function POST(req: NextRequest) {
             Array.isArray(hp?.people)   ? hp.people   :
             []
           if (DEBUG) {
-            (base as any)._debug = {
+            ;(base as any)._debug = {
               ...(base as any)._debug,
               hiring_people: { url: peopleUrl, headers: redactHeaders(peopleHeaders) },
             }
@@ -361,7 +368,7 @@ export async function POST(req: NextRequest) {
           try { news = newsRaw ? JSON.parse(newsRaw) : {} } catch {}
           base.news_articles = Array.isArray(news?.news_articles) ? news.news_articles : []
           if (DEBUG) {
-            (base as any)._debug = {
+            ;(base as any)._debug = {
               ...(base as any)._debug,
               news: { url: newsUrl, headers: redactHeaders(newsHeaders) },
             }
