@@ -399,7 +399,6 @@ Kind regards,`
   const [companies, setCompanies] = useState<Company[]>([])
   const [companySearchOpen, setCompanySearchOpen] = useState(true)
   const [expandedJobs, setExpandedJobs] = useState<Set<string>>(new Set())
-  the
   const [expandedHiring, setExpandedHiring] = useState<Set<string>>(new Set())
   const [expandedNews, setExpandedNews] = useState<Set<string>>(new Set())
 
