@@ -845,7 +845,7 @@ Kind regards,`
                       ))}
                       <input
                         className="min-w-[10rem] grow outline-none text-sm h-8 px-2"
-                        placeholder={phIfEmpty(companyKeywords.input, companyKeywords.chips, 'e.g. Security, CCTV')}
+                        placeholder={phIfEmpty(companyKeywords.input, companyKeywords.chips, 'e.g. Fire, Security, CCTV')}
                         value={companyKeywords.input}
                         onChange={e => companyKeywords.setInput(e.target.value)}
                         onKeyDown={companyKeywords.onKeyDown}
@@ -853,9 +853,6 @@ Kind regards,`
                       />
                     </div>
                   </div>
-                  <p className="mt-1 text-xs text-gray-500">
-                    Security &amp; Investigations + Facilities Services are already included within the search
-                  </p>
                 </div>
               </div>
 
