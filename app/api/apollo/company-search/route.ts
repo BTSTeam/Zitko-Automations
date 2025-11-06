@@ -96,7 +96,7 @@ export async function POST(req: NextRequest) {
 
   const activeJobsOnly = Boolean(inBody.activeJobsOnly)
 
-  // ---- accept legacy 'activeJobsDays' when 'activeJobsWindowDays' is not provided ----
+  // accept legacy 'activeJobsDays' when 'activeJobsWindowDays' is not provided
   const activeJobsWindowDays = (() => {
     const raw = inBody.activeJobsWindowDays ?? inBody.activeJobsDays
     const n = Number(raw)
@@ -106,7 +106,7 @@ export async function POST(req: NextRequest) {
   const page     = Math.max(1, parseInt(String(inBody.page ?? '1'), 10) || 1)
   const per_page = Math.max(1, Math.min(25, parseInt(String(inBody.per_page ?? '25'), 10) || 25))
 
-  // ---- NEW: recruiter exclusion inputs ----
+  // recruiter exclusion inputs
   const excludeRecruiters   = Boolean(inBody.excludeRecruiters)
   const excludeNameContains = toArray(inBody.excludeNameContains).map((s) => s.toLowerCase())
   const excludeDomains      = toArray(inBody.excludeDomains).map((s) => s.toLowerCase())
@@ -235,7 +235,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ companies: [], page, per_page, debug: topLevelDebug })
   }
 
-  /* -------- NEW: Exclude staffing/recruitment companies before enrichment ------ */
+  /* -------- Exclude staffing/recruitment companies before enrichment ------ */
   const AGENCY_PATTERNS = [
     'recruitment','recruiting','recruiter','staffing','talent','resourcing',
     'headhunt','headhunting','personnel','employment','agency','placement',
@@ -292,141 +292,107 @@ export async function POST(req: NextRequest) {
         news_articles: [] as any[],
       }
 
-      // 2a) Org details
-      try {
-        const orgHeaders = buildHeaders('search')
-        const orgResp = await fetch(APOLLO_ORG_GET_URL(orgId), {
+      // ---------- Stage B: per-company enrichments in parallel ----------
+      const orgHeaders  = buildHeaders('search')
+      const jobsHeaders = buildHeaders(JOBS_HEADERS_KIND)
+
+      const peopleQS = buildQS({
+        'organization_ids[]': [orgId],
+        'person_titles[]': [
+          'Head of Recruitment','Hiring Manager','Talent Acquisition','Talent Acquisition Manager',
+          'Talent Acquisition Lead','Recruitment Manager','Recruiting Manager','Head of Talent',
+          'Head of People','People & Talent','Talent Partner','Senior Talent Partner','Recruitment Partner',
+        ],
+        include_similar_titles: 'true',
+        per_page: '10',
+      })
+      const peopleUrl = `${APOLLO_PEOPLE_SEARCH_URL}?${peopleQS}`
+
+      const newsQS = buildQS({
+        'organization_ids[]': [orgId],
+        published_after,
+        per_page: '2',
+      })
+      const newsUrl = `${APOLLO_NEWS_SEARCH_URL}?${newsQS}`
+
+      const [orgR, jobsR, peopleR, newsR] = await Promise.allSettled([
+        // Org details
+        fetch(APOLLO_ORG_GET_URL(orgId), {
           method: 'GET',
           headers: orgHeaders,
           cache: 'no-store',
-        })
-        const orgRaw = await orgResp.text()
-        if (orgResp.ok) {
-          let org: any = {}
-          try { org = orgRaw ? JSON.parse(orgRaw) : {} } catch {}
-          const o = org?.organization || {}
-          base.city = (o?.city ?? null)
-          base.state = (o?.state ?? null)
-          base.short_description = (o?.short_description ?? null)
-          if ((base.city || base.state) && !base.exact_location) {
-            base.exact_location = [base.city, base.state].filter(Boolean).join(', ')
-          }
-          if (DEBUG) {
-            ;(base as any)._debug = {
-              ...(base as any)._debug,
-              organization: { url: APOLLO_ORG_GET_URL(orgId), headers: redactHeaders(orgHeaders) },
-            }
-          }
-        }
-      } catch {}
+        }).then(r => r.text().then(t => ({ ok: r.ok, status: r.status, body: t }))),
 
-      // 2b) Organization Job Postings (current postings; page=1, per_page=10)
-      try {
-        const jobsUrl = APOLLO_ORG_JOBS_URL(orgId)
-        const jobsHeaders = buildHeaders(JOBS_HEADERS_KIND)
-
-        if (DEBUG) {
-          ;(base as any)._debug = {
-            ...(base as any)._debug,
-            job_postings: {
-              url: jobsUrl,
-              headers: redactHeaders(jobsHeaders),
-              kind: JOBS_HEADERS_KIND,
-            },
-          }
-        }
-
-        const jobsResp = await fetch(jobsUrl, {
+        // Job postings
+        fetch(APOLLO_ORG_JOBS_URL(orgId), {
           method: 'GET',
           headers: jobsHeaders,
           cache: 'no-store',
-        })
-        const jobsRaw = await jobsResp.text()
+        }).then(r => r.text().then(t => ({ ok: r.ok, status: r.status, body: t }))),
 
-        if (jobsResp.ok) {
-          let jobs: any = {}
-          try { jobs = jobsRaw ? JSON.parse(jobsRaw) : {} } catch {}
-          base.job_postings = Array.isArray(jobs?.job_postings) ? jobs.job_postings : []
+        // Hiring people
+        postWithRetry(peopleUrl).then(r => r.text().then(t => ({ ok: r.ok, status: r.status, body: t }))),
+
+        // News
+        postWithRetry(newsUrl).then(r => r.text().then(t => ({ ok: r.ok, status: r.status, body: t }))),
+      ])
+
+      // --- Org details
+      if (orgR.status === 'fulfilled' && orgR.value.ok) {
+        try {
+          const org = JSON.parse(orgR.value.body || '{}')?.organization || {}
+          base.city = org?.city ?? null
+          base.state = org?.state ?? null
+          base.short_description = org?.short_description ?? null
+          if ((base.city || base.state) && !base.exact_location) {
+            base.exact_location = [base.city, base.state].filter(Boolean).join(', ')
+          }
+        } catch {}
+      }
+
+      // --- Job postings
+      if (jobsR.status === 'fulfilled') {
+        if (jobsR.value.ok) {
+          try {
+            const jobs = JSON.parse(jobsR.value.body || '{}')
+            base.job_postings = Array.isArray(jobs?.job_postings) ? jobs.job_postings : []
+          } catch { base.job_postings = [] }
         } else {
           base.job_postings = []
           ;(base as any).job_postings_error = {
-            status: jobsResp.status,
-            statusText: jobsResp.statusText,
-            body: jobsRaw.slice(0, 500),
+            status: jobsR.value.status,
+            body: (jobsR.value.body || '').slice(0, 500),
           }
         }
-      } catch (err: any) {
-        base.job_postings = []
-        ;(base as any).job_postings_error = { exception: String(err?.message ?? err) }
       }
 
-      // 2c) Hiring contacts
-      try {
-        const peopleQS = buildQS({
-          'organization_ids[]': [orgId],
-          'person_titles[]': [
-            'Head of Recruitment',
-            'Hiring Manager',
-            'Talent Acquisition',
-            'Talent Acquisition Manager',
-            'Talent Acquisition Lead',
-            'Recruitment Manager',
-            'Recruiting Manager',
-            'Head of Talent',
-            'Head of People',
-            'People & Talent',
-            'Talent Partner',
-            'Senior Talent Partner',
-            'Recruitment Partner',
-          ],
-          include_similar_titles: 'true',
-          per_page: '10',
-        })
-        const peopleUrl = `${APOLLO_PEOPLE_SEARCH_URL}?${peopleQS}`
-        const peopleHeaders = buildHeaders('search')
-        const hpResp = await postWithRetry(peopleUrl)
-        const hpRaw  = await hpResp.text()
-        if (hpResp.ok) {
-          let hp: any = {}
-          try { hp = hpRaw ? JSON.parse(hpRaw) : {} } catch {}
+      // --- Hiring people
+      if (peopleR.status === 'fulfilled' && peopleR.value.ok) {
+        try {
+          const hp = JSON.parse(peopleR.value.body || '{}')
           base.hiring_people =
             Array.isArray(hp?.contacts) ? hp.contacts :
-            Array.isArray(hp?.people)   ? hp.people   :
-            []
-          if (DEBUG) {
-            ;(base as any)._debug = {
-              ...(base as any)._debug,
-              hiring_people: { url: peopleUrl, headers: redactHeaders(peopleHeaders) },
-            }
-          }
-        } else {
-          base.hiring_people = []
-        }
-      } catch {}
+            Array.isArray(hp?.people)   ? hp.people   : []
+        } catch { base.hiring_people = [] }
+      }
 
-      // 2d) News (last 90 days, only latest 2 requested)
-      try {
-        const newsQS = buildQS({
-          'organization_ids[]': [orgId],
-          published_after, // YYYY-MM-DD
-          per_page: '2',
-        })
-        const newsUrl  = `${APOLLO_NEWS_SEARCH_URL}?${newsQS}`
-        const newsHeaders = buildHeaders('search')
-        const newsResp = await postWithRetry(newsUrl)
-        const newsRaw  = await newsResp.text()
-        if (newsResp.ok) {
-          let news: any = {}
-          try { news = newsRaw ? JSON.parse(newsRaw) : {} } catch {}
+      // --- News
+      if (newsR.status === 'fulfilled' && newsR.value.ok) {
+        try {
+          const news = JSON.parse(newsR.value.body || '{}')
           base.news_articles = Array.isArray(news?.news_articles) ? news.news_articles : []
-          if (DEBUG) {
-            ;(base as any)._debug = {
-              ...(base as any)._debug,
-              news: { url: newsUrl, headers: redactHeaders(newsHeaders) },
-            }
-          }
+        } catch { base.news_articles = [] }
+      }
+
+      if (DEBUG) {
+        ;(base as any)._debug = {
+          ...(base as any)._debug,
+          details_url: APOLLO_ORG_GET_URL(orgId),
+          jobs_url: APOLLO_ORG_JOBS_URL(orgId),
+          people_url: peopleUrl,
+          news_url: newsUrl,
         }
-      } catch {}
+      }
 
       return base
     }),
