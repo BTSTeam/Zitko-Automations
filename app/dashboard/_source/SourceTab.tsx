@@ -104,7 +104,7 @@ function useChipInput(initial: string[] = []) {
   return { chips, input, setInput, addChipFromInput, onKeyDown, removeChip, setChips }
 }
 
-function Chip({ children, onRemove }: { children: string; onRemove: () => void }) {
+function Chip({ children, onRemove }: { children: string; onRemove: (e?: React.MouseEvent) => void }) {
   return (
     <span className="shrink-0 inline-flex items-center gap-2 h-7 rounded-full bg-gray-100 px-3 text-sm">
       <span className="truncate">{children}</span>
@@ -166,8 +166,7 @@ function MultiSelect({
     setValues(next)
   }
 
-  function removeChip(opt: string, e?: React.MouseEvent) {
-    e?.stopPropagation()
+  function removeChip(opt: string) {
     setValues(values.filter(v => v !== opt))
   }
 
@@ -186,7 +185,7 @@ function MultiSelect({
             {values.length ? (
               values.map(v => (
                 <span key={v} className="shrink-0">
-                  <Chip onRemove={(e?: any) => removeChip(v, e)}>{v}</Chip>
+                  <Chip onRemove={(e) => { e?.stopPropagation(); removeChip(v) }}>{v}</Chip>
                 </span>
               ))
             ) : (
@@ -206,7 +205,7 @@ function MultiSelect({
                   type="checkbox"
                   checked={values.includes(opt)}
                   onChange={() => toggleOpt(opt)}
-                  className="mr-2 accent-orange-500"   {/* <-- orange checks */}
+                  className="mr-2 accent-orange-500"
                 />
                 {opt}
               </label>
@@ -903,7 +902,7 @@ Kind regards,`
                   </label>
                 
                   <div className={`flex items-center gap-3 ${disabledLook}`} aria-disabled={isInputsDisabled}>
-                    {/* Days input (fixed width; single-line, no wrap) */}
+                    {/* Days input (wider, single line, no early scrollbar) */}
                     <div className="shrink-0 rounded-xl border h-10 px-2 w-36">
                       <div className="flex items-center gap-2 flex-nowrap overflow-hidden">
                         {activeJobsDays.chips.map(v => (
@@ -925,7 +924,7 @@ Kind regards,`
                       </div>
                     </div>
                 
-                    {/* Job Titles input (chip style, fixed height) */}
+                    {/* Job Titles input (unchanged, fixed height, chip-based) */}
                     <div className="flex-1 rounded-xl border h-10 px-2">
                       <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
                         {activeJobTitles.chips.map(v => (
