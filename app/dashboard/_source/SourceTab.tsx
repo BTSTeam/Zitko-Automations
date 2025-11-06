@@ -3,10 +3,10 @@
 import type React from 'react'
 import { useEffect, useRef, useState } from 'react'
 
-/* ============================ Types ============================ */
-
+// Mode indicates which sourcing tab is currently active
 type SourceMode = 'people' | 'companies'
 
+// ---------- Shared Types ----------
 type EmploymentItem = {
   organization_name: string | null
   title: string | null
@@ -21,12 +21,21 @@ type Company = {
   website_url: string | null
   linkedin_url: string | null
   exact_location?: string | null
+  // from GET /organizations/{id}
   city?: string | null
   state?: string | null
   short_description?: string | null
+  // enrichments
   job_postings?: any[]
   hiring_people?: any[]
   news_articles?: any[]
+}
+
+function formatCityState(c: Company) {
+  const city = (c.city || '').trim()
+  const state = (c.state || '').trim()
+  if (city && state) return `${city}, ${state}`
+  return city || state || null
 }
 
 type Person = {
@@ -41,6 +50,7 @@ type Person = {
   employment_history: EmploymentItem[]
 }
 
+// ---------- Company-related Types ----------
 type JobPosting = {
   id: string
   title: string | null
@@ -59,29 +69,169 @@ type NewsArticle = {
   url: string | null
 }
 
-/* ============================ Constants ============================ */
-
+// Seniority options reused from original file
 const SENIORITIES = [
   'Owner','Founder','C_Suite','Partner','VP','Head','Director','Manager','Senior','Entry','Intern',
 ] as const
 
-/* ============================ Small helpers ============================ */
-
+// ---------------- Small helpers ----------------
 const phIfEmpty = (value: string, chips: string[] | undefined, text: string) =>
   (value?.trim() || (chips && chips.length)) ? '' : text
 
-function formatCityState(c: Company) {
-  const city = (c.city || '').trim()
-  const state = (c.state || '').trim()
-  if (city && state) return `${city}, ${state}`
-  return city || state || null
+// ---------------- UI helpers ----------------
+function useChipInput(initial: string[] = []) {
+  const [chips, setChips] = useState<string[]>(initial)
+  const [input, setInput] = useState('')
+
+  function addChipFromInput() {
+    const v = input.trim()
+    if (!v) return
+    if (!chips.includes(v)) setChips(prev => [...prev, v])
+    setInput('')
+  }
+  function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      addChipFromInput()
+    } else if (e.key === 'Backspace' && !input && chips.length) {
+      setChips(prev => prev.slice(0, -1))
+    }
+  }
+  function removeChip(v: string) {
+    setChips(prev => prev.filter(c => c !== v))
+  }
+
+  return { chips, input, setInput, addChipFromInput, onKeyDown, removeChip, setChips }
 }
 
+function Chip({ children, onRemove }: { children: string; onRemove: (e?: React.MouseEvent) => void }) {
+  return (
+    <span className="shrink-0 inline-flex items-center gap-2 h-7 rounded-full bg-gray-100 px-3 text-sm">
+      <span className="truncate">{children}</span>
+      <button
+        type="button"
+        onClick={onRemove}
+        className="rounded-full w-5 h-5 grid place-items-center hover:bg-gray-200"
+        title="Remove"
+      >
+        ×
+      </button>
+    </span>
+  )
+}
+
+function IconLinkedIn() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" className="fill-[#0a66c2]">
+      <path d="M4.98 3.5C4.98 4.88 3.86 6 2.5 6S0 4.88 0 3.5 1.12 1 2.5 1 4.98 2.12 4.98 3.5zM0 8h5v16H0zM8 8h4.8v2.2h.07c.67-1.27 2.32-2.6 4.77-2.6 5.1 0 6.05 3.36 6.05 7.73V24h-5v-7.1c0-1.69-.03-3.86-2.35-3.86-2.35 0-2.71 1.83-2.71 3.74V24H8z" />
+    </svg>
+  )
+}
+function IconFacebook() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" className="fill-[#1877f2]">
+      <path d="M22.675 0H1.325C.593 0 0 .593 0 1.326V22.67c0 .73.593 1.325 1.325 1.325h11.495V14.71H9.692v-3.59h3.128V8.414c0-3.1 1.893-4.788 4.659-4.788 1.325 0 2.463.099 2.795.143v3.24l-1.918.001c-1.504 0-1.796.715-1.796 1.763v2.314h3.59l-.467 3.59h-3.123V24h6.125c.73 0 1.325-.594 1.325-1.325V1.326C24 .593 23.405 0 22.675 0z" />
+    </svg>
+  )
+}
+function IconGlobe({ muted }: { muted?: boolean }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" className={muted ? 'text-gray-300' : 'text-gray-700'}>
+      <path fill="currentColor" d="M12 2a10 10 0 1 0 .001 20.001A10 10 0 0 0 12 2Zm7.93 9h-3.086a15.4 15.4 0 0 0-1.02-5.02A8.01 8.01 0 0 1 19.93 11ZM12 4c.94 1.24 1.66 3.12 1.98 5H10.02C10.34 7.12 11.06 5.24 12 4ZM8.176 6.98A15.4 15.4 0 0 0 7.156 12H4.07a8.01 8.01 0 0 1 4.106-5.02ZM4.07 13h3.086a15.4 15.4 0 0 0 1.02 5.02A8.01 8.01 0 0 1 4.07 13ZM12 20c-.94-1.24-1.66-3.12-1.98-5h3.96C13.66 16.88 12.94 18.76 12 20Zm3.824-1.98A15.4 15.4 0 0 0 16.844 13h3.086a8.01 8.01 0 0 1-4.106 5.02ZM16.844 12a13.5 13.5 0 0 1-1.047-4H8.203a13.5 13.5 0 0 1-1.047 4h9.688Z"/>
+    </svg>
+  )
+}
+
+// Simple multi-select component used for seniorities
+function MultiSelect({
+  label, options, values, setValues, placeholder = 'Select…',
+}: {
+  label: string; options: string[]; values: string[]; setValues: (v: string[]) => void; placeholder?: string
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      if (open && ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('click', onClick)
+    return () => document.removeEventListener('click', onClick)
+  }, [open])
+
+  function toggleOpt(opt: string) {
+    const next = values.includes(opt)
+      ? values.filter(o => o !== opt)
+      : [...values, opt]
+    setValues(next)
+  }
+
+  function removeChip(opt: string) {
+    setValues(values.filter(v => v !== opt))
+  }
+
+  return (
+    <div>
+      <label className="block text-sm text-gray-600 mb-1">{label}</label>
+      {/* Fixed height like other inputs */}
+      <div ref={ref} className="relative rounded-xl border h-10 px-3">
+        <button
+          type="button"
+          className="w-full h-full text-left flex items-center justify-between"
+          onClick={() => setOpen(o => !o)}
+          title={values.length ? `${values.length} selected` : undefined}
+        >
+          <div className="flex items-center gap-2 flex-nowrap overflow-x-auto mr-2">
+            {values.length ? (
+              values.map(v => (
+                <span key={v} className="shrink-0">
+                  <Chip onRemove={(e) => { e?.stopPropagation(); removeChip(v) }}>{v}</Chip>
+                </span>
+              ))
+            ) : (
+              <span className="text-sm text-gray-400">{placeholder}</span>
+            )}
+          </div>
+          <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" className={open ? 'rotate-180 transition-transform' : 'transition-transform'}>
+            <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z" />
+          </svg>
+        </button>
+
+        {open && (
+          <div className="absolute z-10 mt-1 w-full bg-white border rounded-xl shadow-sm max-h-60 overflow-y-auto text-sm">
+           {options.map(opt => (
+            <label
+              key={opt}
+              className="flex items-center px-3 py-2 hover:bg-gray-50 cursor-pointer gap-2 text-sm"
+            >
+              <input
+                type="checkbox"
+                checked={values.includes(opt)}
+                onChange={() => toggleOpt(opt)}
+                className="appearance-none h-4 w-4 rounded border border-gray-300 grid place-content-center
+                           checked:bg-orange-500
+                           before:content-[''] before:hidden checked:before:block
+                           before:w-2.5 before:h-2.5
+                           before:[clip-path:polygon(14%_44%,0_59%,39%_100%,100%_18%,84%_4%,39%_72%)]
+                           before:bg-white"
+              />
+              <span>{opt}</span>
+            </label>
+          ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// Helper to build static note text for LinkedIn copy
 function makeStaticNote(firstName?: string | null) {
   const first = (firstName || '').trim() || 'there'
   return `Hi ${first}, it's always nice to meet others passionate about the industry. Would be great to connect.`
 }
 
+// Map raw Apollo contact/person → Person
 function transformToPerson(p: any): Person {
   const first = (p?.first_name ?? '').toString().trim()
   const last = (p?.last_name ?? '').toString().trim()
@@ -143,180 +293,35 @@ function formatMonthYear(date: string | null): string {
   }
 }
 
-/* ============================ UI bits ============================ */
-
-function useChipInput(initial: string[] = []) {
-  const [chips, setChips] = useState<string[]>(initial)
-  const [input, setInput] = useState('')
-
-  function addChipFromInput() {
-    const v = input.trim()
-    if (!v) return
-    if (!chips.includes(v)) setChips(prev => [...prev, v])
-    setInput('')
-  }
-  function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === 'Enter') {
-      e.preventDefault()
-      addChipFromInput()
-    } else if (e.key === 'Backspace' && !input && chips.length) {
-      setChips(prev => prev.slice(0, -1))
-    }
-  }
-  function removeChip(v: string) {
-    setChips(prev => prev.filter(c => c !== v))
-  }
-
-  return { chips, input, setInput, addChipFromInput, onKeyDown, removeChip, setChips }
-}
-
-function Chip({ children, onRemove }: { children: string; onRemove: (e?: React.MouseEvent) => void }) {
-  return (
-    <span className="shrink-0 inline-flex items-center gap-2 h-7 rounded-full bg-gray-100 px-3 text-sm">
-      <span className="truncate">{children}</span>
-      <button
-        type="button"
-        onClick={onRemove}
-        className="rounded-full w-5 h-5 grid place-items-center hover:bg-gray-200"
-        title="Remove"
-      >
-        ×
-      </button>
-    </span>
-  )
-}
-
+// Tiny checkbox used for Manufacturer / Installer / End User
 function TinyCheck({
   label, checked, onChange,
-}: {
-  label: string
-  checked: boolean
-  onChange: (v: boolean) => void
-}) {
+}: { label: string; checked: boolean; onChange: (val: boolean) => void }) {
   return (
-    <label className="inline-flex items-center gap-2 text-sm">
+    <label className="inline-flex items-center gap-2 text-sm cursor-pointer select-none">
       <input
         type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
         className="appearance-none h-4 w-4 rounded border border-gray-300 grid place-content-center
                    checked:bg-orange-500
                    before:content-[''] before:hidden checked:before:block
                    before:w-2.5 before:h-2.5
                    before:[clip-path:polygon(14%_44%,0_59%,39%_100%,100%_18%,84%_4%,39%_72%)]
                    before:bg-white"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
       />
-      <span>{label}</span>
+      {label}
     </label>
   )
 }
 
-function IconLinkedIn() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" className="fill-[#0a66c2]">
-      <path d="M4.98 3.5C4.98 4.88 3.86 6 2.5 6S0 4.88 0 3.5 1.12 1 2.5 1 4.98 2.12 4.98 3.5zM0 8h5v16H0zM8 8h4.8v2.2h.07c.67-1.27 2.32-2.6 4.77-2.6 5.1 0 6.05 3.36 6.05 7.73V24h-5v-7.1c0-1.69-.03-3.86-2.35-3.86-2.35 0-2.71 1.83-2.71 3.74V24H8z" />
-    </svg>
-  )
-}
-function IconFacebook() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" className="fill-[#1877f2]">
-      <path d="M22.675 0H1.325C.593 0 0 .593 0 1.326V22.67c0 .73.593 1.325 1.325 1.325h11.495V14.71H9.692v-3.59h3.128V8.414c0-3.1 1.893-4.788 4.659-4.788 1.325 0 2.463.099 2.795.143v3.24l-1.918.001c-1.504 0-1.796.715-1.796 1.763v2.314h3.59l-.467 3.59h-3.123V24h6.125c.73 0 1.325-.594 1.325-1.325V1.326C24 .593 23.405 0 22.675 0z" />
-    </svg>
-  )
-}
-function IconGlobe({ muted }: { muted?: boolean }) {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" className={muted ? 'text-gray-300' : 'text-gray-700'}>
-      <path fill="currentColor" d="M12 2a10 10 0 1 0 .001 20.001A10 10 0 0 0 12 2Zm7.93 9h-3.086a15.4 15.4 0 0 0-1.02-5.02A8.01 8.01 0 0 1 19.93 11ZM12 4c.94 1.24 1.66 3.12 1.98 5H10.02C10.34 7.12 11.06 5.24 12 4ZM8.176 6.98A15.4 15.4 0 0 0 7.156 12H4.07a8.01 8.01 0 0 1 4.106-5.02ZM4.07 13h3.086a15.4 15.4 0 0 0 1.02 5.02A8.01 8.01 0 0 1 4.07 13ZM12 20c-.94-1.24-1.66-3.12-1.98-5h3.96C13.66 16.88 12.94 18.76 12 20Zm3.824-1.98A15.4 15.4 0 0 0 16.844 13h3.086a8.01 8.01 0 0 1-4.106 5.02ZM16.844 12a13.5 13.5 0 0 1-1.047-4H8.203a13.5 13.5 0 0 1-1.047 4h9.688Z"/>
-    </svg>
-  )
-}
-
-function MultiSelect({
-  label, options, values, setValues, placeholder = 'Select…',
-}: {
-  label: string; options: string[]; values: string[]; setValues: (v: string[]) => void; placeholder?: string
-}) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement | null>(null)
-
-  useEffect(() => {
-    const onClick = (e: MouseEvent) => {
-      if (open && ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('click', onClick)
-    return () => document.removeEventListener('click', onClick)
-  }, [open])
-
-  function toggleOpt(opt: string) {
-    const next = values.includes(opt) ? values.filter(o => o !== opt) : [...values, opt]
-    setValues(next)
-  }
-
-  function removeChip(opt: string) {
-    setValues(values.filter(v => v !== opt))
-  }
-
-  return (
-    <div>
-      <label className="block text-sm text-gray-600 mb-1">{label}</label>
-      <div ref={ref} className="relative rounded-xl border h-10 px-3">
-        <button
-          type="button"
-          className="w-full h-full text-left flex items-center justify-between"
-          onClick={() => setOpen(o => !o)}
-          title={values.length ? `${values.length} selected` : undefined}
-        >
-          <div className="flex items-center gap-2 flex-nowrap overflow-x-auto mr-2">
-            {values.length ? (
-              values.map(v => (
-                <span key={v} className="shrink-0">
-                  <Chip onRemove={(e) => { e?.stopPropagation(); removeChip(v) }}>{v}</Chip>
-                </span>
-              ))
-            ) : (
-              <span className="text-sm text-gray-400">{placeholder}</span>
-            )}
-          </div>
-          <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" className={open ? 'rotate-180 transition-transform' : 'transition-transform'}>
-            <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z" />
-          </svg>
-        </button>
-
-        {open && (
-          <div className="absolute z-10 mt-1 w-full bg-white border rounded-xl shadow-sm max-h-60 overflow-y-auto text-sm">
-            {options.map(opt => (
-              <label key={opt} className="flex items-center px-3 py-2 hover:bg-gray-50 cursor-pointer gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={values.includes(opt)}
-                  onChange={() => toggleOpt(opt)}
-                  className="appearance-none h-4 w-4 rounded border border-gray-300 grid place-content-center
-                             checked:bg-orange-500
-                             before:content-[''] before:hidden checked:before:block
-                             before:w-2.5 before:h-2.5
-                             before:[clip-path:polygon(14%_44%,0_59%,39%_100%,100%_18%,84%_4%,39%_72%)]
-                             before:bg-white"
-                />
-                <span>{opt}</span>
-              </label>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-/* ============================ Main ============================ */
-
+// ---------------- Main Component ----------------
 export default function SourceTab({ mode }: { mode: SourceMode }) {
   const isDown =
     (process.env.NEXT_PUBLIC_SOURCING_DOWN || '').toLowerCase() === '1' ||
     (process.env.NEXT_PUBLIC_SOURCING_DOWN || '').toLowerCase() === 'true'
 
-  /* -------- People state -------- */
+  // ------ People search state ------
   const personTitles = useChipInput([])
   const personLocations = useChipInput([])
   const personKeywords = useChipInput([])
@@ -368,7 +373,11 @@ Kind regards,`
     })
   }
 
-  const onLinkedInClick = async (e: React.MouseEvent, url?: string, id?: string) => {
+  const onLinkedInClick = async (
+    e: React.MouseEvent,
+    url?: string,
+    id?: string
+  ) => {
     if (!url) return
     e.preventDefault()
     const note = id ? notesById[id] : ''
@@ -432,33 +441,58 @@ Kind regards,`
     }
   }
 
-  /* -------- Company state -------- */
+  // ------ Company search state ------
   const companyLocations = useChipInput([])
   const companyKeywords  = useChipInput([])
-
-  // NEW: Manufacturer / Installer / End User (default ON)
-  const [industryTags, setIndustryTags] = useState<Record<'Manufacturer' | 'Installer' | 'End User', boolean>>({
-    Manufacturer: true,
-    Installer: true,
-    'End User': true,
-  })
-
-  // Active jobs UI remains; you can hide if not needed
   const [activeJobsOnly, setActiveJobsOnly] = useState(false)
+
+  // NEW: chips for Days + Job Titles (always rendered)
   const activeJobsDays = useChipInput([])
   const activeJobTitles = useChipInput([])
+
+  // Numeric employee range
   const employeesMin = useChipInput([])
   const employeesMax = useChipInput([])
+
+  // NEW: default industry tags (pre-ticked)
+  const [industryTags, setIndustryTags] = useState<Record<string, boolean>>({
+    'Manufacturer': true,
+    'Installer': true,
+    'End User': true,
+  })
 
   const [companyLoading, setCompanyLoading] = useState(false)
   const [companyError, setCompanyError] = useState<string | null>(null)
   const [companies, setCompanies] = useState<Company[]>([])
   const [companySearchOpen, setCompanySearchOpen] = useState(true)
+  const [expandedJobs, setExpandedJobs] = useState<Set<string>>(new Set())
+  const [expandedHiring, setExpandedHiring] = useState<Set<string>>(new Set())
+  const [expandedNews, setExpandedNews] = useState<Set<string>>(new Set())
 
-  // parked
-  const [expandedJobs] = useState<Set<string>>(new Set())
-  const [expandedHiring] = useState<Set<string>>(new Set())
-  const [expandedNews] = useState<Set<string>>(new Set())
+  function toggleJobPostings(id: string) {
+    setExpandedJobs(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+  function toggleHiringPeople(id: string) {
+    setExpandedHiring(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+  function toggleNewsArticles(id: string) {
+    setExpandedNews(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
   async function runCompanySearch(e?: React.FormEvent) {
     e?.preventDefault()
@@ -466,28 +500,40 @@ Kind regards,`
     setCompanyLoading(true)
     setCompanyError(null)
     setCompanies([])
-
+    setExpandedJobs(new Set())
+    setExpandedHiring(new Set())
+    setExpandedNews(new Set())
     try {
       const daysChip = activeJobsDays.chips.length ? activeJobsDays.chips[activeJobsDays.chips.length - 1] : null
       const daysNum = daysChip && /^\d+$/.test(daysChip) ? Number(daysChip) : null
 
-      // merge keyword chips + auto industry tags when checked
-      const autoTags = (['Manufacturer', 'Installer', 'End User'] as const).filter(t => industryTags[t])
-      const mergedKeywords = [...companyKeywords.chips, ...autoTags].filter(Boolean)
+      // collect selected default tags and merge with user chips (dedupe)
+      const selectedSeedTags = Object.entries(industryTags)
+        .filter(([, v]) => v)
+        .map(([k]) => k)
 
-      const payload: any = {
+      const mergedKeywords = Array.from(new Set([
+        ...companyKeywords.chips,
+        ...selectedSeedTags,
+      ])).filter(Boolean)
+
+      const payload = {
         locations: companyLocations.chips,
-        keywords: mergedKeywords,
+        keywords: mergedKeywords, // IMPORTANT: includes Manufacturer/Installer/End User if ticked
         employeesMin: employeesMin.chips.length ? Number(employeesMin.chips[0]) : null,
         employeesMax: employeesMax.chips.length ? Number(employeesMax.chips[0]) : null,
+
+        activeJobsOnly,
+        activeJobsDays: activeJobsOnly ? daysNum : null,
+        ...(activeJobsOnly && activeJobTitles.chips.length
+          ? { q_organization_job_titles: activeJobTitles.chips }
+          : {}),
+
+        // optional explicit seed list (route merges/dedupes safely if used)
+        seedIndustryTags: selectedSeedTags,
+
         page: 1,
         per_page: 25,
-      }
-
-      if (activeJobsOnly) {
-        payload.activeJobsOnly = true
-        payload.activeJobsDays = daysNum
-        if (activeJobTitles.chips.length) payload.q_organization_job_titles = activeJobTitles.chips
       }
 
       const res = await fetch('/api/apollo/company-search', {
@@ -497,8 +543,8 @@ Kind regards,`
       })
       const json: any = await res.json()
       if (!res.ok) throw new Error(json?.error || `Search failed (${res.status})`)
-
       const arr: any[] = Array.isArray(json.companies) ? json.companies : []
+
       const mapped: Company[] = arr.map((c: any) => {
         const job_postings: JobPosting[] = Array.isArray(c?.job_postings)
           ? c.job_postings.map((jp: any) => ({
@@ -511,21 +557,18 @@ Kind regards,`
               posted_at: jp?.posted_at ?? null,
             }))
           : []
-
         const hiring_people: HiringPerson[] = Array.isArray(c?.hiring_people)
           ? c.hiring_people.map((p: any) => transformToPerson(p))
           : []
-
         const news_articles: NewsArticle[] = Array.isArray(c?.news_articles)
-          ? c.news_articles.map((a: any) => ({
-              id: (a?.id ?? a?.article_id ?? '').toString(),
-              title: a?.title ?? null,
-              description: a?.description ?? a?.summary ?? null,
-              published_at: a?.published_at ?? a?.published_date ?? null,
-              url: a?.url ?? a?.article_url ?? null,
-            }))
-          : []
-
+        ? c.news_articles.map((a: any) => ({
+            id: (a?.id ?? a?.article_id ?? '').toString(),
+            title: a?.title ?? null,
+            description: a?.description ?? a?.summary ?? null,
+            published_at: a?.published_at ?? a?.published_date ?? null,
+            url: a?.url ?? a?.article_url ?? null,
+          }))
+        : []
         return {
           id: (c?.id ?? c?.organization_id ?? '').toString(),
           name: c?.name ?? c?.company_name ?? null,
@@ -540,7 +583,6 @@ Kind regards,`
           news_articles,
         }
       })
-
       setCompanies(mapped)
     } catch (err: any) {
       setCompanyError(err?.message || 'Unexpected error')
@@ -561,8 +603,6 @@ Kind regards,`
     return () => window.removeEventListener('keydown', onKey)
   }, [mode]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* ============================ Renderers ============================ */
-
   const renderPeople = () => {
     return (
       <div className="space-y-4">
@@ -575,11 +615,13 @@ Kind regards,`
             aria-expanded={peopleSearchOpen}
           >
             <h3 className="font-semibold">Candidate | Contact Search</h3>
-            <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" className={peopleSearchOpen ? 'rotate-180 transition-transform' : 'transition-transform'}>
+            <svg
+              width="16" height="16" viewBox="0 0 20 20" fill="currentColor"
+              className={peopleSearchOpen ? 'rotate-180 transition-transform' : 'transition-transform'}
+            >
               <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z" />
             </svg>
           </button>
-
           {peopleSearchOpen && (
             <form onSubmit={runPeopleSearch} className="p-4 pt-0">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -587,7 +629,9 @@ Kind regards,`
                   <label className="block text-sm text-gray-600 mb-1">Job Titles</label>
                   <div className="rounded-xl border h-10 px-2">
                     <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
-                      {personTitles.chips.map(v => (<Chip key={v} onRemove={() => personTitles.removeChip(v)}>{v}</Chip>))}
+                      {personTitles.chips.map(v => (
+                        <Chip key={v} onRemove={() => personTitles.removeChip(v)}>{v}</Chip>
+                      ))}
                       <input
                         className="flex-1 min-w-0 outline-none text-sm h-8 px-2"
                         placeholder={phIfEmpty(personTitles.input, personTitles.chips, 'e.g. Field Service Technician')}
@@ -599,12 +643,13 @@ Kind regards,`
                     </div>
                   </div>
                 </div>
-
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">Locations</label>
                   <div className="rounded-xl border h-10 px-2">
                     <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
-                      {personLocations.chips.map(v => (<Chip key={v} onRemove={() => personLocations.removeChip(v)}>{v}</Chip>))}
+                      {personLocations.chips.map(v => (
+                        <Chip key={v} onRemove={() => personLocations.removeChip(v)}>{v}</Chip>
+                      ))}
                       <input
                         className="flex-1 min-w-0 outline-none text-sm h-8 px-2"
                         placeholder={phIfEmpty(personLocations.input, personLocations.chips, 'e.g. California, United States')}
@@ -616,12 +661,13 @@ Kind regards,`
                     </div>
                   </div>
                 </div>
-
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">Keywords</label>
                   <div className="rounded-xl border h-10 px-2">
                     <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
-                      {personKeywords.chips.map(v => (<Chip key={v} onRemove={() => personKeywords.removeChip(v)}>{v}</Chip>))}
+                      {personKeywords.chips.map(v => (
+                        <Chip key={v} onRemove={() => personKeywords.removeChip(v)}>{v}</Chip>
+                      ))}
                       <input
                         className="flex-1 min-w-0 outline-none text-sm h-8 px-2"
                         placeholder={phIfEmpty(personKeywords.input, personKeywords.chips, 'e.g. Fire, Security, CCTV')}
@@ -633,7 +679,6 @@ Kind regards,`
                     </div>
                   </div>
                 </div>
-
                 <MultiSelect
                   label="Seniorities"
                   options={SENIORITIES as unknown as string[]}
@@ -642,7 +687,6 @@ Kind regards,`
                   placeholder="Choose one or more seniorities"
                 />
               </div>
-
               <div className="mt-4 flex items-center justify-between">
                 <span className="text-xs text-gray-500">
                   Please press <kbd className="px-1 border rounded">Enter</kbd> to submit your search criteria for each field.
@@ -655,7 +699,6 @@ Kind regards,`
                   {peopleLoading ? 'Searching…' : 'Search'}
                 </button>
               </div>
-
               <div className="mt-3 flex justify-end">
                 <div className="text-right text-xs text-gray-500">
                   If you would like to request a more advanced search, please click{' '}
@@ -702,7 +745,11 @@ Kind regards,`
                           href={hasLI ? p.linkedin_url! : undefined}
                           onClick={hasLI ? (ev) => onLinkedInClick(ev, p.linkedin_url!, p.id) : undefined}
                           className={hasLI ? '' : 'opacity-30 pointer-events-none cursor-default'}
-                          title={hasLI ? (copiedId === p.id ? 'Note copied!' : 'Open LinkedIn (note copies first)') : 'LinkedIn not available'}
+                          title={
+                            hasLI
+                              ? (copiedId === p.id ? 'Note copied!' : 'Open LinkedIn (note copies first)')
+                              : 'LinkedIn not available'
+                          }
                         >
                           <IconLinkedIn />
                         </a>
@@ -726,7 +773,6 @@ Kind regards,`
                         </a>
                       </div>
                     </div>
-
                     <div className="mt-1 flex items-center justify-between gap-4">
                       <div className="min-w-0">
                         <div className="text-sm">{p.title || '—'}</div>
@@ -746,7 +792,6 @@ Kind regards,`
                         </svg>
                       </button>
                     </div>
-
                     {peopleExpanded.has(p.id) && (
                       <div className="mt-3 rounded-xl border bg-gray-50">
                         <div className="px-3 py-2 border-b grid grid-cols-1 md:grid-cols-4 md:gap-3 text-xs text-gray-500">
@@ -785,8 +830,9 @@ Kind regards,`
         </div>
       </div>
     )
-  }
+  };
 
+  // ---------------- Company search + results UI ----------------
   const renderCompanies = () => {
     const disabledLook = (!activeJobsOnly || isDown) ? 'opacity-50' : ''
     const isInputsDisabled = !activeJobsOnly || isDown
@@ -802,7 +848,10 @@ Kind regards,`
             aria-expanded={companySearchOpen}
           >
             <h3 className="font-semibold">Company | Organization Search</h3>
-            <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" className={companySearchOpen ? 'rotate-180 transition-transform' : 'transition-transform'}>
+            <svg
+              width="16" height="16" viewBox="0 0 20 20" fill="currentColor"
+              className={companySearchOpen ? 'rotate-180 transition-transform' : 'transition-transform'}
+            >
               <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z" />
             </svg>
           </button>
@@ -815,7 +864,9 @@ Kind regards,`
                   <label className="block text-sm text-gray-600 mb-1">Locations</label>
                   <div className="rounded-xl border h-10 px-2">
                     <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
-                      {companyLocations.chips.map(v => (<Chip key={v} onRemove={() => companyLocations.removeChip(v)}>{v}</Chip>))}
+                      {companyLocations.chips.map(v => (
+                        <Chip key={v} onRemove={() => companyLocations.removeChip(v)}>{v}</Chip>
+                      ))}
                       <input
                         className="flex-1 min-w-0 outline-none text-sm h-8 px-2"
                         placeholder={phIfEmpty(companyLocations.input, companyLocations.chips, 'e.g. London, United Kingdom')}
@@ -832,7 +883,9 @@ Kind regards,`
                   <label className="block text-sm text-gray-600 mb-1">Keywords</label>
                   <div className="rounded-xl border h-10 px-2">
                     <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
-                      {companyKeywords.chips.map(v => (<Chip key={v} onRemove={() => companyKeywords.removeChip(v)}>{v}</Chip>))}
+                      {companyKeywords.chips.map(v => (
+                        <Chip key={v} onRemove={() => companyKeywords.removeChip(v)}>{v}</Chip>
+                      ))}
                       <input
                         className="flex-1 min-w-0 outline-none text-sm h-8 px-2"
                         placeholder={phIfEmpty(companyKeywords.input, companyKeywords.chips, 'e.g. Fire, Security, CCTV')}
@@ -848,14 +901,18 @@ Kind regards,`
 
               {/* Row 2: Employees | Active Job Listings */}
               <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Employees */}
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">
                     Employees <span className="text-xs text-gray-400">(from &amp; to)</span>
                   </label>
                   <div className="flex items-center gap-2">
+                    {/* Employees Min */}
                     <div className="rounded-xl border h-10 px-2 flex-1 basis-0 min-w-0">
                       <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
-                        {employeesMin.chips?.map((v: string) => (<Chip key={v} onRemove={() => employeesMin.removeChip(v)}>{v}</Chip>))}
+                        {employeesMin.chips?.map((v: string) => (
+                          <Chip key={v} onRemove={() => employeesMin.removeChip(v)}>{v}</Chip>
+                        ))}
                         <input
                           className="min-w-[5rem] grow outline-none text-sm h-8 px-2"
                           placeholder={phIfEmpty(employeesMin.input, employeesMin.chips, 'From (e.g. 50)')}
@@ -868,12 +925,15 @@ Kind regards,`
                         />
                       </div>
                     </div>
-
+                
                     <span className="text-gray-400 text-sm">to</span>
-
+                
+                    {/* Employees Max */}
                     <div className="rounded-xl border h-10 px-2 flex-1 basis-0 min-w-0">
                       <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
-                        {employeesMax.chips?.map((v: string) => (<Chip key={v} onRemove={() => employeesMax.removeChip(v)}>{v}</Chip>))}
+                        {employeesMax.chips?.map((v: string) => (
+                          <Chip key={v} onRemove={() => employeesMax.removeChip(v)}>{v}</Chip>
+                        ))}
                         <input
                           className="min-w-[5rem] grow outline-none text-sm h-8 px-2"
                           placeholder={phIfEmpty(employeesMax.input, employeesMax.chips, 'To (e.g. 250)')}
@@ -889,8 +949,10 @@ Kind regards,`
                   </div>
                 </div>
 
+                {/* Active Job Listings (section heading with tick, aligned inputs) */}
                 <div>
                   <label className="block text-sm text-gray-600 mb-1 flex items-center gap-2">
+                    {/* custom white-tick checkbox */}
                     <input
                       id="activeJobsOnly"
                       type="checkbox"
@@ -906,11 +968,14 @@ Kind regards,`
                     />
                     Active Job Listings
                   </label>
-
-                  <div className={`flex items-center gap-3 ${(!activeJobsOnly || isDown) ? 'opacity-50' : ''}`} aria-disabled={!activeJobsOnly || isDown}>
+                
+                  <div className={`flex items-center gap-3 ${disabledLook}`} aria-disabled={isInputsDisabled}>
+                    {/* Days input (wider, single line, no early scrollbar) */}
                     <div className="shrink-0 rounded-xl border h-10 px-2 w-36">
                       <div className="flex items-center gap-2 flex-nowrap overflow-hidden">
-                        {activeJobsDays.chips.map(v => (<Chip key={v} onRemove={() => activeJobsDays.removeChip(v)}>{v}</Chip>))}
+                        {activeJobsDays.chips.map(v => (
+                          <Chip key={v} onRemove={() => activeJobsDays.removeChip(v)}>{v}</Chip>
+                        ))}
                         <input
                           className="min-w-[8rem] grow outline-none text-sm h-8 px-2"
                           placeholder={phIfEmpty(activeJobsDays.input, activeJobsDays.chips, 'Days (e.g. 30)')}
@@ -922,21 +987,24 @@ Kind regards,`
                             activeJobsDays.setInput(digits)
                           }}
                           onKeyDown={(e) => activeJobsDays.onKeyDown(e)}
-                          disabled={!activeJobsOnly || isDown}
+                          disabled={isInputsDisabled}
                         />
                       </div>
                     </div>
-
+                
+                    {/* Job Titles input */}
                     <div className="flex-1 basis-0 min-w-0 rounded-xl border h-10 px-2">
                       <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
-                        {activeJobTitles.chips.map(v => (<Chip key={v} onRemove={() => activeJobTitles.removeChip(v)}>{v}</Chip>))}
+                        {activeJobTitles.chips.map(v => (
+                          <Chip key={v} onRemove={() => activeJobTitles.removeChip(v)}>{v}</Chip>
+                        ))}
                         <input
                           className="flex-1 min-w-0 outline-none text-sm h-8 px-2"
                           placeholder={phIfEmpty(activeJobTitles.input, activeJobTitles.chips, 'Job Titles (e.g. Engineer, Manager)')}
                           value={activeJobTitles.input}
                           onChange={e => activeJobTitles.setInput(e.target.value)}
                           onKeyDown={activeJobTitles.onKeyDown}
-                          disabled={!activeJobsOnly || isDown}
+                          disabled={isInputsDisabled}
                         />
                       </div>
                     </div>
@@ -944,22 +1012,21 @@ Kind regards,`
                 </div>
               </div>
 
-              {/* Row 3: Options inline with Search */}
-              <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
-                <span className="text-xs text-gray-500">
-                  Press <kbd className="px-1 border rounded">Enter</kbd> to submit each chip.
-                </span>
-
-                <div className="flex items-center gap-8">
+              {/* Row 3: Default industry tags (pre-selected) */}
+              <div className="mt-4">
+                <label className="block text-sm text-gray-600 mb-2">
+                  Include company type (pre-selected)
+                </label>
+                <div className="flex flex-wrap items-center gap-6">
                   <TinyCheck
                     label="Manufacturer"
                     checked={industryTags['Manufacturer']}
-                    onChange={(val) => setIndustryTags(prev => ({ ...prev, Manufacturer: val }))}
+                    onChange={(val) => setIndustryTags(prev => ({ ...prev, 'Manufacturer': val }))}
                   />
                   <TinyCheck
                     label="Installer"
                     checked={industryTags['Installer']}
-                    onChange={(val) => setIndustryTags(prev => ({ ...prev, Installer: val }))}
+                    onChange={(val) => setIndustryTags(prev => ({ ...prev, 'Installer': val }))}
                   />
                   <TinyCheck
                     label="End User"
@@ -967,7 +1034,16 @@ Kind regards,`
                     onChange={(val) => setIndustryTags(prev => ({ ...prev, 'End User': val }))}
                   />
                 </div>
+                <p className="mt-1 text-xs text-gray-500">
+                  These are added as <em>Keywords</em> in the Apollo search to bias away from staffing agencies. Untick to remove.
+                </p>
+              </div>
 
+              {/* Tips + Search button */}
+              <div className="mt-4 flex items-center justify-between">
+                <span className="text-xs text-gray-500">
+                  Please press <kbd className="px-1 border rounded">Enter</kbd> to submit each chip.
+                </span>
                 <button
                   type="submit"
                   className="rounded-full bg-orange-500 text-white px-5 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50"
@@ -977,7 +1053,9 @@ Kind regards,`
                 </button>
               </div>
 
-              {companyError && (<div className="mt-3 text-sm text-red-600">{companyError}</div>)}
+              {companyError && (
+                <div className="mt-3 text-sm text-red-600">{companyError}</div>
+              )}
             </form>
           )}
         </div>
@@ -994,7 +1072,9 @@ Kind regards,`
                       {formatCityState(c) ? (
                         <>
                           <span className="text-gray-300">|</span>
-                          <span className="text-xs text-gray-600 truncate">{formatCityState(c)}</span>
+                          <span className="text-xs text-gray-600 truncate">
+                            {formatCityState(c)}
+                          </span>
                         </>
                       ) : null}
                     </div>
@@ -1020,6 +1100,143 @@ Kind regards,`
                       </a>
                     </div>
                   </div>
+
+                  <div className="mt-2 flex items-start justify-between">
+                    <div />
+                    <div className="shrink-0 flex items-center gap-6 text-sm">
+                      <button
+                        type="button"
+                        onClick={() => toggleJobPostings(c.id)}
+                        className="text-gray-700 hover:text-gray-900 inline-flex items-center gap-1"
+                      >
+                        Job postings
+                        <svg width="12" height="12" viewBox="0 0 20 20" className={expandedJobs.has(c.id) ? 'rotate-180 transition-transform' : 'transition-transform'}>
+                          <path fill="currentColor" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z"/>
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => toggleHiringPeople(c.id)}
+                        className="text-gray-700 hover:text-gray-900 inline-flex items-center gap-1"
+                      >
+                        Hiring contacts
+                        <svg width="12" height="12" viewBox="0 0 20 20" className={expandedHiring.has(c.id) ? 'rotate-180 transition-transform' : 'transition-transform'}>
+                          <path fill="currentColor" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z"/>
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => toggleNewsArticles(c.id)}
+                        className="text-gray-700 hover:text-gray-900 inline-flex items-center gap-1"
+                      >
+                        News articles
+                        <svg width="12" height="12" viewBox="0 0 20 20" className={expandedNews.has(c.id) ? 'rotate-180 transition-transform' : 'transition-transform'}>
+                          <path fill="currentColor" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+
+                  {expandedJobs.has(c.id) && (
+                    <div className="mt-3 rounded-xl border bg-gray-50 overflow-hidden">
+                      <div className="px-3 py-2 border-b text-xs text-gray-500 grid grid-cols-12">
+                        <div className="col-span-6">Title</div>
+                        <div className="col-span-4">Location</div>
+                        <div className="col-span-2 text-right">Type</div>
+                      </div>
+                      <div className="max-h-60 overflow-auto">
+                        <ul className="text-sm">
+                          {c.job_postings?.length
+                            ? [...c.job_postings]
+                                .sort((a: any, b: any) => {
+                                  const da = a?.posted_at ? new Date(a.posted_at).getTime() : 0
+                                  const db = b?.posted_at ? new Date(b.posted_at).getTime() : 0
+                                  return db - da
+                                })
+                                .map((j: any) => (
+                                  <li key={j.id} className="px-3 py-2 border-t first:border-t-0 grid grid-cols-12">
+                                    <div className="col-span-6 truncate">
+                                      {j.url ? (
+                                        <a
+                                          className="text-orange-600 hover:underline"
+                                          href={j.url}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                        >
+                                          {j.title || 'Untitled job'}
+                                        </a>
+                                      ) : (
+                                        j.title || 'Untitled job'
+                                      )}
+                                      {j.posted_at && (
+                                        <span className="ml-2 text-gray-400">
+                                          {new Date(j.posted_at).toLocaleDateString()}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="col-span-4 truncate">{j.location || '—'}</div>
+                                    <div className="col-span-2 text-right">{j.employment_type || '—'}</div>
+                                  </li>
+                                ))
+                            : (
+                              <li className="px-3 py-2 text-xs text-gray-500">No job postings.</li>
+                            )}
+                        </ul>
+                      </div>
+                    </div>
+                  )}
+
+                  {expandedHiring.has(c.id) && (
+                    <div className="mt-3 rounded-xl border bg-gray-50 overflow-hidden">
+                      <div className="px-3 py-2 border-b text-xs text-gray-500 grid grid-cols-12">
+                        <div className="col-span-5">Name</div>
+                        <div className="col-span-5">Title</div>
+                        <div className="col-span-2 text-right">LinkedIn</div>
+                      </div>
+                      <ul className="text-sm">
+                        {c.hiring_people?.length ? c.hiring_people.map((p: any) => (
+                          <li key={p.id} className="px-3 py-2 border-t first:border-t-0 grid grid-cols-12">
+                            <div className="col-span-5 truncate">{p.name || '—'}</div>
+                            <div className="col-span-5 truncate">{p.title || '—'}</div>
+                            <div className="col-span-2 text-right">
+                              {p.linkedin_url
+                                ? <a className="text-orange-600 hover:underline" href={p.linkedin_url} target="_blank" rel="noreferrer">view</a>
+                                : '—'}
+                            </div>
+                          </li>
+                        )) : (
+                          <li className="px-3 py-2 text-xs text-gray-500">No hiring contacts.</li>
+                        )}
+                      </ul>
+                    </div>
+                  )}
+
+                  {expandedNews.has(c.id) && (
+                    <div className="mt-3 rounded-xl border bg-gray-50 overflow-hidden">
+                      <div className="px-3 py-2 border-b text-xs text-gray-500 grid grid-cols-12">
+                        <div className="col-span-8">Title</div>
+                        <div className="col-span-2">Published</div>
+                        <div className="col-span-2 text-right">Link</div>
+                      </div>
+                      <ul className="text-sm">
+                        {c.news_articles?.length ? c.news_articles.map((n: any) => (
+                          <li key={n.id} className="px-3 py-2 border-t first:border-t-0 grid grid-cols-12">
+                            <div className="col-span-8 truncate">{n.title || '—'}</div>
+                            <div className="col-span-2 truncate">
+                              {n.published_at ? new Date(n.published_at).toLocaleDateString() : '—'}
+                            </div>
+                            <div className="col-span-2 text-right">
+                              {n.url
+                                ? <a className="text-orange-600 hover:underline" href={n.url} target="_blank" rel="noreferrer">view</a>
+                                : '—'}
+                            </div>
+                          </li>
+                        )) : (
+                          <li className="px-3 py-2 text-xs text-gray-500">No news articles.</li>
+                        )}
+                      </ul>
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>
@@ -1029,9 +1246,7 @@ Kind regards,`
         </div>
       </div>
     )
-  }
-
-  /* ============================ Shell ============================ */
+  };
 
   return (
     <div className="space-y-4">
