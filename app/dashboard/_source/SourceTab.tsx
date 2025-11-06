@@ -590,7 +590,7 @@ Kind regards,`
                         <Chip key={v} onRemove={() => personTitles.removeChip(v)}>{v}</Chip>
                       ))}
                       <input
-                        className="min-w-[10rem] grow outline-none text-sm h-8 px-2"
+                        className="w-full max-w-[10rem] flex-shrink-0 outline-none text-sm h-8 px-2"
                         placeholder={phIfEmpty(personTitles.input, personTitles.chips, 'e.g. Field Service Technician')}
                         value={personTitles.input}
                         onChange={e => personTitles.setInput(e.target.value)}
@@ -608,7 +608,7 @@ Kind regards,`
                         <Chip key={v} onRemove={() => personLocations.removeChip(v)}>{v}</Chip>
                       ))}
                       <input
-                        className="min-w-[10rem] grow outline-none text-sm h-8 px-2"
+                        className="w-full max-w-[10rem] flex-shrink-0 outline-none text-sm h-8 px-2"
                         placeholder={phIfEmpty(personLocations.input, personLocations.chips, 'e.g. California, United States')}
                         value={personLocations.input}
                         onChange={e => personLocations.setInput(e.target.value)}
@@ -626,7 +626,7 @@ Kind regards,`
                         <Chip key={v} onRemove={() => personKeywords.removeChip(v)}>{v}</Chip>
                       ))}
                       <input
-                        className="min-w-[10rem] grow outline-none text-sm h-8 px-2"
+                        className="w-full max-w-[10rem] flex-shrink-0 outline-none text-sm h-8 px-2"
                         placeholder={phIfEmpty(personKeywords.input, personKeywords.chips, 'e.g. Fire, Security, CCTV')}
                         value={personKeywords.input}
                         onChange={e => personKeywords.setInput(e.target.value)}
@@ -825,7 +825,7 @@ Kind regards,`
                         <Chip key={v} onRemove={() => companyLocations.removeChip(v)}>{v}</Chip>
                       ))}
                       <input
-                        className="min-w-[10rem] grow outline-none text-sm h-8 px-2"
+                        className="w-full max-w-[10rem] flex-shrink-0 outline-none text-sm h-8 px-2"
                         placeholder={phIfEmpty(companyLocations.input, companyLocations.chips, 'e.g. London, United Kingdom')}
                         value={companyLocations.input}
                         onChange={e => companyLocations.setInput(e.target.value)}
@@ -844,7 +844,7 @@ Kind regards,`
                         <Chip key={v} onRemove={() => companyKeywords.removeChip(v)}>{v}</Chip>
                       ))}
                       <input
-                        className="min-w-[10rem] grow outline-none text-sm h-8 px-2"
+                        className="w-full max-w-[10rem] flex-shrink-0 outline-none text-sm h-8 px-2"
                         placeholder={phIfEmpty(companyKeywords.input, companyKeywords.chips, 'e.g. Fire, Security, CCTV')}
                         value={companyKeywords.input}
                         onChange={e => companyKeywords.setInput(e.target.value)}
@@ -956,7 +956,7 @@ Kind regards,`
                           <Chip key={v} onRemove={() => activeJobTitles.removeChip(v)}>{v}</Chip>
                         ))}
                         <input
-                          className="min-w-[10rem] grow outline-none text-sm h-8 px-2"
+                          className="w-full max-w-[10rem] flex-shrink-0 outline-none text-sm h-8 px-2"
                           placeholder={phIfEmpty(activeJobTitles.input, activeJobTitles.chips, 'Job Titles (e.g. Engineer, Manager)')}
                           value={activeJobTitles.input}
                           onChange={e => activeJobTitles.setInput(e.target.value)}
