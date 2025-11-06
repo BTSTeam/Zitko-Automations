@@ -561,8 +561,8 @@ Kind regards,`
                         <Chip key={v} onRemove={() => personTitles.removeChip(v)}>{v}</Chip>
                       ))}
                       <input
-                        className="min-w-[10ch] flex-1 outline-none text-sm px-2 py-1"
-                        placeholder="e.g. Field Service Technician"
+                        className="w-full outline-none text-sm px-2 py-1"
+                        placeholder={personTitles.input ? '' : 'e.g. Field Service Technician'}
                         value={personTitles.input}
                         onChange={e => personTitles.setInput(e.target.value)}
                         onKeyDown={personTitles.onKeyDown}
@@ -580,8 +580,8 @@ Kind regards,`
                       ))}
                       <input
                         className="min-w-[10ch] flex-1 outline-none text-sm px-2 py-1"
-                        placeholder="e.g. California, United States"
-                        value={personLocations.input}
+                        className="w-full outline-none text-sm px-2 py-1"
+                        placeholder={personLocations.input ? '' : 'e.g. California, United States'}
                         onChange={e => personLocations.setInput(e.target.value)}
                         onKeyDown={personLocations.onKeyDown}
                         disabled={isDown}
@@ -598,8 +598,8 @@ Kind regards,`
                       ))}
                       <input
                         className="min-w-[10ch] flex-1 outline-none text-sm px-2 py-1"
-                        placeholder="e.g. Fire, Security, CCTV"
-                        value={personKeywords.input}
+                        className="w-full outline-none text-sm px-2 py-1"
+                        placeholder={personKeywords.input ? '' : 'e.g. Fire, Security, CCTV'}
                         onChange={e => personKeywords.setInput(e.target.value)}
                         onKeyDown={personKeywords.onKeyDown}
                         disabled={isDown}
@@ -796,8 +796,8 @@ Kind regards,`
                         <Chip key={v} onRemove={() => companyLocations.removeChip(v)}>{v}</Chip>
                       ))}
                       <input
-                        className="min-w-[10ch] flex-1 outline-none text-sm px-2 py-1"
-                        placeholder="e.g. London, United Kingdom"
+                        className="w-full outline-none text-sm px-2 py-1"
+                        placeholder={companyLocations.input ? '' : 'e.g. London, United Kingdom'}
                         value={companyLocations.input}
                         onChange={e => companyLocations.setInput(e.target.value)}
                         onKeyDown={companyLocations.onKeyDown}
@@ -816,8 +816,8 @@ Kind regards,`
                       ))}
                       <input
                         className="min-w-[10ch] flex-1 outline-none text-sm px-2 py-1"
-                        placeholder="e.g. Security, CCTV"
-                        value={companyKeywords.input}
+                        className="w-full outline-none text-sm px-2 py-1"
+                        placeholder={companyKeywords.input ? '' : 'e.g. Security, CCTV'}
                         onChange={e => companyKeywords.setInput(e.target.value)}
                         onKeyDown={companyKeywords.onKeyDown}
                         disabled={isDown}
@@ -882,8 +882,8 @@ Kind regards,`
                           <Chip key={v} onRemove={() => activeJobsDays.removeChip(v)}>{v}</Chip>
                         ))}
                         <input
-                          className="min-w-[6ch] flex-1 outline-none text-sm px-2 py-1"
-                          placeholder="Days (e.g. 30)"
+                          className="w-full outline-none text-sm px-2 py-1"
+                          placeholder={activeJobsDays.input ? '' : 'Days (e.g. 30)'}
                           inputMode="numeric"
                           pattern="[0-9]*"
                           value={activeJobsDays.input}
@@ -905,8 +905,8 @@ Kind regards,`
                         ))}
                         <input
                           className="min-w-[14ch] flex-1 outline-none text-sm px-2 py-1"
-                          placeholder="Job Titles (e.g. Engineer, Manager)"
-                          value={activeJobTitles.input}
+                          className="w-full outline-none text-sm px-2 py-1"
+                          placeholder={activeJobTitles.input ? '' : 'Job Titles (e.g. Engineer, Manager)'}
                           onChange={e => activeJobTitles.setInput(e.target.value)}
                           onKeyDown={activeJobTitles.onKeyDown}
                           disabled={isInputsDisabled}
