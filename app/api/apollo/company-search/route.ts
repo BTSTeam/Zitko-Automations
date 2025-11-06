@@ -157,7 +157,7 @@ export async function POST(req: NextRequest) {
   })
 
   // merge user keywords + hard-coded industry keywords (keeps your previous behaviour)
-  const hardcoded = ['Security & Investigations', 'Facilities Services']
+  const hardcoded = ['Security & Investigations']
   const mergedTags = Array.from(new Set([...(tags || []), ...hardcoded]))
   mergedTags.forEach((tag) => {
     companyQS['q_organization_keyword_tags[]'] =
