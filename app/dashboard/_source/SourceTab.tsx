@@ -496,14 +496,14 @@ Kind regards,`
           ? c.hiring_people.map((p: any) => transformToPerson(p))
           : []
         const news_articles: NewsArticle[] = Array.isArray(c?.news_articles)
-          ? c.news_articles.map((a: any) => ({
-              id: (a?.id ?? a?.article_id ?? '').toString(),
-              title: a?.title ?? null,
-              description: a?.description ?? a?.summary ?? null,
-              published_at: a?.published_at ?? a?.published_date ?? null,
-              url: a?.url ?? a?.article_url ?? null,
-            }))}
-          : []
+        ? c.news_articles.map((a: any) => ({
+            id: (a?.id ?? a?.article_id ?? '').toString(),
+            title: a?.title ?? null,
+            description: a?.description ?? a?.summary ?? null,
+            published_at: a?.published_at ?? a?.published_date ?? null,
+            url: a?.url ?? a?.article_url ?? null,
+          }))
+        : []
         return {
           id: (c?.id ?? c?.organization_id ?? '').toString(),
           name: c?.name ?? c?.company_name ?? null,
