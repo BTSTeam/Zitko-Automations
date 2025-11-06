@@ -1017,7 +1017,7 @@ Kind regards,`
                 <span className="text-xs text-gray-500">
                   Press <kbd className="px-1 border rounded">Enter</kbd> to submit each chip.
                 </span>
-              
+
                 {/* Options inline with larger spacing */}
                 <div className="flex items-center gap-8">
                   <TinyCheck
@@ -1036,7 +1036,7 @@ Kind regards,`
                     onChange={(val) => setIndustryTags(prev => ({ ...prev, 'End User': val }))}
                   />
                 </div>
-              
+
                 <button
                   type="submit"
                   className="rounded-full bg-orange-500 text-white px-5 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50"
@@ -1044,7 +1044,11 @@ Kind regards,`
                 >
                   {companyLoading ? 'Searching…' : 'Search'}
                 </button>
-              </div>
+              </div> {/* <-- close the last row */}
+
+            </form> {/* <-- close the form */}
+          )} {/* end companySearchOpen */}
+        </div> {/* <-- close Panel 1 (search panel) */}
 
         {/* Panel 2: Company results */}
         <div className="rounded-2xl border bg-white shadow-sm">
