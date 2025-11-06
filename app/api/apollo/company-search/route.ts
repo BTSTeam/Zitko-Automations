@@ -29,7 +29,7 @@ function buildQS(params: Record<string, string[] | string>): string {
   return p.toString()
 }
 
-// YYYY-MM-DD (UTC) — Apollo date filters prefer date-only
+// YYYY-MM-DD (UTC)
 function ymd(d: Date): string {
   return d.toISOString().slice(0, 10)
 }
@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
     return copy
   }
 
-  // 'search' => identical headers to org fetch; 'jobs' => add Bearer + X-Api-Key
+  // 'search' => identical headers to org/news/people; 'jobs' => add Bearer + X-Api-Key (if set)
   const JOBS_HEADERS_KIND = ((process.env.APOLLO_JOBS_HEADERS_KIND || 'search') as 'search' | 'jobs')
 
   // ---- input ----
@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
     page?: number | string
     per_page?: number | string
 
-    /** NEW: recruiter exclusion controls */
+    /** Recruiter exclusion controls */
     excludeRecruiters?: boolean
     excludeNameContains?: string[] | string
     excludeDomains?: string[] | string
@@ -162,46 +162,61 @@ export async function POST(req: NextRequest) {
     return resp
   }
 
-  /* ---------------------- 1) Primary Organization Search ---------------------- */
-  const companyQS: Record<string, string[] | string> = {
-    page: String(page),
-    per_page: String(per_page),
-  }
+  /* ---------------------- 1) Primary Organization Search (ORDERED) ---------------------- */
+  /** Prefer a single "organization_num_employees_ranges[]=min,max" when both ends exist,
+   *  else fall back to separate min/max keys, then any extra buckets. */
+  const employeesRangePair =
+    typeof employeesMinNum === 'number' && typeof employeesMaxNum === 'number'
+      ? `${employeesMinNum},${employeesMaxNum}`
+      : null
 
-  locations.forEach((loc) => {
-    companyQS['organization_locations[]'] =
-      (companyQS['organization_locations[]'] as string[] | undefined)?.concat(loc) || [loc]
-  })
+  const params: [string, string][] = []
 
-  if (tags.length) {
-    tags.forEach((tag) => {
-      companyQS['q_organization_keyword_tags[]'] =
-        (companyQS['q_organization_keyword_tags[]'] as string[] | undefined)?.concat(tag) || [tag]
-    })
+  // 1) organization_num_employees_ranges[] (combined) OR separate min/max
+  if (employeesRangePair) {
+    params.push(['organization_num_employees_ranges[]', employeesRangePair])
+  } else {
+    if (typeof employeesMinNum === 'number') {
+      params.push(['organization_num_employees_range[min]', String(employeesMinNum)])
+    }
+    if (typeof employeesMaxNum === 'number') {
+      params.push(['organization_num_employees_range[max]', String(employeesMaxNum)])
+    }
   }
+  for (const r of employeeRanges) params.push(['organization_num_employees_ranges[]', r])
 
-  if (typeof employeesMinNum === 'number') {
-    companyQS['organization_num_employees_range[min]'] = String(employeesMinNum)
-  }
-  if (typeof employeesMaxNum === 'number') {
-    companyQS['organization_num_employees_range[max]'] = String(employeesMaxNum)
-  }
+  // 2) organization_locations[]
+  for (const loc of locations) params.push(['organization_locations[]', loc])
 
-  if (employeeRanges.length) {
-    companyQS['organization_num_employees_ranges[]'] = employeeRanges
-  }
+  // 3) q_organization_keyword_tags[]
+  for (const tag of tags) params.push(['q_organization_keyword_tags[]', tag])
 
+  // 4) organization_job_posted_at_range[min/max]  (correct keys for "active jobs in last N days")
   if (activeJobsOnly) {
-    companyQS['organization_num_jobs_range[min]'] = '1'
-    companyQS['organization_job_posted_at_range[min]'] = dateNDaysAgoYMD(activeJobsWindowDays)
-    companyQS['organization_job_posted_at_range[max]'] = todayYMD()
+    params.push(['organization_job_posted_at_range[min]', dateNDaysAgoYMD(activeJobsWindowDays)])
+    params.push(['organization_job_posted_at_range[max]', todayYMD()])
   }
 
+  // 5) q_organization_job_titles[] (allow empty to mirror your example shape)
   if (jobTitleFilters.length) {
-    companyQS['q_organization_job_titles[]'] = jobTitleFilters
+    for (const t of jobTitleFilters) params.push(['q_organization_job_titles[]', t])
+  } else {
+    params.push(['q_organization_job_titles[]', ''])
   }
 
-  const companySearchUrl = `${APOLLO_COMPANY_SEARCH_URL}?${buildQS(companyQS)}`
+  // 6) organization_num_jobs_range[min]
+  if (activeJobsOnly) {
+    params.push(['organization_num_jobs_range[min]', '1'])
+  }
+
+  // 7) page / per_page
+  params.push(['page', String(page)])
+  params.push(['per_page', String(per_page)])
+
+  const qs = new URLSearchParams()
+  for (const [k, v] of params) qs.append(k, v)
+  const companySearchUrl = `${APOLLO_COMPANY_SEARCH_URL}?${qs.toString()}`
+
   const topLevelDebug: any = DEBUG
     ? {
         companySearchUrl,
@@ -296,18 +311,23 @@ export async function POST(req: NextRequest) {
       const orgHeaders  = buildHeaders('search')
       const jobsHeaders = buildHeaders(JOBS_HEADERS_KIND)
 
-      const peopleQS = buildQS({
-        'organization_ids[]': [orgId],
-        'person_titles[]': [
-          'Head of Recruitment','Hiring Manager','Talent Acquisition','Talent Acquisition Manager',
-          'Talent Acquisition Lead','Recruitment Manager','Recruiting Manager','Head of Talent',
-          'Head of People','People & Talent','Talent Partner','Senior Talent Partner','Recruitment Partner',
-        ],
-        include_similar_titles: 'true',
-        per_page: '10',
-      })
-      const peopleUrl = `${APOLLO_PEOPLE_SEARCH_URL}?${peopleQS}`
+      // People (ORDERED like your example; per_page=5)
+      const peopleParams: [string, string][] = []
+      const titles = [
+        'Head of Recruitment','Hiring Manager','Talent Acquisition','Talent Acquisition Manager',
+        'Talent Acquisition Lead','Recruitment Manager','Recruiting Manager','Head of Talent',
+        'Head of People','People & Talent','Talent Partner','Senior Talent Partner','Recruitment Partner',
+      ]
+      for (const t of titles) peopleParams.push(['person_titles[]', t])
+      peopleParams.push(['include_similar_titles', 'true'])
+      peopleParams.push(['organization_ids[]', String(orgId)])
+      peopleParams.push(['page', '1'])
+      peopleParams.push(['per_page', '5'])
+      const peopleQS2 = new URLSearchParams()
+      for (const [k, v] of peopleParams) peopleQS2.append(k, v)
+      const peopleUrl = `${APOLLO_PEOPLE_SEARCH_URL}?${peopleQS2.toString()}`
 
+      // News (no special order needed)
       const newsQS = buildQS({
         'organization_ids[]': [orgId],
         published_after,
@@ -330,10 +350,10 @@ export async function POST(req: NextRequest) {
           cache: 'no-store',
         }).then(r => r.text().then(t => ({ ok: r.ok, status: r.status, body: t }))),
 
-        // Hiring people
+        // Hiring people (POST)
         postWithRetry(peopleUrl).then(r => r.text().then(t => ({ ok: r.ok, status: r.status, body: t }))),
 
-        // News
+        // News (POST)
         postWithRetry(newsUrl).then(r => r.text().then(t => ({ ok: r.ok, status: r.status, body: t }))),
       ])
 
