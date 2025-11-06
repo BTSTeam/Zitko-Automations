@@ -536,7 +536,7 @@ Kind regards,`
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [mode]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mode])
 
   const chipRowCls = "flex items-center gap-2 flex-nowrap overflow-x-auto whitespace-nowrap min-h-10"
 
