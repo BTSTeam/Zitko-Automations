@@ -8,11 +8,8 @@ import { getSession } from '@/lib/session'
 import { refreshApolloAccessToken } from '@/lib/apolloRefresh'
 
 const APOLLO_COMPANY_SEARCH_URL = 'https://api.apollo.io/api/v1/mixed_companies/search'
-const APOLLO_PEOPLE_SEARCH_URL  = 'https://api.apollo.io/api/v1/mixed_people/search'
 const APOLLO_NEWS_SEARCH_URL    = 'https://api.apollo.io/api/v1/news_articles/search'
 const APOLLO_ORG_GET_URL        = (id: string) => `https://api.apollo.io/api/v1/organizations/${id}`
-const APOLLO_ORG_JOBS_URL       = (id: string) =>
-  `https://api.apollo.io/api/v1/organizations/${encodeURIComponent(id)}/job_postings?page=1&per_page=10`
 
 /* ------------------------------- utils -------------------------------- */
 function toArray(v?: string[] | string): string[] {
@@ -29,7 +26,7 @@ function buildQS(params: Record<string, string[] | string>): string {
   return p.toString()
 }
 
-// YYYY-MM-DD (UTC) — Apollo date filters prefer date-only
+// YYYY-MM-DD (UTC)
 function ymd(d: Date): string {
   return d.toISOString().slice(0, 10)
 }
@@ -55,9 +52,6 @@ export async function POST(req: NextRequest) {
     return copy
   }
 
-  // 'search' => identical headers to org fetch; 'jobs' => add Bearer + X-Api-Key
-  const JOBS_HEADERS_KIND = ((process.env.APOLLO_JOBS_HEADERS_KIND || 'search') as 'search' | 'jobs')
-
   // ---- input ----
   let inBody: {
     locations?: string[] | string
@@ -74,7 +68,7 @@ export async function POST(req: NextRequest) {
     page?: number | string
     per_page?: number | string
 
-    /** NEW: recruiter exclusion controls */
+    /** recruiter exclusion controls */
     excludeRecruiters?: boolean
     excludeNameContains?: string[] | string
     excludeDomains?: string[] | string
@@ -107,7 +101,8 @@ export async function POST(req: NextRequest) {
   const per_page = Math.max(1, Math.min(25, parseInt(String(inBody.per_page ?? '25'), 10) || 25))
 
   // recruiter exclusion inputs
-  const excludeRecruiters   = Boolean(inBody.excludeRecruiters)
+  // Default = TRUE (we want to suppress staffing/recruiters by default)
+  const excludeRecruiters   = inBody.excludeRecruiters === false ? false : true
   const excludeNameContains = toArray(inBody.excludeNameContains).map((s) => s.toLowerCase())
   const excludeDomains      = toArray(inBody.excludeDomains).map((s) => s.toLowerCase())
 
@@ -124,9 +119,8 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // search (POST): X-Api-Key works best (unless OAuth token present)
-  // jobs   (GET) : some tenants prefer Bearer; we can switch via JOBS_HEADERS_KIND
-  const buildHeaders = (kind: 'search' | 'jobs' = 'search'): Record<string, string> => {
+  // search/news endpoints are POST; details are GET
+  const buildHeaders = (): Record<string, string> => {
     const h: Record<string, string> = {
       accept: 'application/json',
       'Cache-Control': 'no-cache',
@@ -135,12 +129,7 @@ export async function POST(req: NextRequest) {
     if (accessToken) {
       h.Authorization = `Bearer ${accessToken}`
     } else if (apiKey) {
-      if (kind === 'jobs') {
-        h.Authorization = `Bearer ${apiKey}`
-        h['X-Api-Key'] = apiKey
-      } else {
-        h['X-Api-Key'] = apiKey
-      }
+      h['X-Api-Key'] = apiKey
     }
     return h
   }
@@ -150,13 +139,13 @@ export async function POST(req: NextRequest) {
     const call = (headers: Record<string, string>) =>
       fetch(url, { method: 'POST', headers, body: JSON.stringify({}), cache: 'no-store' })
 
-    let resp = await call(buildHeaders('search'))
+    let resp = await call(buildHeaders())
     if ((resp.status === 401 || resp.status === 403) && accessToken && userKey) {
       const refreshed = await refreshApolloAccessToken(userKey)
       if (refreshed) {
         const s2 = await getSession()
         accessToken = s2.tokens?.apolloAccessToken
-        resp = await call(buildHeaders('search'))
+        resp = await call(buildHeaders())
       }
     }
     return resp
@@ -205,7 +194,7 @@ export async function POST(req: NextRequest) {
   const topLevelDebug: any = DEBUG
     ? {
         companySearchUrl,
-        headers: redactHeaders(buildHeaders('search')),
+        headers: redactHeaders(buildHeaders()),
         activeJobsWindowDays,
         excludeRecruiters,
         excludeNameContains,
@@ -235,40 +224,64 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ companies: [], page, per_page, debug: topLevelDebug })
   }
 
-  /* -------- Exclude staffing/recruitment companies before enrichment ------ */
+  /* -------- Strong filter: exclude staffing/recruitment companies ------ */
   const AGENCY_PATTERNS = [
     'recruitment','recruiting','recruiter','staffing','talent','resourcing',
     'headhunt','headhunting','personnel','employment','agency','placement',
+    'search firm','executive search','rpo','outsourcing'
   ]
-  function looksLikeAgency(name?: string|null, website?: string|null) {
-    const n = String(name || '').toLowerCase()
-    const w = String(website || '').toLowerCase()
-    const hitName = AGENCY_PATTERNS.some((k) => n.includes(k))
-    const host = w.replace(/^https?:\/\//, '').split('/')[0]
-    const hitDomain = AGENCY_PATTERNS.some((k) => host.includes(k))
-    return hitName || hitDomain
+  const AGENCY_INDUSTRY = [
+    'Staffing and Recruiting','Recruitment','Employment Services','Human Resources Services'
+  ].map(s => s.toLowerCase())
+
+  function isAgencyByText(s?: string | null) {
+    const t = String(s || '').toLowerCase()
+    return AGENCY_PATTERNS.some((k) => t.includes(k))
+  }
+  function endsWithAny(host: string, needles: string[]) {
+    return needles.some((d) => d && host.endsWith(d))
   }
 
+  const beforeCount = companies.length
   companies = companies.filter((c) => {
-    const name = c?.name ?? ''
-    const site = c?.website_url ?? ''
+    if (!excludeRecruiters) return true
+
+    const name   = c?.name ?? ''
+    const site   = c?.website_url ?? ''
     const domain = String(site).replace(/^https?:\/\//, '').split('/')[0].toLowerCase()
+    const li     = String(c?.linkedin_url || '').toLowerCase()
 
-    if (excludeRecruiters && looksLikeAgency(name, site)) return false
+    // 1) Name, website, LinkedIn text pattern checks
+    if (isAgencyByText(name) || isAgencyByText(site) || isAgencyByText(li)) return false
 
+    // 2) Industry / industry tags (if present in payload)
+    const industry        = (c?.industry || c?.organization?.industry || '').toString().toLowerCase()
+    const industry_tags   = Array.isArray(c?.industry_tags) ? c.industry_tags : (Array.isArray(c?.organization?.industry_tags) ? c.organization.industry_tags : [])
+    const hasAgencySector = (
+      (industry && AGENCY_INDUSTRY.some((x) => industry.includes(x))) ||
+      (Array.isArray(industry_tags) && industry_tags.some((t: any) => AGENCY_INDUSTRY.some((x) => String(t).toLowerCase().includes(x))))
+    )
+    if (hasAgencySector) return false
+
+    // 3) Optional explicit exclusions from request
     if (excludeNameContains.length) {
       const lower = String(name).toLowerCase()
       if (excludeNameContains.some((s) => s && lower.includes(s))) return false
     }
-
     if (excludeDomains.length && domain) {
-      if (excludeDomains.some((d) => domain.endsWith(d))) return false
+      if (endsWithAny(domain, excludeDomains)) return false
     }
+
     return true
   })
 
   if (!companies.length) {
-    return NextResponse.json({ companies: [], page, per_page, debug: topLevelDebug })
+    return NextResponse.json({
+      companies: [],
+      page,
+      per_page,
+      debug: DEBUG ? { ...topLevelDebug, filtered_out: beforeCount } : undefined,
+    })
   }
 
   /* --------------------------- 2) Enrich each org ---------------------------- */
@@ -287,116 +300,69 @@ export async function POST(req: NextRequest) {
         state: null as string | null,
         short_description: null as string | null,
 
-        job_postings: [] as any[],
-        hiring_people: [] as any[],
+        // we no longer fetch these; keep shape minimal
         news_articles: [] as any[],
       }
 
-      // ---------- Stage B: per-company enrichments in parallel ----------
-      const orgHeaders  = buildHeaders('search')
-      const jobsHeaders = buildHeaders(JOBS_HEADERS_KIND)
-
-      const peopleQS = buildQS({
-        'organization_ids[]': [orgId],
-        'person_titles[]': [
-          'Head of Recruitment','Hiring Manager','Talent Acquisition','Talent Acquisition Manager',
-          'Talent Acquisition Lead','Recruitment Manager','Recruiting Manager','Head of Talent',
-          'Head of People','People & Talent','Talent Partner','Senior Talent Partner','Recruitment Partner',
-        ],
-        include_similar_titles: 'true',
-        per_page: '10',
-      })
-      const peopleUrl = `${APOLLO_PEOPLE_SEARCH_URL}?${peopleQS}`
-
-      const newsQS = buildQS({
-        'organization_ids[]': [orgId],
-        published_after,
-        per_page: '2',
-      })
-      const newsUrl = `${APOLLO_NEWS_SEARCH_URL}?${newsQS}`
-
-      const [orgR, jobsR, peopleR, newsR] = await Promise.allSettled([
-        // Org details
-        fetch(APOLLO_ORG_GET_URL(orgId), {
+      // --- Org details (GET)
+      try {
+        const orgHeaders = buildHeaders()
+        const orgResp = await fetch(APOLLO_ORG_GET_URL(orgId), {
           method: 'GET',
           headers: orgHeaders,
           cache: 'no-store',
-        }).then(r => r.text().then(t => ({ ok: r.ok, status: r.status, body: t }))),
-
-        // Job postings
-        fetch(APOLLO_ORG_JOBS_URL(orgId), {
-          method: 'GET',
-          headers: jobsHeaders,
-          cache: 'no-store',
-        }).then(r => r.text().then(t => ({ ok: r.ok, status: r.status, body: t }))),
-
-        // Hiring people
-        postWithRetry(peopleUrl).then(r => r.text().then(t => ({ ok: r.ok, status: r.status, body: t }))),
-
-        // News
-        postWithRetry(newsUrl).then(r => r.text().then(t => ({ ok: r.ok, status: r.status, body: t }))),
-      ])
-
-      // --- Org details
-      if (orgR.status === 'fulfilled' && orgR.value.ok) {
-        try {
-          const org = JSON.parse(orgR.value.body || '{}')?.organization || {}
-          base.city = org?.city ?? null
-          base.state = org?.state ?? null
-          base.short_description = org?.short_description ?? null
+        })
+        const orgRaw = await orgResp.text()
+        if (orgResp.ok) {
+          let org: any = {}
+          try { org = orgRaw ? JSON.parse(orgRaw) : {} } catch {}
+          const o = org?.organization || {}
+          base.city = (o?.city ?? null)
+          base.state = (o?.state ?? null)
+          base.short_description = (o?.short_description ?? null)
           if ((base.city || base.state) && !base.exact_location) {
             base.exact_location = [base.city, base.state].filter(Boolean).join(', ')
           }
-        } catch {}
-      }
-
-      // --- Job postings
-      if (jobsR.status === 'fulfilled') {
-        if (jobsR.value.ok) {
-          try {
-            const jobs = JSON.parse(jobsR.value.body || '{}')
-            base.job_postings = Array.isArray(jobs?.job_postings) ? jobs.job_postings : []
-          } catch { base.job_postings = [] }
-        } else {
-          base.job_postings = []
-          ;(base as any).job_postings_error = {
-            status: jobsR.value.status,
-            body: (jobsR.value.body || '').slice(0, 500),
+          if (DEBUG) {
+            ;(base as any)._debug = {
+              ...(base as any)._debug,
+              organization: { url: APOLLO_ORG_GET_URL(orgId), headers: redactHeaders(orgHeaders) },
+            }
           }
         }
-      }
+      } catch {}
 
-      // --- Hiring people
-      if (peopleR.status === 'fulfilled' && peopleR.value.ok) {
-        try {
-          const hp = JSON.parse(peopleR.value.body || '{}')
-          base.hiring_people =
-            Array.isArray(hp?.contacts) ? hp.contacts :
-            Array.isArray(hp?.people)   ? hp.people   : []
-        } catch { base.hiring_people = [] }
-      }
-
-      // --- News
-      if (newsR.status === 'fulfilled' && newsR.value.ok) {
-        try {
-          const news = JSON.parse(newsR.value.body || '{}')
+      // --- News (POST; last 90 days, 2 items)
+      try {
+        const newsQS = buildQS({
+          'organization_ids[]': [orgId],
+          published_after, // YYYY-MM-DD
+          per_page: '2',
+        })
+        const newsUrl  = `${APOLLO_NEWS_SEARCH_URL}?${newsQS}`
+        const newsResp = await postWithRetry(newsUrl)
+        const newsRaw  = await newsResp.text()
+        if (newsResp.ok) {
+          let news: any = {}
+          try { news = newsRaw ? JSON.parse(newsRaw) : {} } catch {}
           base.news_articles = Array.isArray(news?.news_articles) ? news.news_articles : []
-        } catch { base.news_articles = [] }
-      }
-
-      if (DEBUG) {
-        ;(base as any)._debug = {
-          ...(base as any)._debug,
-          details_url: APOLLO_ORG_GET_URL(orgId),
-          jobs_url: APOLLO_ORG_JOBS_URL(orgId),
-          people_url: peopleUrl,
-          news_url: newsUrl,
+          if (DEBUG) {
+            ;(base as any)._debug = {
+              ...(base as any)._debug,
+              news: { url: newsUrl, headers: redactHeaders(buildHeaders()) },
+            }
+          }
         }
-      }
+      } catch {}
 
       return base
     }),
   )
 
-  return NextResponse.json({ companies: enriched, page, per_page, debug: topLevelDebug })
+  return NextResponse.json({
+    companies: enriched,
+    page,
+    per_page,
+    debug: DEBUG ? { ...topLevelDebug, after_filter_count: enriched.length } : undefined,
+  })
 }
