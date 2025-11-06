@@ -11,9 +11,8 @@ const APOLLO_COMPANY_SEARCH_URL = 'https://api.apollo.io/api/v1/mixed_companies/
 const APOLLO_PEOPLE_SEARCH_URL  = 'https://api.apollo.io/api/v1/mixed_people/search'
 const APOLLO_NEWS_SEARCH_URL    = 'https://api.apollo.io/api/v1/news_articles/search'
 const APOLLO_ORG_GET_URL        = (id: string) => `https://api.apollo.io/api/v1/organizations/${id}`
-// ✅ Correct domain + path (no stray slash)
 const APOLLO_ORG_JOBS_URL       = (id: string) =>
-  `https://api.apollo.io/api/v1/organizations/${encodeURIComponent(id)}/job_postings?per_page=10`
+  `https://api.apollo.io/api/v1/organizations/${encodeURIComponent(id)}/job_postings?page=1&per_page=10`
 
 /* ------------------------------- utils -------------------------------- */
 function toArray(v?: string[] | string): string[] {
@@ -30,7 +29,7 @@ function buildQS(params: Record<string, string[] | string>): string {
   return p.toString()
 }
 
-// YYYY-MM-DD (UTC) — required for Apollo date filters
+// YYYY-MM-DD (UTC) — Apollo date filters prefer date-only
 function ymd(d: Date): string {
   return d.toISOString().slice(0, 10)
 }
@@ -106,7 +105,10 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const buildHeaders = (): Record<string, string> => {
+  // Important: search endpoints vs job postings have different header tolerance.
+  // - search (POST): X-Api-Key works best (unless OAuth token present)
+  // - jobs   (GET) : prefers Authorization: Bearer <token> (keep X-Api-Key too)
+  const buildHeaders = (kind: 'search' | 'jobs' = 'search'): Record<string, string> => {
     const h: Record<string, string> = {
       accept: 'application/json',
       'Cache-Control': 'no-cache',
@@ -115,9 +117,12 @@ export async function POST(req: NextRequest) {
     if (accessToken) {
       h.Authorization = `Bearer ${accessToken}`
     } else if (apiKey) {
-      // send BOTH – Job Postings prefers Bearer
-      h.Authorization = `Bearer ${apiKey}`
-      h['X-Api-Key'] = apiKey
+      if (kind === 'jobs') {
+        h.Authorization = `Bearer ${apiKey}`
+        h['X-Api-Key'] = apiKey
+      } else {
+        h['X-Api-Key'] = apiKey
+      }
     }
     return h
   }
@@ -127,13 +132,13 @@ export async function POST(req: NextRequest) {
     const call = (headers: Record<string, string>) =>
       fetch(url, { method: 'POST', headers, body: JSON.stringify({}), cache: 'no-store' })
 
-    let resp = await call(buildHeaders())
+    let resp = await call(buildHeaders('search'))
     if ((resp.status === 401 || resp.status === 403) && accessToken && userKey) {
       const refreshed = await refreshApolloAccessToken(userKey)
       if (refreshed) {
         const s2 = await getSession()
         accessToken = s2.tokens?.apolloAccessToken
-        resp = await call(buildHeaders())
+        resp = await call(buildHeaders('search'))
       }
     }
     return resp
@@ -204,8 +209,7 @@ export async function POST(req: NextRequest) {
   }
 
   /* --------------------------- 2) Enrich each org ---------------------------- */
-  // news: last 90 days, use YYYY-MM-DD as well
-  const published_after = dateNDaysAgoYMD(90)
+  const published_after = dateNDaysAgoYMD(90) // news window
 
   const enriched = await Promise.all(
     companies.map(async (c) => {
@@ -229,7 +233,7 @@ export async function POST(req: NextRequest) {
       try {
         const orgResp = await fetch(APOLLO_ORG_GET_URL(orgId), {
           method: 'GET',
-          headers: buildHeaders(),
+          headers: buildHeaders('search'),
           cache: 'no-store',
         })
         const orgRaw = await orgResp.text()
@@ -248,30 +252,29 @@ export async function POST(req: NextRequest) {
 
       // 2b) Organization Job Postings (current postings; no date filter here)
       try {
-        const jobsResp = await fetch(APOLLO_ORG_JOBS_URL(orgId), {
-          method: 'GET',
-          headers: buildHeaders(),
-          cache: 'no-store',
-        })
-        const jobsRaw = await jobsResp.text()
-      
-        if (jobsResp.ok) {
-          let jobs: any = {}
-          try { jobs = jobsRaw ? JSON.parse(jobsRaw) : {} } catch {}
-          base.job_postings = Array.isArray(jobs?.job_postings) ? jobs.job_postings : []
-        } else {
-          // expose status & short body to help debugging in UI
-          base.job_postings = []
-          ;(base as any).job_postings_error = {
-            status: jobsResp.status,
-            statusText: jobsResp.statusText,
-            body: jobsRaw.slice(0, 500),
-          }
-        }
-      } catch (err: any) {
+      const jobsResp = await fetch(APOLLO_ORG_JOBS_URL(orgId), {
+        method: 'GET',
+        headers: buildHeaders('search'), // identical headers to Organization fetch
+        cache: 'no-store',
+      })
+      const jobsRaw = await jobsResp.text()
+    
+      if (jobsResp.ok) {
+        let jobs: any = {}
+        try { jobs = jobsRaw ? JSON.parse(jobsRaw) : {} } catch {}
+        base.job_postings = Array.isArray(jobs?.job_postings) ? jobs.job_postings : []
+      } else {
         base.job_postings = []
-        ;(base as any).job_postings_error = { exception: String(err?.message ?? err) }
+        ;(base as any).job_postings_error = {
+          status: jobsResp.status,
+          statusText: jobsResp.statusText,
+          body: jobsRaw.slice(0, 500),
+        }
       }
+    } catch (err: any) {
+      base.job_postings = []
+      ;(base as any).job_postings_error = { exception: String(err?.message ?? err) }
+    }
 
       // 2c) Hiring contacts (titles only, include similar)
       try {
