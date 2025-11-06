@@ -71,7 +71,7 @@ type NewsArticle = {
 
 // Seniority options reused from original file
 const SENIORITIES = [
-  'owner','founder','c_suite','partner','vp','head','director','manager','senior','entry','intern',
+  'Owner','Founder','C_Suite','Partner','VP','Head','Director','Manager','Senior','Entry','Intern',
 ] as const
 
 // ---------------- Small helpers ----------------
@@ -166,6 +166,11 @@ function MultiSelect({
     setValues(next)
   }
 
+  function removeChip(opt: string, e?: React.MouseEvent) {
+    e?.stopPropagation()
+    setValues(values.filter(v => v !== opt))
+  }
+
   return (
     <div>
       <label className="block text-sm text-gray-600 mb-1">{label}</label>
@@ -175,14 +180,24 @@ function MultiSelect({
           type="button"
           className="w-full h-full text-left flex items-center justify-between"
           onClick={() => setOpen(o => !o)}
+          title={values.length ? `${values.length} selected` : undefined}
         >
-          <span className={`truncate text-sm ${values.length ? '' : 'text-gray-400'}`}>
-            {values.length ? values.join(', ') : placeholder}
-          </span>
+          <div className="flex items-center gap-2 flex-nowrap overflow-x-auto mr-2">
+            {values.length ? (
+              values.map(v => (
+                <span key={v} className="shrink-0">
+                  <Chip onRemove={(e?: any) => removeChip(v, e)}>{v}</Chip>
+                </span>
+              ))
+            ) : (
+              <span className="text-sm text-gray-400">{placeholder}</span>
+            )}
+          </div>
           <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" className={open ? 'rotate-180 transition-transform' : 'transition-transform'}>
             <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z" />
           </svg>
         </button>
+
         {open && (
           <div className="absolute z-10 mt-1 w-full bg-white border rounded-xl shadow-sm max-h-60 overflow-y-auto text-sm">
             {options.map(opt => (
@@ -191,7 +206,7 @@ function MultiSelect({
                   type="checkbox"
                   checked={values.includes(opt)}
                   onChange={() => toggleOpt(opt)}
-                  className="mr-2"
+                  className="mr-2 accent-orange-500"   {/* <-- orange checks */}
                 />
                 {opt}
               </label>
@@ -889,13 +904,13 @@ Kind regards,`
                 
                   <div className={`flex items-center gap-3 ${disabledLook}`} aria-disabled={isInputsDisabled}>
                     {/* Days input (fixed width; single-line, no wrap) */}
-                    <div className="shrink-0 rounded-xl border h-10 px-2 w-28">
-                      <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
+                    <div className="shrink-0 rounded-xl border h-10 px-2 w-36">
+                      <div className="flex items-center gap-2 flex-nowrap overflow-hidden">
                         {activeJobsDays.chips.map(v => (
                           <Chip key={v} onRemove={() => activeJobsDays.removeChip(v)}>{v}</Chip>
                         ))}
                         <input
-                          className="min-w-[6rem] grow outline-none text-sm h-8 px-2"
+                          className="min-w-[8rem] grow outline-none text-sm h-8 px-2"
                           placeholder={phIfEmpty(activeJobsDays.input, activeJobsDays.chips, 'Days (e.g. 30)')}
                           inputMode="numeric"
                           pattern="[0-9]*"
