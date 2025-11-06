@@ -66,13 +66,18 @@ export async function POST(req: NextRequest) {
     employeesMin?: number | string | null
     employeesMax?: number | string | null
     activeJobsOnly?: boolean
-    /** NEW: legacy support */
+    /** Legacy support */
     activeJobsDays?: number | string | null
     /** Preferred param */
     activeJobsWindowDays?: number | string | null
     q_organization_job_titles?: string[] | string
     page?: number | string
     per_page?: number | string
+
+    /** NEW: recruiter exclusion controls */
+    excludeRecruiters?: boolean
+    excludeNameContains?: string[] | string
+    excludeDomains?: string[] | string
   } = {}
 
   try {
@@ -91,9 +96,8 @@ export async function POST(req: NextRequest) {
 
   const activeJobsOnly = Boolean(inBody.activeJobsOnly)
 
-  // ---- FIX #1: accept legacy 'activeJobsDays' when 'activeJobsWindowDays' is not provided ----
+  // ---- accept legacy 'activeJobsDays' when 'activeJobsWindowDays' is not provided ----
   const activeJobsWindowDays = (() => {
-    // Prefer the new param; fall back to legacy
     const raw = inBody.activeJobsWindowDays ?? inBody.activeJobsDays
     const n = Number(raw)
     return Number.isFinite(n) && n > 0 ? Math.floor(n) : 30
@@ -101,6 +105,11 @@ export async function POST(req: NextRequest) {
 
   const page     = Math.max(1, parseInt(String(inBody.page ?? '1'), 10) || 1)
   const per_page = Math.max(1, Math.min(25, parseInt(String(inBody.per_page ?? '25'), 10) || 25))
+
+  // ---- NEW: recruiter exclusion inputs ----
+  const excludeRecruiters   = Boolean(inBody.excludeRecruiters)
+  const excludeNameContains = toArray(inBody.excludeNameContains).map((s) => s.toLowerCase())
+  const excludeDomains      = toArray(inBody.excludeDomains).map((s) => s.toLowerCase())
 
   // ---- auth ----
   const session   = await getSession()
@@ -194,7 +203,14 @@ export async function POST(req: NextRequest) {
 
   const companySearchUrl = `${APOLLO_COMPANY_SEARCH_URL}?${buildQS(companyQS)}`
   const topLevelDebug: any = DEBUG
-    ? { companySearchUrl, headers: redactHeaders(buildHeaders('search')), activeJobsWindowDays }
+    ? {
+        companySearchUrl,
+        headers: redactHeaders(buildHeaders('search')),
+        activeJobsWindowDays,
+        excludeRecruiters,
+        excludeNameContains,
+        excludeDomains,
+      }
     : undefined
 
   const compResp = await postWithRetry(companySearchUrl)
@@ -213,7 +229,43 @@ export async function POST(req: NextRequest) {
 
   let compData: any = {}
   try { compData = compRaw ? JSON.parse(compRaw) : {} } catch {}
-  const companies: any[] = Array.isArray(compData?.organizations) ? compData.organizations : []
+  let companies: any[] = Array.isArray(compData?.organizations) ? compData.organizations : []
+
+  if (!companies.length) {
+    return NextResponse.json({ companies: [], page, per_page, debug: topLevelDebug })
+  }
+
+  /* -------- NEW: Exclude staffing/recruitment companies before enrichment ------ */
+  const AGENCY_PATTERNS = [
+    'recruitment','recruiting','recruiter','staffing','talent','resourcing',
+    'headhunt','headhunting','personnel','employment','agency','placement',
+  ]
+  function looksLikeAgency(name?: string|null, website?: string|null) {
+    const n = String(name || '').toLowerCase()
+    const w = String(website || '').toLowerCase()
+    const hitName = AGENCY_PATTERNS.some((k) => n.includes(k))
+    const host = w.replace(/^https?:\/\//, '').split('/')[0]
+    const hitDomain = AGENCY_PATTERNS.some((k) => host.includes(k))
+    return hitName || hitDomain
+  }
+
+  companies = companies.filter((c) => {
+    const name = c?.name ?? ''
+    const site = c?.website_url ?? ''
+    const domain = String(site).replace(/^https?:\/\//, '').split('/')[0].toLowerCase()
+
+    if (excludeRecruiters && looksLikeAgency(name, site)) return false
+
+    if (excludeNameContains.length) {
+      const lower = String(name).toLowerCase()
+      if (excludeNameContains.some((s) => s && lower.includes(s))) return false
+    }
+
+    if (excludeDomains.length && domain) {
+      if (excludeDomains.some((d) => domain.endsWith(d))) return false
+    }
+    return true
+  })
 
   if (!companies.length) {
     return NextResponse.json({ companies: [], page, per_page, debug: topLevelDebug })
