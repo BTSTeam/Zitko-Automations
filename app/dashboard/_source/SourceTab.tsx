@@ -293,28 +293,6 @@ function formatMonthYear(date: string | null): string {
   }
 }
 
-// Tiny checkbox used for Manufacturer / Installer / End User
-function TinyCheck({
-  label, checked, onChange,
-}: { label: string; checked: boolean; onChange: (val: boolean) => void }) {
-  return (
-    <label className="inline-flex items-center gap-2 text-sm cursor-pointer select-none">
-      <input
-        type="checkbox"
-        className="appearance-none h-4 w-4 rounded border border-gray-300 grid place-content-center
-                   checked:bg-orange-500
-                   before:content-[''] before:hidden checked:before:block
-                   before:w-2.5 before:h-2.5
-                   before:[clip-path:polygon(14%_44%,0_59%,39%_100%,100%_18%,84%_4%,39%_72%)]
-                   before:bg-white"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-      />
-      {label}
-    </label>
-  )
-}
-
 // ---------------- Main Component ----------------
 export default function SourceTab({ mode }: { mode: SourceMode }) {
   const isDown =
@@ -454,13 +432,6 @@ Kind regards,`
   const employeesMin = useChipInput([])
   const employeesMax = useChipInput([])
 
-  // NEW: default industry tags (pre-ticked)
-  const [industryTags, setIndustryTags] = useState<Record<string, boolean>>({
-    'Manufacturer': true,
-    'Installer': true,
-    'End User': true,
-  })
-
   const [companyLoading, setCompanyLoading] = useState(false)
   const [companyError, setCompanyError] = useState<string | null>(null)
   const [companies, setCompanies] = useState<Company[]>([])
@@ -507,19 +478,9 @@ Kind regards,`
       const daysChip = activeJobsDays.chips.length ? activeJobsDays.chips[activeJobsDays.chips.length - 1] : null
       const daysNum = daysChip && /^\d+$/.test(daysChip) ? Number(daysChip) : null
 
-      // collect selected default tags and merge with user chips (dedupe)
-      const selectedSeedTags = Object.entries(industryTags)
-        .filter(([, v]) => v)
-        .map(([k]) => k)
-
-      const mergedKeywords = Array.from(new Set([
-        ...companyKeywords.chips,
-        ...selectedSeedTags,
-      ])).filter(Boolean)
-
       const payload = {
         locations: companyLocations.chips,
-        keywords: mergedKeywords, // IMPORTANT: includes Manufacturer/Installer/End User if ticked
+        keywords: companyKeywords.chips,
         employeesMin: employeesMin.chips.length ? Number(employeesMin.chips[0]) : null,
         employeesMax: employeesMax.chips.length ? Number(employeesMax.chips[0]) : null,
 
@@ -529,13 +490,9 @@ Kind regards,`
           ? { q_organization_job_titles: activeJobTitles.chips }
           : {}),
 
-        // optional explicit seed list (route merges/dedupes safely if used)
-        seedIndustryTags: selectedSeedTags,
-
         page: 1,
         per_page: 25,
       }
-
       const res = await fetch('/api/apollo/company-search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -992,7 +949,7 @@ Kind regards,`
                       </div>
                     </div>
                 
-                    {/* Job Titles input */}
+                    {/* Job Titles input (unchanged, fixed height, chip-based) */}
                     <div className="flex-1 basis-0 min-w-0 rounded-xl border h-10 px-2">
                       <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
                         {activeJobTitles.chips.map(v => (
@@ -1010,33 +967,6 @@ Kind regards,`
                     </div>
                   </div>
                 </div>
-              </div>
-
-              {/* Row 3: Default industry tags (pre-selected) */}
-              <div className="mt-4">
-                <label className="block text-sm text-gray-600 mb-2">
-                  Include company type (pre-selected)
-                </label>
-                <div className="flex flex-wrap items-center gap-6">
-                  <TinyCheck
-                    label="Manufacturer"
-                    checked={industryTags['Manufacturer']}
-                    onChange={(val) => setIndustryTags(prev => ({ ...prev, 'Manufacturer': val }))}
-                  />
-                  <TinyCheck
-                    label="Installer"
-                    checked={industryTags['Installer']}
-                    onChange={(val) => setIndustryTags(prev => ({ ...prev, 'Installer': val }))}
-                  />
-                  <TinyCheck
-                    label="End User"
-                    checked={industryTags['End User']}
-                    onChange={(val) => setIndustryTags(prev => ({ ...prev, 'End User': val }))}
-                  />
-                </div>
-                <p className="mt-1 text-xs text-gray-500">
-                  These are added as <em>Keywords</em> in the Apollo search to bias away from staffing agencies. Untick to remove.
-                </p>
               </div>
 
               {/* Tips + Search button */}
