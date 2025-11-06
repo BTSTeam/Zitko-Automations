@@ -21,9 +21,11 @@ type Company = {
   website_url: string | null
   linkedin_url: string | null
   exact_location?: string | null
+  // from GET /organizations/{id}
   city?: string | null
   state?: string | null
   short_description?: string | null
+  // enrichments
   job_postings?: any[]
   hiring_people?: any[]
   news_articles?: any[]
@@ -67,9 +69,14 @@ type NewsArticle = {
   url: string | null
 }
 
+// Seniority options reused from original file
 const SENIORITIES = [
-  'owner', 'founder', 'c_suite', 'partner', 'vp', 'head', 'director', 'manager', 'senior', 'entry', 'intern',
+  'owner','founder','c_suite','partner','vp','head','director','manager','senior','entry','intern',
 ] as const
+
+// ---------------- Small helpers ----------------
+const phIfEmpty = (value: string, chips: string[] | undefined, text: string) =>
+  (value?.trim() || (chips && chips.length)) ? '' : text
 
 // ---------------- UI helpers ----------------
 function useChipInput(initial: string[] = []) {
@@ -99,7 +106,7 @@ function useChipInput(initial: string[] = []) {
 
 function Chip({ children, onRemove }: { children: string; onRemove: () => void }) {
   return (
-    <span className="inline-flex shrink-0 items-center gap-2 rounded-full bg-gray-100 px-3 py-1 text-sm">
+    <span className="inline-flex items-center gap-2 rounded-full bg-gray-100 px-3 py-1 text-sm">
       <span className="truncate">{children}</span>
       <button
         type="button"
@@ -135,6 +142,7 @@ function IconGlobe({ muted }: { muted?: boolean }) {
   )
 }
 
+// Simple multi-select component used for seniorities
 function MultiSelect({
   label, options, values, setValues, placeholder = 'Select…',
 }: {
@@ -152,27 +160,26 @@ function MultiSelect({
   }, [open])
 
   function toggleOpt(opt: string) {
-    const next = values.includes(opt) ? values.filter(o => o !== opt) : [...values, opt]
+    const next = values.includes(opt)
+      ? values.filter(o => o !== opt)
+      : [...values, opt]
     setValues(next)
   }
 
   return (
     <div>
       <label className="block text-sm text-gray-600 mb-1">{label}</label>
-      <div ref={ref} className="relative rounded-xl border px-2 py-1.5 min-h-10 flex items-center">
+      <div ref={ref} className="relative rounded-xl border px-2 py-1.5">
         <button
           type="button"
           className="w-full text-left flex items-center justify-between"
           onClick={() => setOpen(o => !o)}
         >
-          <span className={`truncate text-sm ${values.length ? '' : 'text-gray-400'}`}>
-            {values.length ? values.join(', ') : placeholder}
-          </span>
+          <span className={`truncate text-sm ${values.length ? '' : 'text-gray-400'}`}>{values.length ? values.join(', ') : placeholder}</span>
           <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" className={open ? 'rotate-180 transition-transform' : 'transition-transform'}>
             <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z" />
           </svg>
         </button>
-
         {open && (
           <div className="absolute z-10 mt-1 w-full bg-white border rounded-xl shadow-sm max-h-60 overflow-y-auto text-sm">
             {options.map(opt => (
@@ -181,7 +188,7 @@ function MultiSelect({
                   type="checkbox"
                   checked={values.includes(opt)}
                   onChange={() => toggleOpt(opt)}
-                  className="mr-2 accent-orange-500"
+                  className="mr-2"
                 />
                 {opt}
               </label>
@@ -193,12 +200,13 @@ function MultiSelect({
   )
 }
 
-// Helper functions
+// Helper to build static note text for LinkedIn copy
 function makeStaticNote(firstName?: string | null) {
   const first = (firstName || '').trim() || 'there'
   return `Hi ${first}, it's always nice to meet others passionate about the industry. Would be great to connect.`
 }
 
+// Map raw Apollo contact/person → Person
 function transformToPerson(p: any): Person {
   const first = (p?.first_name ?? '').toString().trim()
   const last = (p?.last_name ?? '').toString().trim()
@@ -266,14 +274,871 @@ export default function SourceTab({ mode }: { mode: SourceMode }) {
     (process.env.NEXT_PUBLIC_SOURCING_DOWN || '').toLowerCase() === '1' ||
     (process.env.NEXT_PUBLIC_SOURCING_DOWN || '').toLowerCase() === 'true'
 
-  // All your search state + UI rendering remain unchanged
-  // (The rest of the code from your original functional version continues here)
-  // ...
-  // No duplicates, no nested imports.
+  // ------ People search state ------
+  const personTitles = useChipInput([])
+  const personLocations = useChipInput([])
+  const personKeywords = useChipInput([])
+  const [personSeniorities, setPersonSeniorities] = useState<string[]>([])
+  const [peopleLoading, setPeopleLoading] = useState(false)
+  const [peopleError, setPeopleError] = useState<string | null>(null)
+  const [people, setPeople] = useState<Person[]>([])
+  const [peopleExpanded, setPeopleExpanded] = useState<Set<string>>(new Set())
+  const [peopleSearchOpen, setPeopleSearchOpen] = useState(true)
+  const [notesById, setNotesById] = useState<Record<string, string>>({})
+  const [copiedId, setCopiedId] = useState<string | null>(null)
+
+  const mailToSubject = 'Advanced Search Request (people)'
+  const mailToBody = `Hi BTS Team,
+
+Please can I request an advanced search with the criteria listed below, thank you.
+
+Job Titles:
+  - Exclude:
+
+Past Job Titles:
+
+Locations:
+
+City Radius: (provide city and radius within X miles)
+
+Company Name: (for full list of employees only)
+  - Exclude:
+
+Seniorities:
+
+Company Keywords:
+  - Exclude:
+
+People Lookalikes: (provide full names & current company name)
+
+Company Lookalikes: (Provide full company names)
+
+Kind regards,`
+  const subjectEncoded = encodeURIComponent(mailToSubject)
+  const bodyEncoded = encodeURIComponent(mailToBody)
+
+  function togglePersonExpanded(id: string) {
+    setPeopleExpanded(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const onLinkedInClick = async (
+    e: React.MouseEvent,
+    url?: string,
+    id?: string
+  ) => {
+    if (!url) return
+    e.preventDefault()
+    const note = id ? notesById[id] : ''
+    if (note) {
+      try {
+        await navigator.clipboard.writeText(note)
+        setCopiedId(id || null)
+        setTimeout(() => setCopiedId(null), 1200)
+      } catch {}
+    }
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }
+
+  async function runPeopleSearch(e?: React.FormEvent) {
+    e?.preventDefault()
+    if (isDown) return
+    setPeopleLoading(true)
+    setPeopleError(null)
+    setPeople([])
+    setPeopleExpanded(new Set())
+    try {
+      const payload = {
+        person_titles: personTitles.chips,
+        person_locations: personLocations.chips,
+        person_seniorities: personSeniorities,
+        q_keywords: personKeywords.chips,
+        page: 1,
+        per_page: 25,
+      }
+      const res = await fetch('/api/apollo/people-search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const json: any = await res.json()
+      if (!res.ok) throw new Error(json?.error || `Search failed (${res.status})`)
+      let rawArr: any[] = []
+      if (Array.isArray(json.people) && json.people.length) rawArr = json.people
+      else if (Array.isArray(json.apollo?.contacts) && json.apollo.contacts.length) rawArr = json.apollo.contacts
+      else if (Array.isArray(json.apollo?.people)) rawArr = json.apollo.people
+      const mapped: Person[] = rawArr.map(transformToPerson)
+      setPeople(mapped)
+      const built: Record<string, string> = {}
+      for (const p of mapped) {
+        const firstName = (p.name || '').split(' ')?.[0] || ''
+        built[p.id] = makeStaticNote(firstName)
+      }
+      setNotesById(built)
+      try {
+        await fetch('/api/notes/bulk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ notes: Object.entries(built).map(([candidateId, note]) => ({ candidateId, note })) }),
+        })
+      } catch {}
+    } catch (err: any) {
+      setPeopleError(err?.message || 'Unexpected error')
+    } finally {
+      setPeopleSearchOpen(false)
+      setPeopleLoading(false)
+    }
+  }
+
+  // ------ Company search state ------
+  const companyLocations = useChipInput([])
+  const companyKeywords  = useChipInput([])
+  const [activeJobsOnly, setActiveJobsOnly] = useState(false)
+
+  // NEW: chips for Days + Job Titles (always rendered)
+  const activeJobsDays = useChipInput([])
+  const activeJobTitles = useChipInput([])
+
+  // Numeric employee range
+  const [employeesMin, setEmployeesMin] = useState<number | ''>('')
+  const [employeesMax, setEmployeesMax] = useState<number | ''>('')
+
+  const [companyLoading, setCompanyLoading] = useState(false)
+  const [companyError, setCompanyError] = useState<string | null>(null)
+  const [companies, setCompanies] = useState<Company[]>([])
+  const [companySearchOpen, setCompanySearchOpen] = useState(true)
+  const [expandedJobs, setExpandedJobs] = useState<Set<string>>(new Set())
+  const [expandedHiring, setExpandedHiring] = useState<Set<string>>(new Set())
+  const [expandedNews, setExpandedNews] = useState<Set<string>>(new Set())
+
+  function toggleJobPostings(id: string) {
+    setExpandedJobs(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+  function toggleHiringPeople(id: string) {
+    setExpandedHiring(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+  function toggleNewsArticles(id: string) {
+    setExpandedNews(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  async function runCompanySearch(e?: React.FormEvent) {
+    e?.preventDefault()
+    if (isDown) return
+    setCompanyLoading(true)
+    setCompanyError(null)
+    setCompanies([])
+    setExpandedJobs(new Set())
+    setExpandedHiring(new Set())
+    setExpandedNews(new Set())
+    try {
+      const daysChip = activeJobsDays.chips.length ? activeJobsDays.chips[activeJobsDays.chips.length - 1] : null
+      const daysNum = daysChip && /^\d+$/.test(daysChip) ? Number(daysChip) : null
+
+      const payload = {
+        locations: companyLocations.chips,
+        keywords: companyKeywords.chips,
+        employeesMin: employeesMin === '' ? null : Number(employeesMin),
+        employeesMax: employeesMax === '' ? null : Number(employeesMax),
+
+        activeJobsOnly,
+        activeJobsDays: activeJobsOnly ? daysNum : null,
+        ...(activeJobsOnly && activeJobTitles.chips.length
+          ? { q_organization_job_titles: activeJobTitles.chips }
+          : {}),
+
+        page: 1,
+        per_page: 25,
+      }
+      const res = await fetch('/api/apollo/company-search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const json: any = await res.json()
+      if (!res.ok) throw new Error(json?.error || `Search failed (${res.status})`)
+      const arr: any[] = Array.isArray(json.companies) ? json.companies : []
+
+      const mapped: Company[] = arr.map((c: any) => {
+        const job_postings: JobPosting[] = Array.isArray(c?.job_postings)
+          ? c.job_postings.map((jp: any) => ({
+              id: (jp?.id ?? jp?.job_posting_id ?? jp?.job_posting_url ?? '').toString(),
+              title: jp?.title ?? jp?.job_title ?? null,
+              location: jp?.location ?? jp?.formatted_location ?? null,
+              employment_type: jp?.employment_type ?? jp?.job_type ?? null,
+              remote: typeof jp?.remote === 'boolean' ? jp.remote : null,
+              url: jp?.url ?? jp?.job_posting_url ?? null,
+              posted_at: jp?.posted_at ?? null,
+            }))
+          : []
+        const hiring_people: HiringPerson[] = Array.isArray(c?.hiring_people)
+          ? c.hiring_people.map((p: any) => transformToPerson(p))
+          : []
+        const news_articles: NewsArticle[] = Array.isArray(c?.news_articles)
+          ? c.news_articles.map((a: any) => ({
+              id: (a?.id ?? a?.article_id ?? '').toString(),
+              title: a?.title ?? null,
+              description: a?.description ?? a?.summary ?? null,
+              published_at: a?.published_at ?? a?.published_date ?? null,
+              url: a?.url ?? a?.article_url ?? null,
+            }))
+          : []
+        return {
+          id: (c?.id ?? c?.organization_id ?? '').toString(),
+          name: c?.name ?? c?.company_name ?? null,
+          website_url: c?.website_url ?? c?.domain ?? null,
+          linkedin_url: c?.linkedin_url ?? null,
+          exact_location: c?.formatted_address ?? c?.location ?? null,
+          city: c?.city ?? null,
+          state: c?.state ?? null,
+          short_description: c?.short_description ?? null,
+          job_postings,
+          hiring_people,
+          news_articles,
+        }
+      })
+      setCompanies(mapped)
+    } catch (err: any) {
+      setCompanyError(err?.message || 'Unexpected error')
+    } finally {
+      setCompanySearchOpen(false)
+      setCompanyLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) {
+        if (mode === 'people') runPeopleSearch()
+        else runCompanySearch()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [mode]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const renderPeople = () => {
+    return (
+      <div className="space-y-4">
+        {/* Panel 1: People search */}
+        <div className="rounded-2xl border bg-white shadow-sm">
+          <button
+            type="button"
+            onClick={() => setPeopleSearchOpen(o => !o)}
+            className="w-full flex items-center justify-between px-4 py-3"
+            aria-expanded={peopleSearchOpen}
+          >
+            <h3 className="font-semibold">Candidate | Contact Search</h3>
+            <svg
+              width="16" height="16" viewBox="0 0 20 20" fill="currentColor"
+              className={peopleSearchOpen ? 'rotate-180 transition-transform' : 'transition-transform'}
+            >
+              <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z" />
+            </svg>
+          </button>
+          {peopleSearchOpen && (
+            <form onSubmit={runPeopleSearch} className="p-4 pt-0">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">Job Titles</label>
+                  <div className="rounded-xl border px-2 py-1.5">
+                    <div className="flex flex-wrap gap-2">
+                      {personTitles.chips.map(v => (
+                        <Chip key={v} onRemove={() => personTitles.removeChip(v)}>{v}</Chip>
+                      ))}
+                      <input
+                        className="w-full outline-none text-sm px-2 py-1"
+                        placeholder={phIfEmpty(personTitles.input, personTitles.chips, 'e.g. Field Service Technician')}
+                        value={personTitles.input}
+                        onChange={e => personTitles.setInput(e.target.value)}
+                        onKeyDown={personTitles.onKeyDown}
+                        disabled={isDown}
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">Locations</label>
+                  <div className="rounded-xl border px-2 py-1.5">
+                    <div className="flex flex-wrap gap-2">
+                      {personLocations.chips.map(v => (
+                        <Chip key={v} onRemove={() => personLocations.removeChip(v)}>{v}</Chip>
+                      ))}
+                      <input
+                        className="w-full outline-none text-sm px-2 py-1"
+                        placeholder={phIfEmpty(personLocations.input, personLocations.chips, 'e.g. California, United States')}
+                        value={personLocations.input}
+                        onChange={e => personLocations.setInput(e.target.value)}
+                        onKeyDown={personLocations.onKeyDown}
+                        disabled={isDown}
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">Keywords</label>
+                  <div className="rounded-xl border px-2 py-1.5">
+                    <div className="flex flex-wrap gap-2">
+                      {personKeywords.chips.map(v => (
+                        <Chip key={v} onRemove={() => personKeywords.removeChip(v)}>{v}</Chip>
+                      ))}
+                      <input
+                        className="w-full outline-none text-sm px-2 py-1"
+                        placeholder={phIfEmpty(personKeywords.input, personKeywords.chips, 'e.g. Fire, Security, CCTV')}
+                        value={personKeywords.input}
+                        onChange={e => personKeywords.setInput(e.target.value)}
+                        onKeyDown={personKeywords.onKeyDown}
+                        disabled={isDown}
+                      />
+                    </div>
+                  </div>
+                </div>
+                <MultiSelect
+                  label="Seniorities"
+                  options={SENIORITIES as unknown as string[]}
+                  values={personSeniorities}
+                  setValues={setPersonSeniorities}
+                  placeholder="Choose one or more seniorities"
+                />
+              </div>
+              <div className="mt-4 flex items-center justify-between">
+                <span className="text-xs text-gray-500">
+                  Please press <kbd className="px-1 border rounded">Enter</kbd> to submit your search criteria for each field.
+                </span>
+                <button
+                  type="submit"
+                  className="rounded-full bg-orange-500 text-white px-5 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50"
+                  disabled={isDown || peopleLoading}
+                >
+                  {peopleLoading ? 'Searching…' : 'Search'}
+                </button>
+              </div>
+              <div className="mt-3 flex justify-end">
+                <div className="text-right text-xs text-gray-500">
+                  If you would like to request a more advanced search, please click{' '}
+                  <a
+                    href={`mailto:bts@zitko.co.uk?subject=${subjectEncoded}&body=${bodyEncoded}`}
+                    className="text-orange-500 hover:text-orange-600 no-underline"
+                  >
+                    here
+                  </a>
+                </div>
+              </div>
+            </form>
+          )}
+        </div>
+
+        {/* Panel 2: People results */}
+        <div className="rounded-2xl border bg-white shadow-sm">
+          {peopleError ? (
+            <div className="p-6 text-sm text-red-600">{peopleError}</div>
+          ) : people.length === 0 && !peopleLoading ? (
+            <div className="p-6 text-sm text-gray-500">
+              Enter your criteria above and click <strong>Search</strong> to view people.
+            </div>
+          ) : (
+            <ul className="divide-y">
+              {people.map(p => {
+                const hasLI = !!p.linkedin_url
+                const hasFB = !!p.facebook_url
+                const hasWWW = !!p.organization_website_url
+                return (
+                  <li key={p.id} className="p-4">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-semibold text-base truncate">{p.name || '—'}</span>
+                        {p.formatted_address ? (
+                          <>
+                            <span className="text-gray-300">|</span>
+                            <span className="text-xs text-gray-600 truncate">{p.formatted_address}</span>
+                          </>
+                        ) : null}
+                      </div>
+                      <div className="shrink-0 flex items-center gap-3">
+                        <a
+                          href={hasLI ? p.linkedin_url! : undefined}
+                          onClick={hasLI ? (ev) => onLinkedInClick(ev, p.linkedin_url!, p.id) : undefined}
+                          className={hasLI ? '' : 'opacity-30 pointer-events-none cursor-default'}
+                          title={
+                            hasLI
+                              ? (copiedId === p.id ? 'Note copied!' : 'Open LinkedIn (note copies first)')
+                              : 'LinkedIn not available'
+                          }
+                        >
+                          <IconLinkedIn />
+                        </a>
+                        <a
+                          href={hasFB ? p.facebook_url! : undefined}
+                          target={hasFB ? '_blank' : undefined}
+                          rel={hasFB ? 'noreferrer' : undefined}
+                          className={hasFB ? '' : 'opacity-30 pointer-events-none cursor-default'}
+                          title={hasFB ? 'Open Facebook' : 'Facebook not available'}
+                        >
+                          <IconFacebook />
+                        </a>
+                        <a
+                          href={hasWWW ? p.organization_website_url! : undefined}
+                          target={hasWWW ? '_blank' : undefined}
+                          rel={hasWWW ? 'noreferrer' : undefined}
+                          className={hasWWW ? 'text-gray-700 hover:text-gray-900' : 'opacity-30 pointer-events-none cursor-default'}
+                          title={hasWWW ? 'Open company website' : 'Company website not available'}
+                        >
+                          <IconGlobe muted={!hasWWW} />
+                        </a>
+                      </div>
+                    </div>
+                    <div className="mt-1 flex items-center justify-between gap-4">
+                      <div className="min-w-0">
+                        <div className="text-sm">{p.title || '—'}</div>
+                        <div className="text-sm flex items-center gap-2">
+                          <span className="truncate">{p.organization_name || '—'}</span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => togglePersonExpanded(p.id)}
+                        className="text-sm text-gray-700 hover:text-gray-900 inline-flex items-center gap-1"
+                        title="Toggle employment history"
+                      >
+                        Employment history
+                        <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" className={peopleExpanded.has(p.id) ? 'rotate-180 transition-transform' : 'transition-transform'}>
+                          <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z" />
+                        </svg>
+                      </button>
+                    </div>
+                    {peopleExpanded.has(p.id) && (
+                      <div className="mt-3 rounded-xl border bg-gray-50">
+                        <div className="px-3 py-2 border-b grid grid-cols-1 md:grid-cols-4 md:gap-3 text-xs text-gray-500">
+                          <div>Company</div>
+                          <div>Job Title</div>
+                          <div>Start Date</div>
+                          <div>End Date</div>
+                        </div>
+                        <ul className="text-xs">
+                          {p.employment_history.length ? (
+                            p.employment_history.map((eh, idx) => {
+                              const isCurrent = !!eh.current || eh.end_date === null
+                              const rowClass = isCurrent ? 'text-orange-500' : ''
+                              return (
+                                <li key={idx} className={`px-3 py-2 border-t first:border-t-0 ${rowClass}`}>
+                                  <div className="grid grid-cols-1 md:grid-cols-4 md:gap-3">
+                                    <div>{eh.organization_name || '—'}</div>
+                                    <div>{eh.title || '—'}</div>
+                                    <div>{formatMonthYear(eh.start_date)}</div>
+                                    <div>{eh.end_date ? formatMonthYear(eh.end_date) : 'Present'}</div>
+                                  </div>
+                                </li>
+                              )
+                            })
+                          ) : (
+                            <li className="px-3 py-2 border-t first:border-t-0 text-gray-500">No history available.</li>
+                          )}
+                        </ul>
+                      </div>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </div>
+      </div>
+    )
+  };
+
+  // ---------------- Company search + results UI ----------------
+  const renderCompanies = () => {
+    const disabledLook = (!activeJobsOnly || isDown) ? 'opacity-50' : ''
+    const isInputsDisabled = !activeJobsOnly || isDown
+
+    return (
+      <div className="space-y-4">
+        {/* Panel 1: Company search */}
+        <div className="rounded-2xl border bg-white shadow-sm">
+          <button
+            type="button"
+            onClick={() => setCompanySearchOpen(o => !o)}
+            className="w-full flex items-center justify-between px-4 py-3"
+            aria-expanded={companySearchOpen}
+          >
+            <h3 className="font-semibold">Company | Organization Search</h3>
+            <svg
+              width="16" height="16" viewBox="0 0 20 20" fill="currentColor"
+              className={companySearchOpen ? 'rotate-180 transition-transform' : 'transition-transform'}
+            >
+              <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z" />
+            </svg>
+          </button>
+
+          {companySearchOpen && (
+            <form onSubmit={runCompanySearch} className="p-4 pt-0">
+              {/* Row 1: Locations / Keywords */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">Locations</label>
+                  <div className="rounded-xl border px-2 py-1.5">
+                    <div className="flex flex-wrap gap-2">
+                      {companyLocations.chips.map(v => (
+                        <Chip key={v} onRemove={() => companyLocations.removeChip(v)}>{v}</Chip>
+                      ))}
+                      <input
+                        className="w-full outline-none text-sm px-2 py-1"
+                        placeholder={phIfEmpty(companyLocations.input, companyLocations.chips, 'e.g. London, United Kingdom')}
+                        value={companyLocations.input}
+                        onChange={e => companyLocations.setInput(e.target.value)}
+                        onKeyDown={companyLocations.onKeyDown}
+                        disabled={isDown}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">Keywords</label>
+                  <div className="rounded-xl border px-2 py-1.5">
+                    <div className="flex flex-wrap gap-2">
+                      {companyKeywords.chips.map(v => (
+                        <Chip key={v} onRemove={() => companyKeywords.removeChip(v)}>{v}</Chip>
+                      ))}
+                      <input
+                        className="w-full outline-none text-sm px-2 py-1"
+                        placeholder={phIfEmpty(companyKeywords.input, companyKeywords.chips, 'e.g. Security, CCTV')}
+                        value={companyKeywords.input}
+                        onChange={e => companyKeywords.setInput(e.target.value)}
+                        onKeyDown={companyKeywords.onKeyDown}
+                        disabled={isDown}
+                      />
+                    </div>
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Security &amp; Investigations + Facilities Services are already included within the search
+                  </p>
+                </div>
+              </div>
+
+              {/* Row 2: Employees | Active Job Listings */}
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Employees */}
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">
+                    Employees <span className="text-xs text-gray-400">(from &amp; to)</span>
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={0}
+                      className="w-full rounded-xl border h-10 px-3 text-sm"
+                      value={employeesMin}
+                      onChange={(e) => setEmployeesMin(e.target.value === '' ? '' : Number(e.target.value))}
+                      placeholder="e.g. 50"
+                      disabled={isDown}
+                    />
+                    <span className="text-gray-400 text-sm">to</span>
+                    <input
+                      type="number"
+                      min={0}
+                      className="w-full rounded-xl border h-10 px-3 text-sm"
+                      value={employeesMax}
+                      onChange={(e) => setEmployeesMax(e.target.value === '' ? '' : Number(e.target.value))}
+                      placeholder="e.g. 250"
+                      disabled={isDown}
+                    />
+                  </div>
+                </div>
+
+                {/* Active Job Listings (section heading with tick, aligned inputs) */}
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1 flex items-center gap-2">
+                    {/* custom white-tick checkbox */}
+                    <input
+                      id="activeJobsOnly"
+                      type="checkbox"
+                      className="appearance-none h-4 w-4 rounded border border-gray-300 grid place-content-center
+                                 checked:bg-orange-500
+                                 before:content-[''] before:hidden checked:before:block
+                                 before:w-2.5 before:h-2.5
+                                 before:[clip-path:polygon(14%_44%,0_59%,39%_100%,100%_18%,84%_4%,39%_72%)]
+                                 before:bg-white"
+                      checked={activeJobsOnly}
+                      onChange={(e) => setActiveJobsOnly(e.target.checked)}
+                      disabled={isDown}
+                    />
+                    Active Job Listings
+                  </label>
+                
+                  <div className={`flex items-center gap-3 ${disabledLook}`} aria-disabled={isInputsDisabled}>
+                    {/* Days input (fixed width; placeholder hides on chip/text) */}
+                    <div className="shrink-0 rounded-xl border px-2 py-1.5 w-28">
+                      <div className="flex flex-wrap gap-2 overflow-hidden">
+                        {activeJobsDays.chips.map(v => (
+                          <Chip key={v} onRemove={() => activeJobsDays.removeChip(v)}>{v}</Chip>
+                        ))}
+                        <input
+                          className="w-full outline-none text-sm px-2 py-1"
+                          placeholder={phIfEmpty(activeJobsDays.input, activeJobsDays.chips, 'Days (e.g. 30)')}
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          value={activeJobsDays.input}
+                          onChange={(e) => {
+                            const digits = e.target.value.replace(/\D+/g, '')
+                            activeJobsDays.setInput(digits)
+                          }}
+                          onKeyDown={(e) => activeJobsDays.onKeyDown(e)}
+                          disabled={isInputsDisabled}
+                        />
+                      </div>
+                    </div>
+                
+                    {/* Job Titles input (chip style) */}
+                    <div className="flex-1 rounded-xl border px-2 py-1.5">
+                      <div className="flex flex-wrap gap-2">
+                        {activeJobTitles.chips.map(v => (
+                          <Chip key={v} onRemove={() => activeJobTitles.removeChip(v)}>{v}</Chip>
+                        ))}
+                        <input
+                          className="w-full outline-none text-sm px-2 py-1"
+                          placeholder={phIfEmpty(activeJobTitles.input, activeJobTitles.chips, 'Job Titles (e.g. Engineer, Manager)')}
+                          value={activeJobTitles.input}
+                          onChange={e => activeJobTitles.setInput(e.target.value)}
+                          onKeyDown={activeJobTitles.onKeyDown}
+                          disabled={isInputsDisabled}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Tips + Search button */}
+              <div className="mt-4 flex items-center justify-between">
+                <span className="text-xs text-gray-500">
+                  Please press <kbd className="px-1 border rounded">Enter</kbd> to submit each chip.
+                </span>
+                <button
+                  type="submit"
+                  className="rounded-full bg-orange-500 text-white px-5 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50"
+                  disabled={isDown || companyLoading}
+                >
+                  {companyLoading ? 'Searching…' : 'Search'}
+                </button>
+              </div>
+
+              {companyError && (
+                <div className="mt-3 text-sm text-red-600">{companyError}</div>
+              )}
+            </form>
+          )}
+        </div>
+
+        {/* Panel 2: Company results */}
+        <div className="rounded-2xl border bg-white shadow-sm">
+          {companies.length > 0 ? (
+            <ul className="divide-y divide-gray-200">
+              {companies.map((c: Company) => (
+                <li key={c.id} className="p-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="font-semibold text-base truncate">{c.name || '—'}</span>
+                      {formatCityState(c) ? (
+                        <>
+                          <span className="text-gray-300">|</span>
+                          <span className="text-xs text-gray-600 truncate">
+                            {formatCityState(c)}
+                          </span>
+                        </>
+                      ) : null}
+                    </div>
+
+                    <div className="shrink-0 flex items-center gap-3">
+                      <a
+                        href={c.linkedin_url || undefined}
+                        target={c.linkedin_url ? '_blank' : undefined}
+                        rel={c.linkedin_url ? 'noreferrer' : undefined}
+                        className={c.linkedin_url ? '' : 'opacity-30 pointer-events-none cursor-default'}
+                        title={c.linkedin_url ? 'Open LinkedIn' : 'LinkedIn not available'}
+                      >
+                        <IconLinkedIn />
+                      </a>
+                      <a
+                        href={c.website_url || undefined}
+                        target={c.website_url ? '_blank' : undefined}
+                        rel={c.website_url ? 'noreferrer' : undefined}
+                        className={c.website_url ? 'text-gray-700 hover:text-gray-900' : 'opacity-30 pointer-events-none cursor-default'}
+                        title={c.website_url ? 'Open company website' : 'Company website not available'}
+                      >
+                        <IconGlobe muted={!c.website_url} />
+                      </a>
+                    </div>
+                  </div>
+
+                  <div className="mt-2 flex items-start justify-between">
+                    <div />
+                    <div className="shrink-0 flex items-center gap-6 text-sm">
+                      <button
+                        type="button"
+                        onClick={() => toggleJobPostings(c.id)}
+                        className="text-gray-700 hover:text-gray-900 inline-flex items-center gap-1"
+                      >
+                        Job postings
+                        <svg width="12" height="12" viewBox="0 0 20 20" className={expandedJobs.has(c.id) ? 'rotate-180 transition-transform' : 'transition-transform'}>
+                          <path fill="currentColor" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z"/>
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => toggleHiringPeople(c.id)}
+                        className="text-gray-700 hover:text-gray-900 inline-flex items-center gap-1"
+                      >
+                        Hiring contacts
+                        <svg width="12" height="12" viewBox="0 0 20 20" className={expandedHiring.has(c.id) ? 'rotate-180 transition-transform' : 'transition-transform'}>
+                          <path fill="currentColor" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z"/>
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => toggleNewsArticles(c.id)}
+                        className="text-gray-700 hover:text-gray-900 inline-flex items-center gap-1"
+                      >
+                        News articles
+                        <svg width="12" height="12" viewBox="0 0 20 20" className={expandedNews.has(c.id) ? 'rotate-180 transition-transform' : 'transition-transform'}>
+                          <path fill="currentColor" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+
+                  {expandedJobs.has(c.id) && (
+                    <div className="mt-3 rounded-xl border bg-gray-50 overflow-hidden">
+                      <div className="px-3 py-2 border-b text-xs text-gray-500 grid grid-cols-12">
+                        <div className="col-span-6">Title</div>
+                        <div className="col-span-4">Location</div>
+                        <div className="col-span-2 text-right">Type</div>
+                      </div>
+                      <div className="max-h-60 overflow-auto">
+                        <ul className="text-sm">
+                          {c.job_postings?.length
+                            ? [...c.job_postings]
+                                .sort((a: any, b: any) => {
+                                  const da = a?.posted_at ? new Date(a.posted_at).getTime() : 0
+                                  const db = b?.posted_at ? new Date(b.posted_at).getTime() : 0
+                                  return db - da
+                                })
+                                .map((j: any) => (
+                                  <li key={j.id} className="px-3 py-2 border-t first:border-t-0 grid grid-cols-12">
+                                    <div className="col-span-6 truncate">
+                                      {j.url ? (
+                                        <a
+                                          className="text-orange-600 hover:underline"
+                                          href={j.url}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                        >
+                                          {j.title || 'Untitled job'}
+                                        </a>
+                                      ) : (
+                                        j.title || 'Untitled job'
+                                      )}
+                                      {j.posted_at && (
+                                        <span className="ml-2 text-gray-400">
+                                          {new Date(j.posted_at).toLocaleDateString()}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="col-span-4 truncate">{j.location || '—'}</div>
+                                    <div className="col-span-2 text-right">{j.employment_type || '—'}</div>
+                                  </li>
+                                ))
+                            : (
+                              <li className="px-3 py-2 text-xs text-gray-500">No job postings.</li>
+                            )}
+                        </ul>
+                      </div>
+                    </div>
+                  )}
+
+                  {expandedHiring.has(c.id) && (
+                    <div className="mt-3 rounded-xl border bg-gray-50 overflow-hidden">
+                      <div className="px-3 py-2 border-b text-xs text-gray-500 grid grid-cols-12">
+                        <div className="col-span-5">Name</div>
+                        <div className="col-span-5">Title</div>
+                        <div className="col-span-2 text-right">LinkedIn</div>
+                      </div>
+                      <ul className="text-sm">
+                        {c.hiring_people?.length ? c.hiring_people.map((p: any) => (
+                          <li key={p.id} className="px-3 py-2 border-t first:border-t-0 grid grid-cols-12">
+                            <div className="col-span-5 truncate">{p.name || '—'}</div>
+                            <div className="col-span-5 truncate">{p.title || '—'}</div>
+                            <div className="col-span-2 text-right">
+                              {p.linkedin_url
+                                ? <a className="text-orange-600 hover:underline" href={p.linkedin_url} target="_blank" rel="noreferrer">view</a>
+                                : '—'}
+                            </div>
+                          </li>
+                        )) : (
+                          <li className="px-3 py-2 text-xs text-gray-500">No hiring contacts.</li>
+                        )}
+                      </ul>
+                    </div>
+                  )}
+
+                  {expandedNews.has(c.id) && (
+                    <div className="mt-3 rounded-xl border bg-gray-50 overflow-hidden">
+                      <div className="px-3 py-2 border-b text-xs text-gray-500 grid grid-cols-12">
+                        <div className="col-span-8">Title</div>
+                        <div className="col-span-2">Published</div>
+                        <div className="col-span-2 text-right">Link</div>
+                      </div>
+                      <ul className="text-sm">
+                        {c.news_articles?.length ? c.news_articles.map((n: any) => (
+                          <li key={n.id} className="px-3 py-2 border-t first:border-t-0 grid grid-cols-12">
+                            <div className="col-span-8 truncate">{n.title || '—'}</div>
+                            <div className="col-span-2 truncate">
+                              {n.published_at ? new Date(n.published_at).toLocaleDateString() : '—'}
+                            </div>
+                            <div className="col-span-2 text-right">
+                              {n.url
+                                ? <a className="text-orange-600 hover:underline" href={n.url} target="_blank" rel="noreferrer">view</a>
+                                : '—'}
+                            </div>
+                          </li>
+                        )) : (
+                          <li className="px-3 py-2 text-xs text-gray-500">No news articles.</li>
+                        )}
+                      </ul>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="p-6 text-sm text-gray-500">No companies found.</p>
+          )}
+        </div>
+      </div>
+    )
+  };
 
   return (
     <div className="space-y-4">
-      {/* ... your renderPeople() and renderCompanies() calls ... */}
+      {mode === 'people' ? renderPeople() : renderCompanies()}
     </div>
   )
 }
