@@ -199,22 +199,25 @@ function MultiSelect({
 
         {open && (
           <div className="absolute z-10 mt-1 w-full bg-white border rounded-xl shadow-sm max-h-60 overflow-y-auto text-sm">
-            {options.map(opt => (
-              <label key={opt} className="block px-3 py-2 hover:bg-gray-50 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={values.includes(opt)}
-                  onChange={() => toggleOpt(opt)}
-                  className="mr-2 appearance-none h-4 w-4 rounded border border-gray-300 grid place-content-center
-                             checked:bg-orange-500
-                             before:content-[''] before:hidden checked:before:block
-                             before:w-2.5 before:h-2.5
-                             before:[clip-path:polygon(14%_44%,0_59%,39%_100%,100%_18%,84%_4%,39%_72%)]
-                             before:bg-white"
-                />
-                {opt}
-              </label>
-            ))}
+           {options.map(opt => (
+            <label
+              key={opt}
+              className="flex items-center px-3 py-2 hover:bg-gray-50 cursor-pointer gap-2 text-sm"
+            >
+              <input
+                type="checkbox"
+                checked={values.includes(opt)}
+                onChange={() => toggleOpt(opt)}
+                className="appearance-none h-4 w-4 rounded border border-gray-300 grid place-content-center
+                           checked:bg-orange-500
+                           before:content-[''] before:hidden checked:before:block
+                           before:w-2.5 before:h-2.5
+                           before:[clip-path:polygon(14%_44%,0_59%,39%_100%,100%_18%,84%_4%,39%_72%)]
+                           before:bg-white"
+              />
+              <span>{opt}</span>
+            </label>
+          ))}
           </div>
         )}
       </div>
