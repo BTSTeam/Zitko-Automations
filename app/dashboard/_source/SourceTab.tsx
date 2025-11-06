@@ -106,7 +106,7 @@ function useChipInput(initial: string[] = []) {
 
 function Chip({ children, onRemove }: { children: string; onRemove: () => void }) {
   return (
-    <span className="inline-flex items-center gap-2 rounded-full bg-gray-100 px-3 py-1 text-sm">
+    <span className="shrink-0 inline-flex items-center gap-2 h-7 rounded-full bg-gray-100 px-3 text-sm">
       <span className="truncate">{children}</span>
       <button
         type="button"
@@ -169,13 +169,16 @@ function MultiSelect({
   return (
     <div>
       <label className="block text-sm text-gray-600 mb-1">{label}</label>
-      <div ref={ref} className="relative rounded-xl border px-2 py-1.5">
+      {/* Fixed height like other inputs */}
+      <div ref={ref} className="relative rounded-xl border h-10 px-3">
         <button
           type="button"
-          className="w-full text-left flex items-center justify-between"
+          className="w-full h-full text-left flex items-center justify-between"
           onClick={() => setOpen(o => !o)}
         >
-          <span className={`truncate text-sm ${values.length ? '' : 'text-gray-400'}`}>{values.length ? values.join(', ') : placeholder}</span>
+          <span className={`truncate text-sm ${values.length ? '' : 'text-gray-400'}`}>
+            {values.length ? values.join(', ') : placeholder}
+          </span>
           <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" className={open ? 'rotate-180 transition-transform' : 'transition-transform'}>
             <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z" />
           </svg>
@@ -183,7 +186,7 @@ function MultiSelect({
         {open && (
           <div className="absolute z-10 mt-1 w-full bg-white border rounded-xl shadow-sm max-h-60 overflow-y-auto text-sm">
             {options.map(opt => (
-              <label key={opt} className="block px-3 py-1 hover:bg-gray-50 cursor-pointer">
+              <label key={opt} className="block px-3 py-2 hover:bg-gray-50 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={values.includes(opt)}
@@ -499,7 +502,7 @@ Kind regards,`
               description: a?.description ?? a?.summary ?? null,
               published_at: a?.published_at ?? a?.published_date ?? null,
               url: a?.url ?? a?.article_url ?? null,
-            }))
+            }))}
           : []
         return {
           id: (c?.id ?? c?.organization_id ?? '').toString(),
@@ -559,13 +562,13 @@ Kind regards,`
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">Job Titles</label>
-                  <div className="rounded-xl border px-2 py-1.5">
-                    <div className="flex flex-wrap gap-2">
+                  <div className="rounded-xl border h-10 px-2">
+                    <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
                       {personTitles.chips.map(v => (
                         <Chip key={v} onRemove={() => personTitles.removeChip(v)}>{v}</Chip>
                       ))}
                       <input
-                        className="w-full outline-none text-sm px-2 py-1"
+                        className="min-w-[10rem] grow outline-none text-sm h-8 px-2"
                         placeholder={phIfEmpty(personTitles.input, personTitles.chips, 'e.g. Field Service Technician')}
                         value={personTitles.input}
                         onChange={e => personTitles.setInput(e.target.value)}
@@ -577,13 +580,13 @@ Kind regards,`
                 </div>
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">Locations</label>
-                  <div className="rounded-xl border px-2 py-1.5">
-                    <div className="flex flex-wrap gap-2">
+                  <div className="rounded-xl border h-10 px-2">
+                    <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
                       {personLocations.chips.map(v => (
                         <Chip key={v} onRemove={() => personLocations.removeChip(v)}>{v}</Chip>
                       ))}
                       <input
-                        className="w-full outline-none text-sm px-2 py-1"
+                        className="min-w-[10rem] grow outline-none text-sm h-8 px-2"
                         placeholder={phIfEmpty(personLocations.input, personLocations.chips, 'e.g. California, United States')}
                         value={personLocations.input}
                         onChange={e => personLocations.setInput(e.target.value)}
@@ -595,13 +598,13 @@ Kind regards,`
                 </div>
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">Keywords</label>
-                  <div className="rounded-xl border px-2 py-1.5">
-                    <div className="flex flex-wrap gap-2">
+                  <div className="rounded-xl border h-10 px-2">
+                    <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
                       {personKeywords.chips.map(v => (
                         <Chip key={v} onRemove={() => personKeywords.removeChip(v)}>{v}</Chip>
                       ))}
                       <input
-                        className="w-full outline-none text-sm px-2 py-1"
+                        className="min-w-[10rem] grow outline-none text-sm h-8 px-2"
                         placeholder={phIfEmpty(personKeywords.input, personKeywords.chips, 'e.g. Fire, Security, CCTV')}
                         value={personKeywords.input}
                         onChange={e => personKeywords.setInput(e.target.value)}
@@ -794,13 +797,13 @@ Kind regards,`
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">Locations</label>
-                  <div className="rounded-xl border px-2 py-1.5">
-                    <div className="flex flex-wrap gap-2">
+                  <div className="rounded-xl border h-10 px-2">
+                    <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
                       {companyLocations.chips.map(v => (
                         <Chip key={v} onRemove={() => companyLocations.removeChip(v)}>{v}</Chip>
                       ))}
                       <input
-                        className="w-full outline-none text-sm px-2 py-1"
+                        className="min-w-[10rem] grow outline-none text-sm h-8 px-2"
                         placeholder={phIfEmpty(companyLocations.input, companyLocations.chips, 'e.g. London, United Kingdom')}
                         value={companyLocations.input}
                         onChange={e => companyLocations.setInput(e.target.value)}
@@ -813,13 +816,13 @@ Kind regards,`
 
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">Keywords</label>
-                  <div className="rounded-xl border px-2 py-1.5">
-                    <div className="flex flex-wrap gap-2">
+                  <div className="rounded-xl border h-10 px-2">
+                    <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
                       {companyKeywords.chips.map(v => (
                         <Chip key={v} onRemove={() => companyKeywords.removeChip(v)}>{v}</Chip>
                       ))}
                       <input
-                        className="w-full outline-none text-sm px-2 py-1"
+                        className="min-w-[10rem] grow outline-none text-sm h-8 px-2"
                         placeholder={phIfEmpty(companyKeywords.input, companyKeywords.chips, 'e.g. Security, CCTV')}
                         value={companyKeywords.input}
                         onChange={e => companyKeywords.setInput(e.target.value)}
@@ -885,14 +888,14 @@ Kind regards,`
                   </label>
                 
                   <div className={`flex items-center gap-3 ${disabledLook}`} aria-disabled={isInputsDisabled}>
-                    {/* Days input (fixed width; placeholder hides on chip/text) */}
-                    <div className="shrink-0 rounded-xl border px-2 py-1.5 w-28">
-                      <div className="flex flex-wrap gap-2 overflow-hidden">
+                    {/* Days input (fixed width; single-line, no wrap) */}
+                    <div className="shrink-0 rounded-xl border h-10 px-2 w-28">
+                      <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
                         {activeJobsDays.chips.map(v => (
                           <Chip key={v} onRemove={() => activeJobsDays.removeChip(v)}>{v}</Chip>
                         ))}
                         <input
-                          className="w-full outline-none text-sm px-2 py-1"
+                          className="min-w-[6rem] grow outline-none text-sm h-8 px-2"
                           placeholder={phIfEmpty(activeJobsDays.input, activeJobsDays.chips, 'Days (e.g. 30)')}
                           inputMode="numeric"
                           pattern="[0-9]*"
@@ -907,14 +910,14 @@ Kind regards,`
                       </div>
                     </div>
                 
-                    {/* Job Titles input (chip style) */}
-                    <div className="flex-1 rounded-xl border px-2 py-1.5">
-                      <div className="flex flex-wrap gap-2">
+                    {/* Job Titles input (chip style, fixed height) */}
+                    <div className="flex-1 rounded-xl border h-10 px-2">
+                      <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
                         {activeJobTitles.chips.map(v => (
                           <Chip key={v} onRemove={() => activeJobTitles.removeChip(v)}>{v}</Chip>
                         ))}
                         <input
-                          className="w-full outline-none text-sm px-2 py-1"
+                          className="min-w-[10rem] grow outline-none text-sm h-8 px-2"
                           placeholder={phIfEmpty(activeJobTitles.input, activeJobTitles.chips, 'Job Titles (e.g. Engineer, Manager)')}
                           value={activeJobTitles.input}
                           onChange={e => activeJobTitles.setInput(e.target.value)}
