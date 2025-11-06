@@ -65,9 +65,10 @@ export async function POST(req: NextRequest) {
     /** Preferred param */
     activeJobsWindowDays?: number | string | null
     q_organization_job_titles?: string[] | string
+    seedIndustryTags?: string[] | string
     page?: number | string
     per_page?: number | string
-
+  
     /** recruiter exclusion controls */
     excludeRecruiters?: boolean
     excludeNameContains?: string[] | string
@@ -79,7 +80,9 @@ export async function POST(req: NextRequest) {
   } catch {}
 
   const locations       = toArray(inBody.locations)
-  const tags            = toArray(inBody.keywords)
+  const seedIndustryTags = toArray(inBody.seedIndustryTags)
+  const tagsRaw          = toArray(inBody.keywords)
+  const tags             = Array.from(new Set([...tagsRaw, ...seedIndustryTags])).filter(Boolean)
   const employeeRanges  = toArray(inBody.employeeRanges)
   const jobTitleFilters = toArray(inBody.q_organization_job_titles)
 
