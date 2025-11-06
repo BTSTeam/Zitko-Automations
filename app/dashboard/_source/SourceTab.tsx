@@ -74,6 +74,10 @@ const SENIORITIES = [
   'owner','founder','c_suite','partner','vp','head','director','manager','senior','entry','intern',
 ] as const
 
+// ---------------- Small helpers ----------------
+const phIfEmpty = (value: string, chips: string[] | undefined, text: string) =>
+  (value?.trim() || (chips && chips.length)) ? '' : text
+
 // ---------------- UI helpers ----------------
 function useChipInput(initial: string[] = []) {
   const [chips, setChips] = useState<string[]>(initial)
@@ -562,7 +566,7 @@ Kind regards,`
                       ))}
                       <input
                         className="w-full outline-none text-sm px-2 py-1"
-                        placeholder={personTitles.input ? '' : 'e.g. Field Service Technician'}
+                        placeholder={phIfEmpty(personTitles.input, personTitles.chips, 'e.g. Field Service Technician')}
                         value={personTitles.input}
                         onChange={e => personTitles.setInput(e.target.value)}
                         onKeyDown={personTitles.onKeyDown}
@@ -579,9 +583,9 @@ Kind regards,`
                         <Chip key={v} onRemove={() => personLocations.removeChip(v)}>{v}</Chip>
                       ))}
                       <input
-                        className="min-w-[10ch] flex-1 outline-none text-sm px-2 py-1"
                         className="w-full outline-none text-sm px-2 py-1"
-                        placeholder={personLocations.input ? '' : 'e.g. California, United States'}
+                        placeholder={phIfEmpty(personLocations.input, personLocations.chips, 'e.g. California, United States')}
+                        value={personLocations.input}
                         onChange={e => personLocations.setInput(e.target.value)}
                         onKeyDown={personLocations.onKeyDown}
                         disabled={isDown}
@@ -597,9 +601,9 @@ Kind regards,`
                         <Chip key={v} onRemove={() => personKeywords.removeChip(v)}>{v}</Chip>
                       ))}
                       <input
-                        className="min-w-[10ch] flex-1 outline-none text-sm px-2 py-1"
                         className="w-full outline-none text-sm px-2 py-1"
-                        placeholder={personKeywords.input ? '' : 'e.g. Fire, Security, CCTV'}
+                        placeholder={phIfEmpty(personKeywords.input, personKeywords.chips, 'e.g. Fire, Security, CCTV')}
+                        value={personKeywords.input}
                         onChange={e => personKeywords.setInput(e.target.value)}
                         onKeyDown={personKeywords.onKeyDown}
                         disabled={isDown}
@@ -797,7 +801,7 @@ Kind regards,`
                       ))}
                       <input
                         className="w-full outline-none text-sm px-2 py-1"
-                        placeholder={companyLocations.input ? '' : 'e.g. London, United Kingdom'}
+                        placeholder={phIfEmpty(companyLocations.input, companyLocations.chips, 'e.g. London, United Kingdom')}
                         value={companyLocations.input}
                         onChange={e => companyLocations.setInput(e.target.value)}
                         onKeyDown={companyLocations.onKeyDown}
@@ -815,9 +819,9 @@ Kind regards,`
                         <Chip key={v} onRemove={() => companyKeywords.removeChip(v)}>{v}</Chip>
                       ))}
                       <input
-                        className="min-w-[10ch] flex-1 outline-none text-sm px-2 py-1"
                         className="w-full outline-none text-sm px-2 py-1"
-                        placeholder={companyKeywords.input ? '' : 'e.g. Security, CCTV'}
+                        placeholder={phIfEmpty(companyKeywords.input, companyKeywords.chips, 'e.g. Security, CCTV')}
+                        value={companyKeywords.input}
                         onChange={e => companyKeywords.setInput(e.target.value)}
                         onKeyDown={companyKeywords.onKeyDown}
                         disabled={isDown}
@@ -863,10 +867,16 @@ Kind regards,`
                 {/* Active Job Listings (section heading with tick, aligned inputs) */}
                 <div>
                   <label className="block text-sm text-gray-600 mb-1 flex items-center gap-2">
+                    {/* custom white-tick checkbox */}
                     <input
                       id="activeJobsOnly"
                       type="checkbox"
-                      className="h-4 w-4 border-gray-300 rounded accent-orange-500 checked:bg-orange-500 checked:border-orange-500 checked:text-white"
+                      className="appearance-none h-4 w-4 rounded border border-gray-300 grid place-content-center
+                                 checked:bg-orange-500
+                                 before:content-[''] before:hidden checked:before:block
+                                 before:w-2.5 before:h-2.5
+                                 before:[clip-path:polygon(14%_44%,0_59%,39%_100%,100%_18%,84%_4%,39%_72%)]
+                                 before:bg-white"
                       checked={activeJobsOnly}
                       onChange={(e) => setActiveJobsOnly(e.target.checked)}
                       disabled={isDown}
@@ -875,15 +885,15 @@ Kind regards,`
                   </label>
                 
                   <div className={`flex items-center gap-3 ${disabledLook}`} aria-disabled={isInputsDisabled}>
-                    {/* Days input (chip style) */}
+                    {/* Days input (fixed width; placeholder hides on chip/text) */}
                     <div className="shrink-0 rounded-xl border px-2 py-1.5 w-28">
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-2 overflow-hidden">
                         {activeJobsDays.chips.map(v => (
                           <Chip key={v} onRemove={() => activeJobsDays.removeChip(v)}>{v}</Chip>
                         ))}
                         <input
                           className="w-full outline-none text-sm px-2 py-1"
-                          placeholder={activeJobsDays.input ? '' : 'Days (e.g. 30)'}
+                          placeholder={phIfEmpty(activeJobsDays.input, activeJobsDays.chips, 'Days (e.g. 30)')}
                           inputMode="numeric"
                           pattern="[0-9]*"
                           value={activeJobsDays.input}
@@ -904,9 +914,9 @@ Kind regards,`
                           <Chip key={v} onRemove={() => activeJobTitles.removeChip(v)}>{v}</Chip>
                         ))}
                         <input
-                          className="min-w-[14ch] flex-1 outline-none text-sm px-2 py-1"
                           className="w-full outline-none text-sm px-2 py-1"
-                          placeholder={activeJobTitles.input ? '' : 'Job Titles (e.g. Engineer, Manager)'}
+                          placeholder={phIfEmpty(activeJobTitles.input, activeJobTitles.chips, 'Job Titles (e.g. Engineer, Manager)')}
+                          value={activeJobTitles.input}
                           onChange={e => activeJobTitles.setInput(e.target.value)}
                           onKeyDown={activeJobTitles.onKeyDown}
                           disabled={isInputsDisabled}
