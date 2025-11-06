@@ -473,8 +473,8 @@ Kind regards,`
       const payload = {
         locations: companyLocations.chips,
         keywords: companyKeywords.chips,
-        employeesMin: employeesMin === '' ? null : Number(employeesMin),
-        employeesMax: employeesMax === '' ? null : Number(employeesMax),
+        employeesMin: employeesMin.chips.length ? Number(employeesMin.chips[0]) : null,
+        employeesMax: employeesMax.chips.length ? Number(employeesMax.chips[0]) : null,
 
         activeJobsOnly,
         activeJobsDays: activeJobsOnly ? daysNum : null,
