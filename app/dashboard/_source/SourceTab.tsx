@@ -865,7 +865,7 @@ Kind regards,`
                   </label>
                   <div className="flex items-center gap-2">
                     {/* Employees Min */}
-                    <div className="rounded-xl border h-10 px-2 flex-1">
+                    <div className="rounded-xl border h-10 px-2 flex-1 basis-0 min-w-0">
                       <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
                         {employeesMin.chips?.map((v: string) => (
                           <Chip key={v} onRemove={() => employeesMin.removeChip(v)}>{v}</Chip>
@@ -886,7 +886,7 @@ Kind regards,`
                     <span className="text-gray-400 text-sm">to</span>
                 
                     {/* Employees Max */}
-                    <div className="rounded-xl border h-10 px-2 flex-1">
+                    <div className="rounded-xl border h-10 px-2 flex-1 basis-0 min-w-0">
                       <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
                         {employeesMax.chips?.map((v: string) => (
                           <Chip key={v} onRemove={() => employeesMax.removeChip(v)}>{v}</Chip>
@@ -950,7 +950,7 @@ Kind regards,`
                     </div>
                 
                     {/* Job Titles input (unchanged, fixed height, chip-based) */}
-                    <div className="flex-1 rounded-xl border h-10 px-2">
+                    <div className="flex-1 basis-0 min-w-0 rounded-xl border h-10 px-2">
                       <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
                         {activeJobTitles.chips.map(v => (
                           <Chip key={v} onRemove={() => activeJobTitles.removeChip(v)}>{v}</Chip>
