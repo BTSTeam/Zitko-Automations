@@ -27,16 +27,12 @@ function buildQS(params: Record<string, string[] | string>): string {
   }
   return p.toString()
 }
-function ymd(d: Date): string {
-  return d.toISOString().slice(0, 10)
-}
+function ymd(d: Date): string { return d.toISOString().slice(0, 10) }
 function dateNDaysAgoYMD(days: number): string {
   const d = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
   return ymd(d)
 }
-function todayYMD(): string {
-  return ymd(new Date())
-}
+function todayYMD(): string { return ymd(new Date()) }
 
 /* --------------------------------- API --------------------------------- */
 export async function POST(req: NextRequest) {
@@ -73,12 +69,16 @@ export async function POST(req: NextRequest) {
       'Cache-Control': 'no-cache',
       'Content-Type': 'application/json',
     }
-    if (accessToken) h.Authorization = `Bearer ${accessToken}`
-    else if (apiKey) {
+    if (accessToken) {
+      h.Authorization = `Bearer ${accessToken}`
+    } else if (apiKey) {
       if (kind === 'jobs') {
+        // Some tenants require BOTH for GET job postings
         h.Authorization = `Bearer ${apiKey}`
         h['X-Api-Key'] = apiKey
-      } else h['X-Api-Key'] = apiKey
+      } else {
+        h['X-Api-Key'] = apiKey
+      }
     }
     return h
   }
@@ -99,30 +99,23 @@ export async function POST(req: NextRequest) {
     return resp
   }
 
-  /* ---------------------- 1) Primary People Search ---------------------- */
-  const searchParams: Record<string, any> = {
-    page,
-    per_page,
-    'organization_locations[]': locations,
-    q_keywords: [...keywords, 'Security & Investigations'].filter(Boolean).join(', '),
-    'person_seniorities[]': [
-      'owner', 'founder', 'c_suite', 'partner', 'vp', 'head', 'director',
-    ],
+  /* ---------------------- 1) Primary People Search (paginate) ---------------------- */
+  // base search params (HQ-only location as requested)
+  const baseSearchParams: Record<string, any> = {
+    'organization_locations[]': locations, // HQ location ONLY (per your confirmation)
+    q_keywords: [...keywords, 'Security & Investigations'].filter(Boolean).join(', '), // must be string
+    'person_seniorities[]': ['owner', 'founder', 'c_suite', 'partner', 'vp', 'head', 'director'],
   }
-
-  if (employeesMin) searchParams['organization_num_employees_range[min]'] = String(employeesMin)
-  if (employeesMax) searchParams['organization_num_employees_range[max]'] = String(employeesMax)
-  if (employeeRanges.length)
-    searchParams['organization_num_employees_ranges[]'] = employeeRanges
-
+  if (employeesMin) baseSearchParams['organization_num_employees_range[min]'] = String(employeesMin)
+  if (employeesMax) baseSearchParams['organization_num_employees_range[max]'] = String(employeesMax)
+  if (employeeRanges.length) baseSearchParams['organization_num_employees_ranges[]'] = employeeRanges
   if (activeJobsOnly) {
-    searchParams['organization_num_jobs_range[min]'] = '1'
-    searchParams['organization_job_posted_at_range[min]'] = dateNDaysAgoYMD(activeJobsWindowDays)
-    searchParams['organization_job_posted_at_range[max]'] = todayYMD()
+    baseSearchParams['organization_num_jobs_range[min]'] = '1'
+    baseSearchParams['organization_job_posted_at_range[min]'] = dateNDaysAgoYMD(activeJobsWindowDays)
+    baseSearchParams['organization_job_posted_at_range[max]'] = todayYMD()
   }
-
-  // Hard-coded ATS technology list
-  const atsTechs = [
+  // Hard-coded ATS list
+  baseSearchParams['currently_using_any_of_technology_uids[]'] = [
     'AcquireTM','ADP Applicant Tracking System','Applicant Pro','Ascendify','ATS OnDemand','Avature','Avionte','BambooHR','Bond Adapt','Breezy HR (formerly NimbleHR)',
     'Catsone','Compas (MyCompas)','Cornerstone On Demand','Crelate','Employease','eRecruit','Findly','Gethired','Gild','Greenhouse.io','HealthcareSource','HireBridge',
     'HR Logix','HRMDirect','HRSmart','Hyrell','iCIMS','Indeed Sponsored Ads','Infor (PeopleAnswers)','Interviewstream','JobAdder','JobApp','JobDiva','Jobscore',
@@ -130,31 +123,50 @@ export async function POST(req: NextRequest) {
     'Sendouts','SilkRoad','SmartRecruiters','SmashFly','SuccessFactors (SAP)','TalentEd','Taleo','TMP Worldwide','TrackerRMS','UltiPro','Umantis','Winocular',
     'Workable','Workday Recruit','ZipRecruiter','Zoho Recruit','Vincere','Bullhorn',
   ]
-  searchParams['currently_using_any_of_technology_uids[]'] = atsTechs
 
-  const peopleResp = await postWithRetry(APOLLO_PEOPLE_SEARCH_URL, searchParams)
-  const raw = await peopleResp.text()
-  if (!peopleResp.ok)
-    return NextResponse.json({ error: `Apollo people search ${peopleResp.status}`, details: raw.slice(0,2000) }, { status: peopleResp.status })
-
-  let peopleData: any = {}
-  try { peopleData = JSON.parse(raw || '{}') } catch {}
-  const peopleList = Array.isArray(peopleData?.people) ? peopleData.people :
-                     Array.isArray(peopleData?.contacts) ? peopleData.contacts : []
-
-  // Deduplicate orgs
+  // paginate until 20 unique organisations found (Option B)
+  const desiredUnique = 20
   const seen = new Set<string>()
-  const companies = []
-  for (const p of peopleList) {
-    const org = p?.organization || {}
-    if (!org?.id || seen.has(org.id)) continue
-    seen.add(org.id)
-    companies.push(org)
-    if (companies.length >= per_page) break
+  const companies: any[] = []
+
+  let curPage = Math.max(1, page)
+  const pageSize = 50 // pull more people per page to reach unique orgs faster (Apollo cap is 50)
+
+  while (companies.length < desiredUnique) {
+    const payload = {
+      ...baseSearchParams,
+      page: curPage,
+      per_page: pageSize,
+    }
+    const resp = await postWithRetry(APOLLO_PEOPLE_SEARCH_URL, payload)
+    const txt  = await resp.text()
+    if (!resp.ok) {
+      return NextResponse.json(
+        { error: `Apollo people search ${resp.status}`, details: txt.slice(0, 2000) },
+        { status: resp.status },
+      )
+    }
+
+    let data: any = {}
+    try { data = JSON.parse(txt || '{}') } catch {}
+    const peoplePage = Array.isArray(data?.people) ? data.people :
+                       Array.isArray(data?.contacts) ? data.contacts : []
+    if (!peoplePage.length) break
+
+    for (const p of peoplePage) {
+      const org = p?.organization || {}
+      if (!org?.id || seen.has(org.id)) continue
+      seen.add(org.id)
+      companies.push(org)
+      if (companies.length >= desiredUnique) break
+    }
+
+    curPage += 1
   }
 
-  if (!companies.length)
+  if (!companies.length) {
     return NextResponse.json({ companies: [], page, per_page })
+  }
 
   /* --------------------------- 2) Enrich each org ---------------------------- */
   const newsMin = dateNDaysAgoYMD(90)
@@ -192,19 +204,23 @@ export async function POST(req: NextRequest) {
       })
       const peopleUrl = `${APOLLO_PEOPLE_SEARCH_URL}?${peopleQS}`
 
-      const newsQS = buildQS({
+      const newsPayload = {
         'organization_ids[]': [orgId],
         'published_at[min]': newsMin,
         'published_at[max]': newsMax,
-        per_page: '2',
-      })
-      const newsUrl = `${APOLLO_NEWS_SEARCH_URL}?${newsQS}`
+        per_page: 2,
+      }
+      const newsUrl = APOLLO_NEWS_SEARCH_URL
 
       const [orgR, jobsR, peopleR, newsR] = await Promise.allSettled([
+        // Org details (GET)
         fetch(APOLLO_ORG_GET_URL(orgId), { headers: orgHeaders, cache: 'no-store' }),
+        // Job postings (GET)
         fetch(APOLLO_ORG_JOBS_URL(orgId), { headers: jobsHeaders, cache: 'no-store' }),
+        // Hiring people (POST)
         postWithRetry(peopleUrl, {}),
-        postWithRetry(newsUrl, {}),
+        // News articles (POST with body)
+        postWithRetry(newsUrl, newsPayload),
       ])
 
       // Org details
@@ -249,5 +265,6 @@ export async function POST(req: NextRequest) {
     })
   )
 
-  return NextResponse.json({ companies: enriched, page, per_page })
+  // Return at most 20 enriched companies
+  return NextResponse.json({ companies: enriched.slice(0, 20), page, per_page })
 }
