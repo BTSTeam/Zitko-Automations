@@ -478,28 +478,47 @@ Kind regards,`
       const daysChip = activeJobsDays.chips.length ? activeJobsDays.chips[activeJobsDays.chips.length - 1] : null
       const daysNum = daysChip && /^\d+$/.test(daysChip) ? Number(daysChip) : null
 
-      const payload = {
-        locations: companyLocations.chips,
-        keywords: companyKeywords.chips,
-        employeesMin: employeesMin.chips.length ? Number(employeesMin.chips[0]) : null,
-        employeesMax: employeesMax.chips.length ? Number(employeesMax.chips[0]) : null,
-
-        activeJobsOnly,
-        activeJobsDays: activeJobsOnly ? daysNum : null,
-        ...(activeJobsOnly && activeJobTitles.chips.length
-          ? { q_organization_job_titles: activeJobTitles.chips }
-          : {}),
-
-        page: 1,
-        per_page: 25,
-      }
+    const payload = {
+      locations: companyLocations.chips,
+      keywords: companyKeywords.chips,
+      employeesMin: employeesMin.chips.length ? Number(employeesMin.chips[0]) : null,
+      employeesMax: employeesMax.chips.length ? Number(employeesMax.chips[0]) : null,
+    
+      activeJobsOnly,
+      activeJobsDays: activeJobsOnly ? daysNum : null,
+      ...(activeJobsOnly && activeJobTitles.chips.length
+        ? { q_organization_job_titles: activeJobTitles.chips }
+        : {}),
+    
+      page: 1,
+      per_page: 25,
+    
+      // ↓ enable route-side debug without env vars
+      debug: true,
+    }
+      // (optional) see what you're sending from the client
+      console.log('COMPANY SEARCH → payload', payload)
+      
       const res = await fetch('/api/apollo/company-search', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-debug-apollo': '1', // ← triggers debug in the route
+        },
         body: JSON.stringify(payload),
       })
-      const json: any = await res.json()
-      if (!res.ok) throw new Error(json?.error || `Search failed (${res.status})`)
+      
+      const json: any = await res.json();  // ← semicolon, not colon
+      
+      if (json?.debug) {
+        // Inspect exactly what was sent to Apollo + the raw preview
+        console.log('APOLLO DEBUG →', json.debug)
+      }
+      
+      if (!res.ok) {
+        throw new Error(json?.error || `Search failed (${res.status})`)
+      }
+      
       const arr: any[] = Array.isArray(json.companies) ? json.companies : []
 
       const mapped: Company[] = arr.map((c: any) => {
