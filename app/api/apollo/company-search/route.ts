@@ -21,12 +21,17 @@ function toArray(v?: string[] | string): string[] {
   return v.split(',').map((s) => s.trim()).filter(Boolean)
 }
 function buildQS(params: Record<string, string[] | string>): string {
-  const p = new URLSearchParams()
+  const parts: string[] = []
   for (const [k, v] of Object.entries(params)) {
-    if (Array.isArray(v)) v.forEach((x) => p.append(k, x))
-    else if (v !== undefined && v !== null && String(v).length) p.append(k, String(v))
+    if (Array.isArray(v)) {
+      for (const val of v) {
+        parts.push(`${encodeURIComponent(k)}=${encodeURIComponent(String(val))}`)
+      }
+    } else if (v !== undefined && v !== null && String(v).length) {
+      parts.push(`${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
+    }
   }
-  return p.toString()
+  return parts.join('&')
 }
 function ymd(d: Date): string { return d.toISOString().slice(0, 10) }
 function dateNDaysAgoYMD(days: number): string {
@@ -81,13 +86,13 @@ export async function POST(req: NextRequest) {
   if (employeeRanges.length === 0 && (typeof minNum === 'number' || typeof maxNum === 'number')) {
     const min = Number.isFinite(minNum) ? String(minNum) : ''
     const max = Number.isFinite(maxNum) ? String(maxNum) : ''
-    const range = [min, max].filter((x) => x !== '').join(',')
+    const range = [min, max].filter((x) => x !== '').join(', ')
     if (range) employeeRanges.push(range)
   }
 
   // Join keywords into a single string for q_keywords
   const q_keywords =
-    keywordChips.length ? keywordChips.join(' ').trim() : ''
+    keywordChips.length ? keywordChips.join(', ').trim() : ''
 
   const page     = Math.max(1, parseInt(String(inBody.page ?? '1'), 10) || 1)
   const per_page = Math.max(1, Math.min(25, parseInt(String(inBody.per_page ?? '25'), 10) || 25))
@@ -152,6 +157,7 @@ export async function POST(req: NextRequest) {
   const ATS_TECH_NAMES: string[] = [
     'AcquireTM','ADP Applicant Tracking System','Applicant Pro','Ascendify','ATS OnDemand','Avature','Avionte','BambooHR','Bond Adapt','Breezy HR (formerly NimbleHR)','Catsone','Compas (MyCompas)','Cornerstone On Demand','Crelate','Employease','eRecruit','Findly','Gethired','Gild','Greenhouse.io','HealthcareSource','HireBridge','HR Logix','HRMDirect','HRSmart','Hyrell','iCIMS','Indeed Sponsored Ads','Infor (PeopleAnswers)','Interviewstream','JobAdder','JobApp','JobDiva','Jobscore','Jobvite','Kenexa','Kwantek','Lever','Luceo','Lumesse','myStaffingPro','myTalentLink','Newton Software','PC Recruiter','People Matter','PeopleFluent','Resumator','Sendouts','SilkRoad','SmartRecruiters','SmashFly','SuccessFactors (SAP)','TalentEd','Taleo','TMP Worldwide','TrackerRMS','UltiPro','Umantis','Winocular','Workable','Workday Recruit','ZipRecruiter','Zoho Recruit','Vincere','Bullhorn',
   ]
+  const ATS_TECH_UIDS = ATS_TECH_NAMES.map(n => n.replace(/\s+/g, '_'))
 
   // Build mixed_people/search query with org filters so we only get people from the target companies
   const peopleQS: Record<string, string[] | string> = {
@@ -195,7 +201,7 @@ export async function POST(req: NextRequest) {
 
   // Exclude recruitment companies via "currently_not_using_any_of_technology_uids[]"
   // (As requested: use the string names provided.)
-  peopleQS['currently_not_using_any_of_technology_uids[]'] = ATS_TECH_NAMES
+  peopleQS['currently_not_using_any_of_technology_uids[]'] = ATS_TECH_UIDS
 
   const peopleSearchUrl = `${APOLLO_PEOPLE_SEARCH_URL}?${buildQS(peopleQS)}`
   const topLevelDebug: any = DEBUG
