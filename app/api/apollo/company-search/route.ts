@@ -73,7 +73,6 @@ export async function POST(req: NextRequest) {
       h.Authorization = `Bearer ${accessToken}`
     } else if (apiKey) {
       if (kind === 'jobs') {
-        // Some tenants require BOTH for GET job postings
         h.Authorization = `Bearer ${apiKey}`
         h['X-Api-Key'] = apiKey
       } else {
@@ -100,22 +99,27 @@ export async function POST(req: NextRequest) {
   }
 
   /* ---------------------- 1) Primary People Search (paginate) ---------------------- */
-  // base search params (HQ-only location as requested)
+  // Use NON-BRACKET JSON keys for POST body — brackets cause filters to be ignored.
   const baseSearchParams: Record<string, any> = {
-    'organization_locations[]': locations, // HQ location ONLY (per your confirmation)
-    q_keywords: [...keywords, 'Security & Investigations'].filter(Boolean).join(', '), // must be string
-    'person_seniorities[]': ['owner', 'founder', 'c_suite', 'partner', 'vp', 'head', 'director'],
+    organization_locations: locations, // HQ location ONLY (as requested)
+    q_keywords: [...keywords, 'Security & Investigations'].filter(Boolean).join(', '),
+    person_seniorities: ['owner', 'founder', 'c_suite', 'partner', 'vp', 'head', 'director'],
   }
-  if (employeesMin) baseSearchParams['organization_num_employees_range[min]'] = String(employeesMin)
-  if (employeesMax) baseSearchParams['organization_num_employees_range[max]'] = String(employeesMax)
-  if (employeeRanges.length) baseSearchParams['organization_num_employees_ranges[]'] = employeeRanges
+  if (employeesMin || employeesMax) {
+    baseSearchParams.organization_num_employees_range = {}
+    if (employeesMin) baseSearchParams.organization_num_employees_range.min = String(employeesMin)
+    if (employeesMax) baseSearchParams.organization_num_employees_range.max = String(employeesMax)
+  }
+  if (employeeRanges.length) baseSearchParams.organization_num_employees_ranges = employeeRanges
   if (activeJobsOnly) {
-    baseSearchParams['organization_num_jobs_range[min]'] = '1'
-    baseSearchParams['organization_job_posted_at_range[min]'] = dateNDaysAgoYMD(activeJobsWindowDays)
-    baseSearchParams['organization_job_posted_at_range[max]'] = todayYMD()
+    baseSearchParams.organization_num_jobs_range = { min: 1 }
+    baseSearchParams.organization_job_posted_at_range = {
+      min: dateNDaysAgoYMD(activeJobsWindowDays),
+      max: todayYMD(),
+    }
   }
-  // Hard-coded ATS list
-  baseSearchParams['currently_using_any_of_technology_uids[]'] = [
+  // Hard-coded ATS list (note: Apollo ideally wants technology UIDs; names may be ignored)
+  baseSearchParams.currently_using_any_of_technology_uids = [
     'AcquireTM','ADP Applicant Tracking System','Applicant Pro','Ascendify','ATS OnDemand','Avature','Avionte','BambooHR','Bond Adapt','Breezy HR (formerly NimbleHR)',
     'Catsone','Compas (MyCompas)','Cornerstone On Demand','Crelate','Employease','eRecruit','Findly','Gethired','Gild','Greenhouse.io','HealthcareSource','HireBridge',
     'HR Logix','HRMDirect','HRSmart','Hyrell','iCIMS','Indeed Sponsored Ads','Infor (PeopleAnswers)','Interviewstream','JobAdder','JobApp','JobDiva','Jobscore',
@@ -124,20 +128,15 @@ export async function POST(req: NextRequest) {
     'Workable','Workday Recruit','ZipRecruiter','Zoho Recruit','Vincere','Bullhorn',
   ]
 
-  // paginate until 20 unique organisations found (Option B)
   const desiredUnique = 20
   const seen = new Set<string>()
   const companies: any[] = []
 
   let curPage = Math.max(1, page)
-  const pageSize = 50 // pull more people per page to reach unique orgs faster (Apollo cap is 50)
+  const pageSize = 50 // max allowed to collect unique orgs faster
 
   while (companies.length < desiredUnique) {
-    const payload = {
-      ...baseSearchParams,
-      page: curPage,
-      per_page: pageSize,
-    }
+    const payload = { ...baseSearchParams, page: curPage, per_page: pageSize }
     const resp = await postWithRetry(APOLLO_PEOPLE_SEARCH_URL, payload)
     const txt  = await resp.text()
     if (!resp.ok) {
@@ -192,35 +191,30 @@ export async function POST(req: NextRequest) {
       const orgHeaders  = buildHeaders('search')
       const jobsHeaders = buildHeaders('jobs')
 
-      const peopleQS = buildQS({
-        'organization_ids[]': [orgId],
-        'person_titles[]': [
+      // Hiring people — use POST with NON-BRACKET keys
+      const hiringPayload = {
+        organization_ids: [orgId],
+        person_titles: [
           'Head of Recruitment','Hiring Manager','Talent Acquisition','Talent Acquisition Manager',
           'Talent Acquisition Lead','Recruitment Manager','Recruiting Manager','Head of Talent',
           'Head of People','People & Talent','Talent Partner','Senior Talent Partner','Recruitment Partner',
         ],
-        include_similar_titles: 'true',
-        per_page: '10',
-      })
-      const peopleUrl = `${APOLLO_PEOPLE_SEARCH_URL}?${peopleQS}`
+        include_similar_titles: true,
+        per_page: 10,
+      }
 
+      // News — POST with NON-BRACKET keys + published_at object
       const newsPayload = {
-        'organization_ids[]': [orgId],
-        'published_at[min]': newsMin,
-        'published_at[max]': newsMax,
+        organization_ids: [orgId],
+        published_at: { min: newsMin, max: newsMax },
         per_page: 2,
       }
-      const newsUrl = APOLLO_NEWS_SEARCH_URL
 
       const [orgR, jobsR, peopleR, newsR] = await Promise.allSettled([
-        // Org details (GET)
         fetch(APOLLO_ORG_GET_URL(orgId), { headers: orgHeaders, cache: 'no-store' }),
-        // Job postings (GET)
         fetch(APOLLO_ORG_JOBS_URL(orgId), { headers: jobsHeaders, cache: 'no-store' }),
-        // Hiring people (POST)
-        postWithRetry(peopleUrl, {}),
-        // News articles (POST with body)
-        postWithRetry(newsUrl, newsPayload),
+        postWithRetry(APOLLO_PEOPLE_SEARCH_URL, hiringPayload),
+        postWithRetry(APOLLO_NEWS_SEARCH_URL,   newsPayload),
       ])
 
       // Org details
@@ -265,6 +259,5 @@ export async function POST(req: NextRequest) {
     })
   )
 
-  // Return at most 20 enriched companies
   return NextResponse.json({ companies: enriched.slice(0, 20), page, per_page })
 }
