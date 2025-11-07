@@ -104,10 +104,8 @@ export async function POST(req: NextRequest) {
     page,
     per_page,
     'organization_locations[]': locations,
-    q_keywords: [...keywords, 'Security & Investigations'].filter(Boolean),
-    'person_seniorities[]': [
-      'owner', 'founder', 'c_suite', 'partner', 'vp', 'head', 'director',
-    ],
+    q_keywords: [...keywords, 'Security & Investigations'].filter(Boolean).join(', '),
+    'person_seniorities[]': ['owner','founder','c_suite','partner','vp','head','director'],
   }
 
   if (employeesMin) searchParams['organization_num_employees_range[min]'] = String(employeesMin)
