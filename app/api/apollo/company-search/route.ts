@@ -104,7 +104,7 @@ export async function POST(req: NextRequest) {
     page,
     per_page,
     'organization_locations[]': locations,
-    q_keywords: [...keywords, 'Security & Investigations'].filter(Boolean),
+    q_keywords: [...keywords, 'Security & Investigations'].filter(Boolean).join(', '),
     'person_seniorities[]': [
       'owner', 'founder', 'c_suite', 'partner', 'vp', 'head', 'director',
     ],
