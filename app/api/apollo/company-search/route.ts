@@ -42,8 +42,8 @@ export async function POST(req: NextRequest) {
   const locations      = toArray(body.locations)
   const keywords       = toArray(body.keywords)
   const employeeRanges = toArray(body.employeeRanges)
-  const employeesMin   = Number(body.employeesMin ?? 0) || null
-  const employeesMax   = Number(body.employeesMax ?? 0) || null
+  const employeesMin   = Number(body.employeesMin ?? 0)
+  const employeesMax   = Number(body.employeesMax ?? 0)
   const activeJobsOnly = Boolean(body.activeJobsOnly)
   const daysWindowRaw  = body.activeJobsWindowDays ?? body.activeJobsDays
   const activeJobsWindowDays = Number(daysWindowRaw) > 0 ? Number(daysWindowRaw) : 30
@@ -73,6 +73,7 @@ export async function POST(req: NextRequest) {
       h.Authorization = `Bearer ${accessToken}`
     } else if (apiKey) {
       if (kind === 'jobs') {
+        // Some tenants require BOTH for GET job postings
         h.Authorization = `Bearer ${apiKey}`
         h['X-Api-Key'] = apiKey
       } else {
@@ -82,9 +83,9 @@ export async function POST(req: NextRequest) {
     return h
   }
 
-  const postWithRetry = async (url: string, payload: any) => {
+  const postWithRetry = async (url: string) => {
     const call = (headers: Record<string, string>) =>
-      fetch(url, { method: 'POST', headers, body: JSON.stringify(payload), cache: 'no-store' })
+      fetch(url, { method: 'POST', headers, body: JSON.stringify({}), cache: 'no-store' })
 
     let resp = await call(buildHeaders('search'))
     if ((resp.status === 401 || resp.status === 403) && accessToken && userKey) {
@@ -99,27 +100,23 @@ export async function POST(req: NextRequest) {
   }
 
   /* ---------------------- 1) Primary People Search (paginate) ---------------------- */
-  // Use NON-BRACKET JSON keys for POST body — brackets cause filters to be ignored.
-  const baseSearchParams: Record<string, any> = {
-    organization_locations: locations, // HQ location ONLY (as requested)
+  const baseQS: Record<string, string[] | string> = {
+    // Use bracketed keys in the QUERY STRING (required by Apollo filters)
+    // HQ location ONLY (as requested)
+    ...(locations.length ? { 'organization_locations[]': locations } : {}),
     q_keywords: [...keywords, 'Security & Investigations'].filter(Boolean).join(', '),
-    person_seniorities: ['owner', 'founder', 'c_suite', 'partner', 'vp', 'head', 'director'],
+    'person_seniorities[]': ['owner','founder','c_suite','partner','vp','head','director'],
   }
-  if (employeesMin || employeesMax) {
-    baseSearchParams.organization_num_employees_range = {}
-    if (employeesMin) baseSearchParams.organization_num_employees_range.min = String(employeesMin)
-    if (employeesMax) baseSearchParams.organization_num_employees_range.max = String(employeesMax)
-  }
-  if (employeeRanges.length) baseSearchParams.organization_num_employees_ranges = employeeRanges
+  if (Number.isFinite(employeesMin)) baseQS['organization_num_employees_range[min]'] = String(employeesMin)
+  if (Number.isFinite(employeesMax)) baseQS['organization_num_employees_range[max]'] = String(employeesMax)
+  if (employeeRanges.length) baseQS['organization_num_employees_ranges[]'] = employeeRanges
   if (activeJobsOnly) {
-    baseSearchParams.organization_num_jobs_range = { min: 1 }
-    baseSearchParams.organization_job_posted_at_range = {
-      min: dateNDaysAgoYMD(activeJobsWindowDays),
-      max: todayYMD(),
-    }
+    baseQS['organization_num_jobs_range[min]'] = '1'
+    baseQS['organization_job_posted_at_range[min]'] = dateNDaysAgoYMD(activeJobsWindowDays)
+    baseQS['organization_job_posted_at_range[max]'] = todayYMD()
   }
-  // Hard-coded ATS list (note: Apollo ideally wants technology UIDs; names may be ignored)
-  baseSearchParams.currently_using_any_of_technology_uids = [
+  // ATS tech list (names; if Apollo expects UIDs in your tenant, map accordingly)
+  baseQS['currently_not_using_any_of_technology_uids[]'] = [
     'AcquireTM','ADP Applicant Tracking System','Applicant Pro','Ascendify','ATS OnDemand','Avature','Avionte','BambooHR','Bond Adapt','Breezy HR (formerly NimbleHR)',
     'Catsone','Compas (MyCompas)','Cornerstone On Demand','Crelate','Employease','eRecruit','Findly','Gethired','Gild','Greenhouse.io','HealthcareSource','HireBridge',
     'HR Logix','HRMDirect','HRSmart','Hyrell','iCIMS','Indeed Sponsored Ads','Infor (PeopleAnswers)','Interviewstream','JobAdder','JobApp','JobDiva','Jobscore',
@@ -136,8 +133,10 @@ export async function POST(req: NextRequest) {
   const pageSize = 50 // max allowed to collect unique orgs faster
 
   while (companies.length < desiredUnique) {
-    const payload = { ...baseSearchParams, page: curPage, per_page: pageSize }
-    const resp = await postWithRetry(APOLLO_PEOPLE_SEARCH_URL, payload)
+    const qs = buildQS({ ...baseQS, page: String(curPage), per_page: String(pageSize) })
+    const url = `${APOLLO_PEOPLE_SEARCH_URL}?${qs}`
+
+    const resp = await postWithRetry(url)
     const txt  = await resp.text()
     if (!resp.ok) {
       return NextResponse.json(
@@ -191,30 +190,37 @@ export async function POST(req: NextRequest) {
       const orgHeaders  = buildHeaders('search')
       const jobsHeaders = buildHeaders('jobs')
 
-      // Hiring people — use POST with NON-BRACKET keys
-      const hiringPayload = {
-        organization_ids: [orgId],
-        person_titles: [
+      // Hiring people — POST with QUERY PARAMS (bracketed) + empty body
+      const peopleQS = buildQS({
+        'organization_ids[]': [orgId],
+        'person_titles[]': [
           'Head of Recruitment','Hiring Manager','Talent Acquisition','Talent Acquisition Manager',
           'Talent Acquisition Lead','Recruitment Manager','Recruiting Manager','Head of Talent',
           'Head of People','People & Talent','Talent Partner','Senior Talent Partner','Recruitment Partner',
         ],
-        include_similar_titles: true,
-        per_page: 10,
-      }
+        include_similar_titles: 'true',
+        per_page: '10',
+      })
+      const peopleUrl = `${APOLLO_PEOPLE_SEARCH_URL}?${peopleQS}`
 
-      // News — POST with NON-BRACKET keys + published_at object
-      const newsPayload = {
-        organization_ids: [orgId],
-        published_at: { min: newsMin, max: newsMax },
-        per_page: 2,
-      }
+      // News — POST with QUERY PARAMS (bracketed) + empty body
+      const newsQS = buildQS({
+        'organization_ids[]': [orgId],
+        'published_at[min]': newsMin,
+        'published_at[max]': newsMax,
+        per_page: '2',
+      })
+      const newsUrl = `${APOLLO_NEWS_SEARCH_URL}?${newsQS}`
 
       const [orgR, jobsR, peopleR, newsR] = await Promise.allSettled([
+        // Org details (GET)
         fetch(APOLLO_ORG_GET_URL(orgId), { headers: orgHeaders, cache: 'no-store' }),
+        // Job postings (GET)
         fetch(APOLLO_ORG_JOBS_URL(orgId), { headers: jobsHeaders, cache: 'no-store' }),
-        postWithRetry(APOLLO_PEOPLE_SEARCH_URL, hiringPayload),
-        postWithRetry(APOLLO_NEWS_SEARCH_URL,   newsPayload),
+        // Hiring people (POST + query params)
+        postWithRetry(peopleUrl),
+        // News articles (POST + query params)
+        postWithRetry(newsUrl),
       ])
 
       // Org details
