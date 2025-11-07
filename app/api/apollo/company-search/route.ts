@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
   const daysWindowRaw  = body.activeJobsWindowDays ?? body.activeJobsDays
   const activeJobsWindowDays = Number(daysWindowRaw) > 0 ? Number(daysWindowRaw) : 30
   const page     = Math.max(1, parseInt(String(body.page ?? '1'), 10) || 1)
-  const per_page = Math.max(1, Math.min(25, parseInt(String(body.per_page ?? '25'), 10) || 25))
+  const per_page = Math.max(1, Math.min(100, parseInt(String(body.per_page ?? '25'), 10) || 25))
 
   // ---- auth ----
   const session   = await getSession()
@@ -83,6 +83,12 @@ export async function POST(req: NextRequest) {
     return h
   }
 
+  const primaryQS = buildQS(searchParams)
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('[apollo primary people]', `${APOLLO_PEOPLE_SEARCH_URL}?${primaryQS}`)
+  }
+  const peopleResp = await postWithRetry(`${APOLLO_PEOPLE_SEARCH_URL}?${primaryQS}`, {})
+  
   const postWithRetry = async (url: string, payload: any) => {
     const call = (headers: Record<string, string>) =>
       fetch(url, { method: 'POST', headers, body: JSON.stringify(payload), cache: 'no-store' })
@@ -124,7 +130,8 @@ export async function POST(req: NextRequest) {
     searchParams['q_organization_job_titles'] = jobTitles
   }
 
-  const peopleResp = await postWithRetry(APOLLO_PEOPLE_SEARCH_URL, searchParams)
+  const primaryQS = buildQS(searchParams)
+  const peopleResp = await postWithRetry(`${APOLLO_PEOPLE_SEARCH_URL}?${primaryQS}`, {})
   const raw = await peopleResp.text()
   if (!peopleResp.ok)
     return NextResponse.json({ error: `Apollo people search ${peopleResp.status}`, details: raw.slice(0,2000) }, { status: peopleResp.status })
