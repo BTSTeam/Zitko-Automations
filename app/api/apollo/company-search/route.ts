@@ -123,25 +123,6 @@ export async function POST(req: NextRequest) {
   if (activeJobsOnly && jobTitles.length) {
     searchParams['q_organization_job_titles'] = jobTitles
   }
-  
-  // Hard-coded ATS technology UIDs to EXCLUDE (match desktop app)
-  const ATS_UIDS = [
-    'acquiretm','adp_applicant_tracking_system','applicant_pro','ascendify',
-    'ats_ondemand','avionte','bamboohr','bond_adapt','breezy_hr_formerly_nimblehr',
-    'catsone','compas_mycompas','cornerstone_on_demand','crelate','employease',
-    'erecruit','findly','gethired','gild','greenhouse_io','healthcaresource',
-    'hirebridge','hr_logix','hrmdirect','hrsmart','hyrell','icims',
-    'indeed_sponsored_ads','infor_peopleanswers','interviewstream','jobadder',
-    'jobapp','jobdiva','jobscore','jobvite','kenexa','kwantek','lever','luceo',
-    'lumesse','mystaffingpro','mytalentlink','newton_software','pc_recruiter',
-    'people_matter','peoplefluent','resumator','sendouts','silkroad',
-    'workable','workday_recruit','ziprecruiter','zoho_recruit',
-    // include your two key exclusions too:
-    'bullhorn','vincere',
-  ]
-  
-  // ✅ Use the “NOT using” filter with UIDs
-  searchParams['currently_not_using_any_of_technology_uids[]'] = ATS_UIDS
 
   const peopleResp = await postWithRetry(APOLLO_PEOPLE_SEARCH_URL, searchParams)
   const raw = await peopleResp.text()
