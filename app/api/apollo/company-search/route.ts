@@ -43,16 +43,25 @@ function todayYMD(): string { return ymd(new Date()) }
 /* --------------------------------- API --------------------------------- */
 export async function POST(req: NextRequest) {
   // ---- debug helpers ----
-  const DEBUG =
-    (process.env.SOURCING_DEBUG_APOLLO || '').toLowerCase() === 'true' ||
-    (req.headers.get('x-debug-apollo') || '').trim() === '1'
-
   const redactHeaders = (h: Record<string, string>) => {
     const copy: Record<string, string> = { ...h }
     if (copy.Authorization) copy.Authorization = 'Bearer ***'
     if (copy['X-Api-Key']) copy['X-Api-Key'] = '***'
     return copy
   }
+
+  // Support enabling debug via env, header, or body.debug
+  let bodyForDebug: any = {}
+  try { bodyForDebug = await req.clone().json() } catch {}
+  const DEBUG =
+    (process.env.SOURCING_DEBUG_APOLLO || '').toLowerCase() === 'true' ||
+    (req.headers.get('x-debug-apollo') || '').trim() === '1' ||
+    (typeof bodyForDebug?.debug === 'boolean' ? bodyForDebug.debug : false)
+
+  // Optional feature flags to isolate filters quickly during debugging
+  const DISABLE_ATS = (process.env.APOLLO_DISABLE_ATS_EXCLUSION || '').toLowerCase() === 'true'
+  const FORCE_EMPTY_KEYWORDS = (process.env.APOLLO_FORCE_EMPTY_QKEYWORDS || '').toLowerCase() === 'true'
+  const DISABLE_POSTED_AT = (process.env.APOLLO_DISABLE_POSTED_AT || '').toLowerCase() === 'true'
 
   // 'search' => identical headers to org fetch; 'jobs' => add Bearer + X-Api-Key (tenant dependent)
   const JOBS_HEADERS_KIND = ((process.env.APOLLO_JOBS_HEADERS_KIND || 'search') as 'search' | 'jobs')
@@ -68,6 +77,9 @@ export async function POST(req: NextRequest) {
     q_organization_job_titles?: string[] | string
     page?: number | string
     per_page?: number | string
+    activeJobsWindowDays?: number | string | null
+    activeJobsDays?: number | string | null
+    debug?: boolean
   } = {}
 
   try {
@@ -90,17 +102,18 @@ export async function POST(req: NextRequest) {
     if (range) employeeRanges.push(range)
   }
 
-  // Join keywords into a single string for q_keywords
+  // Join keywords into a single string for q_keywords (or force empty via flag)
   const q_keywords =
-    keywordChips.length ? keywordChips.join(', ').trim() : ''
+    FORCE_EMPTY_KEYWORDS ? '' :
+    (keywordChips.length ? keywordChips.join(', ').trim() : '')
 
   const page     = Math.max(1, parseInt(String(inBody.page ?? '1'), 10) || 1)
   const per_page = Math.max(1, Math.min(25, parseInt(String(inBody.per_page ?? '25'), 10) || 25))
 
   const rawDays = (inBody as any).activeJobsWindowDays ?? (inBody as any).activeJobsDays
   const jobsWindowDays =
-  Number.isFinite(Number(rawDays)) && Number(rawDays) > 0 ? Math.floor(Number(rawDays)) : null
-  
+    Number.isFinite(Number(rawDays)) && Number(rawDays) > 0 ? Math.floor(Number(rawDays)) : null
+
   // ---- auth ----
   const session   = await getSession()
   const userKey   = session.user?.email || session.sessionId || ''
@@ -177,13 +190,10 @@ export async function POST(req: NextRequest) {
     peopleQS['organization_num_employees_ranges[]'] = employeeRanges
   }
 
-  // Active job listings -> organization_num_jobs_range[min]=1
+  // Active job listings -> organization_num_jobs_range[min]=1 (+ optional posted_at window)
   if (activeJobsOnly) {
-    // must have at least 1 job
     peopleQS['organization_num_jobs_range[min]'] = '1'
-  
-    // optional window e.g. “last 30 days” → min=today-30, max=today
-    if (jobsWindowDays) {
+    if (jobsWindowDays && !DISABLE_POSTED_AT) {
       peopleQS['organization_job_posted_at_range[min]'] = dateNDaysAgoYMD(jobsWindowDays)
       peopleQS['organization_job_posted_at_range[max]'] = todayYMD()
     }
@@ -200,27 +210,37 @@ export async function POST(req: NextRequest) {
   }
 
   // Exclude recruitment companies via "currently_not_using_any_of_technology_uids[]"
-  // (As requested: use the string names provided.)
-  peopleQS['currently_not_using_any_of_technology_uids[]'] = ATS_TECH_UIDS
+  if (!DISABLE_ATS) {
+    peopleQS['currently_not_using_any_of_technology_uids[]'] = ATS_TECH_UIDS
+  }
 
+  // ---- capture debug BEFORE the call
+  const debugBag: any = DEBUG ? {
+    inputBody: inBody,
+    builtParams: peopleQS,
+    finalUrl: `${APOLLO_PEOPLE_SEARCH_URL}?${buildQS(peopleQS)}`,
+    headers: redactHeaders(buildHeaders('search')),
+  } : undefined
+
+  // ---- perform call and keep raw response in debug
   const peopleSearchUrl = `${APOLLO_PEOPLE_SEARCH_URL}?${buildQS(peopleQS)}`
-  const topLevelDebug: any = DEBUG
-    ? {
-        peopleSearchUrl,
-        headers: redactHeaders(buildHeaders('search')),
-        peopleQS,
-      }
-    : undefined
-
   const pplResp = await postWithRetry(peopleSearchUrl)
   const pplRaw  = await pplResp.text()
+
+  if (DEBUG) {
+    if (debugBag) {
+      debugBag.apolloStatus = pplResp.status
+      debugBag.apolloOk = pplResp.ok
+      debugBag.apolloBodyPreview = (pplRaw || '').slice(0, 2000)
+    }
+  }
 
   if (!pplResp.ok) {
     return NextResponse.json(
       {
         error: `Apollo people (company-proxy) search error: ${pplResp.status} ${pplResp.statusText}`,
-        details: pplRaw?.slice(0, 2000),
-        debug: topLevelDebug,
+        details: (pplRaw || '').slice(0, 2000),
+        debug: debugBag,
       },
       { status: pplResp.status || 400 },
     )
@@ -245,7 +265,7 @@ export async function POST(req: NextRequest) {
   const orgIds = Array.from(orgIdSet)
 
   if (!orgIds.length) {
-    return NextResponse.json({ companies: [], page, per_page, debug: topLevelDebug })
+    return NextResponse.json({ companies: [], page, per_page, debug: debugBag })
   }
 
   /* --------------------------- 2) Enrich each org ---------------------------- */
@@ -378,6 +398,6 @@ export async function POST(req: NextRequest) {
     companies: enriched,
     page,
     per_page,
-    debug: DEBUG ? { ...topLevelDebug, orgCount: enriched.length } : undefined,
+    debug: debugBag,
   })
 }
