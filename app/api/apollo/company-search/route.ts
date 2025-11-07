@@ -9,7 +9,7 @@ import { refreshApolloAccessToken } from '@/lib/apolloRefresh'
 
 const APOLLO_PEOPLE_SEARCH_URL = 'https://api.apollo.io/api/v1/mixed_people/search'
 const APOLLO_NEWS_SEARCH_URL   = 'https://api.apollo.io/api/v1/news_articles/search'
-const APOLLO_ORG_GET_URL       = (id: string) => `https://api.apollo.io/api/v1/organizations/${id}`
+const APOLLO_ORG_GET_URL       = (id: string) => `https://api/apollo.io/api/v1/organizations/${id}`.replace('api/','api.') // safety
 const APOLLO_ORG_JOBS_URL      = (id: string) =>
   `https://api.apollo.io/api/v1/organizations/${encodeURIComponent(id)}/job_postings?page=1&per_page=10`
 
@@ -27,16 +27,12 @@ function buildQS(params: Record<string, string[] | string>): string {
   }
   return p.toString()
 }
-function ymd(d: Date): string {
-  return d.toISOString().slice(0, 10)
-}
+function ymd(d: Date): string { return d.toISOString().slice(0, 10) }
 function dateNDaysAgoYMD(days: number): string {
   const d = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
   return ymd(d)
 }
-function todayYMD(): string {
-  return ymd(new Date())
-}
+function todayYMD(): string { return ymd(new Date()) }
 
 /* --------------------------------- API --------------------------------- */
 export async function POST(req: NextRequest) {
@@ -83,12 +79,6 @@ export async function POST(req: NextRequest) {
     return h
   }
 
-  const primaryQS = buildQS(searchParams)
-  if (process.env.NODE_ENV !== 'production') {
-    console.log('[apollo primary people]', `${APOLLO_PEOPLE_SEARCH_URL}?${primaryQS}`)
-  }
-  const peopleResp = await postWithRetry(`${APOLLO_PEOPLE_SEARCH_URL}?${primaryQS}`, {})
-  
   const postWithRetry = async (url: string, payload: any) => {
     const call = (headers: Record<string, string>) =>
       fetch(url, { method: 'POST', headers, body: JSON.stringify(payload), cache: 'no-store' })
@@ -106,18 +96,23 @@ export async function POST(req: NextRequest) {
   }
 
   /* ---------------------- 1) Primary People Search ---------------------- */
+  // Join keywords into a single string for q_keywords
+  const qKeywords = Array.from(new Set([...keywords, 'Security & Investigations']
+    .map(s => (s || '').trim())
+    .filter(Boolean)))
+    .join(', ')
+
   const searchParams: Record<string, any> = {
     page,
     per_page,
     'organization_locations[]': locations,
-    q_keywords: [...keywords, 'Security & Investigations'].filter(Boolean).join(', '),
+    q_keywords: qKeywords,
     'person_seniorities[]': ['owner','founder','c_suite','partner','vp','head','director'],
   }
 
   if (employeesMin) searchParams['organization_num_employees_range[min]'] = String(employeesMin)
   if (employeesMax) searchParams['organization_num_employees_range[max]'] = String(employeesMax)
-  if (employeeRanges.length)
-    searchParams['organization_num_employees_ranges[]'] = employeeRanges
+  if (employeeRanges.length) searchParams['organization_num_employees_ranges[]'] = employeeRanges
 
   if (activeJobsOnly) {
     searchParams['organization_num_jobs_range[min]'] = '1'
@@ -125,25 +120,39 @@ export async function POST(req: NextRequest) {
     searchParams['organization_job_posted_at_range[max]'] = todayYMD()
   }
 
+  // Optional job title filter from UI when Active Jobs is on
   const jobTitles = toArray(body.q_organization_job_titles)
   if (activeJobsOnly && jobTitles.length) {
     searchParams['q_organization_job_titles'] = jobTitles
   }
 
+  // Tech exclusion (UIDs) — comment in to test, leave out to A/B quickly
+  // const ATS_UIDS = ['acquiretm','adp_applicant_tracking_system',/* ... */, 'bullhorn','vincere']
+  // searchParams['currently_not_using_any_of_technology_uids[]'] = ATS_UIDS
+
+  // Send filters as querystring (Apollo treats []/range keys more reliably this way)
   const primaryQS = buildQS(searchParams)
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('[apollo primary people]', `${APOLLO_PEOPLE_SEARCH_URL}?${primaryQS}`)
+  }
   const peopleResp = await postWithRetry(`${APOLLO_PEOPLE_SEARCH_URL}?${primaryQS}`, {})
   const raw = await peopleResp.text()
-  if (!peopleResp.ok)
-    return NextResponse.json({ error: `Apollo people search ${peopleResp.status}`, details: raw.slice(0,2000) }, { status: peopleResp.status })
+  if (!peopleResp.ok) {
+    return NextResponse.json(
+      { error: `Apollo people search ${peopleResp.status}`, details: raw.slice(0, 2000) },
+      { status: peopleResp.status }
+    )
+  }
 
   let peopleData: any = {}
   try { peopleData = JSON.parse(raw || '{}') } catch {}
-  const peopleList = Array.isArray(peopleData?.people) ? peopleData.people :
-                     Array.isArray(peopleData?.contacts) ? peopleData.contacts : []
+  const peopleList = Array.isArray(peopleData?.people) ? peopleData.people
+                   : Array.isArray(peopleData?.contacts) ? peopleData.contacts
+                   : []
 
   // Deduplicate orgs
   const seen = new Set<string>()
-  const companies = []
+  const companies: any[] = []
   for (const p of peopleList) {
     const org = p?.organization || {}
     if (!org?.id || seen.has(org.id)) continue
@@ -152,8 +161,9 @@ export async function POST(req: NextRequest) {
     if (companies.length >= per_page) break
   }
 
-  if (!companies.length)
+  if (!companies.length) {
     return NextResponse.json({ companies: [], page, per_page })
+  }
 
   /* --------------------------- 2) Enrich each org ---------------------------- */
   const newsMin = dateNDaysAgoYMD(90)
