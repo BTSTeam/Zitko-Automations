@@ -17,7 +17,7 @@ const APOLLO_ORG_JOBS_URL      = (id: string) =>
 function toArray(v?: string[] | string): string[] {
   if (!v) return []
   if (Array.isArray(v)) return v.map((s) => s.trim()).filter(Boolean)
-  return v.split(',').map((s) => s.trim()).filter(Boolean)
+  return String(v).split(',').map((s) => s.trim()).filter(Boolean)
 }
 function buildQS(params: Record<string, string[] | string>): string {
   const p = new URLSearchParams()
@@ -33,6 +33,36 @@ function dateNDaysAgoYMD(days: number): string {
   return ymd(d)
 }
 function todayYMD(): string { return ymd(new Date()) }
+
+/* -------------------- tech labels + slug normalisation -------------------- */
+// Your hardcoded technology labels (from Apollo CSV, human-readable):
+const HARD_CODED_TECH_LABELS: string[] = [
+  "AcquireTM","ADP Applicant Tracking System","Applicant Pro","Ascendify","ATS OnDemand","Avature",
+  "Avionte","BambooHR","Bond Adapt","Breezy HR (formerly NimbleHR)","Catsone","Compas (MyCompas)",
+  "Cornerstone On Demand","Crelate","Employease","eRecruit","Findly","Gethired","Gild","Greenhouse.io",
+  "HealthcareSource","HireBridge","HR Logix","HRMDirect","HRSmart","Hyrell","iCIMS","Indeed Sponsored Ads",
+  "Infor (PeopleAnswers)","Interviewstream","JobAdder","JobApp","JobDiva","Jobscore","Jobvite","Kenexa",
+  "Kwantek","Lever","Luceo","Lumesse","myStaffingPro","myTalentLink","Newton Software","PC Recruiter",
+  "People Matter","PeopleFluent","Resumator","Sendouts","SilkRoad","SmartRecruiters","SmashFly",
+  "SuccessFactors (SAP)","TalentEd","Taleo","TMP Worldwide","TrackerRMS","UltiPro","Umantis","Winocular",
+  "Workable","Workday Recruit","ZipRecruiter","Zoho Recruit","Vincere","Bullhorn",
+]
+
+// Apollo slug rules: lowercase, underscores for spaces/periods, minimal punctuation.
+function toTechSlug(s: string): string {
+  return (s || '')
+    .toLowerCase()
+    .replace(/\(formerly [^)]+\)/g, '')   // remove “(formerly …)”
+    .replace(/&/g, ' and ')
+    .replace(/[./\s+-]+/g, '_')           // spaces/periods/hyphens → _
+    .replace(/[^a-z0-9_]/g, '')           // strip remaining punctuation
+    .replace(/_{2,}/g, '_')               // collapse __
+    .replace(/^_+|_+$/g, '')              // trim _
+}
+
+function normaliseToSlugs(values: string[]): string[] {
+  return Array.from(new Set(values.map(v => toTechSlug(v)).filter(Boolean)))
+}
 
 /* --------------------------------- API --------------------------------- */
 export async function POST(req: NextRequest) {
@@ -50,7 +80,7 @@ export async function POST(req: NextRequest) {
   const employeesMax   = body.employeesMax === '' || body.employeesMax == null ? null : Number(body.employeesMax)
   const activeJobsOnly = Boolean(body.activeJobsOnly)
 
-  // MANUAL jobs window: required when activeJobsOnly is true
+  // Manual jobs window: required when activeJobsOnly is true
   const rawDays = body.activeJobsWindowDays ?? body.activeJobsDays
   const parsedDays = Number.isFinite(Number(rawDays)) ? Math.floor(Number(rawDays)) : NaN
   if (activeJobsOnly && (!parsedDays || parsedDays <= 0)) {
@@ -64,14 +94,19 @@ export async function POST(req: NextRequest) {
   const page     = Math.max(1, parseInt(String(body.page ?? '1'), 10) || 1)
   const per_page = Math.max(1, Math.min(25, parseInt(String(body.per_page ?? '25'), 10) || 25))
 
-  // TECH EXCLUSION: forced ON, using Apollo technology UIDs
-  // - priority order: body.technology_uids[] -> env APOLLO_TECH_EXCLUSION_UIDS -> none (400)
-  const bodyTechUIDs = toArray(body.technology_uids)
-  const envTechUIDs  = toArray(process.env.APOLLO_TECH_EXCLUSION_UIDS || '')
-  const TECH_UIDS    = bodyTechUIDs.length ? bodyTechUIDs : envTechUIDs
+  /* --------------------------- tech exclusion (slugs) --------------------------- */
+  // Priority: body.technology_uids[] (names OR slugs) -> env APOLLO_TECH_EXCLUSION_UIDS (comma) -> hardcoded labels
+  const techFromBody = Array.isArray(body?.technology_uids) ? body.technology_uids : []
+  const techFromEnv = String(process.env.APOLLO_TECH_EXCLUSION_UIDS || '')
+    .split(',').map(s => s.trim()).filter(Boolean)
+  const techSource = techFromBody.length ? techFromBody
+                  : techFromEnv.length  ? techFromEnv
+                  : HARD_CODED_TECH_LABELS
+  const TECH_UIDS = normaliseToSlugs(techSource)
+
   if (!TECH_UIDS.length) {
     return NextResponse.json(
-      { error: 'Tech exclusion is required but no technology UIDs provided. Set APOLLO_TECH_EXCLUSION_UIDS or send body.technology_uids[].' },
+      { error: 'No technologies provided for exclusion.' },
       { status: 400 },
     )
   }
@@ -138,7 +173,7 @@ export async function POST(req: NextRequest) {
     ...(locations.length ? { 'organization_locations[]': locations } : {}),
     q_keywords: [...keywords, 'Security & Investigations'].filter(Boolean).join(', '),
     'person_seniorities[]': ['owner','founder','c_suite','partner','vp','head','director'],
-    // Forced tech exclusion by UIDs
+    // Forced tech exclusion by slugs
     'currently_not_using_any_of_technology_uids[]': TECH_UIDS,
   }
   if (employeesMin != null) baseQS['organization_num_employees_range[min]'] = String(employeesMin)
