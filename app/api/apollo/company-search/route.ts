@@ -35,7 +35,6 @@ function dateNDaysAgoYMD(days: number): string {
 function todayYMD(): string { return ymd(new Date()) }
 
 /* -------------------- tech labels + slug normalisation -------------------- */
-// Your hardcoded technology labels (from Apollo CSV, human-readable):
 const HARD_CODED_TECH_LABELS: string[] = [
   "AcquireTM","ADP Applicant Tracking System","Applicant Pro","Ascendify","ATS OnDemand","Avature",
   "Avionte","BambooHR","Bond Adapt","Breezy HR (formerly NimbleHR)","Catsone","Compas (MyCompas)",
@@ -75,7 +74,7 @@ export async function POST(req: NextRequest) {
 
   const locations      = toArray(body.locations)
   const keywords       = toArray(body.keywords)
-  const employeeRanges = toArray(body.employeeRanges)
+  const employeeRanges = toArray(body.employeeRanges) // pre-built "min,max" strings from UI (optional)
   const employeesMin   = body.employeesMin === '' || body.employeesMin == null ? null : Number(body.employeesMin)
   const employeesMax   = body.employeesMax === '' || body.employeesMax == null ? null : Number(body.employeesMax)
   const activeJobsOnly = Boolean(body.activeJobsOnly)
@@ -162,7 +161,7 @@ export async function POST(req: NextRequest) {
 
   const debugTop: any = DEBUG ? {
     inputs: {
-      locations, keywords, employeesMin, employeesMax,
+      locations, keywords, employeesMin, employeesMax, employeeRanges,
       activeJobsOnly, activeJobsWindowDays, page, per_page,
       technology_uids: TECH_UIDS,
     },
@@ -176,9 +175,24 @@ export async function POST(req: NextRequest) {
     // Forced tech exclusion by slugs
     'currently_not_using_any_of_technology_uids[]': TECH_UIDS,
   }
-  if (employeesMin != null) baseQS['organization_num_employees_range[min]'] = String(employeesMin)
-  if (employeesMax != null) baseQS['organization_num_employees_range[max]'] = String(employeesMax)
-  if (employeeRanges.length) baseQS['organization_num_employees_ranges[]'] = employeeRanges
+
+  // ✅ Employee filters:
+  // Prefer a single ranges[] entry when both min & max exist, e.g. "1,1000"
+  const ranges: string[] = []
+  if (employeesMin != null && employeesMax != null) {
+    ranges.push(`${employeesMin},${employeesMax}`)
+  }
+  for (const r of employeeRanges) {
+    if (r && typeof r === 'string') ranges.push(r)
+  }
+  
+  if (ranges.length) {
+    baseQS['organization_num_employees_ranges[]'] = ranges
+  } else {
+    if (employeesMin != null) baseQS['organization_num_employees_range[min]'] = String(employeesMin)
+    if (employeesMax != null) baseQS['organization_num_employees_range[max]'] = String(employeesMax)
+  }
+
   if (activeJobsOnly) {
     baseQS['organization_num_jobs_range[min]'] = '1'
     baseQS['organization_job_posted_at_range[min]'] = dateNDaysAgoYMD(activeJobsWindowDays)
@@ -243,7 +257,6 @@ export async function POST(req: NextRequest) {
         exact_location: c.location ?? null,
         city: null,
         state: null,
-        short_description: null,
         job_postings: [],
         hiring_people: [],
         news_articles: [],
@@ -291,7 +304,6 @@ export async function POST(req: NextRequest) {
           const org = JSON.parse(await orgR.value.text())?.organization || {}
           base.city = org.city ?? null
           base.state = org.state ?? null
-          base.short_description = org.short_description ?? null
           if ((base.city || base.state) && !base.exact_location)
             base.exact_location = [base.city, base.state].filter(Boolean).join(', ')
         } catch {}
