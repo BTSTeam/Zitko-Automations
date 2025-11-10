@@ -465,61 +465,115 @@ Kind regards,`
     })
   }
 
-  async function runCompanySearch(e?: React.FormEvent) {
-    e?.preventDefault()
-    if (isDown) return
-    setCompanyLoading(true)
-    setCompanyError(null)
-    setCompanies([])
-    setExpandedJobs(new Set())
-    setExpandedHiring(new Set())
-    setExpandedNews(new Set())
-    try {
-      const daysChip = activeJobsDays.chips.length ? activeJobsDays.chips[activeJobsDays.chips.length - 1] : null
-      const daysNum = daysChip && /^\d+$/.test(daysChip) ? Number(daysChip) : null
-
-    const payload = {
-      locations: companyLocations.chips,
-      keywords: companyKeywords.chips,
-      employeesMin: employeesMin.chips.length ? Number(employeesMin.chips[0]) : null,
-      employeesMax: employeesMax.chips.length ? Number(employeesMax.chips[0]) : null,
-    
-      activeJobsOnly,
-      activeJobsDays: activeJobsOnly ? daysNum : null,
-      ...(activeJobsOnly && activeJobTitles.chips.length
-        ? { q_organization_job_titles: activeJobTitles.chips }
-        : {}),
-    
-      page: 1,
-      per_page: 25,
-    
-      // ↓ enable route-side debug without env vars
-      debug: true,
+    async function runCompanySearch(e?: React.FormEvent) {
+      e?.preventDefault()
+      if (isDown) return
+      setCompanyLoading(true)
+      setCompanyError(null)
+      setCompanies([])
+      setExpandedJobs(new Set())
+      setExpandedHiring(new Set())
+      setExpandedNews(new Set())
+  
+      try {
+        // convert "Days" chip to number
+        const daysChip = activeJobsDays.chips.at(-1)
+        const daysNum = daysChip && /^\d+$/.test(daysChip) ? Number(daysChip) : null
+  
+        // Build payload exactly as required by new backend
+        const payload = {
+          locations: companyLocations.chips,                      // → organization_locations[]
+          keywords: companyKeywords.chips,                        // → q_keywords (joined string)
+          employeesMin: employeesMin.chips[0]
+            ? Number(employeesMin.chips[0])
+            : null,
+          employeesMax: employeesMax.chips[0]
+            ? Number(employeesMax.chips[0])
+            : null,
+          activeJobsOnly,
+          activeJobsDays: activeJobsOnly ? daysNum : null,
+          ...(activeJobsOnly && activeJobTitles.chips.length
+            ? { q_organization_job_titles: activeJobTitles.chips }
+            : {}),
+          page: 1,
+          per_page: 25,
+          debug: true, // enable route debug
+        }
+  
+        console.log('COMPANY SEARCH → payload', payload)
+  
+        const res = await fetch('/api/apollo/company-search', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-debug-apollo': '1', // triggers debug mode server-side
+          },
+          body: JSON.stringify(payload),
+        })
+  
+        const json: any = await res.json()
+  
+        if (json?.debug) console.log('APOLLO DEBUG →', json.debug)
+  
+        if (!res.ok) {
+          throw new Error(json?.error || `Search failed (${res.status})`)
+        }
+  
+        const arr: any[] = Array.isArray(json.companies)
+          ? json.companies
+          : []
+  
+        // Map enriched companies from new route
+        const mapped: Company[] = arr.map((c: any) => {
+          const job_postings: JobPosting[] = Array.isArray(c?.job_postings)
+            ? c.job_postings.map((jp: any) => ({
+                id: (jp?.id ?? jp?.job_posting_id ?? jp?.url ?? '').toString(),
+                title: jp?.title ?? null,
+                location: jp?.location ?? null,
+                employment_type: jp?.employment_type ?? null,
+                remote: typeof jp?.remote === 'boolean' ? jp.remote : null,
+                url: jp?.url ?? null,
+                posted_at: jp?.posted_at ?? null,
+              }))
+            : []
+  
+          const hiring_people: HiringPerson[] = Array.isArray(c?.hiring_people)
+            ? c.hiring_people.map((p: any) => transformToPerson(p))
+            : []
+  
+          const news_articles: NewsArticle[] = Array.isArray(c?.news_articles)
+            ? c.news_articles.map((a: any) => ({
+                id: (a?.id ?? a?.article_id ?? '').toString(),
+                title: a?.title ?? null,
+                description: a?.description ?? a?.summary ?? null,
+                published_at: a?.published_at ?? a?.published_date ?? null,
+                url: a?.url ?? a?.article_url ?? null,
+              }))
+            : []
+  
+          return {
+            id: (c?.id ?? c?.organization_id ?? '').toString(),
+            name: c?.name ?? c?.company_name ?? null,
+            website_url: c?.website_url ?? c?.domain ?? null,
+            linkedin_url: c?.linkedin_url ?? null,
+            exact_location: c?.formatted_address ?? c?.location ?? null,
+            city: c?.city ?? null,
+            state: c?.state ?? null,
+            short_description: c?.short_description ?? null,
+            job_postings,
+            hiring_people,
+            news_articles,
+          }
+        })
+  
+        setCompanies(mapped)
+      } catch (err: any) {
+        setCompanyError(err?.message || 'Unexpected error')
+      } finally {
+        setCompanySearchOpen(false)
+        setCompanyLoading(false)
+      }
     }
-      // (optional) see what you're sending from the client
-      console.log('COMPANY SEARCH → payload', payload)
-      
-      const res = await fetch('/api/apollo/company-search', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-debug-apollo': '1', // ← triggers debug in the route
-        },
-        body: JSON.stringify(payload),
-      })
-      
-      const json: any = await res.json();  // ← semicolon, not colon
-      
-      if (json?.debug) {
-        // Inspect exactly what was sent to Apollo + the raw preview
-        console.log('APOLLO DEBUG →', json.debug)
-      }
-      
-      if (!res.ok) {
-        throw new Error(json?.error || `Search failed (${res.status})`)
-      }
-      
-      const arr: any[] = Array.isArray(json.companies) ? json.companies : []
 
       const mapped: Company[] = arr.map((c: any) => {
         const job_postings: JobPosting[] = Array.isArray(c?.job_postings)
