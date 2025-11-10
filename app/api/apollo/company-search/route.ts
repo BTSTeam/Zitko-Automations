@@ -7,21 +7,32 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { refreshApolloAccessToken } from '@/lib/apolloRefresh';
 
-const APOLLO_COMPANY_SEARCH_URL = 'https://api.apollo.io/api/v1/mixed_companies/search'; // kept for reference
+/**
+ * This route intentionally uses the People Search endpoint (mixed_people/search)
+ * with ORGANIZATION-LEVEL filters to proxy a "company search".
+ * It then enriches each discovered org via:
+ *  - GET /organizations/{id}
+ *  - GET /organizations/{id}/job_postings?page=1&per_page=10
+ *  - POST /news_articles/search (last 90 days, per_page=2)
+ *  - POST /mixed_people/search for internal hiring roles
+ */
+
 const APOLLO_PEOPLE_SEARCH_URL  = 'https://api.apollo.io/api/v1/mixed_people/search';
 const APOLLO_NEWS_SEARCH_URL    = 'https://api.apollo.io/api/v1/news_articles/search';
-const APOLLO_ORG_GET_URL        = (id: string) => `https://api.apollo.io/api/v1/organizations/${id}`;
+const APOLLO_ORG_GET_URL        = (id: string) => `https://api.apollo.io/api/v1/organizations/${encodeURIComponent(id)}`;
 const APOLLO_ORG_JOBS_URL       = (id: string) =>
   `https://api.apollo.io/api/v1/organizations/${encodeURIComponent(id)}/job_postings?page=1&per_page=10`;
 
 /* ------------------------------- utils -------------------------------- */
+
 function toArray(v?: string[] | string): string[] {
   if (!v) return [];
   if (Array.isArray(v)) return v.map(s => s.trim()).filter(Boolean);
   return v.split(',').map(s => s.trim()).filter(Boolean);
 }
+
+/** Build query string: arrays -> repeated keys, values safely encoded */
 function buildQS(params: Record<string, string[] | string>): string {
-  // manually build query string so spaces become %20 (not +) and arrays append multiple params
   const parts: string[] = [];
   for (const [k, v] of Object.entries(params)) {
     if (Array.isArray(v)) {
@@ -35,13 +46,39 @@ function buildQS(params: Record<string, string[] | string>): string {
   return parts.join('&');
 }
 function ymd(d: Date): string { return d.toISOString().slice(0, 10); }
+function todayYMD(): string { return ymd(new Date()); }
 function dateNDaysAgoYMD(days: number): string {
   const d = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
   return ymd(d);
 }
-function todayYMD(): string { return ymd(new Date()); }
+
+/* ---------------------------- hard-coded filters ---------------------------- */
+
+/** Required seniorities to include (lowercase per Apollo snake_case) */
+const FORCED_SENIORITIES = ['owner','founder','c_suite','partner','vp'];
+
+/** Exclude recruitment tech (spaces -> underscores for *_uids) */
+const ATS_TECH_NAMES: string[] = [
+  'AcquireTM','ADP Applicant Tracking System','Applicant Pro','Ascendify','ATS OnDemand','Avature','Avionte','BambooHR',
+  'Bond Adapt','Breezy HR (formerly NimbleHR)','Catsone','Compas (MyCompas)','Cornerstone On Demand','Crelate',
+  'Employease','eRecruit','Findly','Gethired','Gild','Greenhouse.io','HealthcareSource','HireBridge','HR Logix','HRMDirect',
+  'HRSmart','Hyrell','iCIMS','Infor (PeopleAnswers)','Interviewstream','JobAdder','JobApp','JobDiva','Jobscore','Jobvite',
+  'Kenexa','Kwantek','Lever','Luceo','Lumesse','myStaffingPro','myTalentLink','Newton Software','PC Recruiter',
+  'People Matter','PeopleFluent','Resumator','Sendouts','SilkRoad','SmartRecruiters','SmashFly','SuccessFactors (SAP)',
+  'TalentEd','Taleo','TMP Worldwide','TrackerRMS','UltiPro','Umantis','Winocular','Workable','Workday Recruit',
+  'ZipRecruiter','Zoho Recruit','Vincere','Bullhorn',
+];
+const ATS_TECH_UIDS = ATS_TECH_NAMES.map(n => n.replace(/\s+/g, '_'));
+
+/** Titles for discovering hiring stakeholders per org */
+const HIRING_TITLES = [
+  'Head of Recruitment','Hiring Manager','Talent Acquisition','Talent Acquisition Manager',
+  'Talent Acquisition Lead','Recruitment Manager','Recruiting Manager','Head of Talent',
+  'Head of People','People & Talent','Talent Partner','Senior Talent Partner','Recruitment Partner',
+];
 
 /* --------------------------------- API --------------------------------- */
+
 export async function POST(req: NextRequest) {
   // ---- debug helpers ----
   const redactHeaders = (h: Record<string, string>) => {
@@ -51,35 +88,32 @@ export async function POST(req: NextRequest) {
     return copy;
   };
 
-  // Support enabling debug via env, header, or body.debug
-  let bodyForDebug: any = {};
-  try { bodyForDebug = await req.clone().json(); } catch {}
+  // Read body first for potential header-less debug
+  let inBodyForDebug: any = {};
+  try { inBodyForDebug = await req.clone().json(); } catch {}
+
   const DEBUG =
     (process.env.SOURCING_DEBUG_APOLLO || '').toLowerCase() === 'true' ||
     (req.headers.get('x-debug-apollo') || '').trim() === '1' ||
-    (typeof bodyForDebug?.debug === 'boolean' ? bodyForDebug.debug : false);
+    Boolean(inBodyForDebug?.debug === true);
 
-  // Optional feature flags to isolate filters quickly during debugging
+  // Optional flags useful while troubleshooting tenant specifics
   const DISABLE_ATS       = (process.env.APOLLO_DISABLE_ATS_EXCLUSION || '').toLowerCase() === 'true';
-  const FORCE_EMPTY_KEYWORDS = (process.env.APOLLO_FORCE_EMPTY_QKEYWORDS || '').toLowerCase() === 'true';
   const DISABLE_POSTED_AT = (process.env.APOLLO_DISABLE_POSTED_AT || '').toLowerCase() === 'true';
-
-  // 'search' => identical headers to org fetch; 'jobs' => add Bearer + X-Api-Key (tenant dependent)
   const JOBS_HEADERS_KIND = ((process.env.APOLLO_JOBS_HEADERS_KIND || 'search') as 'search' | 'jobs');
 
   // ---- input ----
   let inBody: {
-    locations?: string[] | string;
-    keywords?: string[] | string;
-    employeeRanges?: string[] | string;
-    employeesMin?: number | string | null;
+    locations?: string[] | string;                    // organization_locations[]
+    keywords?: string[] | string;                     // join -> q_keywords
+    employeeRanges?: string[] | string;               // organization_num_employees_ranges[] (already normalized "min,max")
+    employeesMin?: number | string | null;            // fallback to build single "min,max"
     employeesMax?: number | string | null;
-    activeJobsOnly?: boolean;
-    q_organization_job_titles?: string[] | string;
+    activeJobsOnly?: boolean;                         // adds org_num_jobs_range[min]=1 and [max]=100
+    q_organization_job_titles?: string[] | string;    // q_organization_job_titles[]
+    activeJobsDays?: number | string | null;          // window for posted_at range
     page?: number | string;
     per_page?: number | string;
-    activeJobsWindowDays?: number | string | null;
-    activeJobsDays?: number | string | null;
     debug?: boolean;
   } = {};
 
@@ -87,35 +121,31 @@ export async function POST(req: NextRequest) {
     inBody = (await req.json()) || {};
   } catch {}
 
-  const locations        = toArray(inBody.locations);
-  const keywordChips     = toArray(inBody.keywords);
-  // Normalize employee ranges: remove whitespace so they become "min,max" with no spaces
-  const employeeRangesRaw = toArray(inBody.employeeRanges).map(r => r.replace(/\s+/g, ''));
-  let employeeRanges = employeeRangesRaw;
-  const jobTitleFilters = toArray(inBody.q_organization_job_titles);
-  const activeJobsOnly  = Boolean(inBody.activeJobsOnly);
+  // Normalize inputs
+  const locations              = toArray(inBody.locations);
+  const keywordChips           = toArray(inBody.keywords);
+  const employeeRangesIncoming = toArray(inBody.employeeRanges).map(r => r.replace(/\s+/g, '')); // ensure "1,100"
+  const jobTitleFilters        = toArray(inBody.q_organization_job_titles);
+  const activeJobsOnly         = Boolean(inBody.activeJobsOnly);
 
-  // If UI sent min/max only, build a single "min,max" range for organization_num_employees_ranges[]
+  // If UI only provided min/max, convert into a single "min,max" entry
   const minNum = inBody.employeesMin === '' || inBody.employeesMin == null ? null : Number(inBody.employeesMin);
   const maxNum = inBody.employeesMax === '' || inBody.employeesMax == null ? null : Number(inBody.employeesMax);
-  if (employeeRanges.length === 0 && (typeof minNum === 'number' || typeof maxNum === 'number')) {
+  const employeeRanges: string[] = [...employeeRangesIncoming];
+  if (!employeeRanges.length && (typeof minNum === 'number' || typeof maxNum === 'number')) {
     const min = Number.isFinite(minNum) ? String(minNum) : '';
     const max = Number.isFinite(maxNum) ? String(maxNum) : '';
-    // Apollo expects "min,max" with no spaces
     const range = [min, max].filter(x => x !== '').join(',');
     if (range) employeeRanges.push(range);
   }
 
-  // Join keywords into a single string for q_keywords (or force empty via flag)
-  // Apollo expects a single space‑separated string of words; avoid commas
-  const q_keywords =
-    FORCE_EMPTY_KEYWORDS ? '' :
-    (keywordChips.length ? keywordChips.join(' ').trim() : '');
+  // Keywords -> single space-separated string (avoid commas)
+  const q_keywords = keywordChips.length ? keywordChips.join(' ').trim() : '';
 
   const page     = Math.max(1, parseInt(String(inBody.page ?? '1'), 10) || 1);
   const per_page = Math.max(1, Math.min(25, parseInt(String(inBody.per_page ?? '25'), 10) || 25));
 
-  const rawDays = (inBody as any).activeJobsWindowDays ?? (inBody as any).activeJobsDays;
+  const rawDays = inBody.activeJobsDays;
   const jobsWindowDays =
     Number.isFinite(Number(rawDays)) && Number(rawDays) > 0 ? Math.floor(Number(rawDays)) : null;
 
@@ -132,8 +162,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // search (POST): X-Api-Key works best (unless OAuth token present)
-  // jobs   (GET) : some tenants prefer Bearer; we can switch via JOBS_HEADERS_KIND
+  // Headers: search POST = X-Api-Key or Bearer; jobs GET may require Bearer+X-Api-Key for some tenants
   const buildHeaders = (kind: 'search' | 'jobs' = 'search'): Record<string, string> => {
     const h: Record<string, string> = {
       accept: 'application/json',
@@ -153,7 +182,7 @@ export async function POST(req: NextRequest) {
     return h;
   };
 
-  // POST helper with retry on token refresh (Apollo POST search endpoints)
+  // helper: POST with retry (for /search endpoints)
   const postWithRetry = async (url: string) => {
     const call = (headers: Record<string, string>) =>
       fetch(url, { method: 'POST', headers, body: JSON.stringify({}), cache: 'no-store' });
@@ -170,22 +199,8 @@ export async function POST(req: NextRequest) {
     return resp;
   };
 
-  /* ------------------------ 1) People-first Company Lookup ------------------------ */
-  // Hardcoded ATS/tech list to *exclude* recruitment companies:
-  const ATS_TECH_NAMES: string[] = [
-    'AcquireTM','ADP Applicant Tracking System','Applicant Pro','Ascendify','ATS OnDemand','Avature','Avionte','BambooHR',
-    'Bond Adapt','Breezy HR (formerly NimbleHR)','Catsone','Compas (MyCompas)','Cornerstone On Demand','Crelate',
-    'Employease','eRecruit','Findly','Gethired','Gild','Greenhouse.io','HealthcareSource','HireBridge','HR Logix','HRMDirect',
-    'HRSmart','Hyrell','iCIMS','Indeed Sponsored Ads','Infor (PeopleAnswers)','Interviewstream','JobAdder','JobApp','JobDiva',
-    'Jobscore','Jobvite','Kenexa','Kwantek','Lever','Luceo','Lumesse','myStaffingPro','myTalentLink','Newton Software',
-    'PC Recruiter','People Matter','PeopleFluent','Resumator','Sendouts','SilkRoad','SmartRecruiters','SmashFly',
-    'SuccessFactors (SAP)','TalentEd','Taleo','TMP Worldwide','TrackerRMS','UltiPro','Umantis','Winocular','Workable',
-    'Workday Recruit','ZipRecruiter','Zoho Recruit','Vincere','Bullhorn',
-  ];
-  // Convert to underscore format per docs (replace spaces with underscores)
-  const ATS_TECH_UIDS = ATS_TECH_NAMES.map(n => n.replace(/\s+/g, '_'));
+  /* ------------------------ Build company-proxy people search ------------------------ */
 
-  // Build mixed_people/search query with org filters so we only get people from the target companies
   const peopleQS: Record<string, string[] | string> = {
     page: String(page),
     per_page: String(per_page),
@@ -203,9 +218,10 @@ export async function POST(req: NextRequest) {
     peopleQS['organization_num_employees_ranges[]'] = employeeRanges;
   }
 
-  // Active job listings -> organization_num_jobs_range[min]=1 (+ optional posted_at window)
+  // Active job listings -> organization_num_jobs_range[min]=1 and [max]=100 (+ posted_at window)
   if (activeJobsOnly) {
     peopleQS['organization_num_jobs_range[min]'] = '1';
+    peopleQS['organization_num_jobs_range[max]'] = '100';
     if (jobsWindowDays && !DISABLE_POSTED_AT) {
       peopleQS['organization_job_posted_at_range[min]'] = dateNDaysAgoYMD(jobsWindowDays);
       peopleQS['organization_job_posted_at_range[max]'] = todayYMD();
@@ -217,12 +233,18 @@ export async function POST(req: NextRequest) {
     peopleQS['q_organization_job_titles[]'] = jobTitleFilters;
   }
 
-  // Keywords -> q_keywords (single space‑separated string)
+  // Keywords -> q_keywords
   if (q_keywords) {
     peopleQS['q_keywords'] = q_keywords;
   }
 
-  // Exclude recruitment companies via "currently_not_using_any_of_technology_uids[]"
+  // Force person_seniorities[]
+  FORCED_SENIORITIES.forEach(s => {
+    peopleQS['person_seniorities[]'] =
+      (peopleQS['person_seniorities[]'] as string[] | undefined)?.concat(s) || [s];
+  });
+
+  // Exclude recruitment companies via currently_not_using_any_of_technology_uids[]
   if (!DISABLE_ATS) {
     peopleQS['currently_not_using_any_of_technology_uids[]'] = ATS_TECH_UIDS;
   }
@@ -240,12 +262,10 @@ export async function POST(req: NextRequest) {
   const pplResp = await postWithRetry(peopleSearchUrl);
   const pplRaw  = await pplResp.text();
 
-  if (DEBUG) {
-    if (debugBag) {
-      debugBag.apolloStatus      = pplResp.status;
-      debugBag.apolloOk          = pplResp.ok;
-      debugBag.apolloBodyPreview = (pplRaw || '').slice(0, 2000);
-    }
+  if (DEBUG && debugBag) {
+    debugBag.apolloStatus      = pplResp.status;
+    debugBag.apolloOk          = pplResp.ok;
+    debugBag.apolloBodyPreview = (pplRaw || '').slice(0, 2000);
   }
 
   if (!pplResp.ok) {
@@ -280,8 +300,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ companies: [], page, per_page, debug: debugBag });
   }
 
-  /* --------------------------- 2) Enrich each org ---------------------------- */
-  const published_after = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10); // Y-M-D
+  /* --------------------------- Enrich each organization --------------------------- */
+
+  const published_after = dateNDaysAgoYMD(90); // last 90 days for news
 
   const enriched = await Promise.all(
     orgIds.map(async (orgId) => {
@@ -302,19 +323,16 @@ export async function POST(req: NextRequest) {
       const orgHeaders  = buildHeaders('search');
       const jobsHeaders = buildHeaders(JOBS_HEADERS_KIND);
 
-      // Hiring people panel (optional small set of TA roles)
+      // Hiring people panel (small set of internal TA/People roles)
       const hiringQS = buildQS({
         'organization_ids[]': [orgId],
-        'person_titles[]': [
-          'Head of Recruitment','Hiring Manager','Talent Acquisition','Talent Acquisition Manager',
-          'Talent Acquisition Lead','Recruitment Manager','Recruiting Manager','Head of Talent',
-          'Head of People','People & Talent','Talent Partner','Senior Talent Partner','Recruitment Partner',
-        ],
+        'person_titles[]': HIRING_TITLES,
         include_similar_titles: 'true',
         per_page: '10',
       });
-      const peopleUrl = `${APOLLO_PEOPLE_SEARCH_URL}?${hiringQS}`;
+      const hiringUrl = `${APOLLO_PEOPLE_SEARCH_URL}?${hiringQS}`;
 
+      // News search
       const newsQS = buildQS({
         'organization_ids[]': [orgId],
         published_after,
@@ -322,7 +340,7 @@ export async function POST(req: NextRequest) {
       });
       const newsUrl = `${APOLLO_NEWS_SEARCH_URL}?${newsQS}`;
 
-      const [orgR, jobsR, peopleR, newsR] = await Promise.allSettled([
+      const [orgR, jobsR, hiringR, newsR] = await Promise.allSettled([
         // Org details
         fetch(APOLLO_ORG_GET_URL(orgId), {
           method: 'GET',
@@ -338,7 +356,7 @@ export async function POST(req: NextRequest) {
         }).then(r => r.text().then(t => ({ ok: r.ok, status: r.status, body: t }))),
 
         // Hiring people
-        postWithRetry(peopleUrl).then(r => r.text().then(t => ({ ok: r.ok, status: r.status, body: t }))),
+        postWithRetry(hiringUrl).then(r => r.text().then(t => ({ ok: r.ok, status: r.status, body: t }))),
 
         // News
         postWithRetry(newsUrl).then(r => r.text().then(t => ({ ok: r.ok, status: r.status, body: t }))),
@@ -348,11 +366,11 @@ export async function POST(req: NextRequest) {
       if (orgR.status === 'fulfilled' && orgR.value.ok) {
         try {
           const org = JSON.parse(orgR.value.body || '{}')?.organization || {};
-          base.name   = org?.name ?? null;
-          base.website_url = org?.website_url ?? org?.domain ?? null;
-          base.linkedin_url= org?.linkedin_url ?? null;
-          base.city   = org?.city ?? null;
-          base.state  = org?.state ?? null;
+          base.name           = org?.name ?? null;
+          base.website_url    = org?.website_url ?? org?.domain ?? null;
+          base.linkedin_url   = org?.linkedin_url ?? null;
+          base.city           = org?.city ?? null;
+          base.state          = org?.state ?? null;
           base.short_description = org?.short_description ?? null;
           base.exact_location = base.exact_location || [base.city, base.state].filter(Boolean).join(', ') || null;
         } catch {}
@@ -375,9 +393,9 @@ export async function POST(req: NextRequest) {
       }
 
       // --- Hiring people
-      if (peopleR.status === 'fulfilled' && peopleR.value.ok) {
+      if (hiringR.status === 'fulfilled' && hiringR.value.ok) {
         try {
-          const hp = JSON.parse(peopleR.value.body || '{}');
+          const hp = JSON.parse(hiringR.value.body || '{}');
           base.hiring_people =
             Array.isArray(hp?.contacts) ? hp.contacts :
             Array.isArray(hp?.people)   ? hp.people   : [];
@@ -394,10 +412,9 @@ export async function POST(req: NextRequest) {
 
       if (DEBUG) {
         (base as any)._debug = {
-          ...(base as any)._debug,
           details_url: APOLLO_ORG_GET_URL(orgId),
           jobs_url:    APOLLO_ORG_JOBS_URL(orgId),
-          people_url:  peopleUrl,
+          hiring_url:  hiringUrl,
           news_url:    newsUrl,
         };
       }
@@ -412,4 +429,11 @@ export async function POST(req: NextRequest) {
     per_page,
     debug: debugBag,
   });
+}
+
+export async function GET() {
+  return NextResponse.json(
+    { error: 'Use POST /api/apollo/company-search with a JSON body.' },
+    { status: 405 },
+  );
 }
