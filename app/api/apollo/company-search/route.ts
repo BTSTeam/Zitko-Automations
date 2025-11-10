@@ -13,6 +13,8 @@ const APOLLO_ORG_GET_URL        = (id: string) => `https://api.apollo.io/api/v1/
 const APOLLO_ORG_JOBS_URL       = (id: string) =>
   `https://api.apollo.io/api/v1/organizations/${encodeURIComponent(id)}/job_postings?page=1&per_page=10`;
 
+/* -------------------------------- utils -------------------------------- */
+
 function toArray(v?: string[] | string): string[] {
   if (!v) return [];
   if (Array.isArray(v)) return v.map(s => s.trim()).filter(Boolean);
@@ -25,12 +27,12 @@ function dateNDaysAgoYMD(days: number): string {
   return ymd(d);
 }
 
-// Decision-makers
+/* ----------------------- fixed filters & constants ---------------------- */
+
 const FORCED_SENIORITIES = ['owner', 'founder', 'c_suite', 'partner', 'vp'] as const;
 
-// Recruiter CRMs (kept)
 const RECRUITER_CRM_TECH_NAMES: string[] = [
-  'Vincere','Bullhorn','TrackerRMS','PC Recruiter','Catsone','Zoho Recruit','JobAdder','Crelate','Avionte'
+  'Vincere','Bullhorn','TrackerRMS','PC Recruiter','Catsone','Zoho Recruit','JobAdder','Crelate','Avionte',
 ];
 const RECRUITER_CRM_TECH_UIDS = RECRUITER_CRM_TECH_NAMES.map(n => n.replace(/\s+/g, '_'));
 
@@ -39,6 +41,188 @@ const HIRING_TITLES = [
   'Talent Acquisition Lead','Recruitment Manager','Recruiting Manager','Head of Talent',
   'Head of People','People & Talent','Talent Partner','Senior Talent Partner','Recruitment Partner',
 ];
+
+/* --------------------------- header fallbacks --------------------------- */
+
+type HeaderKind = 'search' | 'news' | 'jobs' | 'org';
+type HeaderVariant =
+  | { mode: 'oauth_bearer'; headers: Record<string,string>; usesToken: true  }
+  | { mode: 'api_bearer';  headers: Record<string,string>; usesToken: false }
+  | { mode: 'api_xkey';    headers: Record<string,string>; usesToken: false }
+  | { mode: 'api_both';    headers: Record<string,string>; usesToken: false };
+
+// Build a list of header variants we will try in order
+function headerVariants(opts: {
+  accessToken?: string | null | undefined;
+  apiKey?: string | null | undefined;
+  kind: HeaderKind;
+}): HeaderVariant[] {
+  const base = {
+    accept: 'application/json',
+    'Cache-Control': 'no-cache',
+    'Content-Type': 'application/json',
+  } as const;
+
+  const variants: HeaderVariant[] = [];
+
+  // 1) OAuth Bearer (if we have it)
+  if (opts.accessToken) {
+    variants.push({
+      mode: 'oauth_bearer',
+      headers: { ...base, Authorization: `Bearer ${opts.accessToken}` },
+      usesToken: true,
+    });
+  }
+
+  // 2) API Key variants (if we have an API key)
+  if (opts.apiKey) {
+    // Most consistent for /search & /news is Bearer <apiKey>
+    variants.push({
+      mode: 'api_bearer',
+      headers: { ...base, Authorization: `Bearer ${opts.apiKey}` },
+      usesToken: false,
+    });
+
+    // Some tenants accept X-Api-Key alone
+    variants.push({
+      mode: 'api_xkey',
+      headers: { ...base, 'X-Api-Key': String(opts.apiKey) },
+      usesToken: false,
+    });
+
+    // Some accept both
+    variants.push({
+      mode: 'api_both',
+      headers: { ...base, Authorization: `Bearer ${opts.apiKey}`, 'X-Api-Key': String(opts.apiKey) },
+      usesToken: false,
+    });
+  }
+
+  // Special case: for jobs GET we often need X-Api-Key in addition to Bearer
+  if (opts.kind === 'jobs' && opts.apiKey) {
+    // Move the BOTH variant to the front for jobs
+    const bothIdx = variants.findIndex(v => v.mode === 'api_both');
+    if (bothIdx > 0) {
+      const both = variants.splice(bothIdx, 1)[0];
+      variants.unshift(both);
+    }
+  }
+
+  return variants;
+}
+
+async function postJsonWithFallback(
+  url: string,
+  bodyObj: any,
+  accessToken: string | undefined,
+  apiKey: string | undefined,
+  kind: HeaderKind,
+  refreshKey: string | undefined,
+  debug?: any
+) {
+  const variants = headerVariants({ accessToken, apiKey, kind });
+  let lastText = '';
+  let lastStatus = 0;
+  let usedMode = '';
+
+  for (let i = 0; i < variants.length; i++) {
+    const v = variants[i];
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: v.headers,
+      body: JSON.stringify(bodyObj),
+      cache: 'no-store',
+    });
+    lastStatus = r.status;
+    const t = await r.text();
+    lastText = t;
+    if (r.ok) {
+      if (debug) debug._last_header_mode_success = v.mode;
+      return { ok: true, status: r.status, text: t };
+    }
+
+    // If OAuth token used and unauthorized, try one refresh then retry this variant once.
+    if ((r.status === 401 || r.status === 403) && v.usesToken && accessToken && refreshKey) {
+      const refreshed = await refreshApolloAccessToken(refreshKey);
+      if (refreshed) {
+        const s2 = await getSession();
+        accessToken = s2.tokens?.apolloAccessToken;
+        // retry with new token
+        const retryVariant = headerVariants({ accessToken, apiKey, kind }).find(x => x.mode === 'oauth_bearer');
+        if (retryVariant) {
+          const rr = await fetch(url, {
+            method: 'POST',
+            headers: retryVariant.headers,
+            body: JSON.stringify(bodyObj),
+            cache: 'no-store',
+          });
+          const t2 = await rr.text();
+          if (rr.ok) {
+            if (debug) debug._last_header_mode_success = retryVariant.mode;
+            return { ok: true, status: rr.status, text: t2 };
+          }
+          lastStatus = rr.status;
+          lastText = t2;
+        }
+      }
+    }
+    usedMode = v.mode;
+  }
+
+  if (debug) debug._last_header_mode_failed = usedMode;
+  return { ok: false, status: lastStatus, text: lastText };
+}
+
+async function getWithFallback(
+  url: string,
+  accessToken: string | undefined,
+  apiKey: string | undefined,
+  kind: HeaderKind,
+  refreshKey: string | undefined,
+  debug?: any
+) {
+  const variants = headerVariants({ accessToken, apiKey, kind });
+  let lastText = '';
+  let lastStatus = 0;
+  let usedMode = '';
+
+  for (let i = 0; i < variants.length; i++) {
+    const v = variants[i];
+    const r = await fetch(url, { method: 'GET', headers: v.headers, cache: 'no-store' });
+    lastStatus = r.status;
+    const t = await r.text();
+    lastText = t;
+    if (r.ok) {
+      if (debug) debug._last_header_mode_success = v.mode;
+      return { ok: true, status: r.status, text: t };
+    }
+
+    if ((r.status === 401 || r.status === 403) && v.usesToken && accessToken && refreshKey) {
+      const refreshed = await refreshApolloAccessToken(refreshKey);
+      if (refreshed) {
+        const s2 = await getSession();
+        accessToken = s2.tokens?.apolloAccessToken;
+        const retryVariant = headerVariants({ accessToken, apiKey, kind }).find(x => x.mode === 'oauth_bearer');
+        if (retryVariant) {
+          const rr = await fetch(url, { method: 'GET', headers: retryVariant.headers, cache: 'no-store' });
+          const t2 = await rr.text();
+          if (rr.ok) {
+            if (debug) debug._last_header_mode_success = retryVariant.mode;
+            return { ok: true, status: rr.status, text: t2 };
+          }
+          lastStatus = rr.status;
+          lastText = t2;
+        }
+      }
+    }
+    usedMode = v.mode;
+  }
+
+  if (debug) debug._last_header_mode_failed = usedMode;
+  return { ok: false, status: lastStatus, text: lastText };
+}
+
+/* -------------------------------- route -------------------------------- */
 
 export async function POST(req: NextRequest) {
   const redactHeaders = (h: Record<string, string>) => {
@@ -63,16 +247,16 @@ export async function POST(req: NextRequest) {
   const JOBS_HEADERS_KIND =
     ((process.env.APOLLO_JOBS_HEADERS_KIND || 'search') as 'search' | 'jobs');
 
-  // Inputs
+  // -------- inputs
   let inBody: {
-    locations?: string[] | string;
-    keywords?: string[] | string;
-    employeeRanges?: string[] | string;
+    locations?: string[] | string;                 // organization_locations[]
+    keywords?: string[] | string;                  // -> q_keywords (space-joined)
+    employeeRanges?: string[] | string;            // organization_num_employees_ranges[] "min,max"
     employeesMin?: number | string | null;
     employeesMax?: number | string | null;
-    activeJobsOnly?: boolean;
-    q_organization_job_titles?: string[] | string;
-    activeJobsDays?: number | string | null;
+    activeJobsOnly?: boolean;                      // if true -> org_num_jobs[min]=1 & [max]=100
+    q_organization_job_titles?: string[] | string; // q_organization_job_titles[]
+    activeJobsDays?: number | string | null;       // window for posted_at range
     page?: number | string;
     per_page?: number | string;
     debug?: boolean;
@@ -104,7 +288,7 @@ export async function POST(req: NextRequest) {
   const jobsWindowDays =
     Number.isFinite(Number(rawDays)) && Number(rawDays) > 0 ? Math.floor(Number(rawDays)) : null;
 
-  // Auth
+  // -------- auth
   const session   = await getSession();
   const userKey   = session.user?.email || session.sessionId || '';
   let accessToken = session.tokens?.apolloAccessToken;
@@ -117,41 +301,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Match the working people-search route:
-  const buildHeaders = (kind: 'search' | 'jobs' = 'search'): Record<string, string> => {
-    const h: Record<string, string> = {
-      accept: 'application/json',
-      'Cache-Control': 'no-cache',
-      'Content-Type': 'application/json',
-    };
-    if (accessToken) {
-      h.Authorization = `Bearer ${accessToken}`;
-    } else if (apiKey) {
-      // /search and /news accept Authorization: Bearer <apiKey>
-      h.Authorization = `Bearer ${apiKey}`;
-      // Some tenants require X-Api-Key for jobs GET only
-      if (kind === 'jobs') h['X-Api-Key'] = apiKey;
-    }
-    return h;
-  };
+  /* ---------------- People Search (ORG-filtered) — POST JSON body ---------------- */
 
-  const postWithRetry = async (url: string, bodyObj: any, kind: 'search' | 'jobs' = 'search') => {
-    const call = (headers: Record<string, string>) =>
-      fetch(url, { method: 'POST', headers, body: JSON.stringify(bodyObj), cache: 'no-store' });
-
-    let resp = await call(buildHeaders(kind));
-    if ((resp.status === 401 || resp.status === 403) && accessToken && userKey) {
-      const refreshed = await refreshApolloAccessToken(userKey);
-      if (refreshed) {
-        const s2 = await getSession();
-        accessToken = s2.tokens?.apolloAccessToken;
-        resp = await call(buildHeaders(kind));
-      }
-    }
-    return resp;
-  };
-
-  // People Search body (ORG-level filters)
   const pplBody: Record<string, any> = {
     page,
     per_page,
@@ -172,11 +323,8 @@ export async function POST(req: NextRequest) {
 
   if (jobTitleFilters.length) pplBody['q_organization_job_titles[]'] = jobTitleFilters;
   if (q_keywords) pplBody['q_keywords'] = q_keywords;
-
-  // Decision-maker bias
   pplBody['person_seniorities[]'] = FORCED_SENIORITIES;
 
-  // Exclude obvious recruitment agencies (recruiter CRMs only)
   if (!DISABLE_TECH_EXCLUSION) {
     pplBody['currently_not_using_any_of_technology_uids[]'] = RECRUITER_CRM_TECH_UIDS;
   }
@@ -184,34 +332,40 @@ export async function POST(req: NextRequest) {
   const debugBag: any = DEBUG ? {
     inputBody: inBody,
     builtBody: pplBody,
-    headers: redactHeaders(buildHeaders('search')),
   } : undefined;
 
-  const pplResp = await postWithRetry(APOLLO_PEOPLE_SEARCH_URL, pplBody, 'search');
-  const pplRaw  = await pplResp.text();
+  const pplResp = await postJsonWithFallback(
+    APOLLO_PEOPLE_SEARCH_URL,
+    pplBody,
+    accessToken,
+    apiKey,
+    'search',
+    userKey,
+    debugBag
+  );
 
   if (DEBUG && debugBag) {
     debugBag.apolloStatus      = pplResp.status;
-    debugBag.apolloOk          = pplResp.ok;
-    debugBag.apolloBodyPreview = (pplRaw || '').slice(0, 2000);
+    debugBag.apolloOk          = Boolean(pplResp.ok);
+    debugBag.apolloBodyPreview = (pplResp.text || '').slice(0, 2000);
   }
 
   if (!pplResp.ok) {
     return NextResponse.json(
       {
-        error: `Apollo people (company-proxy) search error: ${pplResp.status} ${pplResp.statusText}`,
-        details: (pplRaw || '').slice(0, 2000),
+        error: `Apollo people (company-proxy) search error: ${pplResp.status} ${pplResp.ok ? '' : ''}`.trim(),
+        details: (pplResp.text || '').slice(0, 2000),
         debug: debugBag,
       },
       { status: pplResp.status || 400 },
     );
   }
 
-  // --- Parse and collect unique org IDs (robust for contacts/people shapes)
+  // ------------ Collect org IDs (robust for contacts/people shapes) ------------
   let peopleData: any = {};
-  try { peopleData = pplRaw ? JSON.parse(pplRaw) : {}; } catch {}
+  try { peopleData = pplResp.text ? JSON.parse(pplResp.text) : {}; } catch {}
 
-  // Prefer contacts[] (as in your example), else people[]
+  // Prefer contacts[] (as in your sample), else people[]
   const records: any[] = Array.isArray(peopleData?.contacts)
     ? peopleData.contacts
     : Array.isArray(peopleData?.people)
@@ -225,7 +379,6 @@ export async function POST(req: NextRequest) {
     const fromHist   = Array.isArray(r?.employment_history) && r.employment_history[0]?.organization_id
       ? String(r.employment_history[0].organization_id)
       : '';
-
     const id = fromDirect || fromObj || fromHist || '';
     if (id) orgIdSet.add(id);
   }
@@ -248,7 +401,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ companies: [], page, per_page, debug: debugBag });
   }
 
-  // --- Enrich each organization
+  /* ---------------- Enrich each organization ---------------- */
+
   const published_after = dateNDaysAgoYMD(90);
 
   const enriched = await Promise.all(
@@ -267,52 +421,18 @@ export async function POST(req: NextRequest) {
         news_articles: [] as any[],
       };
 
-      const orgHeaders  = buildHeaders('search');
-      const jobsHeaders = buildHeaders(JOBS_HEADERS_KIND);
-
-      // Hiring people panel (POST)
-      const hiringBody = {
-        'organization_ids[]': [orgId],
-        'person_titles[]': HIRING_TITLES,
-        include_similar_titles: true,
-        per_page: 10,
-      };
-
-      // News (POST)
-      const newsBody = {
-        'organization_ids[]': [orgId],
-        published_after,
-        per_page: 2,
-      };
-
-      const [orgR, jobsR, hiringR, newsR] = await Promise.allSettled([
-        // Org details (GET)
-        fetch(APOLLO_ORG_GET_URL(orgId), {
-          method: 'GET',
-          headers: orgHeaders,
-          cache: 'no-store',
-        }).then(r => r.text().then(t => ({ ok: r.ok, status: r.status, body: t }))),
-
-        // Job postings (GET)
-        fetch(APOLLO_ORG_JOBS_URL(orgId), {
-          method: 'GET',
-          headers: jobsHeaders,
-          cache: 'no-store',
-        }).then(r => r.text().then(t => ({ ok: r.ok, status: r.status, body: t }))),
-
-        // Hiring people (POST)
-        postWithRetry(APOLLO_PEOPLE_SEARCH_URL, hiringBody, 'search')
-          .then(r => r.text().then(t => ({ ok: r.ok, status: r.status, body: t }))),
-
-        // News (POST)
-        postWithRetry(APOLLO_NEWS_SEARCH_URL, newsBody, 'search')
-          .then(r => r.text().then(t => ({ ok: r.ok, status: r.status, body: t }))),
-      ]);
-
       // Org details
-      if (orgR.status === 'fulfilled' && orgR.value.ok) {
+      const orgR = await getWithFallback(
+        APOLLO_ORG_GET_URL(orgId),
+        accessToken,
+        apiKey,
+        'org',
+        userKey
+      );
+
+      if (orgR.ok) {
         try {
-          const org = JSON.parse(orgR.value.body || '{}')?.organization || {};
+          const org = JSON.parse(orgR.text || '{}')?.organization || {};
           base.name              = org?.name ?? null;
           base.website_url       = org?.website_url ?? org?.domain ?? null;
           base.linkedin_url      = org?.linkedin_url ?? null;
@@ -323,47 +443,64 @@ export async function POST(req: NextRequest) {
         } catch {}
       }
 
-      // Job postings
-      if (jobsR.status === 'fulfilled') {
-        if (jobsR.value.ok) {
-          try {
-            const jobs = JSON.parse(jobsR.value.body || '{}');
-            base.job_postings = Array.isArray(jobs?.job_postings) ? jobs.job_postings : [];
-          } catch { base.job_postings = []; }
-        } else {
-          base.job_postings = [];
-          (base as any).job_postings_error = {
-            status: jobsR.value.status,
-            body: (jobsR.value.body || '').slice(0, 500),
-          };
-        }
+      // Job postings (favor both headers for tenants that require it)
+      const jobsR = await getWithFallback(
+        APOLLO_ORG_JOBS_URL(orgId),
+        accessToken,
+        apiKey,
+        'jobs',
+        userKey
+      );
+
+      if (jobsR.ok) {
+        try {
+          const jobs = JSON.parse(jobsR.text || '{}');
+          base.job_postings = Array.isArray(jobs?.job_postings) ? jobs.job_postings : [];
+        } catch { base.job_postings = []; }
+      } else if (jobsR.status) {
+        (base as any).job_postings_error = {
+          status: jobsR.status,
+          body: (jobsR.text || '').slice(0, 500),
+        };
       }
 
-      // Hiring people
-      if (hiringR.status === 'fulfilled' && hiringR.value.ok) {
+      // Hiring people (POST)
+      const hiringR = await postJsonWithFallback(
+        APOLLO_PEOPLE_SEARCH_URL,
+        {
+          'organization_ids[]': [orgId],
+          'person_titles[]': HIRING_TITLES,
+          include_similar_titles: true,
+          per_page: 10,
+        },
+        accessToken,
+        apiKey,
+        'search',
+        userKey
+      );
+      if (hiringR.ok) {
         try {
-          const hp = JSON.parse(hiringR.value.body || '{}');
+          const hp = JSON.parse(hiringR.text || '{}');
           base.hiring_people =
             Array.isArray(hp?.contacts) ? hp.contacts :
             Array.isArray(hp?.people)   ? hp.people   : [];
         } catch { base.hiring_people = []; }
       }
 
-      // News
-      if (newsR.status === 'fulfilled' && newsR.value.ok) {
+      // News (POST)
+      const newsR = await postJsonWithFallback(
+        APOLLO_NEWS_SEARCH_URL,
+        { 'organization_ids[]': [orgId], published_after, per_page: 2 },
+        accessToken,
+        apiKey,
+        'news',
+        userKey
+      );
+      if (newsR.ok) {
         try {
-          const news = JSON.parse(newsR.value.body || '{}');
+          const news = JSON.parse(newsR.text || '{}');
           base.news_articles = Array.isArray(news?.news_articles) ? news.news_articles : [];
         } catch { base.news_articles = []; }
-      }
-
-      if (DEBUG) {
-        (base as any)._debug = {
-          details_url: APOLLO_ORG_GET_URL(orgId),
-          jobs_url:    APOLLO_ORG_JOBS_URL(orgId),
-          hiring_body: hiringBody,
-          news_body:   newsBody,
-        };
       }
 
       return base;
@@ -374,7 +511,7 @@ export async function POST(req: NextRequest) {
     companies: enriched,
     page,
     per_page,
-    debug: debugBag,
+    debug: DEBUG ? { ...debugBag } : undefined,
   });
 }
 
