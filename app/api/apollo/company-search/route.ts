@@ -7,19 +7,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { refreshApolloAccessToken } from '@/lib/apolloRefresh';
 
-/**
- * Company discovery via People Search using ORG-level filters (HQ area, size, jobs).
- * Then enrich each org: details (GET), job postings (GET), news (POST),
- * and a small follow-up People Search for internal TA/People roles (POST).
- */
-
 const APOLLO_PEOPLE_SEARCH_URL  = 'https://api.apollo.io/api/v1/mixed_people/search';
 const APOLLO_NEWS_SEARCH_URL    = 'https://api.apollo.io/api/v1/news_articles/search';
 const APOLLO_ORG_GET_URL        = (id: string) => `https://api.apollo.io/api/v1/organizations/${encodeURIComponent(id)}`;
 const APOLLO_ORG_JOBS_URL       = (id: string) =>
   `https://api.apollo.io/api/v1/organizations/${encodeURIComponent(id)}/job_postings?page=1&per_page=10`;
-
-/* -------------------------------- utils -------------------------------- */
 
 function toArray(v?: string[] | string): string[] {
   if (!v) return [];
@@ -33,34 +25,20 @@ function dateNDaysAgoYMD(days: number): string {
   return ymd(d);
 }
 
-/* ----------------------- fixed filters & constants ---------------------- */
-
-// Seniorities to bias toward decision-makers
+// Decision-makers
 const FORCED_SENIORITIES = ['owner', 'founder', 'c_suite', 'partner', 'vp'] as const;
 
-// Tightened to **recruitment CRMs** (to screen out recruitment agencies)
-// Note: Apollo expects underscores in *_uids params.
+// Recruiter CRMs (kept)
 const RECRUITER_CRM_TECH_NAMES: string[] = [
-  'Vincere',
-  'Bullhorn',
-  'TrackerRMS',
-  'PC Recruiter',
-  'Catsone',
-  'Zoho Recruit',
-  'JobAdder',
-  'Crelate',
-  'Avionte'
+  'Vincere','Bullhorn','TrackerRMS','PC Recruiter','Catsone','Zoho Recruit','JobAdder','Crelate','Avionte'
 ];
 const RECRUITER_CRM_TECH_UIDS = RECRUITER_CRM_TECH_NAMES.map(n => n.replace(/\s+/g, '_'));
 
-// Titles to pull a “hiring stakeholders” panel per org
 const HIRING_TITLES = [
   'Head of Recruitment','Hiring Manager','Talent Acquisition','Talent Acquisition Manager',
   'Talent Acquisition Lead','Recruitment Manager','Recruiting Manager','Head of Talent',
   'Head of People','People & Talent','Talent Partner','Senior Talent Partner','Recruitment Partner',
 ];
-
-/* -------------------------------- route -------------------------------- */
 
 export async function POST(req: NextRequest) {
   const redactHeaders = (h: Record<string, string>) => {
@@ -85,16 +63,16 @@ export async function POST(req: NextRequest) {
   const JOBS_HEADERS_KIND =
     ((process.env.APOLLO_JOBS_HEADERS_KIND || 'search') as 'search' | 'jobs');
 
-  // -------- inputs
+  // Inputs
   let inBody: {
-    locations?: string[] | string;                 // organization_locations[]
-    keywords?: string[] | string;                  // -> q_keywords (space-joined)
-    employeeRanges?: string[] | string;            // organization_num_employees_ranges[] "min,max"
+    locations?: string[] | string;
+    keywords?: string[] | string;
+    employeeRanges?: string[] | string;
     employeesMin?: number | string | null;
     employeesMax?: number | string | null;
-    activeJobsOnly?: boolean;                      // if true -> org_num_jobs[min]=1 & [max]=100
-    q_organization_job_titles?: string[] | string; // q_organization_job_titles[]
-    activeJobsDays?: number | string | null;       // window for posted_at range
+    activeJobsOnly?: boolean;
+    q_organization_job_titles?: string[] | string;
+    activeJobsDays?: number | string | null;
     page?: number | string;
     per_page?: number | string;
     debug?: boolean;
@@ -107,7 +85,6 @@ export async function POST(req: NextRequest) {
   const jobTitleFilters = toArray(inBody.q_organization_job_titles);
   const activeJobsOnly = Boolean(inBody.activeJobsOnly);
 
-  // Construct "min,max" range from explicit min/max if needed
   const minNum = inBody.employeesMin === '' || inBody.employeesMin == null ? null : Number(inBody.employeesMin);
   const maxNum = inBody.employeesMax === '' || inBody.employeesMax == null ? null : Number(inBody.employeesMax);
   const employeeRanges: string[] = [...employeeRangesIncoming];
@@ -127,7 +104,7 @@ export async function POST(req: NextRequest) {
   const jobsWindowDays =
     Number.isFinite(Number(rawDays)) && Number(rawDays) > 0 ? Math.floor(Number(rawDays)) : null;
 
-  // -------- auth
+  // Auth
   const session   = await getSession();
   const userKey   = session.user?.email || session.sessionId || '';
   let accessToken = session.tokens?.apolloAccessToken;
@@ -140,6 +117,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Match the working people-search route:
   const buildHeaders = (kind: 'search' | 'jobs' = 'search'): Record<string, string> => {
     const h: Record<string, string> = {
       accept: 'application/json',
@@ -149,12 +127,10 @@ export async function POST(req: NextRequest) {
     if (accessToken) {
       h.Authorization = `Bearer ${accessToken}`;
     } else if (apiKey) {
-      if (kind === 'jobs') {
-        h.Authorization = `Bearer ${apiKey}`;
-        h['X-Api-Key'] = apiKey;
-      } else {
-        h['X-Api-Key'] = apiKey;
-      }
+      // /search and /news accept Authorization: Bearer <apiKey>
+      h.Authorization = `Bearer ${apiKey}`;
+      // Some tenants require X-Api-Key for jobs GET only
+      if (kind === 'jobs') h['X-Api-Key'] = apiKey;
     }
     return h;
   };
@@ -175,8 +151,7 @@ export async function POST(req: NextRequest) {
     return resp;
   };
 
-  /* ---------------- People Search (ORG-filtered) — POST JSON body ---------------- */
-
+  // People Search body (ORG-level filters)
   const pplBody: Record<string, any> = {
     page,
     per_page,
@@ -201,7 +176,7 @@ export async function POST(req: NextRequest) {
   // Decision-maker bias
   pplBody['person_seniorities[]'] = FORCED_SENIORITIES;
 
-  // Exclude obvious recruitment agencies (keep only recruiter CRMs)
+  // Exclude obvious recruitment agencies (recruiter CRMs only)
   if (!DISABLE_TECH_EXCLUSION) {
     pplBody['currently_not_using_any_of_technology_uids[]'] = RECRUITER_CRM_TECH_UIDS;
   }
@@ -232,29 +207,48 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Collect org IDs
+  // --- Parse and collect unique org IDs (robust for contacts/people shapes)
   let peopleData: any = {};
   try { peopleData = pplRaw ? JSON.parse(pplRaw) : {}; } catch {}
-  const records: any[] =
-    Array.isArray(peopleData?.contacts) ? peopleData.contacts :
-    Array.isArray(peopleData?.people)   ? peopleData.people   : [];
+
+  // Prefer contacts[] (as in your example), else people[]
+  const records: any[] = Array.isArray(peopleData?.contacts)
+    ? peopleData.contacts
+    : Array.isArray(peopleData?.people)
+      ? peopleData.people
+      : [];
 
   const orgIdSet = new Set<string>();
   for (const r of records) {
-    const id =
-      (r?.organization_id && String(r.organization_id)) ||
-      (r?.organization?.id && String(r.organization.id)) ||
-      '';
+    const fromDirect = r?.organization_id ? String(r.organization_id) : '';
+    const fromObj    = r?.organization?.id ? String(r.organization.id) : '';
+    const fromHist   = Array.isArray(r?.employment_history) && r.employment_history[0]?.organization_id
+      ? String(r.employment_history[0].organization_id)
+      : '';
+
+    const id = fromDirect || fromObj || fromHist || '';
     if (id) orgIdSet.add(id);
   }
   const orgIds = Array.from(orgIdSet);
+
+  if (DEBUG && debugBag) {
+    debugBag.parsed_people_count = records.length;
+    debugBag.unique_org_ids = orgIds.length;
+    debugBag.sample_person = records[0] ? {
+      id: records[0].id,
+      organization_id: records[0]?.organization_id ?? null,
+      org_obj_id: records[0]?.organization?.id ?? null,
+      emp_hist_org_id: Array.isArray(records[0]?.employment_history)
+        ? records[0].employment_history?.[0]?.organization_id ?? null
+        : null,
+    } : null;
+  }
 
   if (!orgIds.length) {
     return NextResponse.json({ companies: [], page, per_page, debug: debugBag });
   }
 
-  /* ---------------- Enrich each organization ---------------- */
-
+  // --- Enrich each organization
   const published_after = dateNDaysAgoYMD(90);
 
   const enriched = await Promise.all(
@@ -276,7 +270,7 @@ export async function POST(req: NextRequest) {
       const orgHeaders  = buildHeaders('search');
       const jobsHeaders = buildHeaders(JOBS_HEADERS_KIND);
 
-      // Internal hiring staff (POST)
+      // Hiring people panel (POST)
       const hiringBody = {
         'organization_ids[]': [orgId],
         'person_titles[]': HIRING_TITLES,
