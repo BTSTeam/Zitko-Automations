@@ -466,24 +466,28 @@ Kind regards,`
   }
 
     async function runCompanySearch(e?: React.FormEvent) {
-      e?.preventDefault()
-      if (isDown) return
-      setCompanyLoading(true)
-      setCompanyError(null)
-      setCompanies([])
-      setExpandedJobs(new Set())
-      setExpandedHiring(new Set())
-      setExpandedNews(new Set())
-  
+      e?.preventDefault();
+      if (isDown) return;
+    
+      setCompanyLoading(true);
+      setCompanyError(null);
+      setCompanies([]);
+      setExpandedJobs(new Set());
+      setExpandedHiring(new Set());
+      setExpandedNews(new Set());
+    
       try {
-        // convert "Days" chip to number
-        const daysChip = activeJobsDays.chips.at(-1)
-        const daysNum = daysChip && /^\d+$/.test(daysChip) ? Number(daysChip) : null
-  
-        // Build payload exactly as required by new backend
+        // Use last "Days" chip if numeric
+        const daysChip =
+          activeJobsDays.chips.length
+            ? activeJobsDays.chips[activeJobsDays.chips.length - 1]
+            : null;
+        const daysNum = daysChip && /^\d+$/.test(daysChip) ? Number(daysChip) : null;
+    
+        // Build payload exactly as the backend expects
         const payload = {
-          locations: companyLocations.chips,                      // → organization_locations[]
-          keywords: companyKeywords.chips,                        // → q_keywords (joined string)
+          locations: companyLocations.chips,                       // → organization_locations[]
+          keywords: companyKeywords.chips,                         // → q_keywords (joined server-side)
           employeesMin: employeesMin.chips[0]
             ? Number(employeesMin.chips[0])
             : null,
@@ -493,54 +497,53 @@ Kind regards,`
           activeJobsOnly,
           activeJobsDays: activeJobsOnly ? daysNum : null,
           ...(activeJobsOnly && activeJobTitles.chips.length
-            ? { q_organization_job_titles: activeJobTitles.chips }
+            ? { q_organization_job_titles: activeJobTitles.chips } // → q_organization_job_titles[]
             : {}),
           page: 1,
           per_page: 25,
-          debug: true, // enable route debug
-        }
-  
-        console.log('COMPANY SEARCH → payload', payload)
-  
+          debug: true, // triggers route-side debug
+        };
+    
+        console.log('COMPANY SEARCH → payload', payload);
+    
         const res = await fetch('/api/apollo/company-search', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'x-debug-apollo': '1', // triggers debug mode server-side
+            'x-debug-apollo': '1', // route will include debug bundle
           },
           body: JSON.stringify(payload),
-        })
-  
-        const json: any = await res.json()
-  
-        if (json?.debug) console.log('APOLLO DEBUG →', json.debug)
-  
-        if (!res.ok) {
-          throw new Error(json?.error || `Search failed (${res.status})`)
+        });
+    
+        const json: any = await res.json();
+    
+        if (json?.debug) {
+          console.log('APOLLO DEBUG →', json.debug);
         }
-  
-        const arr: any[] = Array.isArray(json.companies)
-          ? json.companies
-          : []
-  
-        // Map enriched companies from new route
+    
+        if (!res.ok) {
+          throw new Error(json?.error || `Search failed (${res.status})`);
+        }
+    
+        const arr: any[] = Array.isArray(json.companies) ? json.companies : [];
+    
         const mapped: Company[] = arr.map((c: any) => {
           const job_postings: JobPosting[] = Array.isArray(c?.job_postings)
             ? c.job_postings.map((jp: any) => ({
                 id: (jp?.id ?? jp?.job_posting_id ?? jp?.url ?? '').toString(),
-                title: jp?.title ?? null,
-                location: jp?.location ?? null,
-                employment_type: jp?.employment_type ?? null,
+                title: jp?.title ?? jp?.job_title ?? null,
+                location: jp?.location ?? jp?.formatted_location ?? null,
+                employment_type: jp?.employment_type ?? jp?.job_type ?? null,
                 remote: typeof jp?.remote === 'boolean' ? jp.remote : null,
-                url: jp?.url ?? null,
+                url: jp?.url ?? jp?.job_posting_url ?? null,
                 posted_at: jp?.posted_at ?? null,
               }))
-            : []
-  
+            : [];
+    
           const hiring_people: HiringPerson[] = Array.isArray(c?.hiring_people)
             ? c.hiring_people.map((p: any) => transformToPerson(p))
-            : []
-  
+            : [];
+    
           const news_articles: NewsArticle[] = Array.isArray(c?.news_articles)
             ? c.news_articles.map((a: any) => ({
                 id: (a?.id ?? a?.article_id ?? '').toString(),
@@ -549,8 +552,8 @@ Kind regards,`
                 published_at: a?.published_at ?? a?.published_date ?? null,
                 url: a?.url ?? a?.article_url ?? null,
               }))
-            : []
-  
+            : [];
+    
           return {
             id: (c?.id ?? c?.organization_id ?? '').toString(),
             name: c?.name ?? c?.company_name ?? null,
@@ -563,15 +566,15 @@ Kind regards,`
             job_postings,
             hiring_people,
             news_articles,
-          }
-        })
-  
-        setCompanies(mapped)
+          };
+        });
+    
+        setCompanies(mapped);
       } catch (err: any) {
-        setCompanyError(err?.message || 'Unexpected error')
+        setCompanyError(err?.message || 'Unexpected error');
       } finally {
-        setCompanySearchOpen(false)
-        setCompanyLoading(false)
+        setCompanySearchOpen(false);
+        setCompanyLoading(false);
       }
     }
 
