@@ -39,13 +39,14 @@ async function buildAuthHeaders() {
     }
   }
 
-  // Use Bearer for BOTH OAuth access tokens and API key
+  // Match company-search route: OAuth => Bearer, API key => X-Api-Key
   const headers: Record<string, string> = {
     accept: 'application/json',
     'Cache-Control': 'no-cache',
     'Content-Type': 'application/json',
-    Authorization: `Bearer ${accessToken ?? apiKey!}`,
   }
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`
+  else headers['X-Api-Key'] = apiKey!
 
   return { headers, accessToken, userKey: (session.user?.email || session.sessionId || '') }
 }
@@ -69,17 +70,18 @@ async function fetchOrganizationJobPostings(
   if (!resp.ok) {
     return {
       jobs: [],
-      _debug: wantDebug ? { org_id: id, url, status: resp.status, body: text.slice(0, 1000) } : undefined,
+      _debug: wantDebug ? { org_id: id, url, status: resp.status, body: text.slice(0, 1200) } : undefined,
     }
   }
 
   let json: any = {}
   try { json = text ? JSON.parse(text) : {} } catch {}
 
-  // Spec key: organization_job_postings
+  // Spec: { organization_job_postings: [...] } — accept variants defensively
   const arr =
     (Array.isArray(json?.organization_job_postings) && json.organization_job_postings) ||
-    (Array.isArray(json?.job_postings) && json.job_postings) || // safety
+    (Array.isArray(json?.job_postings) && json.job_postings) ||
+    (Array.isArray(json?.organization?.job_postings) && json.organization.job_postings) ||
     (Array.isArray(json) && json) ||
     []
 
@@ -122,17 +124,14 @@ export async function POST(req: NextRequest) {
     (process.env.SOURCING_DEBUG_APOLLO || '').toLowerCase() === 'true' ||
     req.headers.get('x-debug-apollo') === '1'
 
-  // Input
   let body: InBody = {}
   try { body = await req.json() } catch {}
 
-  const per_page = Math.min(50, Math.max(1, Number(body.per_page || 10) || 10)) // default 10
+  const per_page = Math.min(50, Math.max(1, Number(body.per_page || 10) || 10))
   const orgIds: string[] = [
     ...(Array.isArray(body.org_ids) ? body.org_ids : []),
     ...(Array.isArray(body.companies) ? body.companies.map(c => (c?.org_id ?? '').toString()) : []),
-  ]
-    .map(s => (s || '').trim())
-    .filter(Boolean)
+  ].map(s => (s || '').trim()).filter(Boolean)
 
   if (!orgIds.length) {
     return NextResponse.json({ error: 'No org_ids provided' }, { status: 400 })
@@ -149,36 +148,32 @@ export async function POST(req: NextRequest) {
       if (refreshed) {
         const s2 = await getSession()
         accessToken = s2.tokens?.apolloAccessToken
-        headers = {
+        const h: Record<string, string> = {
           accept: 'application/json',
           'Cache-Control': 'no-cache',
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken ?? process.env.APOLLO_API_KEY!}`,
         }
+        if (accessToken) h.Authorization = `Bearer ${accessToken}`
+        else if (process.env.APOLLO_API_KEY) h['X-Api-Key'] = process.env.APOLLO_API_KEY
+        headers = h
       }
     }
     return headers
   }
 
   try {
-    // fetch all orgs, merge into Apollo-style array
-    const postingsByOrg: Record<string, JobPosting[]> = {}
     const dbgRows: any[] = []
+    const mergedRaw: any[] = []
 
     for (const org_id of orgIds) {
       const { jobs, _debug } = await fetchOrganizationJobPostings(org_id, headers, tryRefresh, per_page, WANT_DEBUG)
-      postingsByOrg[org_id] = jobs
       if (WANT_DEBUG) dbgRows.push(_debug ?? { org_id, note: 'no debug' })
+      // Use raw where available so the output mirrors Apollo fields exactly
+      for (const p of jobs) mergedRaw.push(p.raw ?? p)
     }
 
-    // Return a single array called organization_job_postings (Apollo-style),
-    // using raw items when available to mirror Apollo fields exactly.
-    const organization_job_postings = Object.values(postingsByOrg)
-      .flat()
-      .map(p => p.raw ?? p)
-
     return NextResponse.json({
-      organization_job_postings,
+      organization_job_postings: mergedRaw, // Apollo-style single array
       debug: WANT_DEBUG ? { rows: dbgRows.slice(0, 50) } : undefined,
     })
   } catch (err: any) {
