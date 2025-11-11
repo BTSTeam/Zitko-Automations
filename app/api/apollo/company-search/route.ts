@@ -94,16 +94,14 @@ async function fetchOrganizationJobPostings(
   tryRefresh: () => Promise<Record<string,string>>,
   limit = 10,
 ): Promise<any[]> {
-  // Try with explicit per_page if supported; otherwise slice client-side
-  const url = `${APOLLO_ORG_URL}/${encodeURIComponent(id)}/job_postings?per_page=${limit}&page=1`
+  const url = `${APOLLO_ORG_URL}/${encodeURIComponent(id)}/job_postings?page=1&per_page=${limit}`
   let resp = await fetch(url, { method: 'GET', headers, cache: 'no-store' })
   if (resp.status === 401 || resp.status === 403) {
     const h2 = await tryRefresh()
     resp = await fetch(url, { method: 'GET', headers: h2, cache: 'no-store' })
   }
   if (!resp.ok) return []
-  let json: any = {}
-  try { json = await resp.json() } catch { return [] }
+  const json = await resp.json().catch(() => ({} as any))
   const arr = Array.isArray(json?.job_postings) ? json.job_postings : Array.isArray(json) ? json : []
   return arr.slice(0, limit).map((j: any) => {
     const id = (j?.id ?? j?._id ?? '').toString()
@@ -111,19 +109,10 @@ async function fetchOrganizationJobPostings(
     const city = typeof j?.city === 'string' ? j.city : null
     const state = typeof j?.state === 'string' ? j.state : null
     const country = typeof j?.country === 'string' ? j.country : null
-    const location = (typeof j?.location === 'string' && j.location) || [city,state,country].filter(Boolean).join(', ') || null
-    const posted_at =
-      (typeof j?.posted_at === 'string' && j.posted_at) ||
-      (typeof j?.created_at === 'string' && j.created_at) ||
-      null
-    const url =
-      (typeof j?.job_posting_url === 'string' && j.job_posting_url) ||
-      (typeof j?.url === 'string' && j.url) ||
-      null
-    const source =
-      (typeof j?.board_name === 'string' && j.board_name) ||
-      (typeof j?.source === 'string' && j.source) ||
-      null
+    const location = (typeof j?.location === 'string' && j.location) || [city, state, country].filter(Boolean).join(', ') || null
+    const posted_at = (typeof j?.posted_at === 'string' && j.posted_at) || (typeof j?.created_at === 'string' && j.created_at) || null
+    const url = (typeof j?.job_posting_url === 'string' && j.job_posting_url) || (typeof j?.url === 'string' && j.url) || null
+    const source = (typeof j?.board_name === 'string' && j.board_name) || (typeof j?.source === 'string' && j.source) || null
     return { id, title, location, posted_at, url, source, raw: j }
   })
 }
@@ -321,7 +310,14 @@ export async function POST(req: NextRequest) {
 
     // fetch job postings for remaining companies (up to 10 per org)
     const postings = await Promise.all(
-      companies.map(c => fetchOrganizationJobPostings(String(c.id), headers, tryRefresh, 10))
+      companies.map(c =>
+        fetchOrganizationJobPostings(
+          String(c.raw?.organization_id ?? c.raw?.id ?? c.id),
+          headers,
+          tryRefresh,
+          10
+        )
+      )
     )
     
     companies = companies.map((c, idx) => ({
