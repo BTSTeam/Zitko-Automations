@@ -292,6 +292,7 @@ export async function POST(req: NextRequest) {
     // enrichment (industries) to exclude staffing/recruiting
     const ids = companiesUnfiltered.map(c => c.id).filter(Boolean)
 
+    // run all in parallel (well within Apollo limits)
     const details = await Promise.all(ids.map(orgId => fetchOrganizationDetail(orgId, headers, tryRefresh)))
 
     const excluded: string[] = []
@@ -308,7 +309,7 @@ export async function POST(req: NextRequest) {
     let companies = companiesUnfiltered.filter(c => keep.has(c.id))
 
     // fetch job postings for remaining companies (up to 10 per org)
-    const postingsByIdx = await Promise.all(
+    const postings = await Promise.all(
       companies.map(c =>
         fetchOrganizationJobPostings(
           String(c.raw?.organization_id ?? c.raw?.id ?? c.id),
@@ -318,10 +319,10 @@ export async function POST(req: NextRequest) {
         )
       )
     )
-
+    
     companies = companies.map((c, idx) => ({
       ...c,
-      job_postings: postingsByIdx[idx] ?? []
+      job_postings: postings[idx] ?? []
     }))
 
     return NextResponse.json({
