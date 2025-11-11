@@ -580,14 +580,15 @@ Kind regards,`
             })),
           )
         }
-      } // <-- closes the if (orgIds.length)
+      } 
     } catch (err: any) {
       setCompanyError(err?.message || 'Unexpected error')
     } finally {
       setCompanySearchOpen(false)
       setCompanyLoading(false)
-    } // <-- closes try/finally (end of runCompanySearch)
-
+    }
+  } 
+   
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
       if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) {
