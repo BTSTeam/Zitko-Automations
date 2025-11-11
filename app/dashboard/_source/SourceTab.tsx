@@ -575,14 +575,28 @@ Kind regards,`
       })
 
       setCompanies(mapped)
-    } catch (err: any) {
-      setCompanyError(err?.message || 'Unexpected error')
-    } finally {
-      setCompanySearchOpen(false)
-      setCompanyLoading(false)
-    }
-  }
 
+      // Fetch job postings after company-search
+      const orgIds = arr.map((c: any) => c.id || c.organization_id).filter(Boolean)
+      
+      if (orgIds.length) {
+        const jpRes = await fetch('/api/apollo/job-postings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ org_ids: orgIds, per_page: 10 }),
+        })
+        const jpJson = await jpRes.json()
+        if (jpRes.ok && jpJson?.postingsByOrg) {
+          const postingsByOrg = jpJson.postingsByOrg
+          setCompanies(prev =>
+            prev.map(c => ({
+              ...c,
+              job_postings: postingsByOrg[c.id] || [],
+            }))
+          )
+        }
+      }
+  
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
       if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) {
