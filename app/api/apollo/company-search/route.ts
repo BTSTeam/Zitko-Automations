@@ -159,7 +159,7 @@ export async function POST(req: NextRequest) {
   const organization_num_employees_ranges: string[] = [...employeeRangesIncoming]
   if (!organization_num_employees_ranges.length && (typeof minNum === 'number' || typeof maxNum === 'number')) {
     const min = Number.isFinite(minNum) ? String(minNum) : ''
-    const max = Number.isFinite(maxNum) ? String(maxNum) : ''
+    the max = Number.isFinite(maxNum) ? String(maxNum) : ''
     const r = [min, max].filter(Boolean).join(',')
     if (r) organization_num_employees_ranges.push(r)
   }
