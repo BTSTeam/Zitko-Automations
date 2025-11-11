@@ -6,7 +6,9 @@ import { useEffect, useRef, useState } from 'react'
 // Mode indicates which sourcing tab is currently active
 type SourceMode = 'people' | 'companies'
 
-// ---------- Shared Types ----------
+/* =========================
+   Shared Types
+   ========================= */
 type EmploymentItem = {
   organization_name: string | null
   title: string | null
@@ -17,15 +19,14 @@ type EmploymentItem = {
 
 type Company = {
   id: string
+  org_id: string
   name: string | null
   website_url: string | null
   linkedin_url: string | null
   exact_location?: string | null
-  // from GET /organizations/{id}
   city?: string | null
   state?: string | null
   short_description?: string | null
-  // enrichments
   job_postings?: any[]
   hiring_people?: any[]
   news_articles?: any[]
@@ -50,7 +51,9 @@ type Person = {
   employment_history: EmploymentItem[]
 }
 
-// ---------- Company-related Types ----------
+/* =========================
+   Company-related Types
+   ========================= */
 type JobPosting = {
   id: string
   title: string | null
@@ -59,7 +62,6 @@ type JobPosting = {
   remote: boolean | null
   url: string | null
   posted_at?: string | null
-  // NEW
   city?: string | null
   state?: string | null
   country?: string | null
@@ -73,16 +75,26 @@ type NewsArticle = {
   url: string | null
 }
 
-// Seniority options reused from original file
+/* =========================
+   Constants / Helpers
+   ========================= */
 const SENIORITIES = [
-  'Owner','Founder','C_Suite','Partner','VP','Head','Director','Manager','Senior','Entry','Intern',
+  'Owner',
+  'Founder',
+  'C_Suite',
+  'Partner',
+  'VP',
+  'Head',
+  'Director',
+  'Manager',
+  'Senior',
+  'Entry',
+  'Intern',
 ] as const
 
-// ---------------- Small helpers ----------------
 const phIfEmpty = (value: string, chips: string[] | undefined, text: string) =>
   (value?.trim() || (chips && chips.length)) ? '' : text
 
-// ---------------- UI helpers ----------------
 function useChipInput(initial: string[] = []) {
   const [chips, setChips] = useState<string[]>(initial)
   const [input, setInput] = useState('')
@@ -146,7 +158,6 @@ function IconGlobe({ muted }: { muted?: boolean }) {
   )
 }
 
-// Simple multi-select component used for seniorities
 function MultiSelect({
   label, options, values, setValues, placeholder = 'Select…',
 }: {
@@ -177,7 +188,6 @@ function MultiSelect({
   return (
     <div>
       <label className="block text-sm text-gray-600 mb-1">{label}</label>
-      {/* Fixed height like other inputs */}
       <div ref={ref} className="relative rounded-xl border h-10 px-3">
         <button
           type="button"
@@ -203,25 +213,25 @@ function MultiSelect({
 
         {open && (
           <div className="absolute z-10 mt-1 w-full bg-white border rounded-xl shadow-sm max-h-60 overflow-y-auto text-sm">
-           {options.map(opt => (
-            <label
-              key={opt}
-              className="flex items-center px-3 py-2 hover:bg-gray-50 cursor-pointer gap-2 text-sm"
-            >
-              <input
-                type="checkbox"
-                checked={values.includes(opt)}
-                onChange={() => toggleOpt(opt)}
-                className="appearance-none h-4 w-4 rounded border border-gray-300 grid place-content-center
-                           checked:bg-orange-500
-                           before:content-[''] before:hidden checked:before:block
-                           before:w-2.5 before:h-2.5
-                           before:[clip-path:polygon(14%_44%,0_59%,39%_100%,100%_18%,84%_4%,39%_72%)]
-                           before:bg-white"
-              />
-              <span>{opt}</span>
-            </label>
-          ))}
+            {options.map(opt => (
+              <label
+                key={opt}
+                className="flex items-center px-3 py-2 hover:bg-gray-50 cursor-pointer gap-2 text-sm"
+              >
+                <input
+                  type="checkbox"
+                  checked={values.includes(opt)}
+                  onChange={() => toggleOpt(opt)}
+                  className="appearance-none h-4 w-4 rounded border border-gray-300 grid place-content-center
+                             checked:bg-orange-500
+                             before:content-[''] before:hidden checked:before:block
+                             before:w-2.5 before:h-2.5
+                             before:[clip-path:polygon(14%_44%,0_59%,39%_100%,100%_18%,84%_4%,39%_72%)]
+                             before:bg-white"
+                />
+                <span>{opt}</span>
+              </label>
+            ))}
           </div>
         )}
       </div>
@@ -229,13 +239,11 @@ function MultiSelect({
   )
 }
 
-// Helper to build static note text for LinkedIn copy
 function makeStaticNote(firstName?: string | null) {
   const first = (firstName || '').trim() || 'there'
   return `Hi ${first}, it's always nice to meet others passionate about the industry. Would be great to connect.`
 }
 
-// Map raw Apollo contact/person → Person
 function transformToPerson(p: any): Person {
   const first = (p?.first_name ?? '').toString().trim()
   const last = (p?.last_name ?? '').toString().trim()
@@ -297,13 +305,15 @@ function formatMonthYear(date: string | null): string {
   }
 }
 
-// ---------------- Main Component ----------------
+/* =========================
+   Main Component
+   ========================= */
 export default function SourceTab({ mode }: { mode: SourceMode }) {
   const isDown =
     (process.env.NEXT_PUBLIC_SOURCING_DOWN || '').toLowerCase() === '1' ||
     (process.env.NEXT_PUBLIC_SOURCING_DOWN || '').toLowerCase() === 'true'
 
-  // ------ People search state ------
+  /* ----- People search state ----- */
   const personTitles = useChipInput([])
   const personLocations = useChipInput([])
   const personKeywords = useChipInput([])
@@ -355,11 +365,7 @@ Kind regards,`
     })
   }
 
-  const onLinkedInClick = async (
-    e: React.MouseEvent,
-    url?: string,
-    id?: string
-  ) => {
+  const onLinkedInClick = async (e: React.MouseEvent, url?: string, id?: string) => {
     if (!url) return
     e.preventDefault()
     const note = id ? notesById[id] : ''
@@ -423,16 +429,12 @@ Kind regards,`
     }
   }
 
-  // ------ Company search state ------
+  /* ----- Company search state ----- */
   const companyLocations = useChipInput([])
-  const companyKeywords  = useChipInput([])
+  const companyKeywords = useChipInput([])
   const [activeJobsOnly, setActiveJobsOnly] = useState(false)
-
-  // NEW: chips for Days + Job Titles (always rendered)
   const activeJobsDays = useChipInput([])
   const activeJobTitles = useChipInput([])
-
-  // Numeric employee range
   const employeesMin = useChipInput([])
   const employeesMax = useChipInput([])
 
@@ -482,44 +484,34 @@ Kind regards,`
 
     try {
       // Use last "Days" chip if numeric
-      const daysChip =
-        activeJobsDays.chips.length
-          ? activeJobsDays.chips[activeJobsDays.chips.length - 1]
-          : null
+      const daysChip = activeJobsDays.chips.length
+        ? activeJobsDays.chips[activeJobsDays.chips.length - 1]
+        : null
       const daysNum = daysChip && /^\d+$/.test(daysChip) ? Number(daysChip) : null
 
-      // Build payload exactly as the backend expects
       const payload = {
-        locations: companyLocations.chips,      // → organization_locations[]
-        keywords: companyKeywords.chips,        // → q_keywords (joined server-side)
+        locations: companyLocations.chips,
+        keywords: companyKeywords.chips,
         employeesMin: employeesMin.chips[0] ? Number(employeesMin.chips[0]) : null,
         employeesMax: employeesMax.chips[0] ? Number(employeesMax.chips[0]) : null,
         activeJobsOnly,
         activeJobsDays: activeJobsOnly ? daysNum : null,
-        ...(activeJobsOnly && activeJobTitles.chips.length
-          ? { jobTitles: activeJobTitles.chips }
-          : {}),
+        ...(activeJobsOnly && activeJobTitles.chips.length ? { jobTitles: activeJobTitles.chips } : {}),
         page: 1,
         per_page: 25,
-        debug: true, // triggers route-side debug
+        debug: true,
       }
-
-      console.log('COMPANY SEARCH → payload', payload)
 
       const res = await fetch('/api/apollo/company-search', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-debug-apollo': '1', // route will include debug bundle
+          'x-debug-apollo': '1',
         },
         body: JSON.stringify(payload),
       })
 
       const json: any = await res.json()
-
-      if (json?.debug) {
-        console.log('APOLLO DEBUG →', json.debug)
-      }
 
       if (!res.ok) {
         throw new Error(json?.error || `Search failed (${res.status})`)
@@ -527,29 +519,19 @@ Kind regards,`
 
       const arr: any[] = Array.isArray(json.companies) ? json.companies : []
 
-      const mapped: Company[] = arr.map((c: any) => {
-        const job_postings: JobPosting[] = Array.isArray(c?.job_postings)
-          ? c.job_postings.map((jp: any) => ({
-              id: (jp?.id ?? jp?.job_posting_id ?? jp?.job_posting_url ?? jp?.url ?? '').toString(),
-              title: jp?.title ?? jp?.job_title ?? null,
-              // keep existing combined location if you want, but we’ll show split fields in the table
-              location: jp?.location ?? jp?.formatted_location ?? null,
-              employment_type: jp?.employment_type ?? jp?.job_type ?? null,
-              remote: typeof jp?.remote === 'boolean' ? jp.remote : null,
-              url: jp?.url ?? jp?.job_posting_url ?? null,
-              posted_at: jp?.posted_at ?? jp?.created_at ?? null,
-              // NEW: split fields (prefer top-level, else fall back to raw)
-              city: jp?.city ?? jp?.raw?.city ?? null,
-              state: jp?.state ?? jp?.raw?.state ?? null,
-              country: jp?.country ?? jp?.raw?.country ?? null,
-            }))
-          : []
-
-        const hiring_people: HiringPerson[] = Array.isArray(c?.hiring_people)
-          ? c.hiring_people.map((p: any) => transformToPerson(p))
-          : []
-
-        const news_articles: NewsArticle[] = Array.isArray(c?.news_articles)
+      const mapped: Company[] = arr.map((c: any) => ({
+        id: (c?.id ?? c?.organization_id ?? '').toString(),
+        org_id: (c?.org_id ?? c?.organization_id ?? c?.id ?? '').toString(),
+        name: c?.name ?? c?.company_name ?? null,
+        website_url: c?.website_url ?? c?.domain ?? null,
+        linkedin_url: c?.linkedin_url ?? null,
+        exact_location: c?.formatted_address ?? c?.location ?? null,
+        city: c?.city ?? null,
+        state: c?.state ?? null,
+        short_description: c?.short_description ?? null,
+        job_postings: [],
+        hiring_people: Array.isArray(c?.hiring_people) ? c.hiring_people.map((p: any) => transformToPerson(p)) : [],
+        news_articles: Array.isArray(c?.news_articles)
           ? c.news_articles.map((a: any) => ({
               id: (a?.id ?? a?.article_id ?? '').toString(),
               title: a?.title ?? null,
@@ -557,28 +539,13 @@ Kind regards,`
               published_at: a?.published_at ?? a?.published_date ?? null,
               url: a?.url ?? a?.article_url ?? null,
             }))
-          : []
-
-        return {
-          id: (c?.id ?? c?.organization_id ?? '').toString(),
-          name: c?.name ?? c?.company_name ?? null,
-          website_url: c?.website_url ?? c?.domain ?? null,
-          linkedin_url: c?.linkedin_url ?? null,
-          exact_location: c?.formatted_address ?? c?.location ?? null,
-          city: c?.city ?? null,
-          state: c?.state ?? null,
-          short_description: c?.short_description ?? null,
-          job_postings,
-          hiring_people,
-          news_articles,
-        }
-      })
+          : [],
+      }))
 
       setCompanies(mapped)
 
-      // Fetch job postings after company-search
-      const orgIds = arr.map((c: any) => c.id || c.organization_id).filter(Boolean)
-
+      // Fetch job postings per organization
+      const orgIds = mapped.map(c => c.org_id).filter(Boolean)
       if (orgIds.length) {
         const jpRes = await fetch('/api/apollo/job-postings', {
           method: 'POST',
@@ -587,24 +554,23 @@ Kind regards,`
         })
         const jpJson = await jpRes.json()
         if (jpRes.ok && jpJson?.postingsByOrg) {
-          const postingsByOrg = jpJson.postingsByOrg
+          const postingsByOrg = jpJson.postingsByOrg as Record<string, any[]>
           setCompanies(prev =>
             prev.map(c => ({
               ...c,
-              job_postings: postingsByOrg[c.id] || [],
-            }))
+              job_postings: postingsByOrg[c.org_id] ?? [],
+            })),
           )
         }
       }
-    } // ← this closes the try
-    catch (err: any) {
+    } catch (err: any) {
       setCompanyError(err?.message || 'Unexpected error')
     } finally {
       setCompanySearchOpen(false)
       setCompanyLoading(false)
     }
   }
-  
+
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
       if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) {
@@ -614,7 +580,8 @@ Kind regards,`
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [mode]) // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode])
 
   const renderPeople = () => {
     return (
@@ -629,7 +596,10 @@ Kind regards,`
           >
             <h3 className="font-semibold">Candidate | Contact Search</h3>
             <svg
-              width="16" height="16" viewBox="0 0 20 20" fill="currentColor"
+              width="16"
+              height="16"
+              viewBox="0 0 20 20"
+              fill="currentColor"
               className={peopleSearchOpen ? 'rotate-180 transition-transform' : 'transition-transform'}
             >
               <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z" />
@@ -643,7 +613,9 @@ Kind regards,`
                   <div className="rounded-xl border h-10 px-2">
                     <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
                       {personTitles.chips.map(v => (
-                        <Chip key={v} onRemove={() => personTitles.removeChip(v)}>{v}</Chip>
+                        <Chip key={v} onRemove={() => personTitles.removeChip(v)}>
+                          {v}
+                        </Chip>
                       ))}
                       <input
                         className="flex-1 min-w-0 outline-none text-sm h-8 px-2"
@@ -661,7 +633,9 @@ Kind regards,`
                   <div className="rounded-xl border h-10 px-2">
                     <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
                       {personLocations.chips.map(v => (
-                        <Chip key={v} onRemove={() => personLocations.removeChip(v)}>{v}</Chip>
+                        <Chip key={v} onRemove={() => personLocations.removeChip(v)}>
+                          {v}
+                        </Chip>
                       ))}
                       <input
                         className="flex-1 min-w-0 outline-none text-sm h-8 px-2"
@@ -679,7 +653,9 @@ Kind regards,`
                   <div className="rounded-xl border h-10 px-2">
                     <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
                       {personKeywords.chips.map(v => (
-                        <Chip key={v} onRemove={() => personKeywords.removeChip(v)}>{v}</Chip>
+                        <Chip key={v} onRemove={() => personKeywords.removeChip(v)}>
+                          {v}
+                        </Chip>
                       ))}
                       <input
                         className="flex-1 min-w-0 outline-none text-sm h-8 px-2"
@@ -759,9 +735,7 @@ Kind regards,`
                           onClick={hasLI ? (ev) => onLinkedInClick(ev, p.linkedin_url!, p.id) : undefined}
                           className={hasLI ? '' : 'opacity-30 pointer-events-none cursor-default'}
                           title={
-                            hasLI
-                              ? (copiedId === p.id ? 'Note copied!' : 'Open LinkedIn (note copies first)')
-                              : 'LinkedIn not available'
+                            hasLI ? (copiedId === p.id ? 'Note copied!' : 'Open LinkedIn (note copies first)') : 'LinkedIn not available'
                           }
                         >
                           <IconLinkedIn />
@@ -800,7 +774,13 @@ Kind regards,`
                         title="Toggle employment history"
                       >
                         Employment history
-                        <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" className={peopleExpanded.has(p.id) ? 'rotate-180 transition-transform' : 'transition-transform'}>
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 20 20"
+                          fill="currentColor"
+                          className={peopleExpanded.has(p.id) ? 'rotate-180 transition-transform' : 'transition-transform'}
+                        >
                           <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z" />
                         </svg>
                       </button>
@@ -843,9 +823,8 @@ Kind regards,`
         </div>
       </div>
     )
-  };
+  }
 
-  // ---------------- Company search + results UI ----------------
   const renderCompanies = () => {
     const disabledLook = (!activeJobsOnly || isDown) ? 'opacity-50' : ''
     const isInputsDisabled = !activeJobsOnly || isDown
@@ -862,7 +841,10 @@ Kind regards,`
           >
             <h3 className="font-semibold">Company | Organization Search</h3>
             <svg
-              width="16" height="16" viewBox="0 0 20 20" fill="currentColor"
+              width="16"
+              height="16"
+              viewBox="0 0 20 20"
+              fill="currentColor"
               className={companySearchOpen ? 'rotate-180 transition-transform' : 'transition-transform'}
             >
               <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z" />
@@ -878,7 +860,9 @@ Kind regards,`
                   <div className="rounded-xl border h-10 px-2">
                     <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
                       {companyLocations.chips.map(v => (
-                        <Chip key={v} onRemove={() => companyLocations.removeChip(v)}>{v}</Chip>
+                        <Chip key={v} onRemove={() => companyLocations.removeChip(v)}>
+                          {v}
+                        </Chip>
                       ))}
                       <input
                         className="flex-1 min-w-0 outline-none text-sm h-8 px-2"
@@ -897,7 +881,9 @@ Kind regards,`
                   <div className="rounded-xl border h-10 px-2">
                     <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
                       {companyKeywords.chips.map(v => (
-                        <Chip key={v} onRemove={() => companyKeywords.removeChip(v)}>{v}</Chip>
+                        <Chip key={v} onRemove={() => companyKeywords.removeChip(v)}>
+                          {v}
+                        </Chip>
                       ))}
                       <input
                         className="flex-1 min-w-0 outline-none text-sm h-8 px-2"
@@ -920,11 +906,12 @@ Kind regards,`
                     Employees <span className="text-xs text-gray-400">(from &amp; to)</span>
                   </label>
                   <div className="flex items-center gap-2">
-                    {/* Employees Min */}
                     <div className="rounded-xl border h-10 px-2 flex-1 basis-0 min-w-0">
                       <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
                         {employeesMin.chips?.map((v: string) => (
-                          <Chip key={v} onRemove={() => employeesMin.removeChip(v)}>{v}</Chip>
+                          <Chip key={v} onRemove={() => employeesMin.removeChip(v)}>
+                            {v}
+                          </Chip>
                         ))}
                         <input
                           className="min-w-[5rem] grow outline-none text-sm h-8 px-2"
@@ -941,11 +928,12 @@ Kind regards,`
 
                     <span className="text-gray-400 text-sm">to</span>
 
-                    {/* Employees Max */}
                     <div className="rounded-xl border h-10 px-2 flex-1 basis-0 min-w-0">
                       <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
                         {employeesMax.chips?.map((v: string) => (
-                          <Chip key={v} onRemove={() => employeesMax.removeChip(v)}>{v}</Chip>
+                          <Chip key={v} onRemove={() => employeesMax.removeChip(v)}>
+                            {v}
+                          </Chip>
                         ))}
                         <input
                           className="min-w-[5rem] grow outline-none text-sm h-8 px-2"
@@ -962,10 +950,9 @@ Kind regards,`
                   </div>
                 </div>
 
-                {/* Active Job Listings (section heading with tick, aligned inputs) */}
+                {/* Active Job Listings */}
                 <div>
                   <label className="block text-sm text-gray-600 mb-1 flex items-center gap-2">
-                    {/* custom white-tick checkbox */}
                     <input
                       id="activeJobsOnly"
                       type="checkbox"
@@ -982,12 +969,13 @@ Kind regards,`
                     Active Job Listings
                   </label>
 
-                  <div className={`flex items-center gap-3 ${disabledLook}`} aria-disabled={isInputsDisabled}>
-                    {/* Days input */}
+                  <div className={`flex items-center gap-3 ${(!activeJobsOnly || isDown) ? 'opacity-50' : ''}`} aria-disabled={!activeJobsOnly || isDown}>
                     <div className="shrink-0 rounded-xl border h-10 px-2 w-36">
                       <div className="flex items-center gap-2 flex-nowrap overflow-hidden">
                         {activeJobsDays.chips.map(v => (
-                          <Chip key={v} onRemove={() => activeJobsDays.removeChip(v)}>{v}</Chip>
+                          <Chip key={v} onRemove={() => activeJobsDays.removeChip(v)}>
+                            {v}
+                          </Chip>
                         ))}
                         <input
                           className="min-w-[8rem] grow outline-none text-sm h-8 px-2"
@@ -999,17 +987,18 @@ Kind regards,`
                             const digits = e.target.value.replace(/\D+/g, '')
                             activeJobsDays.setInput(digits)
                           }}
-                          onKeyDown={(e) => activeJobsDays.onKeyDown(e)}
-                          disabled={isInputsDisabled}
+                          onKeyDown={activeJobsDays.onKeyDown}
+                          disabled={!activeJobsOnly || isDown}
                         />
                       </div>
                     </div>
 
-                    {/* Job Titles input */}
                     <div className="flex-1 basis-0 min-w-0 rounded-xl border h-10 px-2">
                       <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
                         {activeJobTitles.chips.map(v => (
-                          <Chip key={v} onRemove={() => activeJobTitles.removeChip(v)}>{v}</Chip>
+                          <Chip key={v} onRemove={() => activeJobTitles.removeChip(v)}>
+                            {v}
+                          </Chip>
                         ))}
                         <input
                           className="flex-1 min-w-0 outline-none text-sm h-8 px-2"
@@ -1017,7 +1006,7 @@ Kind regards,`
                           value={activeJobTitles.input}
                           onChange={e => activeJobTitles.setInput(e.target.value)}
                           onKeyDown={activeJobTitles.onKeyDown}
-                          disabled={isInputsDisabled}
+                          disabled={!activeJobsOnly || isDown}
                         />
                       </div>
                     </div>
@@ -1039,9 +1028,7 @@ Kind regards,`
                 </button>
               </div>
 
-              {companyError && (
-                <div className="mt-3 text-sm text-red-600">{companyError}</div>
-              )}
+              {companyError && <div className="mt-3 text-sm text-red-600">{companyError}</div>}
             </form>
           )}
         </div>
@@ -1142,36 +1129,23 @@ Kind regards,`
                                 const db = b?.posted_at ? new Date(b.posted_at).getTime() : 0
                                 return db - da
                               })
-                              .map((j: any) => (
+                              .map((j: JobPosting) => (
                                 <li key={j.id} className="px-3 py-2 border-t first:border-t-0 grid grid-cols-12 items-center">
-                                  {/* Title */}
-                                  <div className="col-span-4 truncate">
-                                    {j.title || 'Untitled job'}
-                                  </div>
-                    
-                                  {/* City / State / Country */}
+                                  <div className="col-span-4 truncate">{j.title || 'Untitled job'}</div>
                                   <div className="col-span-2 truncate">{j.city || '—'}</div>
                                   <div className="col-span-2 truncate">{j.state || '—'}</div>
                                   <div className="col-span-2 truncate">{j.country || '—'}</div>
-                    
-                                  {/* Posted */}
                                   <div className="col-span-1 text-right">
                                     {j.posted_at ? new Date(j.posted_at).toLocaleDateString() : '—'}
                                   </div>
-                    
-                                  {/* Link */}
                                   <div className="col-span-1 text-right">
                                     {j.url ? (
-                                      <a
-                                        className="text-orange-600 hover:underline"
-                                        href={j.url}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        title="Open job posting"
-                                      >
+                                      <a className="text-orange-600 hover:underline" href={j.url} target="_blank" rel="noreferrer">
                                         view
                                       </a>
-                                    ) : '—'}
+                                    ) : (
+                                      '—'
+                                    )}
                                   </div>
                                 </li>
                               ))
@@ -1191,17 +1165,23 @@ Kind regards,`
                         <div className="col-span-2 text-right">LinkedIn</div>
                       </div>
                       <ul className="text-sm">
-                        {c.hiring_people?.length ? c.hiring_people.map((p: any) => (
-                          <li key={p.id} className="px-3 py-2 border-t first:border-t-0 grid grid-cols-12">
-                            <div className="col-span-5 truncate">{p.name || '—'}</div>
-                            <div className="col-span-5 truncate">{p.title || '—'}</div>
-                            <div className="col-span-2 text-right">
-                              {p.linkedin_url
-                                ? <a className="text-orange-600 hover:underline" href={p.linkedin_url} target="_blank" rel="noreferrer">view</a>
-                                : '—'}
-                            </div>
-                          </li>
-                        )) : (
+                        {c.hiring_people?.length ? (
+                          c.hiring_people.map((p: any) => (
+                            <li key={p.id} className="px-3 py-2 border-t first:border-t-0 grid grid-cols-12">
+                              <div className="col-span-5 truncate">{p.name || '—'}</div>
+                              <div className="col-span-5 truncate">{p.title || '—'}</div>
+                              <div className="col-span-2 text-right">
+                                {p.linkedin_url ? (
+                                  <a className="text-orange-600 hover:underline" href={p.linkedin_url} target="_blank" rel="noreferrer">
+                                    view
+                                  </a>
+                                ) : (
+                                  '—'
+                                )}
+                              </div>
+                            </li>
+                          ))
+                        ) : (
                           <li className="px-3 py-2 text-xs text-gray-500">No hiring contacts.</li>
                         )}
                       </ul>
@@ -1216,19 +1196,25 @@ Kind regards,`
                         <div className="col-span-2 text-right">Link</div>
                       </div>
                       <ul className="text-sm">
-                        {c.news_articles?.length ? c.news_articles.map((n: any) => (
-                          <li key={n.id} className="px-3 py-2 border-t first:border-t-0 grid grid-cols-12">
-                            <div className="col-span-8 truncate">{n.title || '—'}</div>
-                            <div className="col-span-2 truncate">
-                              {n.published_at ? new Date(n.published_at).toLocaleDateString() : '—'}
-                            </div>
-                            <div className="col-span-2 text-right">
-                              {n.url
-                                ? <a className="text-orange-600 hover:underline" href={n.url} target="_blank" rel="noreferrer">view</a>
-                                : '—'}
-                            </div>
-                          </li>
-                        )) : (
+                        {c.news_articles?.length ? (
+                          c.news_articles.map((n: any) => (
+                            <li key={n.id} className="px-3 py-2 border-t first:border-t-0 grid grid-cols-12">
+                              <div className="col-span-8 truncate">{n.title || '—'}</div>
+                              <div className="col-span-2 truncate">
+                                {n.published_at ? new Date(n.published_at).toLocaleDateString() : '—'}
+                              </div>
+                              <div className="col-span-2 text-right">
+                                {n.url ? (
+                                  <a className="text-orange-600 hover:underline" href={n.url} target="_blank" rel="noreferrer">
+                                    view
+                                  </a>
+                                ) : (
+                                  '—'
+                                )}
+                              </div>
+                            </li>
+                          ))
+                        ) : (
                           <li className="px-3 py-2 text-xs text-gray-500">No news articles.</li>
                         )}
                       </ul>
@@ -1243,11 +1229,7 @@ Kind regards,`
         </div>
       </div>
     )
-  };
+  }
 
-  return (
-    <div className="space-y-4">
-      {mode === 'people' ? renderPeople() : renderCompanies()}
-    </div>
-  )
+  return <div className="space-y-4">{mode === 'people' ? renderPeople() : renderCompanies()}</div>
 }
