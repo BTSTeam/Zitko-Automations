@@ -321,9 +321,13 @@ export async function POST(req: NextRequest) {
 
     // fetch job postings for remaining companies (up to 10 per org)
     const postings = await Promise.all(
-      companies.map(c => fetchOrganizationJobPostings(c.id, headers, tryRefresh, 10))
+      companies.map(c => fetchOrganizationJobPostings(c.organization_id || c.id, headers, tryRefresh, 10))
     )
-    companies = companies.map((c, idx) => ({ ...c, job_postings: postings[idx] ?? [] }))
+    
+    companies = companies.map((c, idx) => ({
+      ...c,
+      job_postings: postings[idx] ?? []
+    }))
 
     return NextResponse.json({
       meta: { page, per_page, count: companies.length, excluded: excluded.length },
