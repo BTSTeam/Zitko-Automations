@@ -7,31 +7,22 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/session'
 import { refreshApolloAccessToken } from '@/lib/apolloRefresh'
 
-/**
- * Companies search + per-organization enrichment filter
- * - Search:  POST https://api.apollo.io/api/v1/mixed_companies/search  (QS params)
- * - Enrich:  GET  https://api.apollo.io/api/v1/organizations/{id}
- * Exclude any organization whose industries include "staffing & recruitment"
- * (also tolerate the common Apollo label "staffing & recruiting").
- */
 const APOLLO_SEARCH_URL = 'https://api.apollo.io/api/v1/mixed_companies/search'
 const APOLLO_ORG_URL = 'https://api.apollo.io/api/v1/organizations'
 
 type InBody = {
-  locations?: string[] | string                     // organization_locations[]
-  keywords?: string[] | string                      // q_organization_keyword_tags[]
-  employeeRanges?: string[] | string                // organization_num_employees_ranges[] like "1,100"
-  employeesMin?: number | string | null            // optional fallback
-  employeesMax?: number | string | null            // optional fallback
+  locations?: string[] | string
+  keywords?: string[] | string
+  employeeRanges?: string[] | string
+  employeesMin?: number | string | null
+  employeesMax?: number | string | null
   activeJobsOnly?: boolean
-  activeJobsDays?: number | string | null          // when activeJobsOnly = true
-  jobTitles?: string[] | string                    // q_organization_job_titles[]
-
+  activeJobsDays?: number | string | null
+  jobTitles?: string[] | string
   page?: number | string
   per_page?: number | string
 }
 
-/** ---------- helpers ---------- */
 function toArray(v?: string[] | string): string[] {
   if (!v) return []
   if (Array.isArray(v)) return v.map(s => s.trim()).filter(Boolean)
@@ -42,38 +33,20 @@ function toPosInt(v: unknown, fallback: number): number {
   return Number.isFinite(n) && n > 0 ? n : fallback
 }
 function ymd(d: Date): string { return d.toISOString().slice(0, 10) }
-function dateNDaysAgoYMD(days: number): string {
-  const d = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
-  return ymd(d)
-}
+function dateNDaysAgoYMD(days: number): string { return ymd(new Date(Date.now() - days*86400000)) }
 function todayYMD(): string { return ymd(new Date()) }
 
-/** Hard-coded CRM technologies to exclude */
 const CRM_TECH_NAMES = [
-  'Vincere',
-  'Bullhorn',
-  'TrackerRMS',
-  'PC Recruiter',
-  'Catsone',
-  'Zoho Recruit',
-  'JobAdder',
-  'Crelate',
-  'Avionte',
+  'Vincere','Bullhorn','TrackerRMS','PC Recruiter','Catsone','Zoho Recruit','JobAdder','Crelate','Avionte',
 ]
 const CRM_TECH_UIDS = CRM_TECH_NAMES.map(n => n.trim().toLowerCase().replace(/\s+/g, '_'))
 
-/** Industry match (handle common label variants) */
 function isStaffingRecruitmentIndustry(names: string[]): boolean {
   const lc = names.map(s => s.toLowerCase())
-  // exact phrase the user specified
   if (lc.includes('staffing & recruitment')) return true
-  // common Apollo industry label variant
   if (lc.includes('staffing & recruiting')) return true
-  // fallback heuristic: contains both "staffing" and "recruit"
   return lc.some(s => s.includes('staffing') && s.includes('recruit'))
 }
-
-/** Extract industry names from org detail payload in a tolerant way */
 function extractIndustryNames(orgDetail: any): string[] {
   const raw = orgDetail?.organization ?? orgDetail ?? {}
   const arr = Array.isArray(raw.industries) ? raw.industries : []
@@ -85,7 +58,6 @@ function extractIndustryNames(orgDetail: any): string[] {
   return names.filter(Boolean)
 }
 
-/** Build auth headers (OAuth token preferred, fallback to API key) */
 async function buildAuthHeaders() {
   const session = await getSession()
   const accessToken: string | undefined = session.tokens?.apolloAccessToken || undefined
@@ -94,21 +66,18 @@ async function buildAuthHeaders() {
     return { error: NextResponse.json({ error: 'Not authenticated: no Apollo OAuth token or APOLLO_API_KEY present' }, { status: 401 }) }
   }
   const headers: Record<string, string> = {
-    accept: 'application/json',
-    'Cache-Control': 'no-cache',
-    'Content-Type': 'application/json',
+    accept: 'application/json','Cache-Control': 'no-cache','Content-Type': 'application/json',
   }
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`
   else if (apiKey) headers['X-Api-Key'] = apiKey
   return { headers, accessToken, userKey: session.user?.email || session.sessionId || '' }
 }
 
-/** Enrichment fetch (organization details) with auth + simple retry on 401/403 */
 async function fetchOrganizationDetail(
   id: string,
-  headers: Record<string, string>,
-  tryRefresh: () => Promise<Record<string, string>>,
-): Promise<any | null> {
+  headers: Record<string,string>,
+  tryRefresh: () => Promise<Record<string,string>>,
+): Promise<any|null> {
   const url = `${APOLLO_ORG_URL}/${encodeURIComponent(id)}`
   let resp = await fetch(url, { method: 'GET', headers, cache: 'no-store' })
   if (resp.status === 401 || resp.status === 403) {
@@ -119,39 +88,54 @@ async function fetchOrganizationDetail(
   try { return await resp.json() } catch { return null }
 }
 
-/** Small pool for concurrency */
-async function pMapLimit<T, R>(
-  items: T[],
-  limit: number,
-  worker: (item: T, index: number) => Promise<R>,
-): Promise<R[]> {
-  const out: R[] = new Array(items.length)
-  let i = 0
-  let running: Promise<void>[] = []
-  const runOne = async (idx: number) => {
-    out[idx] = await worker(items[idx], idx)
+async function fetchOrganizationJobPostings(
+  id: string,
+  headers: Record<string,string>,
+  tryRefresh: () => Promise<Record<string,string>>,
+  limit = 10,
+): Promise<any[]> {
+  // Try with explicit per_page if supported; otherwise slice client-side
+  const url = `${APOLLO_ORG_URL}/${encodeURIComponent(id)}/job_postings?per_page=${limit}&page=1`
+  let resp = await fetch(url, { method: 'GET', headers, cache: 'no-store' })
+  if (resp.status === 401 || resp.status === 403) {
+    const h2 = await tryRefresh()
+    resp = await fetch(url, { method: 'GET', headers: h2, cache: 'no-store' })
   }
-  while (i < items.length) {
-    while (running.length < limit && i < items.length) {
-      const idx = i++
-      const p = runOne(idx).catch(() => { /* swallow per-item errors */ })
-      running.push(p.then(() => { running = running.filter(x => x !== p) }))
-    }
-    await Promise.race(running)
-  }
-  await Promise.all(running)
-  return out
+  if (!resp.ok) return []
+  let json: any = {}
+  try { json = await resp.json() } catch { return [] }
+  const arr = Array.isArray(json?.job_postings) ? json.job_postings : Array.isArray(json) ? json : []
+  return arr.slice(0, limit).map((j: any) => {
+    const id = (j?.id ?? j?._id ?? '').toString()
+    const title = typeof j?.title === 'string' ? j.title : null
+    const city = typeof j?.city === 'string' ? j.city : null
+    const state = typeof j?.state === 'string' ? j.state : null
+    const country = typeof j?.country === 'string' ? j.country : null
+    const location = (typeof j?.location === 'string' && j.location) || [city,state,country].filter(Boolean).join(', ') || null
+    const posted_at =
+      (typeof j?.posted_at === 'string' && j.posted_at) ||
+      (typeof j?.created_at === 'string' && j.created_at) ||
+      null
+    const url =
+      (typeof j?.job_posting_url === 'string' && j.job_posting_url) ||
+      (typeof j?.url === 'string' && j.url) ||
+      null
+    const source =
+      (typeof j?.board_name === 'string' && j.board_name) ||
+      (typeof j?.source === 'string' && j.source) ||
+      null
+    return { id, title, location, posted_at, url, source, raw: j }
+  })
 }
 
 export async function POST(req: NextRequest) {
   const DEBUG = (process.env.SOURCING_DEBUG_APOLLO || '').toLowerCase() === 'true'
 
-  // ---------- parse input ----------
+  // input
   let inBody: InBody = {}
   try { inBody = (await req.json()) as InBody } catch {}
 
   const organization_locations = toArray(inBody.locations)
-
   const employeeRangesIncoming = toArray(inBody.employeeRanges)
   const minNum = inBody.employeesMin === '' || inBody.employeesMin == null ? null : Number(inBody.employeesMin)
   const maxNum = inBody.employeesMax === '' || inBody.employeesMax == null ? null : Number(inBody.employeesMax)
@@ -159,26 +143,23 @@ export async function POST(req: NextRequest) {
   if (!organization_num_employees_ranges.length && (typeof minNum === 'number' || typeof maxNum === 'number')) {
     const min = Number.isFinite(minNum) ? String(minNum) : ''
     const max = Number.isFinite(maxNum) ? String(maxNum) : ''
-    const range = [min, max].filter(Boolean).join(',')
-    if (range) organization_num_employees_ranges.push(range)
+    const r = [min, max].filter(Boolean).join(',')
+    if (r) organization_num_employees_ranges.push(r)
   }
-
   const q_organization_job_titles = toArray(inBody.jobTitles)
   const q_organization_keyword_tags = toArray(inBody.keywords)
-
   const page = toPosInt(inBody.page, 1)
   const per_page = Math.min(50, toPosInt(inBody.per_page, 25))
-
   const activeJobsOnly = Boolean(inBody.activeJobsOnly)
-  const rawDays = inBody.activeJobsDays
   const jobsWindowDays =
-    Number.isFinite(Number(rawDays)) && Number(rawDays) > 0 ? Math.floor(Number(rawDays)) : null
+    Number.isFinite(Number(inBody.activeJobsDays)) && Number(inBody.activeJobsDays) > 0
+      ? Math.floor(Number(inBody.activeJobsDays))
+      : null
 
-  // ---------- auth ----------
+  // auth
   const auth = await buildAuthHeaders()
   if ('error' in auth) return auth.error
   let { headers, accessToken, userKey } = auth
-
   const tryRefresh = async () => {
     if (accessToken && userKey) {
       const refreshed = await refreshApolloAccessToken(userKey)
@@ -186,9 +167,7 @@ export async function POST(req: NextRequest) {
         const s2 = await getSession()
         accessToken = s2.tokens?.apolloAccessToken
         const h: Record<string, string> = {
-          accept: 'application/json',
-          'Cache-Control': 'no-cache',
-          'Content-Type': 'application/json',
+          accept: 'application/json','Cache-Control': 'no-cache','Content-Type': 'application/json',
         }
         if (accessToken) h.Authorization = `Bearer ${accessToken}`
         else if (process.env.APOLLO_API_KEY) h['X-Api-Key'] = process.env.APOLLO_API_KEY
@@ -198,7 +177,7 @@ export async function POST(req: NextRequest) {
     return headers
   }
 
-  // ---------- build search QS ----------
+  // build QS
   const params = new URLSearchParams()
   params.set('page', String(page))
   params.set('per_page', String(per_page))
@@ -208,7 +187,6 @@ export async function POST(req: NextRequest) {
   organization_num_employees_ranges.forEach(r => params.append('organization_num_employees_ranges[]', r))
   q_organization_job_titles.forEach(t => params.append('q_organization_job_titles[]', t))
   q_organization_keyword_tags.forEach(tag => params.append('q_organization_keyword_tags[]', tag))
-
   CRM_TECH_UIDS.forEach(uid => params.append('currently_not_using_any_of_technology_uids[]', uid))
 
   if (activeJobsOnly) {
@@ -232,7 +210,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // ---------- search ----------
+    // search
     let resp = await searchCall(headers)
     if ((resp.status === 401 || resp.status === 403) && accessToken && userKey) {
       await tryRefresh()
@@ -256,7 +234,6 @@ export async function POST(req: NextRequest) {
         ? data.companies
         : []
 
-    // ---------- minimal normalization ----------
     type Company = {
       id: string
       name: string | null
@@ -264,6 +241,15 @@ export async function POST(req: NextRequest) {
       website_url: string | null
       linkedin_url: string | null
       short_description: string | null
+      job_postings?: Array<{
+        id: string
+        title: string | null
+        location: string | null
+        posted_at: string | null
+        url: string | null
+        source: string | null
+        raw?: any
+      }>
       raw: any
     }
 
@@ -314,41 +300,36 @@ export async function POST(req: NextRequest) {
       return { id, name, location, website_url, linkedin_url, short_description, raw: o }
     })
 
-    // ---------- enrichment filter: exclude staffing & recruitment ----------
+    // enrichment (industries) to exclude staffing/recruiting
     const ids = companiesUnfiltered.map(c => c.id).filter(Boolean)
-    const details = await Promise.all(
-      ids.map(orgId => fetchOrganizationDetail(orgId, headers, tryRefresh))
-    )
+
+    // run all in parallel (well within Apollo limits)
+    const details = await Promise.all(ids.map(orgId => fetchOrganizationDetail(orgId, headers, tryRefresh)))
 
     const excluded: string[] = []
     const keep = new Set<string>()
-
     for (let i = 0; i < ids.length; i++) {
       const id = ids[i]
       const detail = details[i]
-      if (!detail) {
-        // If enrichment fails, default to KEEP (do not over-exclude on transient error)
-        keep.add(id)
-        continue
-      }
+      if (!detail) { keep.add(id); continue }
       const industryNames = extractIndustryNames(detail)
-      if (isStaffingRecruitmentIndustry(industryNames)) {
-        excluded.push(id)
-      } else {
-        keep.add(id)
-      }
+      if (isStaffingRecruitmentIndustry(industryNames)) excluded.push(id)
+      else keep.add(id)
     }
 
-    const companies = companiesUnfiltered.filter(c => keep.has(c.id))
+    let companies = companiesUnfiltered.filter(c => keep.has(c.id))
+
+    // fetch job postings for remaining companies (up to 10 per org)
+    const postings = await Promise.all(
+      companies.map(c => fetchOrganizationJobPostings(c.id, headers, tryRefresh, 10))
+    )
+    companies = companies.map((c, idx) => ({ ...c, job_postings: postings[idx] ?? [] }))
 
     return NextResponse.json({
       meta: { page, per_page, count: companies.length, excluded: excluded.length },
       pagination: data?.pagination ?? { page, per_page },
       breadcrumbs: data?.breadcrumbs ?? [],
       companies,
-      // Optional debug:
-      // excluded_ids: excluded,
-      // apollo_raw: data,
     })
   } catch (err: any) {
     return NextResponse.json(
