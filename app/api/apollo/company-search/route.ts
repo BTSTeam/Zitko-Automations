@@ -49,8 +49,7 @@ function toPosInt(v: unknown, fallback: number): number {
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback
 }
 function ymd(d: Date): string {
-  // YYYY-MM-DD
-  return d.toISOString().slice(0, 10)
+  return d.toISOString().slice(0, 10) // YYYY-MM-DD
 }
 function dateNDaysAgoYMD(days: number): string {
   const d = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
@@ -100,9 +99,8 @@ export async function POST(req: NextRequest) {
 
   const q_organization_job_titles = toArray(inBody.q_organization_job_titles)
 
-  // Keywords: chips → single string for q_keywords
-  const keywordChips = toArray(inBody.keywords)
-  const q_keywords = keywordChips.join(' ').trim()
+  // ✅ Keywords: chips → single string for q_keywords (e.g., "Security CCTV Fire")
+  const q_keywords = toArray(inBody.keywords).join(' ').trim()
 
   const page = toPosInt(inBody.page, 1)
   const per_page = Math.min(25, toPosInt(inBody.per_page, 25)) // match people-search behavior
@@ -146,7 +144,7 @@ export async function POST(req: NextRequest) {
   organization_num_employees_ranges.forEach(r => params.append('organization_num_employees_ranges[]', r))
   q_organization_job_titles.forEach(t => params.append('q_organization_job_titles[]', t))
 
-  // Keywords (single string per docs)
+  // ✅ Keywords (single string per docs)
   if (q_keywords) params.set('q_keywords', q_keywords)
 
   // Exclude certain CRMs
@@ -173,7 +171,6 @@ export async function POST(req: NextRequest) {
     const dbgHeaders = { ...buildHeaders() }
     if (dbgHeaders.Authorization) dbgHeaders.Authorization = 'Bearer ***'
     if (dbgHeaders['X-Api-Key']) dbgHeaders['X-Api-Key'] = '***'
-    // Will show in server logs / dev console
     console.info('[Apollo DEBUG company-search] →', { url: urlWithQs, headers: dbgHeaders })
   }
 
@@ -266,7 +263,7 @@ export async function POST(req: NextRequest) {
         String(a.name ?? '').localeCompare(String(b.name ?? '')),
     )
 
-    // Return JSON (no UI), ready to inspect in console / devtools
+    // Return JSON (no UI)
     return NextResponse.json({
       meta: { page, per_page, count: people.length },
       pagination: data?.pagination ?? { page, per_page },
