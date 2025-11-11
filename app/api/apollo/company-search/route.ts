@@ -8,7 +8,7 @@ import { getSession } from '@/lib/session'
 import { refreshApolloAccessToken } from '@/lib/apolloRefresh'
 
 const APOLLO_SEARCH_URL = 'https://api.apollo.io/api/v1/mixed_companies/search'
-const APOLLO_ORG_URL = 'https://api.apollo.io/api/v1/organizations'
+const APOLLO_ORG_URL   = 'https://api.apollo.io/api/v1/organizations'
 
 type InBody = {
   locations?: string[] | string
@@ -33,8 +33,20 @@ function toPosInt(v: unknown, fallback: number): number {
   return Number.isFinite(n) && n > 0 ? n : fallback
 }
 function ymd(d: Date): string { return d.toISOString().slice(0, 10) }
-function dateNDaysAgoYMD(days: number): string { return ymd(new Date(Date.now() - days*86400000)) }
+function dateNDaysAgoYMD(days: number): string { return ymd(new Date(Date.now() - days * 86400000)) }
 function todayYMD(): string { return ymd(new Date()) }
+
+// Prefer real organization_id over company id for /organizations/* endpoints
+function getOrgId(raw: any, fallback: string) {
+  const cand =
+    raw?.organization_id ||
+    raw?.organization?.id ||
+    raw?.organization?._id ||
+    raw?.org_id ||
+    raw?._organization_id ||
+    null
+  return (cand ?? fallback)?.toString()
+}
 
 const CRM_TECH_NAMES = [
   'Vincere','Bullhorn','TrackerRMS','PC Recruiter','Catsone','Zoho Recruit','JobAdder','Crelate','Avionte',
@@ -66,11 +78,13 @@ async function buildAuthHeaders() {
     return { error: NextResponse.json({ error: 'Not authenticated: no Apollo OAuth token or APOLLO_API_KEY present' }, { status: 401 }) }
   }
   const headers: Record<string, string> = {
-    accept: 'application/json','Cache-Control': 'no-cache','Content-Type': 'application/json',
+    accept: 'application/json',
+    'Cache-Control': 'no-cache',
+    'Content-Type': 'application/json',
   }
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`
   else if (apiKey) headers['X-Api-Key'] = apiKey
-  return { headers, accessToken, userKey: session.user?.email || session.sessionId || '' }
+  return { headers, accessToken, userKey: (session.user?.email || session.sessionId || '') }
 }
 
 async function fetchOrganizationDetail(
@@ -109,16 +123,30 @@ async function fetchOrganizationJobPostings(
     const city = typeof j?.city === 'string' ? j.city : null
     const state = typeof j?.state === 'string' ? j.state : null
     const country = typeof j?.country === 'string' ? j.country : null
-    const location = (typeof j?.location === 'string' && j.location) || [city, state, country].filter(Boolean).join(', ') || null
-    const posted_at = (typeof j?.posted_at === 'string' && j.posted_at) || (typeof j?.created_at === 'string' && j.created_at) || null
-    const url = (typeof j?.job_posting_url === 'string' && j.job_posting_url) || (typeof j?.url === 'string' && j.url) || null
-    const source = (typeof j?.board_name === 'string' && j.board_name) || (typeof j?.source === 'string' && j.source) || null
+    const location =
+      (typeof j?.location === 'string' && j.location) ||
+      [city, state, country].filter(Boolean).join(', ') ||
+      null
+    const posted_at =
+      (typeof j?.posted_at === 'string' && j.posted_at) ||
+      (typeof j?.created_at === 'string' && j.created_at) ||
+      null
+    const url =
+      (typeof j?.job_posting_url === 'string' && j.job_posting_url) ||
+      (typeof j?.url === 'string' && j.url) ||
+      null
+    const source =
+      (typeof j?.board_name === 'string' && j.board_name) ||
+      (typeof j?.source === 'string' && j.source) ||
+      null
     return { id, title, location, posted_at, url, source, raw: j }
   })
 }
 
 export async function POST(req: NextRequest) {
-  const DEBUG = (process.env.SOURCING_DEBUG_APOLLO || '').toLowerCase() === 'true'
+  const DEBUG_ENV  = (process.env.SOURCING_DEBUG_APOLLO || '').toLowerCase() === 'true'
+  const WANT_DEBUG = DEBUG_ENV || req.headers.get('x-debug-apollo') === '1'
+  const debugBundle: any = {}
 
   // input
   let inBody: InBody = {}
@@ -135,9 +163,9 @@ export async function POST(req: NextRequest) {
     const r = [min, max].filter(Boolean).join(',')
     if (r) organization_num_employees_ranges.push(r)
   }
-  const q_organization_job_titles = toArray(inBody.jobTitles)
+  const q_organization_job_titles   = toArray(inBody.jobTitles)
   const q_organization_keyword_tags = toArray(inBody.keywords)
-  const page = toPosInt(inBody.page, 1)
+  const page     = toPosInt(inBody.page, 1)
   const per_page = Math.min(50, toPosInt(inBody.per_page, 25))
   const activeJobsOnly = Boolean(inBody.activeJobsOnly)
   const jobsWindowDays =
@@ -156,7 +184,9 @@ export async function POST(req: NextRequest) {
         const s2 = await getSession()
         accessToken = s2.tokens?.apolloAccessToken
         const h: Record<string, string> = {
-          accept: 'application/json','Cache-Control': 'no-cache','Content-Type': 'application/json',
+          accept: 'application/json',
+          'Cache-Control': 'no-cache',
+          'Content-Type': 'application/json',
         }
         if (accessToken) h.Authorization = `Bearer ${accessToken}`
         else if (process.env.APOLLO_API_KEY) h['X-Api-Key'] = process.env.APOLLO_API_KEY
@@ -191,11 +221,12 @@ export async function POST(req: NextRequest) {
   const searchCall = (h: Record<string, string>) =>
     fetch(urlWithQs, { method: 'POST', headers: h, body: JSON.stringify({}), cache: 'no-store' })
 
-  if (DEBUG) {
+  if (WANT_DEBUG) {
     const dbgHeaders = { ...headers }
     if (dbgHeaders.Authorization) dbgHeaders.Authorization = 'Bearer ***'
     if (dbgHeaders['X-Api-Key']) dbgHeaders['X-Api-Key'] = '***'
-    console.info('[Apollo DEBUG company-search] →', { url: urlWithQs, headers: dbgHeaders })
+    debugBundle.inputBody = inBody
+    debugBundle.search = { url: urlWithQs, headers: dbgHeaders }
   }
 
   try {
@@ -208,7 +239,7 @@ export async function POST(req: NextRequest) {
     const raw = await resp.text()
     if (!resp.ok) {
       return NextResponse.json(
-        { error: `Apollo error: ${resp.status} ${resp.statusText}`, details: raw?.slice(0, 2000) },
+        { error: `Apollo error: ${resp.status} ${resp.statusText}`, details: raw?.slice(0, 2000), debug: WANT_DEBUG ? debugBundle : undefined },
         { status: resp.status || 400 },
       )
     }
@@ -224,7 +255,8 @@ export async function POST(req: NextRequest) {
         : []
 
     type Company = {
-      id: string
+      id: string               // display/company id from search
+      org_id: string           // canonical organization_id (for /organizations/*)
       name: string | null
       location: string | null
       website_url: string | null
@@ -243,7 +275,9 @@ export async function POST(req: NextRequest) {
     }
 
     const companiesUnfiltered: Company[] = arr.map((o: any) => {
-      const id = (o?.id ?? o?._id ?? '').toString()
+      const companyId = (o?.id ?? o?._id ?? '').toString()
+      const orgId     = getOrgId(o, companyId)
+
       const name =
         (o?.name && String(o.name).trim()) ||
         (o?.organization && typeof o.organization.name === 'string' && o.organization.name.trim()) ||
@@ -286,40 +320,45 @@ export async function POST(req: NextRequest) {
         (typeof o?.summary === 'string' && o.summary) ||
         null
 
-      return { id, name, location, website_url, linkedin_url, short_description, raw: o }
+      return { id: companyId, org_id: orgId, name, location, website_url, linkedin_url, short_description, raw: o }
     })
 
     // enrichment (industries) to exclude staffing/recruiting
-    const ids = companiesUnfiltered.map(c => c.id).filter(Boolean)
+    const orgIds = companiesUnfiltered.map(c => c.org_id).filter(Boolean)
+    if (WANT_DEBUG) debugBundle.orgIdsForDetail = orgIds.slice(0, 100)
 
-    // run all in parallel (well within Apollo limits)
-    const details = await Promise.all(ids.map(orgId => fetchOrganizationDetail(orgId, headers, tryRefresh)))
+    const details = await Promise.all(orgIds.map(orgId => fetchOrganizationDetail(orgId, headers, tryRefresh)))
 
     const excluded: string[] = []
     const keep = new Set<string>()
-    for (let i = 0; i < ids.length; i++) {
-      const id = ids[i]
+    for (let i = 0; i < orgIds.length; i++) {
+      const orgId = orgIds[i]
       const detail = details[i]
-      if (!detail) { keep.add(id); continue }
+      if (!detail) { keep.add(orgId); continue }
       const industryNames = extractIndustryNames(detail)
-      if (isStaffingRecruitmentIndustry(industryNames)) excluded.push(id)
-      else keep.add(id)
+      if (isStaffingRecruitmentIndustry(industryNames)) excluded.push(orgId)
+      else keep.add(orgId)
     }
 
-    let companies = companiesUnfiltered.filter(c => keep.has(c.id))
+    let companies = companiesUnfiltered.filter(c => keep.has(c.org_id))
 
-    // fetch job postings for remaining companies (up to 10 per org)
+    // fetch job postings for remaining companies (up to 10 per org), using the canonical org_id
     const postings = await Promise.all(
       companies.map(c =>
         fetchOrganizationJobPostings(
-          String(c.raw?.organization_id ?? c.raw?.id ?? c.id),
+          c.org_id,
           headers,
           tryRefresh,
           10
         )
       )
     )
-    
+
+    if (WANT_DEBUG) {
+      debugBundle.postingsCallCount = postings.length
+      debugBundle.firstPostingsSample = postings[0]?.slice?.(0, 2)
+    }
+
     companies = companies.map((c, idx) => ({
       ...c,
       job_postings: postings[idx] ?? []
@@ -330,6 +369,7 @@ export async function POST(req: NextRequest) {
       pagination: data?.pagination ?? { page, per_page },
       breadcrumbs: data?.breadcrumbs ?? [],
       companies,
+      debug: WANT_DEBUG ? debugBundle : undefined,
     })
   } catch (err: any) {
     return NextResponse.json(
