@@ -102,47 +102,6 @@ async function fetchOrganizationDetail(
   try { return await resp.json() } catch { return null }
 }
 
-async function fetchOrganizationJobPostings(
-  id: string,
-  headers: Record<string,string>,
-  tryRefresh: () => Promise<Record<string,string>>,
-  limit = 10,
-): Promise<any[]> {
-  const url = `${APOLLO_ORG_URL}/${encodeURIComponent(id)}/job_postings?page=1&per_page=${limit}`
-  let resp = await fetch(url, { method: 'GET', headers, cache: 'no-store' })
-  if (resp.status === 401 || resp.status === 403) {
-    const h2 = await tryRefresh()
-    resp = await fetch(url, { method: 'GET', headers: h2, cache: 'no-store' })
-  }
-  if (!resp.ok) return []
-  const json = await resp.json().catch(() => ({} as any))
-  const arr = Array.isArray(json?.job_postings) ? json.job_postings : Array.isArray(json) ? json : []
-  return arr.slice(0, limit).map((j: any) => {
-    const id = (j?.id ?? j?._id ?? '').toString()
-    const title = typeof j?.title === 'string' ? j.title : null
-    const city = typeof j?.city === 'string' ? j.city : null
-    const state = typeof j?.state === 'string' ? j.state : null
-    const country = typeof j?.country === 'string' ? j.country : null
-    const location =
-      (typeof j?.location === 'string' && j.location) ||
-      [city, state, country].filter(Boolean).join(', ') ||
-      null
-    const posted_at =
-      (typeof j?.posted_at === 'string' && j.posted_at) ||
-      (typeof j?.created_at === 'string' && j.created_at) ||
-      null
-    const url =
-      (typeof j?.job_posting_url === 'string' && j.job_posting_url) ||
-      (typeof j?.url === 'string' && j.url) ||
-      null
-    const source =
-      (typeof j?.board_name === 'string' && j.board_name) ||
-      (typeof j?.source === 'string' && j.source) ||
-      null
-    return { id, title, location, posted_at, url, source, raw: j }
-  })
-}
-
 export async function POST(req: NextRequest) {
   const DEBUG_ENV  = (process.env.SOURCING_DEBUG_APOLLO || '').toLowerCase() === 'true'
   const WANT_DEBUG = DEBUG_ENV || req.headers.get('x-debug-apollo') === '1'
@@ -256,21 +215,12 @@ export async function POST(req: NextRequest) {
 
     type Company = {
       id: string               // display/company id from search
-      org_id: string           // canonical organization_id (for /organizations/*)
+      org_id: string           // canonical organization_id (for /organizations/* and job-postings route)
       name: string | null
       location: string | null
       website_url: string | null
       linkedin_url: string | null
       short_description: string | null
-      job_postings?: Array<{
-        id: string
-        title: string | null
-        location: string | null
-        posted_at: string | null
-        url: string | null
-        source: string | null
-        raw?: any
-      }>
       raw: any
     }
 
@@ -340,29 +290,7 @@ export async function POST(req: NextRequest) {
       else keep.add(orgId)
     }
 
-    let companies = companiesUnfiltered.filter(c => keep.has(c.org_id))
-
-    // fetch job postings for remaining companies (up to 10 per org), using the canonical org_id
-    const postings = await Promise.all(
-      companies.map(c =>
-        fetchOrganizationJobPostings(
-          c.org_id,
-          headers,
-          tryRefresh,
-          10
-        )
-      )
-    )
-
-    if (WANT_DEBUG) {
-      debugBundle.postingsCallCount = postings.length
-      debugBundle.firstPostingsSample = postings[0]?.slice?.(0, 2)
-    }
-
-    companies = companies.map((c, idx) => ({
-      ...c,
-      job_postings: postings[idx] ?? []
-    }))
+    const companies = companiesUnfiltered.filter(c => keep.has(c.org_id))
 
     return NextResponse.json({
       meta: { page, per_page, count: companies.length, excluded: excluded.length },
