@@ -59,6 +59,10 @@ type JobPosting = {
   remote: boolean | null
   url: string | null
   posted_at?: string | null
+  // NEW
+  city?: string | null
+  state?: string | null
+  country?: string | null
 }
 type HiringPerson = Person
 type NewsArticle = {
@@ -528,11 +532,16 @@ Kind regards,`
           ? c.job_postings.map((jp: any) => ({
               id: (jp?.id ?? jp?.job_posting_id ?? jp?.job_posting_url ?? jp?.url ?? '').toString(),
               title: jp?.title ?? jp?.job_title ?? null,
+              // keep existing combined location if you want, but we’ll show split fields in the table
               location: jp?.location ?? jp?.formatted_location ?? null,
               employment_type: jp?.employment_type ?? jp?.job_type ?? null,
               remote: typeof jp?.remote === 'boolean' ? jp.remote : null,
               url: jp?.url ?? jp?.job_posting_url ?? null,
-              posted_at: jp?.posted_at ?? null,
+              posted_at: jp?.posted_at ?? jp?.created_at ?? null,
+              // NEW: split fields (prefer top-level, else fall back to raw)
+              city: jp?.city ?? jp?.raw?.city ?? null,
+              state: jp?.state ?? jp?.raw?.state ?? null,
+              country: jp?.country ?? jp?.raw?.country ?? null,
             }))
           : []
 
@@ -1095,47 +1104,58 @@ Kind regards,`
                   {expandedJobs.has(c.id) && (
                     <div className="mt-3 rounded-xl border bg-gray-50 overflow-hidden">
                       <div className="px-3 py-2 border-b text-xs text-gray-500 grid grid-cols-12">
-                        <div className="col-span-6">Title</div>
-                        <div className="col-span-4">Location</div>
-                        <div className="col-span-2 text-right">Type</div>
+                        <div className="col-span-4">Title</div>
+                        <div className="col-span-2">City</div>
+                        <div className="col-span-2">State</div>
+                        <div className="col-span-2">Country</div>
+                        <div className="col-span-1 text-right">Posted</div>
+                        <div className="col-span-1 text-right">Link</div>
                       </div>
                       <div className="max-h-60 overflow-auto">
                         <ul className="text-sm">
-                          {c.job_postings?.length
-                            ? [...c.job_postings]
-                                .sort((a: any, b: any) => {
-                                  const da = a?.posted_at ? new Date(a.posted_at).getTime() : 0
-                                  const db = b?.posted_at ? new Date(b.posted_at).getTime() : 0
-                                  return db - da
-                                })
-                                .map((j: any) => (
-                                  <li key={j.id} className="px-3 py-2 border-t first:border-t-0 grid grid-cols-12">
-                                    <div className="col-span-6 truncate">
-                                      {j.url ? (
-                                        <a
-                                          className="text-orange-600 hover:underline"
-                                          href={j.url}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                        >
-                                          {j.title || 'Untitled job'}
-                                        </a>
-                                      ) : (
-                                        j.title || 'Untitled job'
-                                      )}
-                                      {j.posted_at && (
-                                        <span className="ml-2 text-gray-400">
-                                          {new Date(j.posted_at).toLocaleDateString()}
-                                        </span>
-                                      )}
-                                    </div>
-                                    <div className="col-span-4 truncate">{j.location || '—'}</div>
-                                    <div className="col-span-2 text-right">{j.employment_type || '—'}</div>
-                                  </li>
-                                ))
-                            : (
-                              <li className="px-3 py-2 text-xs text-gray-500">No job postings.</li>
-                            )}
+                          {c.job_postings?.length ? (
+                            [...c.job_postings]
+                              .sort((a: any, b: any) => {
+                                const da = a?.posted_at ? new Date(a.posted_at).getTime() : 0
+                                const db = b?.posted_at ? new Date(b.posted_at).getTime() : 0
+                                return db - da
+                              })
+                              .map((j: any) => (
+                                <li key={j.id} className="px-3 py-2 border-t first:border-t-0 grid grid-cols-12 items-center">
+                                  {/* Title */}
+                                  <div className="col-span-4 truncate">
+                                    {j.title || 'Untitled job'}
+                                  </div>
+                    
+                                  {/* City / State / Country */}
+                                  <div className="col-span-2 truncate">{j.city || '—'}</div>
+                                  <div className="col-span-2 truncate">{j.state || '—'}</div>
+                                  <div className="col-span-2 truncate">{j.country || '—'}</div>
+                    
+                                  {/* Posted */}
+                                  <div className="col-span-1 text-right">
+                                    {j.posted_at ? new Date(j.posted_at).toLocaleDateString() : '—'}
+                                  </div>
+                    
+                                  {/* Link */}
+                                  <div className="col-span-1 text-right">
+                                    {j.url ? (
+                                      <a
+                                        className="text-orange-600 hover:underline"
+                                        href={j.url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        title="Open job posting"
+                                      >
+                                        view
+                                      </a>
+                                    ) : '—'}
+                                  </div>
+                                </li>
+                              ))
+                          ) : (
+                            <li className="px-3 py-2 text-xs text-gray-500">No job postings.</li>
+                          )}
                         </ul>
                       </div>
                     </div>
