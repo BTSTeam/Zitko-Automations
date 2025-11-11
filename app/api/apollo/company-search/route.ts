@@ -50,9 +50,9 @@ export async function POST(req: NextRequest) {
   try { inBody = await req.json(); } catch { inBody = {}; }
 
   // Inputs from UI
-  const locations = toArray(inBody.locations);                     // -> organization_locations[]
-  const keywordChips = toArray(inBody.keywords);                   // -> q_keywords (single string)
-  const employeeRangesIncoming = toArray(inBody.employeeRanges)    // -> organization_num_employees_ranges[]
+  const locations = toArray(inBody.locations);                       // -> organization_locations[]
+  const keywordChips = toArray(inBody.keywords);                     // -> q_keywords (single string)
+  const employeeRangesIncoming = toArray(inBody.employeeRanges)      // -> organization_num_employees_ranges[]
     .map(r => r.replace(/\s+/g, ''));
   const jobTitleFilters = toArray(inBody.q_organization_job_titles); // -> q_organization_job_titles[]
   const activeJobsOnly = Boolean(inBody.activeJobsOnly);
@@ -77,8 +77,8 @@ export async function POST(req: NextRequest) {
   // Optional job postings date window, only if provided
   const rawDays = inBody.activeJobsDays;
   const jobsWindowDays =
-    Number.isFinite(Number(rawDays)) && Number(raways) > 0
-      ? Math.floor(Number(raways))
+    Number.isFinite(Number(rawDays)) && Number(rawDays) > 0
+      ? Math.floor(Number(rawDays))
       : null;
 
   // Auth: OAuth (preferred) or API key
