@@ -7,272 +7,101 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { refreshApolloAccessToken } from '@/lib/apolloRefresh';
 
-const APOLLO_PEOPLE_SEARCH_URL  = 'https://api.apollo.io/api/v1/mixed_people/search';
-const APOLLO_NEWS_SEARCH_URL    = 'https://api.apollo.io/api/v1/news_articles/search';
-const APOLLO_ORG_GET_URL        = (id: string) => `https://api.apollo.io/api/v1/organizations/${encodeURIComponent(id)}`;
-const APOLLO_ORG_JOBS_URL       = (id: string) =>
-  `https://api.apollo.io/api/v1/organizations/${encodeURIComponent(id)}/job_postings?page=1&per_page=10`;
+/** Base URL for Apollo mixed_people search */
+const APOLLO_URL = 'https://api.apollo.io/api/v1/mixed_people/search';
 
-/* -------------------------------- utils -------------------------------- */
+/** Hard‑coded seniorities to filter by (allowed values per docs) */
+const FORCED_SENIORITIES = [
+  'owner',
+  'founder',
+  'c_suite',
+  'partner',
+  'vp',
+] as const;
 
+/** Hard‑coded technologies to exclude (convert names to UIDs by replacing spaces with underscores) */
+const CRM_TECH_NAMES = [
+  'Vincere',
+  'Bullhorn',
+  'TrackerRMS',
+  'PC Recruiter',
+  'Catsone',
+  'Zoho Recruit',
+  'JobAdder',
+  'Crelate',
+  'Avionte',
+];
+const CRM_TECH_UIDS = CRM_TECH_NAMES.map((n) => n.replace(/\s+/g, '_'));
+
+/** Contact email statuses allowed by Apollo API:contentReference[oaicite:4]{index=4} */
+const EMAIL_STATUSES = [
+  'verified',
+  'unverified',
+  'likely to engage',
+  'unavailable',
+];
+
+/** Helper functions */
 function toArray(v?: string[] | string): string[] {
   if (!v) return [];
-  if (Array.isArray(v)) return v.map(s => s.trim()).filter(Boolean);
-  return v.split(',').map(s => s.trim()).filter(Boolean);
+  if (Array.isArray(v)) return v.map((s) => s.trim()).filter(Boolean);
+  return v
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
-function ymd(d: Date): string { return d.toISOString().slice(0, 10); }
-function todayYMD(): string { return ymd(new Date()); }
+function toPosInt(v: unknown, fallback: number): number {
+  const n =
+    typeof v === 'string'
+      ? parseInt(v, 10)
+      : typeof v === 'number'
+      ? v
+      : NaN;
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
+}
+function ymd(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+function todayYMD(): string {
+  return ymd(new Date());
+}
 function dateNDaysAgoYMD(days: number): string {
   const d = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
   return ymd(d);
 }
 
-/* ----------------------- fixed filters & constants ---------------------- */
-
-const FORCED_SENIORITIES = ['owner', 'founder', 'c_suite', 'partner', 'vp'] as const;
-
-const RECRUITER_CRM_TECH_NAMES: string[] = [
-  'Vincere','Bullhorn','TrackerRMS','PC Recruiter','Catsone','Zoho Recruit','JobAdder','Crelate','Avionte',
-];
-const RECRUITER_CRM_TECH_UIDS = RECRUITER_CRM_TECH_NAMES.map(n => n.replace(/\s+/g, '_'));
-
-const HIRING_TITLES = [
-  'Head of Recruitment','Hiring Manager','Talent Acquisition','Talent Acquisition Manager',
-  'Talent Acquisition Lead','Recruitment Manager','Recruiting Manager','Head of Talent',
-  'Head of People','People & Talent','Talent Partner','Senior Talent Partner','Recruitment Partner',
-];
-
-/* --------------------------- header fallbacks --------------------------- */
-
-type HeaderKind = 'search' | 'news' | 'jobs' | 'org';
-type HeaderVariant =
-  | { mode: 'oauth_bearer'; headers: Record<string,string>; usesToken: true  }
-  | { mode: 'api_bearer';  headers: Record<string,string>; usesToken: false }
-  | { mode: 'api_xkey';    headers: Record<string,string>; usesToken: false }
-  | { mode: 'api_both';    headers: Record<string,string>; usesToken: false };
-
-// Build a list of header variants we will try in order
-function headerVariants(opts: {
-  accessToken?: string | null | undefined;
-  apiKey?: string | null | undefined;
-  kind: HeaderKind;
-}): HeaderVariant[] {
-  const base = {
-    accept: 'application/json',
-    'Cache-Control': 'no-cache',
-    'Content-Type': 'application/json',
-  } as const;
-
-  const variants: HeaderVariant[] = [];
-
-  // 1) OAuth Bearer (if we have it)
-  if (opts.accessToken) {
-    variants.push({
-      mode: 'oauth_bearer',
-      headers: { ...base, Authorization: `Bearer ${opts.accessToken}` },
-      usesToken: true,
-    });
-  }
-
-  // 2) API Key variants (if we have an API key)
-  if (opts.apiKey) {
-    // Most consistent for /search & /news is Bearer <apiKey>
-    variants.push({
-      mode: 'api_bearer',
-      headers: { ...base, Authorization: `Bearer ${opts.apiKey}` },
-      usesToken: false,
-    });
-
-    // Some tenants accept X-Api-Key alone
-    variants.push({
-      mode: 'api_xkey',
-      headers: { ...base, 'X-Api-Key': String(opts.apiKey) },
-      usesToken: false,
-    });
-
-    // Some accept both
-    variants.push({
-      mode: 'api_both',
-      headers: { ...base, Authorization: `Bearer ${opts.apiKey}`, 'X-Api-Key': String(opts.apiKey) },
-      usesToken: false,
-    });
-  }
-
-  // Special case: for jobs GET we often need X-Api-Key in addition to Bearer
-  if (opts.kind === 'jobs' && opts.apiKey) {
-    // Move the BOTH variant to the front for jobs
-    const bothIdx = variants.findIndex(v => v.mode === 'api_both');
-    if (bothIdx > 0) {
-      const both = variants.splice(bothIdx, 1)[0];
-      variants.unshift(both);
-    }
-  }
-
-  return variants;
-}
-
-async function postJsonWithFallback(
-  url: string,
-  bodyObj: any,
-  accessToken: string | undefined,
-  apiKey: string | undefined,
-  kind: HeaderKind,
-  refreshKey: string | undefined,
-  debug?: any
-) {
-  const variants = headerVariants({ accessToken, apiKey, kind });
-  let lastText = '';
-  let lastStatus = 0;
-  let usedMode = '';
-
-  for (let i = 0; i < variants.length; i++) {
-    const v = variants[i];
-    const r = await fetch(url, {
-      method: 'POST',
-      headers: v.headers,
-      body: JSON.stringify(bodyObj),
-      cache: 'no-store',
-    });
-    lastStatus = r.status;
-    const t = await r.text();
-    lastText = t;
-    if (r.ok) {
-      if (debug) debug._last_header_mode_success = v.mode;
-      return { ok: true, status: r.status, text: t };
-    }
-
-    // If OAuth token used and unauthorized, try one refresh then retry this variant once.
-    if ((r.status === 401 || r.status === 403) && v.usesToken && accessToken && refreshKey) {
-      const refreshed = await refreshApolloAccessToken(refreshKey);
-      if (refreshed) {
-        const s2 = await getSession();
-        accessToken = s2.tokens?.apolloAccessToken;
-        // retry with new token
-        const retryVariant = headerVariants({ accessToken, apiKey, kind }).find(x => x.mode === 'oauth_bearer');
-        if (retryVariant) {
-          const rr = await fetch(url, {
-            method: 'POST',
-            headers: retryVariant.headers,
-            body: JSON.stringify(bodyObj),
-            cache: 'no-store',
-          });
-          const t2 = await rr.text();
-          if (rr.ok) {
-            if (debug) debug._last_header_mode_success = retryVariant.mode;
-            return { ok: true, status: rr.status, text: t2 };
-          }
-          lastStatus = rr.status;
-          lastText = t2;
-        }
-      }
-    }
-    usedMode = v.mode;
-  }
-
-  if (debug) debug._last_header_mode_failed = usedMode;
-  return { ok: false, status: lastStatus, text: lastText };
-}
-
-async function getWithFallback(
-  url: string,
-  accessToken: string | undefined,
-  apiKey: string | undefined,
-  kind: HeaderKind,
-  refreshKey: string | undefined,
-  debug?: any
-) {
-  const variants = headerVariants({ accessToken, apiKey, kind });
-  let lastText = '';
-  let lastStatus = 0;
-  let usedMode = '';
-
-  for (let i = 0; i < variants.length; i++) {
-    const v = variants[i];
-    const r = await fetch(url, { method: 'GET', headers: v.headers, cache: 'no-store' });
-    lastStatus = r.status;
-    const t = await r.text();
-    lastText = t;
-    if (r.ok) {
-      if (debug) debug._last_header_mode_success = v.mode;
-      return { ok: true, status: r.status, text: t };
-    }
-
-    if ((r.status === 401 || r.status === 403) && v.usesToken && accessToken && refreshKey) {
-      const refreshed = await refreshApolloAccessToken(refreshKey);
-      if (refreshed) {
-        const s2 = await getSession();
-        accessToken = s2.tokens?.apolloAccessToken;
-        const retryVariant = headerVariants({ accessToken, apiKey, kind }).find(x => x.mode === 'oauth_bearer');
-        if (retryVariant) {
-          const rr = await fetch(url, { method: 'GET', headers: retryVariant.headers, cache: 'no-store' });
-          const t2 = await rr.text();
-          if (rr.ok) {
-            if (debug) debug._last_header_mode_success = retryVariant.mode;
-            return { ok: true, status: rr.status, text: t2 };
-          }
-          lastStatus = rr.status;
-          lastText = t2;
-        }
-      }
-    }
-    usedMode = v.mode;
-  }
-
-  if (debug) debug._last_header_mode_failed = usedMode;
-  return { ok: false, status: lastStatus, text: lastText };
-}
-
-/* -------------------------------- route -------------------------------- */
-
+/** POST handler: replicates people search for companies */
 export async function POST(req: NextRequest) {
-  const redactHeaders = (h: Record<string, string>) => {
-    const c: Record<string, string> = { ...h };
-    if (c.Authorization) c.Authorization = 'Bearer ***';
-    if (c['X-Api-Key']) c['X-Api-Key'] = '***';
-    return c;
-  };
+  let inBody: any = {};
+  try {
+    inBody = await req.json();
+  } catch {
+    inBody = {};
+  }
 
-  let bodyEcho: any = {};
-  try { bodyEcho = await req.clone().json(); } catch {}
-
-  const DEBUG =
-    (process.env.SOURCING_DEBUG_APOLLO || '').toLowerCase() === 'true' ||
-    (req.headers.get('x-debug-apollo') || '').trim() === '1' ||
-    bodyEcho?.debug === true;
-
-  const DISABLE_TECH_EXCLUSION =
-    (process.env.APOLLO_DISABLE_ATS_EXCLUSION || '').toLowerCase() === 'true';
-  const DISABLE_POSTED_AT =
-    (process.env.APOLLO_DISABLE_POSTED_AT || '').toLowerCase() === 'true';
-  const JOBS_HEADERS_KIND =
-    ((process.env.APOLLO_JOBS_HEADERS_KIND || 'search') as 'search' | 'jobs');
-
-  // -------- inputs
-  let inBody: {
-    locations?: string[] | string;                 // organization_locations[]
-    keywords?: string[] | string;                  // -> q_keywords (space-joined)
-    employeeRanges?: string[] | string;            // organization_num_employees_ranges[] "min,max"
-    employeesMin?: number | string | null;
-    employeesMax?: number | string | null;
-    activeJobsOnly?: boolean;                      // if true -> org_num_jobs[min]=1 & [max]=100
-    q_organization_job_titles?: string[] | string; // q_organization_job_titles[]
-    activeJobsDays?: number | string | null;       // window for posted_at range
-    page?: number | string;
-    per_page?: number | string;
-    debug?: boolean;
-  } = {};
-  try { inBody = (await req.json()) || {}; } catch {}
-
+  // Parse incoming fields
   const locations = toArray(inBody.locations);
   const keywordChips = toArray(inBody.keywords);
-  const employeeRangesIncoming = toArray(inBody.employeeRanges).map(r => r.replace(/\s+/g, ''));
+  const employeeRangesIncoming = toArray(inBody.employeeRanges).map((r) =>
+    r.replace(/\s+/g, ''),
+  );
   const jobTitleFilters = toArray(inBody.q_organization_job_titles);
   const activeJobsOnly = Boolean(inBody.activeJobsOnly);
 
-  const minNum = inBody.employeesMin === '' || inBody.employeesMin == null ? null : Number(inBody.employeesMin);
-  const maxNum = inBody.employeesMax === '' || inBody.employeesMax == null ? null : Number(inBody.employeesMax);
+  // Handle employees min/max fallback
+  const minNum =
+    inBody.employeesMin === '' || inBody.employeesMin == null
+      ? null
+      : Number(inBody.employeesMin);
+  const maxNum =
+    inBody.employeesMax === '' || inBody.employeesMax == null
+      ? null
+      : Number(inBody.employeesMax);
   const employeeRanges: string[] = [...employeeRangesIncoming];
-  if (!employeeRanges.length && (typeof minNum === 'number' || typeof maxNum === 'number')) {
+  if (
+    !employeeRanges.length &&
+    (typeof minNum === 'number' || typeof maxNum === 'number')
+  ) {
     const min = Number.isFinite(minNum) ? String(minNum) : '';
     const max = Number.isFinite(maxNum) ? String(maxNum) : '';
     const range = [min, max].filter(Boolean).join(',');
@@ -280,244 +109,228 @@ export async function POST(req: NextRequest) {
   }
 
   const q_keywords = keywordChips.length ? keywordChips.join(' ').trim() : '';
+  const page = toPosInt(inBody.page, 1);
+  const per_page = Math.min(25, toPosInt(inBody.per_page, 25));
 
-  const page = Math.max(1, parseInt(String(inBody.page ?? '1'), 10) || 1);
-  const per_page = Math.max(1, Math.min(25, parseInt(String(inBody.per_page ?? '25'), 10) || 25));
-
+  // Days window for job postings
   const rawDays = inBody.activeJobsDays;
   const jobsWindowDays =
-    Number.isFinite(Number(rawDays)) && Number(rawDays) > 0 ? Math.floor(Number(rawDays)) : null;
+    Number.isFinite(Number(rawDays)) && Number(rawDays) > 0
+      ? Math.floor(Number(rawDays))
+      : null;
 
-  // -------- auth
-  const session   = await getSession();
-  const userKey   = session.user?.email || session.sessionId || '';
-  let accessToken = session.tokens?.apolloAccessToken;
-  const apiKey    = process.env.APOLLO_API_KEY;
-
+  // Authentication via session (OAuth) or API key
+  const session = await getSession();
+  const userKey = session.user?.email || session.sessionId || '';
+  let accessToken: string | undefined =
+    session.tokens?.apolloAccessToken || undefined;
+  const apiKey: string | undefined = process.env.APOLLO_API_KEY || undefined;
   if (!accessToken && !apiKey) {
     return NextResponse.json(
-      { error: 'Not authenticated: missing Apollo OAuth token or APOLLO_API_KEY' },
+      {
+        error:
+          'Not authenticated: no Apollo OAuth token or APOLLO_API_KEY present',
+      },
       { status: 401 },
     );
   }
-
-  /* ---------------- People Search (ORG-filtered) — POST JSON body ---------------- */
-
-  const pplBody: Record<string, any> = {
-    page,
-    per_page,
-    include_similar_titles: true,
+  const buildHeaders = (): Record<string, string> => {
+    const h: Record<string, string> = {
+      accept: 'application/json',
+      'Cache-Control': 'no-cache',
+      'Content-Type': 'application/json',
+    };
+    if (accessToken) {
+      h.Authorization = `Bearer ${accessToken}`;
+    } else if (apiKey) {
+      h['X-Api-Key'] = apiKey;
+    }
+    return h;
   };
 
-  if (locations.length) pplBody['organization_locations[]'] = locations;           // HQ filter
-  if (employeeRanges.length) pplBody['organization_num_employees_ranges[]'] = employeeRanges;
+  // Build query string
+  const params = new URLSearchParams();
+  params.set('page', String(page));
+  params.set('per_page', String(per_page));
+  params.set('include_similar_titles', 'true');
 
+  locations.forEach((l) => params.append('organization_locations[]', l));
+  employeeRanges.forEach((r) =>
+    params.append('organization_num_employees_ranges[]', r),
+  );
+  jobTitleFilters.forEach((t) =>
+    params.append('q_organization_job_titles[]', t),
+  );
+  if (q_keywords) {
+    params.set('q_keywords', q_keywords);
+  }
+  FORCED_SENIORITIES.forEach((s) =>
+    params.append('person_seniorities[]', s),
+  );
+  CRM_TECH_UIDS.forEach((uid) =>
+    params.append('currently_not_using_any_of_technology_uids[]', uid),
+  );
+  EMAIL_STATUSES.forEach((st) =>
+    params.append('contact_email_status[]', st),
+  );
   if (activeJobsOnly) {
-    pplBody['organization_num_jobs_range[min]'] = 1;
-    pplBody['organization_num_jobs_range[max]'] = 100;
-    if (jobsWindowDays && !DISABLE_POSTED_AT) {
-      pplBody['organization_job_posted_at_range[min]'] = dateNDaysAgoYMD(jobsWindowDays);
-      pplBody['organization_job_posted_at_range[max]'] = todayYMD();
+    params.append('organization_num_jobs_range[min]', '1');
+    params.append('organization_num_jobs_range[max]', '100');
+    if (jobsWindowDays != null) {
+      params.append(
+        'organization_job_posted_at_range[min]',
+        dateNDaysAgoYMD(jobsWindowDays),
+      );
+      params.append(
+        'organization_job_posted_at_range[max]',
+        todayYMD(),
+      );
     }
   }
 
-  if (jobTitleFilters.length) pplBody['q_organization_job_titles[]'] = jobTitleFilters;
-  if (q_keywords) pplBody['q_keywords'] = q_keywords;
-  pplBody['person_seniorities[]'] = FORCED_SENIORITIES;
+  const urlWithQs = `${APOLLO_URL}?${params.toString()}`;
+  const call = (headers: Record<string, string>) =>
+    fetch(urlWithQs, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({}),
+      cache: 'no-store',
+    });
 
-  if (!DISABLE_TECH_EXCLUSION) {
-    pplBody['currently_not_using_any_of_technology_uids[]'] = RECRUITER_CRM_TECH_UIDS;
-  }
+  try {
+    let resp = await call(buildHeaders());
+    // Refresh token on 401/403 if using OAuth
+    if (
+      (resp.status === 401 || resp.status === 403) &&
+      accessToken &&
+      userKey
+    ) {
+      const refreshed = await refreshApolloAccessToken(userKey);
+      if (refreshed) {
+        const s2 = await getSession();
+        accessToken = s2.tokens?.apolloAccessToken;
+        resp = await call(buildHeaders());
+      }
+    }
 
-  const debugBag: any = DEBUG ? {
-    inputBody: inBody,
-    builtBody: pplBody,
-  } : undefined;
+    const raw = await resp.text();
+    if (!resp.ok) {
+      return NextResponse.json(
+        {
+          error: `Apollo error: ${resp.status} ${resp.statusText}`,
+          details: raw?.slice(0, 2000),
+        },
+        { status: resp.status || 400 },
+      );
+    }
 
-  const pplResp = await postJsonWithFallback(
-    APOLLO_PEOPLE_SEARCH_URL,
-    pplBody,
-    accessToken,
-    apiKey,
-    'search',
-    userKey,
-    debugBag
-  );
+    let data: any = {};
+    try {
+      data = raw ? JSON.parse(raw) : {};
+    } catch {
+      data = {};
+    }
+    if (typeof data === 'string') {
+      try {
+        data = JSON.parse(data);
+      } catch {
+        data = {};
+      }
+    }
 
-  if (DEBUG && debugBag) {
-    debugBag.apolloStatus      = pplResp.status;
-    debugBag.apolloOk          = Boolean(pplResp.ok);
-    debugBag.apolloBodyPreview = (pplResp.text || '').slice(0, 2000);
-  }
-
-  if (!pplResp.ok) {
-    return NextResponse.json(
-      {
-        error: `Apollo people (company-proxy) search error: ${pplResp.status} ${pplResp.ok ? '' : ''}`.trim(),
-        details: (pplResp.text || '').slice(0, 2000),
-        debug: debugBag,
-      },
-      { status: pplResp.status || 400 },
-    );
-  }
-
-  // ------------ Collect org IDs (robust for contacts/people shapes) ------------
-  let peopleData: any = {};
-  try { peopleData = pplResp.text ? JSON.parse(pplResp.text) : {}; } catch {}
-
-  // Prefer contacts[] (as in your sample), else people[]
-  const records: any[] = Array.isArray(peopleData?.contacts)
-    ? peopleData.contacts
-    : Array.isArray(peopleData?.people)
-      ? peopleData.people
+    const arr: any[] = Array.isArray(data?.contacts)
+      ? data.contacts
+      : Array.isArray(data?.people)
+      ? data.people
       : [];
 
-  const orgIdSet = new Set<string>();
-  for (const r of records) {
-    const fromDirect = r?.organization_id ? String(r.organization_id) : '';
-    const fromObj    = r?.organization?.id ? String(r.organization.id) : '';
-    const fromHist   = Array.isArray(r?.employment_history) && r.employment_history[0]?.organization_id
-      ? String(r.employment_history[0].organization_id)
-      : '';
-    const id = fromDirect || fromObj || fromHist || '';
-    if (id) orgIdSet.add(id);
-  }
-  const orgIds = Array.from(orgIdSet);
-
-  if (DEBUG && debugBag) {
-    debugBag.parsed_people_count = records.length;
-    debugBag.unique_org_ids = orgIds.length;
-    debugBag.sample_person = records[0] ? {
-      id: records[0].id,
-      organization_id: records[0]?.organization_id ?? null,
-      org_obj_id: records[0]?.organization?.id ?? null,
-      emp_hist_org_id: Array.isArray(records[0]?.employment_history)
-        ? records[0].employment_history?.[0]?.organization_id ?? null
-        : null,
-    } : null;
-  }
-
-  if (!orgIds.length) {
-    return NextResponse.json({ companies: [], page, per_page, debug: debugBag });
-  }
-
-  /* ---------------- Enrich each organization ---------------- */
-
-  const published_after = dateNDaysAgoYMD(90);
-
-  const enriched = await Promise.all(
-    orgIds.map(async (orgId) => {
-      const base: any = {
-        id: orgId,
-        name: null as string | null,
-        website_url: null as string | null,
-        linkedin_url: null as string | null,
-        exact_location: null as string | null,
-        city: null as string | null,
-        state: null as string | null,
-        short_description: null as string | null,
-        job_postings: [] as any[],
-        hiring_people: [] as any[],
-        news_articles: [] as any[],
+    const people = arr.map((p: any) => {
+      const first = (p?.first_name ?? '').toString().trim();
+      const last = (p?.last_name ?? '').toString().trim();
+      const name =
+        (p?.name && String(p.name).trim()) ||
+        [first, last].filter(Boolean).join(' ').trim() ||
+        null;
+      const title =
+        (p?.title && String(p.title).trim()) ||
+        (Array.isArray(p?.employment_history) &&
+        p.employment_history[0]?.title) ||
+        null;
+      const organization_name =
+        (Array.isArray(p?.employment_history) &&
+        p.employment_history[0]?.organization_name) ||
+        (p?.organization?.name && String(p.organization.name).trim()) ||
+        null;
+      const formatted_address =
+        (typeof p?.formatted_address === 'string' &&
+          p.formatted_address.trim()) ||
+        (typeof p?.present_raw_address === 'string' &&
+          p.present_raw_address.trim()) ||
+        ((p?.location?.name ??
+          [p?.city, p?.state, p?.country].filter(Boolean).join(', ')) ||
+          null);
+      const headline =
+        (typeof p?.headline === 'string' && p.headline.trim()) || null;
+      const linkedin_url =
+        typeof p?.linkedin_url === 'string' && p.linkedin_url
+          ? p.linkedin_url
+          : null;
+      const facebook_url =
+        typeof p?.facebook_url === 'string' && p.facebook_url
+          ? p.facebook_url
+          : null;
+      const autoScore =
+        typeof p?.people_auto_score === 'number'
+          ? p.people_auto_score
+          : typeof p?.auto_score === 'number'
+          ? p.auto_score
+          : null;
+      return {
+        id: p?.id ?? '',
+        name,
+        title: title ? String(title).trim() : null,
+        organization_name: organization_name
+          ? String(organization_name).trim()
+          : null,
+        formatted_address,
+        headline,
+        linkedin_url,
+        facebook_url,
+        autoScore,
       };
+    });
 
-      // Org details
-      const orgR = await getWithFallback(
-        APOLLO_ORG_GET_URL(orgId),
-        accessToken,
-        apiKey,
-        'org',
-        userKey
-      );
+    people.sort(
+      (a: any, b: any) =>
+        (b.autoScore ?? 0) - (a.autoScore ?? 0) ||
+        String(a.name ?? '').localeCompare(String(b.name ?? '')),
+    );
 
-      if (orgR.ok) {
-        try {
-          const org = JSON.parse(orgR.text || '{}')?.organization || {};
-          base.name              = org?.name ?? null;
-          base.website_url       = org?.website_url ?? org?.domain ?? null;
-          base.linkedin_url      = org?.linkedin_url ?? null;
-          base.city              = org?.city ?? null;
-          base.state             = org?.state ?? null;
-          base.short_description = org?.short_description ?? null;
-          base.exact_location    = base.exact_location || [base.city, base.state].filter(Boolean).join(', ') || null;
-        } catch {}
-      }
-
-      // Job postings (favor both headers for tenants that require it)
-      const jobsR = await getWithFallback(
-        APOLLO_ORG_JOBS_URL(orgId),
-        accessToken,
-        apiKey,
-        'jobs',
-        userKey
-      );
-
-      if (jobsR.ok) {
-        try {
-          const jobs = JSON.parse(jobsR.text || '{}');
-          base.job_postings = Array.isArray(jobs?.job_postings) ? jobs.job_postings : [];
-        } catch { base.job_postings = []; }
-      } else if (jobsR.status) {
-        (base as any).job_postings_error = {
-          status: jobsR.status,
-          body: (jobsR.text || '').slice(0, 500),
-        };
-      }
-
-      // Hiring people (POST)
-      const hiringR = await postJsonWithFallback(
-        APOLLO_PEOPLE_SEARCH_URL,
-        {
-          'organization_ids[]': [orgId],
-          'person_titles[]': HIRING_TITLES,
-          include_similar_titles: true,
-          per_page: 10,
-        },
-        accessToken,
-        apiKey,
-        'search',
-        userKey
-      );
-      if (hiringR.ok) {
-        try {
-          const hp = JSON.parse(hiringR.text || '{}');
-          base.hiring_people =
-            Array.isArray(hp?.contacts) ? hp.contacts :
-            Array.isArray(hp?.people)   ? hp.people   : [];
-        } catch { base.hiring_people = []; }
-      }
-
-      // News (POST)
-      const newsR = await postJsonWithFallback(
-        APOLLO_NEWS_SEARCH_URL,
-        { 'organization_ids[]': [orgId], published_after, per_page: 2 },
-        accessToken,
-        apiKey,
-        'news',
-        userKey
-      );
-      if (newsR.ok) {
-        try {
-          const news = JSON.parse(newsR.text || '{}');
-          base.news_articles = Array.isArray(news?.news_articles) ? news.news_articles : [];
-        } catch { base.news_articles = []; }
-      }
-
-      return base;
-    }),
-  );
-
-  return NextResponse.json({
-    companies: enriched,
-    page,
-    per_page,
-    debug: DEBUG ? { ...debugBag } : undefined,
-  });
+    return NextResponse.json({
+      meta: { page, per_page, count: people.length },
+      breadcrumbs: data?.breadcrumbs ?? [],
+      pagination: data?.pagination ?? { page, per_page },
+      people,
+      apollo: data,
+      apollo_pretty: JSON.stringify(data, null, 2),
+    });
+  } catch (err: any) {
+    return NextResponse.json(
+      {
+        error: 'Server error during Apollo request',
+        details: String(err),
+      },
+      { status: 500 },
+    );
+  }
 }
 
+/** GET: instructs clients to use POST with a JSON body */
 export async function GET() {
   return NextResponse.json(
-    { error: 'Use POST /api/apollo/company-search with a JSON body.' },
+    {
+      error: 'Use POST /api/apollo/company-search with a JSON body.',
+    },
     { status: 405 },
   );
 }
