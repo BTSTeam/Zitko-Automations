@@ -10,15 +10,9 @@ import { refreshApolloAccessToken } from '@/lib/apolloRefresh';
 const APOLLO_URL = 'https://api.apollo.io/api/v1/mixed_people/search';
 
 /** Forced seniorities (allowed by Apollo People Search) */
-const FORCED_SENIORITIES = [
-  'owner',
-  'founder',
-  'c_suite',
-  'partner',
-  'vp',
-] as const;
+const FORCED_SENIORITIES = ['owner', 'founder', 'c_suite', 'partner', 'vp'] as const;
 
-/** CRM/ATS technologies we want “currently_not_using_any_of_technology_uids[]” */
+/** CRM/ATS technologies to exclude (converted to lowercase_underscore UIDs) */
 const CRM_TECH_NAMES = [
   'Vincere',
   'Bullhorn',
@@ -30,32 +24,22 @@ const CRM_TECH_NAMES = [
   'Crelate',
   'Avionte',
 ];
-/** Convert to Apollo UID format: lowercase + underscores */
-const CRM_TECH_UIDS = CRM_TECH_NAMES.map((n) =>
+const CRM_TECH_UIDS = CRM_TECH_NAMES.map(n =>
   n.trim().toLowerCase().replace(/\s+/g, '_'),
 );
 
 /** Helpers */
 function toArray(v?: string[] | string): string[] {
   if (!v) return [];
-  if (Array.isArray(v)) return v.map((s) => s.trim()).filter(Boolean);
-  return v.split(',').map((s) => s.trim()).filter(Boolean);
+  if (Array.isArray(v)) return v.map(s => s.trim()).filter(Boolean);
+  return v.split(',').map(s => s.trim()).filter(Boolean);
 }
 function toPosInt(v: unknown, fallback: number): number {
-  const n =
-    typeof v === 'string'
-      ? parseInt(v, 10)
-      : typeof v === 'number'
-      ? v
-      : NaN;
+  const n = typeof v === 'string' ? parseInt(v, 10) : typeof v === 'number' ? v : NaN;
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
 }
-function ymd(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-function todayYMD(): string {
-  return ymd(new Date());
-}
+function ymd(d: Date): string { return d.toISOString().slice(0, 10); }
+function todayYMD(): string { return ymd(new Date()); }
 function dateNDaysAgoYMD(days: number): string {
   const d = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
   return ymd(d);
@@ -63,66 +47,48 @@ function dateNDaysAgoYMD(days: number): string {
 
 export async function POST(req: NextRequest) {
   let inBody: any = {};
-  try {
-    inBody = await req.json();
-  } catch {
-    inBody = {};
-  }
+  try { inBody = await req.json(); } catch { inBody = {}; }
 
   // Inputs from UI
-  const locations = toArray(inBody.locations); // organization_locations[]
-  const keywordChips = toArray(inBody.keywords); // -> qOrganizationKeywordTags[]
-  const employeeRangesIncoming = toArray(inBody.employeeRanges).map((r) =>
-    r.replace(/\s+/g, ''),
-  ); // organization_num_employees_ranges[] (e.g., "1,100")
-  const jobTitleFilters = toArray(inBody.q_organization_job_titles); // q_organization_job_titles[]
+  const locations = toArray(inBody.locations);                     // -> organization_locations[]
+  const keywordChips = toArray(inBody.keywords);                   // -> q_keywords (single string)
+  const employeeRangesIncoming = toArray(inBody.employeeRanges)    // -> organization_num_employees_ranges[]
+    .map(r => r.replace(/\s+/g, ''));
+  const jobTitleFilters = toArray(inBody.q_organization_job_titles); // -> q_organization_job_titles[]
   const activeJobsOnly = Boolean(inBody.activeJobsOnly);
 
-  // Support explicit numeric employees min/max as a single "min,max" range when no ranges array supplied
-  const minNum =
-    inBody.employeesMin === '' || inBody.employeesMin == null
-      ? null
-      : Number(inBody.employeesMin);
-  const maxNum =
-    inBody.employeesMax === '' || inBody.employeesMax == null
-      ? null
-      : Number(inBody.employeesMax);
+  // employeesMin / employeesMax fallback if ranges array not supplied
+  const minNum = inBody.employeesMin === '' || inBody.employeesMin == null ? null : Number(inBody.employeesMin);
+  const maxNum = inBody.employeesMax === '' || inBody.employeesMax == null ? null : Number(inBody.employeesMax);
   const employeeRanges: string[] = [...employeeRangesIncoming];
-  if (
-    !employeeRanges.length &&
-    (typeof minNum === 'number' || typeof maxNum === 'number')
-  ) {
+  if (!employeeRanges.length && (typeof minNum === 'number' || typeof maxNum === 'number')) {
     const min = Number.isFinite(minNum) ? String(minNum) : '';
     const max = Number.isFinite(maxNum) ? String(maxNum) : '';
     const range = [min, max].filter(Boolean).join(',');
     if (range) employeeRanges.push(range);
   }
 
-  // Map keyword chips to qOrganizationKeywordTags[] (one param per keyword)
-  const orgKeywordTags = keywordChips;
+  // Build q_keywords (single space-joined string)
+  const q_keywords = keywordChips.length ? keywordChips.join(' ').trim() : '';
 
   const page = toPosInt(inBody.page, 1);
   const per_page = Math.min(25, toPosInt(inBody.per_page, 25));
 
-  // Optional days window for job postings (only applied if provided)
+  // Optional job postings date window, only if provided
   const rawDays = inBody.activeJobsDays;
   const jobsWindowDays =
-    Number.isFinite(Number(rawDays)) && Number(rawDays) > 0
-      ? Math.floor(Number(rawDays))
+    Number.isFinite(Number(rawDays)) && Number(raways) > 0
+      ? Math.floor(Number(raways))
       : null;
 
-  // Auth: OAuth token (preferred) or API key
+  // Auth: OAuth (preferred) or API key
   const session = await getSession();
   const userKey = session.user?.email || session.sessionId || '';
-  let accessToken: string | undefined =
-    session.tokens?.apolloAccessToken || undefined;
+  let accessToken: string | undefined = session.tokens?.apolloAccessToken || undefined;
   const apiKey: string | undefined = process.env.APOLLO_API_KEY || undefined;
   if (!accessToken && !apiKey) {
     return NextResponse.json(
-      {
-        error:
-          'Not authenticated: no Apollo OAuth token or APOLLO_API_KEY present',
-      },
+      { error: 'Not authenticated: no Apollo OAuth token or APOLLO_API_KEY present' },
       { status: 401 },
     );
   }
@@ -132,70 +98,55 @@ export async function POST(req: NextRequest) {
       'Cache-Control': 'no-cache',
       'Content-Type': 'application/json',
     };
-    if (accessToken) {
-      h.Authorization = `Bearer ${accessToken}`;
-    } else if (apiKey) {
-      h['X-Api-Key'] = apiKey;
-    }
+    if (accessToken) h.Authorization = `Bearer ${accessToken}`;
+    else if (apiKey) h['X-Api-Key'] = apiKey;
     return h;
   };
 
-  // Build Apollo People Search params
+  // Build query params
   const params = new URLSearchParams();
   params.set('page', String(page));
   params.set('per_page', String(per_page));
   params.set('include_similar_titles', 'true');
 
-  // Field mappings
-  locations.forEach((l) => params.append('organization_locations[]', l));
-  employeeRanges.forEach((r) =>
-    params.append('organization_num_employees_ranges[]', r),
-  );
-  jobTitleFilters.forEach((t) =>
-    params.append('q_organization_job_titles[]', t),
-  );
-  orgKeywordTags.forEach((k) =>
-    params.append('qOrganizationKeywordTags[]', k),
-  );
+  // Locations (company)
+  locations.forEach(l => params.append('organization_locations[]', l));
 
-  // Force management seniorities (array)
-  FORCED_SENIORITIES.forEach((s) =>
-    params.append('person_seniorities[]', s),
-  );
+  // Employees
+  employeeRanges.forEach(r => params.append('organization_num_employees_ranges[]', r));
 
-  // Exclude orgs using any of these tech UIDs (lowercase_underscore)
-  CRM_TECH_UIDS.forEach((uid) =>
+  // Seniorities
+  FORCED_SENIORITIES.forEach(s => params.append('person_seniorities[]', s));
+
+  // Company job titles filter
+  jobTitleFilters.forEach(t => params.append('q_organization_job_titles[]', t));
+
+  // q_keywords (single string) – URLSearchParams will encode spaces as %20
+  if (q_keywords) params.set('q_keywords', q_keywords);
+
+  // Company tech stack exclusions (lowercase_underscore UIDs)
+  CRM_TECH_UIDS.forEach(uid =>
     params.append('currently_not_using_any_of_technology_uids[]', uid),
   );
 
-  // Active job listings behavior (KEEP your original: min=1 & max=100 if checked)
+  // Active jobs behavior (KEEP min=1 & max=100). Only apply posted_at range if provided.
   if (activeJobsOnly) {
     params.append('organization_num_jobs_range[min]', '1');
     params.append('organization_num_jobs_range[max]', '100');
     if (jobsWindowDays != null) {
-      params.append(
-        'organization_job_posted_at_range[min]',
-        dateNDaysAgoYMD(jobsWindowDays),
-      );
+      params.append('organization_job_posted_at_range[min]', dateNDaysAgoYMD(jobsWindowDays));
       params.append('organization_job_posted_at_range[max]', todayYMD());
     }
   }
 
-  // No contact_email_status[] filter (intentionally removed)
-
   const urlWithQs = `${APOLLO_URL}?${params.toString()}`;
   const call = (headers: Record<string, string>) =>
-    fetch(urlWithQs, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({}),
-      cache: 'no-store',
-    });
+    fetch(urlWithQs, { method: 'POST', headers, body: JSON.stringify({}), cache: 'no-store' });
 
   try {
     let resp = await call(buildHeaders());
 
-    // Refresh OAuth token on 401/403
+    // Refresh OAuth token if needed
     if ((resp.status === 401 || resp.status === 403) && accessToken && userKey) {
       const refreshed = await refreshApolloAccessToken(userKey);
       if (refreshed) {
@@ -208,27 +159,16 @@ export async function POST(req: NextRequest) {
     const raw = await resp.text();
     if (!resp.ok) {
       return NextResponse.json(
-        {
-          error: `Apollo error: ${resp.status} ${resp.statusText}`,
-          details: raw?.slice(0, 2000),
-        },
+        { error: `Apollo error: ${resp.status} ${resp.statusText}`, details: raw?.slice(0, 2000) },
         { status: resp.status || 400 },
       );
     }
 
-    // Safe parse (double-parse guard)
+    // Safe parse
     let data: any = {};
-    try {
-      data = raw ? JSON.parse(raw) : {};
-    } catch {
-      data = {};
-    }
+    try { data = raw ? JSON.parse(raw) : {}; } catch { data = {}; }
     if (typeof data === 'string') {
-      try {
-        data = JSON.parse(data);
-      } catch {
-        data = {};
-      }
+      try { data = JSON.parse(data); } catch { data = {}; }
     }
 
     // Prefer contacts; some tenants return "people"
@@ -238,7 +178,6 @@ export async function POST(req: NextRequest) {
       ? data.people
       : [];
 
-    // Map to simplified structure (same shape as people-search)
     const people = arr.map((p: any) => {
       const first = (p?.first_name ?? '').toString().trim();
       const last = (p?.last_name ?? '').toString().trim();
@@ -249,37 +188,27 @@ export async function POST(req: NextRequest) {
 
       const title =
         (p?.title && String(p.title).trim()) ||
-        (Array.isArray(p?.employment_history) &&
-          p.employment_history[0]?.title) ||
+        (Array.isArray(p?.employment_history) && p.employment_history[0]?.title) ||
         null;
 
       const organization_name =
-        (Array.isArray(p?.employment_history) &&
-          p.employment_history[0]?.organization_name) ||
+        (Array.isArray(p?.employment_history) && p.employment_history[0]?.organization_name) ||
         (p?.organization?.name && String(p.organization.name).trim()) ||
         null;
 
       const formatted_address =
-        (typeof p?.formatted_address === 'string' &&
-          p.formatted_address.trim()) ||
-        (typeof p?.present_raw_address === 'string' &&
-          p.present_raw_address.trim()) ||
-        ((p?.location?.name ??
-          [p?.city, p?.state, p?.country].filter(Boolean).join(', ')) ||
-          null);
+        (typeof p?.formatted_address === 'string' && p.formatted_address.trim()) ||
+        (typeof p?.present_raw_address === 'string' && p.present_raw_address.trim()) ||
+        ((p?.location?.name ?? [p?.city, p?.state, p?.country].filter(Boolean).join(', ')) || null);
 
       const headline =
         (typeof p?.headline === 'string' && p.headline.trim()) || null;
 
       const linkedin_url =
-        typeof p?.linkedin_url === 'string' && p.linkedin_url
-          ? p.linkedin_url
-          : null;
+        typeof p?.linkedin_url === 'string' && p.linkedin_url ? p.linkedin_url : null;
 
       const facebook_url =
-        typeof p?.facebook_url === 'string' && p.facebook_url
-          ? p.facebook_url
-          : null;
+        typeof p?.facebook_url === 'string' && p.facebook_url ? p.facebook_url : null;
 
       const autoScore =
         typeof p?.people_auto_score === 'number'
@@ -292,9 +221,7 @@ export async function POST(req: NextRequest) {
         id: p?.id ?? '',
         name,
         title: title ? String(title).trim() : null,
-        organization_name: organization_name
-          ? String(organization_name).trim()
-          : null,
+        organization_name: organization_name ? String(organization_name).trim() : null,
         formatted_address,
         headline,
         linkedin_url,
@@ -303,7 +230,6 @@ export async function POST(req: NextRequest) {
       };
     });
 
-    // Sort like people-search
     people.sort(
       (a: any, b: any) =>
         (b.autoScore ?? 0) - (a.autoScore ?? 0) ||
@@ -320,10 +246,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (err: any) {
     return NextResponse.json(
-      {
-        error: 'Server error during Apollo request',
-        details: String(err),
-      },
+      { error: 'Server error during Apollo request', details: String(err) },
       { status: 500 },
     );
   }
