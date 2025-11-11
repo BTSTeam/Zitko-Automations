@@ -553,8 +553,21 @@ Kind regards,`
           body: JSON.stringify({ org_ids: orgIds, per_page: 10 }),
         })
         const jpJson = await jpRes.json()
-        if (jpRes.ok && jpJson?.postingsByOrg) {
-          const postingsByOrg = jpJson.postingsByOrg as Record<string, any[]>
+      
+        if (jpRes.ok) {
+          let postingsByOrg: Record<string, any[]> = jpJson?.postingsByOrg || {}
+      
+          if ((!postingsByOrg || !Object.keys(postingsByOrg).length) && Array.isArray(jpJson?.organization_job_postings)) {
+            const grouped: Record<string, any[]> = {}
+            for (const j of jpJson.organization_job_postings) {
+              const key = (j.org_id || j.organization_id || j._organization_id || '').toString().trim()
+              if (!key) continue
+              if (!grouped[key]) grouped[key] = []
+              grouped[key].push(j)
+            }
+            postingsByOrg = grouped
+          }
+      
           setCompanies(prev =>
             prev.map(c => ({
               ...c,
@@ -563,14 +576,15 @@ Kind regards,`
           )
         }
       }
-    } catch (err: any) {
-      setCompanyError(err?.message || 'Unexpected error')
-    } finally {
-      setCompanySearchOpen(false)
-      setCompanyLoading(false)
-    }
-  }
-
+      } // <-- close runCompanySearch here
+      
+      } catch (err: any) {
+        setCompanyError(err?.message || 'Unexpected error')
+      } finally {
+        setCompanySearchOpen(false)
+        setCompanyLoading(false)
+      }
+     
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
       if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) {
