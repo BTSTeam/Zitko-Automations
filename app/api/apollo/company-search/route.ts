@@ -8,36 +8,25 @@ import { getSession } from '@/lib/session'
 import { refreshApolloAccessToken } from '@/lib/apolloRefresh'
 
 /**
- * Apollo "mixed companies" search
- * We build a query string with all filters and POST an empty JSON body.
- * Endpoint: https://api.apollo.io/api/v1/mixed_companies/search
+ * Companies search + per-organization enrichment filter
+ * - Search:  POST https://api.apollo.io/api/v1/mixed_companies/search  (QS params)
+ * - Enrich:  GET  https://api.apollo.io/api/v1/organizations/{id}
+ * Exclude any organization whose industries include "staffing & recruitment"
+ * (also tolerate the common Apollo label "staffing & recruiting").
  */
-const APOLLO_URL = 'https://api.apollo.io/api/v1/mixed_companies/search'
+const APOLLO_SEARCH_URL = 'https://api.apollo.io/api/v1/mixed_companies/search'
+const APOLLO_ORG_URL = 'https://api.apollo.io/api/v1/organizations'
 
 type InBody = {
-  // UI → organization_locations[]
-  locations?: string[] | string
-
-  // UI → q_organization_keyword_tags[]  (array of strings)
-  keywords?: string[] | string
-
-  // UI → organization_num_employees_ranges[] (each item formatted "MIN,MAX", e.g. "1,100")
-  employeeRanges?: string[] | string
-
-  // Optional fallbacks to build a single range if employeeRanges not supplied
-  employeesMin?: number | string | null
-  employeesMax?: number | string | null
-
-  // UI → Active Job Listings (Tick Box)
+  locations?: string[] | string                     // organization_locations[]
+  keywords?: string[] | string                      // q_organization_keyword_tags[]
+  employeeRanges?: string[] | string                // organization_num_employees_ranges[] like "1,100"
+  employeesMin?: number | string | null            // optional fallback
+  employeesMax?: number | string | null            // optional fallback
   activeJobsOnly?: boolean
+  activeJobsDays?: number | string | null          // when activeJobsOnly = true
+  jobTitles?: string[] | string                    // q_organization_job_titles[]
 
-  // UI → Days (used only when activeJobsOnly = true)
-  activeJobsDays?: number | string | null
-
-  // UI → q_organization_job_titles[] (array of strings)
-  jobTitles?: string[] | string
-
-  // Pagination
   page?: number | string
   per_page?: number | string
 }
@@ -46,34 +35,20 @@ type InBody = {
 function toArray(v?: string[] | string): string[] {
   if (!v) return []
   if (Array.isArray(v)) return v.map(s => s.trim()).filter(Boolean)
-  return v
-    .split(',')
-    .map(s => s.trim())
-    .filter(Boolean)
+  return v.split(',').map(s => s.trim()).filter(Boolean)
 }
-
 function toPosInt(v: unknown, fallback: number): number {
-  const n =
-    typeof v === 'string'
-      ? parseInt(v, 10)
-      : typeof v === 'number'
-        ? Math.floor(v)
-        : NaN
+  const n = typeof v === 'string' ? parseInt(v, 10) : typeof v === 'number' ? Math.floor(v) : NaN
   return Number.isFinite(n) && n > 0 ? n : fallback
 }
-
-function ymd(d: Date): string {
-  return d.toISOString().slice(0, 10) // YYYY-MM-DD
-}
+function ymd(d: Date): string { return d.toISOString().slice(0, 10) }
 function dateNDaysAgoYMD(days: number): string {
   const d = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
   return ymd(d)
 }
-function todayYMD(): string {
-  return ymd(new Date())
-}
+function todayYMD(): string { return ymd(new Date()) }
 
-/** Hard-coded CRM technologies (excluded) → currently_not_using_any_of_technology_uids[] */
+/** Hard-coded CRM technologies to exclude */
 const CRM_TECH_NAMES = [
   'Vincere',
   'Bullhorn',
@@ -87,103 +62,155 @@ const CRM_TECH_NAMES = [
 ]
 const CRM_TECH_UIDS = CRM_TECH_NAMES.map(n => n.trim().toLowerCase().replace(/\s+/g, '_'))
 
+/** Industry match (handle common label variants) */
+function isStaffingRecruitmentIndustry(names: string[]): boolean {
+  const lc = names.map(s => s.toLowerCase())
+  // exact phrase the user specified
+  if (lc.includes('staffing & recruitment')) return true
+  // common Apollo industry label variant
+  if (lc.includes('staffing & recruiting')) return true
+  // fallback heuristic: contains both "staffing" and "recruit"
+  return lc.some(s => s.includes('staffing') && s.includes('recruit'))
+}
+
+/** Extract industry names from org detail payload in a tolerant way */
+function extractIndustryNames(orgDetail: any): string[] {
+  const raw = orgDetail?.organization ?? orgDetail ?? {}
+  const arr = Array.isArray(raw.industries) ? raw.industries : []
+  const names: string[] = []
+  for (const it of arr) {
+    if (typeof it === 'string') names.push(it)
+    else if (it && typeof it.name === 'string') names.push(it.name)
+  }
+  return names.filter(Boolean)
+}
+
+/** Build auth headers (OAuth token preferred, fallback to API key) */
+async function buildAuthHeaders() {
+  const session = await getSession()
+  const accessToken: string | undefined = session.tokens?.apolloAccessToken || undefined
+  const apiKey: string | undefined = process.env.APOLLO_API_KEY || undefined
+  if (!accessToken && !apiKey) {
+    return { error: NextResponse.json({ error: 'Not authenticated: no Apollo OAuth token or APOLLO_API_KEY present' }, { status: 401 }) }
+  }
+  const headers: Record<string, string> = {
+    accept: 'application/json',
+    'Cache-Control': 'no-cache',
+    'Content-Type': 'application/json',
+  }
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`
+  else if (apiKey) headers['X-Api-Key'] = apiKey
+  return { headers, accessToken, userKey: session.user?.email || session.sessionId || '' }
+}
+
+/** Enrichment fetch (organization details) with auth + simple retry on 401/403 */
+async function fetchOrganizationDetail(
+  id: string,
+  headers: Record<string, string>,
+  tryRefresh: () => Promise<Record<string, string>>,
+): Promise<any | null> {
+  const url = `${APOLLO_ORG_URL}/${encodeURIComponent(id)}`
+  let resp = await fetch(url, { method: 'GET', headers, cache: 'no-store' })
+  if (resp.status === 401 || resp.status === 403) {
+    const h2 = await tryRefresh()
+    resp = await fetch(url, { method: 'GET', headers: h2, cache: 'no-store' })
+  }
+  if (!resp.ok) return null
+  try { return await resp.json() } catch { return null }
+}
+
+/** Small pool for concurrency */
+async function pMapLimit<T, R>(
+  items: T[],
+  limit: number,
+  worker: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const out: R[] = new Array(items.length)
+  let i = 0
+  let running: Promise<void>[] = []
+  const runOne = async (idx: number) => {
+    out[idx] = await worker(items[idx], idx)
+  }
+  while (i < items.length) {
+    while (running.length < limit && i < items.length) {
+      const idx = i++
+      const p = runOne(idx).catch(() => { /* swallow per-item errors */ })
+      running.push(p.then(() => { running = running.filter(x => x !== p) }))
+    }
+    await Promise.race(running)
+  }
+  await Promise.all(running)
+  return out
+}
+
 export async function POST(req: NextRequest) {
   const DEBUG = (process.env.SOURCING_DEBUG_APOLLO || '').toLowerCase() === 'true'
 
+  // ---------- parse input ----------
   let inBody: InBody = {}
-  try {
-    inBody = (await req.json()) as InBody
-  } catch {}
+  try { inBody = (await req.json()) as InBody } catch {}
 
-  // ---------- Map UI → Apollo params ----------
   const organization_locations = toArray(inBody.locations)
 
-  // Employees
   const employeeRangesIncoming = toArray(inBody.employeeRanges)
-  const minNum =
-    inBody.employeesMin === '' || inBody.employeesMin == null
-      ? null
-      : Number(inBody.employeesMin)
-  const maxNum =
-    inBody.employeesMax === '' || inBody.employeesMax == null
-      ? null
-      : Number(inBody.employeesMax)
-
+  const minNum = inBody.employeesMin === '' || inBody.employeesMin == null ? null : Number(inBody.employeesMin)
+  const maxNum = inBody.employeesMax === '' || inBody.employeesMax == null ? null : Number(inBody.employeesMax)
   const organization_num_employees_ranges: string[] = [...employeeRangesIncoming]
-  if (
-    !organization_num_employees_ranges.length &&
-    (typeof minNum === 'number' || typeof maxNum === 'number')
-  ) {
+  if (!organization_num_employees_ranges.length && (typeof minNum === 'number' || typeof maxNum === 'number')) {
     const min = Number.isFinite(minNum) ? String(minNum) : ''
     const max = Number.isFinite(maxNum) ? String(maxNum) : ''
-    const merged = [min, max].filter(Boolean).join(',')
-    if (merged) organization_num_employees_ranges.push(merged)
+    const range = [min, max].filter(Boolean).join(',')
+    if (range) organization_num_employees_ranges.push(range)
   }
 
-  // Job titles
   const q_organization_job_titles = toArray(inBody.jobTitles)
-
-  // Keywords → q_organization_keyword_tags[] (array)
   const q_organization_keyword_tags = toArray(inBody.keywords)
 
-  // Pagination
   const page = toPosInt(inBody.page, 1)
-  const per_page = Math.min(50, toPosInt(inBody.per_page, 25)) // allow up to 50 if you want
+  const per_page = Math.min(50, toPosInt(inBody.per_page, 25))
 
-  // Active Jobs / Days
   const activeJobsOnly = Boolean(inBody.activeJobsOnly)
   const rawDays = inBody.activeJobsDays
   const jobsWindowDays =
-    Number.isFinite(Number(rawDays)) && Number(rawDays) > 0
-      ? Math.floor(Number(rawDays))
-      : null
+    Number.isFinite(Number(rawDays)) && Number(rawDays) > 0 ? Math.floor(Number(rawDays)) : null
 
-  // ---------- Auth ----------
-  const session = await getSession()
-  const userKey = session.user?.email || session.sessionId || ''
-  let accessToken: string | undefined = session.tokens?.apolloAccessToken || undefined
-  const apiKey: string | undefined = process.env.APOLLO_API_KEY || undefined
+  // ---------- auth ----------
+  const auth = await buildAuthHeaders()
+  if ('error' in auth) return auth.error
+  let { headers, accessToken, userKey } = auth
 
-  if (!accessToken && !apiKey) {
-    return NextResponse.json(
-      { error: 'Not authenticated: no Apollo OAuth token or APOLLO_API_KEY present' },
-      { status: 401 },
-    )
-  }
-
-  const buildHeaders = (): Record<string, string> => {
-    const h: Record<string, string> = {
-      accept: 'application/json',
-      'Cache-Control': 'no-cache',
-      'Content-Type': 'application/json',
+  const tryRefresh = async () => {
+    if (accessToken && userKey) {
+      const refreshed = await refreshApolloAccessToken(userKey)
+      if (refreshed) {
+        const s2 = await getSession()
+        accessToken = s2.tokens?.apolloAccessToken
+        const h: Record<string, string> = {
+          accept: 'application/json',
+          'Cache-Control': 'no-cache',
+          'Content-Type': 'application/json',
+        }
+        if (accessToken) h.Authorization = `Bearer ${accessToken}`
+        else if (process.env.APOLLO_API_KEY) h['X-Api-Key'] = process.env.APOLLO_API_KEY
+        headers = h
+      }
     }
-    if (accessToken) h.Authorization = `Bearer ${accessToken}`
-    else if (apiKey) h['X-Api-Key'] = apiKey
-    return h
+    return headers
   }
 
-  // ---------- Build query string ----------
+  // ---------- build search QS ----------
   const params = new URLSearchParams()
   params.set('page', String(page))
   params.set('per_page', String(per_page))
   params.set('include_similar_titles', 'true')
 
-  // Locations
-  organization_locations.forEach(loc => params.append('organization_locations[]', loc))
-
-  // Employee ranges
+  organization_locations.forEach(l => params.append('organization_locations[]', l))
   organization_num_employees_ranges.forEach(r => params.append('organization_num_employees_ranges[]', r))
-
-  // Job titles
   q_organization_job_titles.forEach(t => params.append('q_organization_job_titles[]', t))
-
-  // Keywords (tags)
   q_organization_keyword_tags.forEach(tag => params.append('q_organization_keyword_tags[]', tag))
 
-  // Excluded CRMs
   CRM_TECH_UIDS.forEach(uid => params.append('currently_not_using_any_of_technology_uids[]', uid))
 
-  // Active Job Listings logic
   if (activeJobsOnly) {
     params.append('organization_num_jobs_range[min]', '1')
     params.append('organization_num_jobs_range[max]', '100')
@@ -193,31 +220,24 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const urlWithQs = `${APOLLO_URL}?${params.toString()}`
-  const call = (headers: Record<string, string>) =>
-    fetch(urlWithQs, { method: 'POST', headers, body: JSON.stringify({}), cache: 'no-store' })
+  const urlWithQs = `${APOLLO_SEARCH_URL}?${params.toString()}`
+  const searchCall = (h: Record<string, string>) =>
+    fetch(urlWithQs, { method: 'POST', headers: h, body: JSON.stringify({}), cache: 'no-store' })
 
   if (DEBUG) {
-    const dbgHeaders = { ...buildHeaders() }
+    const dbgHeaders = { ...headers }
     if (dbgHeaders.Authorization) dbgHeaders.Authorization = 'Bearer ***'
     if (dbgHeaders['X-Api-Key']) dbgHeaders['X-Api-Key'] = '***'
     console.info('[Apollo DEBUG company-search] →', { url: urlWithQs, headers: dbgHeaders })
   }
 
-  // ---------- Call Apollo ----------
   try {
-    let resp = await call(buildHeaders())
-
-    // token refresh on 401/403 if using OAuth
+    // ---------- search ----------
+    let resp = await searchCall(headers)
     if ((resp.status === 401 || resp.status === 403) && accessToken && userKey) {
-      const refreshed = await refreshApolloAccessToken(userKey)
-      if (refreshed) {
-        const s2 = await getSession()
-        accessToken = s2.tokens?.apolloAccessToken
-        resp = await call(buildHeaders())
-      }
+      await tryRefresh()
+      resp = await searchCall(headers)
     }
-
     const raw = await resp.text()
     if (!resp.ok) {
       return NextResponse.json(
@@ -227,28 +247,27 @@ export async function POST(req: NextRequest) {
     }
 
     let data: any = {}
-    try {
-      data = raw ? JSON.parse(raw) : {}
-    } catch {
-      data = {}
-    }
-    if (typeof data === 'string') {
-      try {
-        data = JSON.parse(data)
-      } catch {
-        data = {}
-      }
-    }
+    try { data = raw ? JSON.parse(raw) : {} } catch { data = {} }
+    if (typeof data === 'string') { try { data = JSON.parse(data) } catch { data = {} } }
 
-    // Companies can appear under different keys depending on the endpoint/shape
     const arr: any[] = Array.isArray(data?.organizations)
       ? data.organizations
       : Array.isArray(data?.companies)
         ? data.companies
         : []
 
-    // ---------- Normalize for UI (name, location, linkedin, website) ----------
-    const companies = arr.map((o: any) => {
+    // ---------- minimal normalization ----------
+    type Company = {
+      id: string
+      name: string | null
+      location: string | null
+      website_url: string | null
+      linkedin_url: string | null
+      short_description: string | null
+      raw: any
+    }
+
+    const companiesUnfiltered: Company[] = arr.map((o: any) => {
       const id = (o?.id ?? o?._id ?? '').toString()
       const name =
         (o?.name && String(o.name).trim()) ||
@@ -285,33 +304,51 @@ export async function POST(req: NextRequest) {
         (typeof o?.location_country === 'string' && o.location_country) ||
         null
 
-      const location =
-        exact_location ||
-        [city, state, country].filter(Boolean).join(', ') ||
-        null
+      const location = exact_location || [city, state, country].filter(Boolean).join(', ') || null
 
       const short_description =
         (typeof o?.short_description === 'string' && o.short_description) ||
         (typeof o?.summary === 'string' && o.summary) ||
         null
 
-      return {
-        id,
-        name,
-        location,
-        website_url,
-        linkedin_url,
-        short_description,
-        raw: o, // keep for debugging/next steps
-      }
+      return { id, name, location, website_url, linkedin_url, short_description, raw: o }
     })
 
+    // ---------- enrichment filter: exclude staffing & recruitment ----------
+    const ids = companiesUnfiltered.map(c => c.id).filter(Boolean)
+    const details = await Promise.all(
+      ids.map(orgId => fetchOrganizationDetail(orgId, headers, tryRefresh))
+    )
+
+    const excluded: string[] = []
+    const keep = new Set<string>()
+
+    for (let i = 0; i < ids.length; i++) {
+      const id = ids[i]
+      const detail = details[i]
+      if (!detail) {
+        // If enrichment fails, default to KEEP (do not over-exclude on transient error)
+        keep.add(id)
+        continue
+      }
+      const industryNames = extractIndustryNames(detail)
+      if (isStaffingRecruitmentIndustry(industryNames)) {
+        excluded.push(id)
+      } else {
+        keep.add(id)
+      }
+    }
+
+    const companies = companiesUnfiltered.filter(c => keep.has(c.id))
+
     return NextResponse.json({
-      meta: { page, per_page, count: companies.length },
+      meta: { page, per_page, count: companies.length, excluded: excluded.length },
       pagination: data?.pagination ?? { page, per_page },
       breadcrumbs: data?.breadcrumbs ?? [],
       companies,
-      apollo: data,
+      // Optional debug:
+      // excluded_ids: excluded,
+      // apollo_raw: data,
     })
   } catch (err: any) {
     return NextResponse.json(
