@@ -17,8 +17,8 @@ const APOLLO_URL = 'https://api.apollo.io/api/v1/mixed_people/search'
 type InBody = {
   // UI → organization_locations[]
   locations?: string[] | string
-  // UI → q_keywords (single string — not chips)
-  keywords?: string
+  // UI → q_keywords (chips in UI; we join to a single string)
+  keywords?: string[] | string
   // UI → organization_num_employees_ranges[] (e.g. "1,100")
   employeeRanges?: string[] | string
   // Optional fallbacks if ranges array not supplied
@@ -100,8 +100,9 @@ export async function POST(req: NextRequest) {
 
   const q_organization_job_titles = toArray(inBody.q_organization_job_titles)
 
-  // Keywords: single string per your spec (do NOT explode into chips)
-  const q_keywords = (typeof inBody.keywords === 'string' ? inBody.keywords.trim() : '') || ''
+  // Keywords: chips → single string for q_keywords
+  const keywordChips = toArray(inBody.keywords)
+  const q_keywords = keywordChips.join(' ').trim()
 
   const page = toPosInt(inBody.page, 1)
   const per_page = Math.min(25, toPosInt(inBody.per_page, 25)) // match people-search behavior
@@ -145,9 +146,8 @@ export async function POST(req: NextRequest) {
   organization_num_employees_ranges.forEach(r => params.append('organization_num_employees_ranges[]', r))
   q_organization_job_titles.forEach(t => params.append('q_organization_job_titles[]', t))
 
-  // Keywords (single string)
-  const orgKeywordTags = toArray(inBody.keywords)
-  orgKeywordTags.forEach(k => params.append('qOrganizationKeywordTags[]', k))
+  // Keywords (single string per docs)
+  if (q_keywords) params.set('q_keywords', q_keywords)
 
   // Exclude certain CRMs
   CRM_TECH_UIDS.forEach(uid => params.append('currently_not_using_any_of_technology_uids[]', uid))
