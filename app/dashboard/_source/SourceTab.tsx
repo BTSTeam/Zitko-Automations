@@ -493,7 +493,7 @@ Kind regards,`
         activeJobsOnly,
         activeJobsDays: activeJobsOnly ? daysNum : null,
         ...(activeJobsOnly && activeJobTitles.chips.length
-          ? { q_organization_job_titles: activeJobTitles.chips } // → q_organization_job_titles[]
+          ? { jobTitles: activeJobTitles.chips }
           : {}),
         page: 1,
         per_page: 25,
@@ -1024,11 +1024,11 @@ Kind regards,`
                   <div className="flex items-center justify-between gap-4">
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="font-semibold text-base truncate">{c.name || '—'}</span>
-                      {formatCityState(c) ? (
+                      {(c.exact_location || formatCityState(c)) ? (
                         <>
                           <span className="text-gray-300">|</span>
                           <span className="text-xs text-gray-600 truncate">
-                            {formatCityState(c)}
+                            {c.exact_location || formatCityState(c)}
                           </span>
                         </>
                       ) : null}
