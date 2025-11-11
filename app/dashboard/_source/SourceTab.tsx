@@ -578,7 +578,7 @@ Kind regards,`
 
       // Fetch job postings after company-search
       const orgIds = arr.map((c: any) => c.id || c.organization_id).filter(Boolean)
-      
+
       if (orgIds.length) {
         const jpRes = await fetch('/api/apollo/job-postings', {
           method: 'POST',
@@ -596,6 +596,14 @@ Kind regards,`
           )
         }
       }
+    } // ← this closes the try
+    catch (err: any) {
+      setCompanyError(err?.message || 'Unexpected error')
+    } finally {
+      setCompanySearchOpen(false)
+      setCompanyLoading(false)
+    }
+  }
   
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
