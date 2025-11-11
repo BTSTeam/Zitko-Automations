@@ -553,11 +553,16 @@ Kind regards,`
           body: JSON.stringify({ org_ids: orgIds, per_page: 10 }),
         })
         const jpJson = await jpRes.json()
-      
+
         if (jpRes.ok) {
+          // Preferred: server returns a keyed map
           let postingsByOrg: Record<string, any[]> = jpJson?.postingsByOrg || {}
-      
-          if ((!postingsByOrg || !Object.keys(postingsByOrg).length) && Array.isArray(jpJson?.organization_job_postings)) {
+
+          // Fallback: server returned a flat array (Apollo-style)
+          if (
+            (!postingsByOrg || !Object.keys(postingsByOrg).length) &&
+            Array.isArray(jpJson?.organization_job_postings)
+          ) {
             const grouped: Record<string, any[]> = {}
             for (const j of jpJson.organization_job_postings) {
               const key = (j.org_id || j.organization_id || j._organization_id || '').toString().trim()
@@ -567,7 +572,7 @@ Kind regards,`
             }
             postingsByOrg = grouped
           }
-      
+
           setCompanies(prev =>
             prev.map(c => ({
               ...c,
@@ -575,16 +580,14 @@ Kind regards,`
             })),
           )
         }
-      }
-      } // <-- close runCompanySearch here
-      
-      } catch (err: any) {
-        setCompanyError(err?.message || 'Unexpected error')
-      } finally {
-        setCompanySearchOpen(false)
-        setCompanyLoading(false)
-      }
-     
+      } // <-- closes the if (orgIds.length)
+    } catch (err: any) {
+      setCompanyError(err?.message || 'Unexpected error')
+    } finally {
+      setCompanySearchOpen(false)
+      setCompanyLoading(false)
+    } // <-- closes try/finally (end of runCompanySearch)
+
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
       if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) {
