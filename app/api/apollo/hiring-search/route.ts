@@ -11,7 +11,6 @@ if (!APOLLO_API_KEY) {
   throw new Error('APOLLO_API_KEY is not set')
 }
 
-// Default internal-hiring titles — you can tweak any time
 const DEFAULT_HIRING_TITLES = [
   'Talent Acquisition',
   'Talent Acquisition Manager',
@@ -68,21 +67,34 @@ export async function POST(req: NextRequest) {
       per_page,
     }
 
-    const resp = await fetch('https://api.apollo.io/api/v1/mixed_people/search', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${APOLLO_API_KEY}`,
+    const resp = await fetch(
+      'https://api.apollo.io/api/v1/mixed_people/search',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache',
+          'X-Api-Key': APOLLO_API_KEY, // <-- KEY CHANGE
+        },
+        body: JSON.stringify(apolloBody),
       },
-      body: JSON.stringify(apolloBody),
-    })
+    )
 
-    const data = await resp.json()
+    const text = await resp.text()
+    let data: any = {}
+    try {
+      data = text ? JSON.parse(text) : {}
+    } catch {
+      data = {}
+    }
 
     if (!resp.ok) {
       return NextResponse.json(
         {
-          error: data?.error || 'Apollo mixed_people search failed',
+          error:
+            data?.error ||
+            text ||
+            'Apollo mixed_people search failed',
           apolloStatus: resp.status,
           apolloBody,
         },
@@ -90,7 +102,6 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Apollo can return "people" or "contacts"
     const list: any[] =
       (Array.isArray(data.people) && data.people) ||
       (Array.isArray(data.contacts) && data.contacts) ||
@@ -99,13 +110,15 @@ export async function POST(req: NextRequest) {
     const hiringByOrg: Record<string, any[]> = {}
 
     for (const p of list) {
-      const orgId =
-        (p?.organization_id ??
-          p?.org_id ??
-          p?.account_id ??
-          p?.organization?.id ??
-          ''
-        ).toString().trim()
+      const orgId = (
+        p?.organization_id ??
+        p?.org_id ??
+        p?.account_id ??
+        p?.organization?.id ??
+        ''
+      )
+        .toString()
+        .trim()
 
       if (!orgId) continue
       if (!hiringByOrg[orgId]) hiringByOrg[orgId] = []
