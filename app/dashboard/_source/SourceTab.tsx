@@ -530,9 +530,7 @@ Kind regards,`
         state: c?.state ?? null,
         short_description: c?.short_description ?? null,
         job_postings: [],
-        hiring_people: Array.isArray(c?.hiring_people)
-          ? c.hiring_people.map((p: any) => transformToPerson(p))
-          : [],
+        hiring_people: [],
         news_articles: [],
       }))
 
@@ -541,7 +539,7 @@ Kind regards,`
       const orgIds = mapped.map(c => c.org_id).filter(Boolean)
 
       if (orgIds.length) {
-        const [jpRes, newsRes] = await Promise.all([
+        const [jpRes, newsRes, hiringRes] = await Promise.all([
           fetch('/api/apollo/job-postings', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -552,11 +550,17 @@ Kind regards,`
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ org_ids: orgIds, per_page: 2 }),
           }),
+          fetch('/api/apollo/hiring-search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ org_ids: orgIds, per_page: 3 }),
+          }),
         ])
 
-        const [jpJson, newsJson]: any[] = await Promise.all([
+        const [jpJson, newsJson, hiringJson]: any[] = await Promise.all([
           jpRes.json(),
           newsRes.json(),
+          hiringRes.json(),
         ])
 
         // ----- Job postings -----
@@ -627,6 +631,43 @@ Kind regards,`
                   ? [a.event_categories]
                   : null,
               })),
+            })),
+          )
+        }
+
+        // ----- Hiring contacts via mixed_people -----
+        if (hiringRes.ok) {
+          let hiringByOrg: Record<string, any[]> = hiringJson?.hiringByOrg || {}
+
+          // Fallback: if the route ever just relays raw Apollo data
+          if (
+            (!hiringByOrg || !Object.keys(hiringByOrg).length) &&
+            (Array.isArray(hiringJson?.people) || Array.isArray(hiringJson?.contacts))
+          ) {
+            const raw: any[] =
+              (Array.isArray(hiringJson?.people) && hiringJson.people) ||
+              (Array.isArray(hiringJson?.contacts) && hiringJson.contacts) ||
+              []
+            const grouped: Record<string, any[]> = {}
+            for (const p of raw) {
+              const key =
+                (p.organization_id ??
+                  p.org_id ??
+                  p.account_id ??
+                  p.organization?.id ??
+                  ''
+                ).toString().trim()
+              if (!key) continue
+              if (!grouped[key]) grouped[key] = []
+              grouped[key].push(p)
+            }
+            hiringByOrg = grouped
+          }
+
+          setCompanies(prev =>
+            prev.map(c => ({
+              ...c,
+              hiring_people: (hiringByOrg[c.org_id] ?? []).map((p: any) => transformToPerson(p)),
             })),
           )
         }
@@ -1247,7 +1288,7 @@ Kind regards,`
                       </div>
                       <ul className="text-sm">
                         {c.hiring_people?.length ? (
-                          c.hiring_people.map((p: any) => (
+                          c.hiring_people.map((p: HiringPerson) => (
                             <li key={p.id} className="px-3 py-2 border-t first:border-t-0 grid grid-cols-12">
                               <div className="col-span-5 truncate">{p.name || '—'}</div>
                               <div className="col-span-5 truncate">{p.title || '—'}</div>
