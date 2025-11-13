@@ -167,7 +167,51 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     return () => mo.disconnect()
   }, [])
 
-  // ------------ data fetch (unchanged except for brevity) ------------
+  // ---------- draggable state for text fields ----------
+  const [positions, setPositions] = useState<
+    Partial<Record<Exclude<PlaceholderKey, 'video'>, { x: number; y: number }>>
+  >({})
+
+  // Reset positions when template changes
+  useEffect(() => {
+    setPositions({})
+  }, [selectedTplId])
+
+  function makeDragHandlers(key: Exclude<PlaceholderKey, 'email' | 'phone' | 'video'>) {
+    return {
+      onMouseDown: (e: React.MouseEvent<HTMLDivElement>) => {
+        e.preventDefault()
+        e.stopPropagation()
+
+        const baseSpec = selectedTpl.layout[key]
+        if (!baseSpec) return
+
+        const startX = e.clientX
+        const startY = e.clientY
+
+        const current = positions[key] ?? { x: baseSpec.x, y: baseSpec.y }
+
+        const handleMove = (ev: MouseEvent) => {
+          const dx = (ev.clientX - startX) / scale
+          const dy = (ev.clientY - startY) / scale
+          setPositions(prev => ({
+            ...prev,
+            [key]: { x: current.x + dx, y: current.y + dy },
+          }))
+        }
+
+        const handleUp = () => {
+          window.removeEventListener('mousemove', handleMove)
+          window.removeEventListener('mouseup', handleUp)
+        }
+
+        window.addEventListener('mousemove', handleMove)
+        window.addEventListener('mouseup', handleUp)
+      },
+    }
+  }
+
+  // ------------ data fetch ------------
   async function fetchJob() {
     const id = jobId.trim()
     if (!id) return
@@ -463,8 +507,24 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
               }}
             >
               {(['title','location','salary','description','benefits','email','phone'] as const).map(key => {
-                const spec = selectedTpl.layout[key]
-                if (!spec) return null
+                const baseSpec = selectedTpl.layout[key]
+                if (!baseSpec) return null
+
+                const isDraggable = key !== 'email' && key !== 'phone'
+                const override = isDraggable
+                  ? positions[key as Exclude<PlaceholderKey, 'video'>]
+                  : undefined
+
+                const spec = {
+                  ...baseSpec,
+                  x: override?.x ?? baseSpec.x,
+                  y: override?.y ?? baseSpec.y,
+                }
+
+                const dragProps = isDraggable
+                  ? makeDragHandlers(key as Exclude<PlaceholderKey, 'email' | 'phone' | 'video'>)
+                  : {}
+
                 const value = (() => {
                   switch (key) {
                     case 'title': return job.title || '[JOB TITLE]'
@@ -472,8 +532,15 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                     case 'salary': return job.salary || '[SALARY]'
                     case 'description': return job.description || '[SHORT DESCRIPTION]'
                     case 'benefits': {
-                      const tx = (Array.isArray(job.benefits) ? job.benefits.join('\n') : job.benefits) || '[BENEFIT 1]\n[BENEFIT 2]\n[BENEFIT 3]'
-                      return tx.split('\n').map(l => `• ${l}`).join('\n\n')
+                      const tx =
+                        (Array.isArray(job.benefits)
+                          ? job.benefits.join('\n')
+                          : job.benefits) ||
+                        '[BENEFIT 1]\n[BENEFIT 2]\n[BENEFIT 3]'
+                      return tx
+                        .split('\n')
+                        .map(l => `• ${l}`)
+                        .join('\n\n')
                     }
                     case 'email': return job.email || '[EMAIL]'
                     case 'phone': return job.phone || '[PHONE NUMBER]'
@@ -481,22 +548,23 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                 })()
 
                 if (key === 'benefits') {
-                // Normalise to array of lines
-                let benefitsLines: string[] = Array.isArray(job.benefits)
-                  ? (job.benefits as string[]).map(s => String(s).trim()).filter(Boolean)
-                  : String(job.benefits || '')
-                      .split('\n')
-                      .map(s => s.trim())
-                      .filter(Boolean)
-              
-                // 🔧 Fallback placeholders if nothing provided
-                if (benefitsLines.length === 0) {
-                  benefitsLines = ['[BENEFIT 1]', '[BENEFIT 2]', '[BENEFIT 3]']
-                }
+                  // Normalise to array of lines
+                  let benefitsLines: string[] = Array.isArray(job.benefits)
+                    ? (job.benefits as string[]).map(s => String(s).trim()).filter(Boolean)
+                    : String(job.benefits || '')
+                        .split('\n')
+                        .map(s => s.trim())
+                        .filter(Boolean)
+
+                  // Fallback placeholders if nothing provided
+                  if (benefitsLines.length === 0) {
+                    benefitsLines = ['[BENEFIT 1]', '[BENEFIT 2]', '[BENEFIT 3]']
+                  }
 
                   return (
                     <div
                       key={key}
+                      {...dragProps}
                       style={{
                         position: 'absolute',
                         left: spec.x * scale,
@@ -509,6 +577,8 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                         color: 'white',
                         wordBreak: 'break-word',
                         overflowWrap: 'anywhere',
+                        cursor: isDraggable ? 'move' : 'default',
+                        userSelect: 'none',
                       }}
                     >
                       {benefitsLines.map((line, i) => (
@@ -531,6 +601,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                 return (
                   <div
                     key={key}
+                    {...dragProps}
                     style={{
                       position: 'absolute',
                       left: spec.x * scale,
@@ -545,6 +616,8 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                       fontWeight: key === 'title' ? 700 : 500,
                       wordBreak: 'break-word',
                       overflowWrap: 'anywhere',
+                      cursor: isDraggable ? 'move' : 'default',
+                      userSelect: 'none',
                     }}
                   >
                     {value}
