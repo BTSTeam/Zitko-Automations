@@ -4,101 +4,164 @@ export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
 import { NextRequest, NextResponse } from 'next/server'
+import { getSession } from '@/lib/session'
+import { refreshApolloAccessToken } from '@/lib/apolloRefresh'
 
-type PostBody = {
+const APOLLO_NEWS_URL = 'https://api.apollo.io/api/v1/news_articles/search'
+
+type InBody = {
   org_ids?: string[]
   per_page?: number
 }
 
+async function buildAuthHeaders() {
+  const session = await getSession()
+  const accessToken: string | undefined = session.tokens?.apolloAccessToken || undefined
+  const apiKey: string | undefined = process.env.APOLLO_API_KEY || undefined
+
+  if (!accessToken && !apiKey) {
+    return {
+      error: NextResponse.json(
+        { error: 'Not authenticated: no Apollo OAuth token or APOLLO_API_KEY present' },
+        { status: 401 },
+      ),
+    }
+  }
+
+  const headers: Record<string, string> = {
+    accept: 'application/json',
+    'Cache-Control': 'no-cache',
+    'Content-Type': 'application/json',
+  }
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`
+  else headers['X-Api-Key'] = apiKey!
+
+  return { headers, accessToken, userKey: (session.user?.email || session.sessionId || '') }
+}
+
 export async function POST(req: NextRequest) {
+  const WANT_DEBUG =
+    (process.env.SOURCING_DEBUG_APOLLO || '').toLowerCase() === 'true' ||
+    req.headers.get('x-debug-apollo') === '1'
+
+  let body: InBody = {}
+  try { body = await req.json() } catch {}
+
+  const orgIds: string[] = Array.isArray(body.org_ids)
+    ? body.org_ids.map(s => (s || '').trim()).filter(Boolean)
+    : []
+
+  if (!orgIds.length) {
+    return NextResponse.json({ error: 'org_ids[] is required' }, { status: 400 })
+  }
+
+  const per_page = Math.min(10, Math.max(1, Number(body.per_page || 2) || 2))
+
+  // Auth
+  const auth = await buildAuthHeaders()
+  if ('error' in auth) return auth.error
+  let { headers, accessToken, userKey } = auth
+
+  const tryRefresh = async () => {
+    if (accessToken && userKey) {
+      const refreshed = await refreshApolloAccessToken(userKey)
+      if (refreshed) {
+        const s2 = await getSession()
+        accessToken = s2.tokens?.apolloAccessToken
+        const h: Record<string, string> = {
+          accept: 'application/json',
+          'Cache-Control': 'no-cache',
+          'Content-Type': 'application/json',
+        }
+        if (accessToken) h.Authorization = `Bearer ${accessToken}`
+        else if (process.env.APOLLO_API_KEY) h['X-Api-Key'] = process.env.APOLLO_API_KEY
+        headers = h
+      }
+    }
+    return headers
+  }
+
   try {
-    const { org_ids, per_page }: PostBody = await req.json()
-
-    if (!org_ids || !org_ids.length) {
-      return NextResponse.json(
-        { error: 'org_ids array is required' },
-        { status: 400 },
-      )
+    const apolloBody = {
+      organization_ids: orgIds,
+      page: 1,
+      per_page,
     }
 
-    const apiKey = process.env.APOLLO_API_KEY
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: 'Missing APOLLO_API_KEY' },
-        { status: 500 },
-      )
-    }
-
-    // Date range: today back 90 days (YYYY-MM-DD)
-    const now = new Date()
-    const maxDate = now.toISOString().split('T')[0]
-    const past = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
-    const minDate = past.toISOString().split('T')[0]
-
-    const searchParams = new URLSearchParams({
-      'published_at[min]': minDate,
-      'published_at[max]': maxDate,
-      page: '1',
-      per_page: String(per_page ?? 2),
-    })
-
-    const url = `https://api.apollo.io/api/v1/news_articles/search?${searchParams.toString()}`
-
-    const apolloRes = await fetch(url, {
+    let resp = await fetch(APOLLO_NEWS_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-cache',
-        'X-Api-Key': process.env.APOLLO_API_KEY!,
-      },
-      body: JSON.stringify({
-        organization_ids: org_ids,
-      }),
+      headers,
+      body: JSON.stringify(apolloBody),
+      cache: 'no-store',
     })
+    if (resp.status === 401 || resp.status === 403) {
+      const h2 = await tryRefresh()
+      resp = await fetch(APOLLO_NEWS_URL, {
+        method: 'POST',
+        headers: h2,
+        body: JSON.stringify(apolloBody),
+        cache: 'no-store',
+      })
+    }
 
-    if (!apolloRes.ok) {
-      const text = await apolloRes.text()
+    const text = await resp.text().catch(() => '')
+    let data: any = {}
+    try { data = text ? JSON.parse(text) : {} } catch {}
+
+    if (!resp.ok) {
       return NextResponse.json(
         {
-          error: `Apollo news_articles/search failed – ${apolloRes.status}`,
-          details: text,
+          error: `Apollo news_articles/search failed – ${resp.status}`,
+          details: text.slice(0, 1200),
         },
-        { status: apolloRes.status },
+        { status: resp.status },
       )
     }
 
-    const apolloJson: any = await apolloRes.json()
-
-    // Normalise / group by organisation
-    const raw: any[] =
-      (Array.isArray(apolloJson.news_articles) && apolloJson.news_articles) ||
-      (Array.isArray(apolloJson.articles) && apolloJson.articles) ||
+    // Flatten article list
+    const rawArticles: any[] =
+      (Array.isArray(data.news_articles) && data.news_articles) ||
+      (Array.isArray(data.articles) && data.articles) ||
       []
 
     const articlesByOrg: Record<string, any[]> = {}
-    for (const a of raw) {
-      const key = (
-        a.organization_id ||
-        a.org_id ||
-        a.account_id ||
-        ''
-      )
-        .toString()
-        .trim()
-      if (!key) continue
-      if (!articlesByOrg[key]) articlesByOrg[key] = []
-      articlesByOrg[key].push(a)
+
+    for (const a of rawArticles) {
+      // IDs can live in several places; also Apollo gives organization_ids[]
+      const primaryId =
+        (a?.organization_id ??
+          a?.org_id ??
+          a?.account_id ??
+          '')?.toString().trim()
+
+      const extraIds: string[] = Array.isArray(a.organization_ids)
+        ? a.organization_ids.map((x: any) => (x ?? '').toString().trim()).filter(Boolean)
+        : []
+
+      const allIds = [...extraIds, primaryId].filter(Boolean)
+
+      for (const oid of allIds) {
+        if (!articlesByOrg[oid]) articlesByOrg[oid] = []
+        articlesByOrg[oid].push(a)
+      }
     }
 
     return NextResponse.json({
-      apollo: apolloJson,
-      articlesByOrg,
+      apollo: data,     // raw, for debugging
+      articlesByOrg,   // what SourceTab.tsx consumes
+      debug: WANT_DEBUG ? { orgIds, count: rawArticles.length } : undefined,
     })
-  } catch (err) {
-    console.error(err)
+  } catch (err: any) {
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Server error in news-articles route', details: String(err) },
       { status: 500 },
     )
   }
+}
+
+export async function GET() {
+  return NextResponse.json(
+    { error: 'Use POST /api/apollo/news-articles with a list of org_ids.' },
+    { status: 405 },
+  )
 }
