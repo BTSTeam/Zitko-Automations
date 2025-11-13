@@ -1143,219 +1143,240 @@ Kind regards,`
         <div className="rounded-2xl border bg-white shadow-sm">
           {companies.length > 0 ? (
             <ul className="divide-y divide-gray-200">
-              {companies.map((c: Company) => (
-                <li key={c.id} className="p-4">
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="font-semibold text-base truncate">{c.name || '—'}</span>
-                      {(c.exact_location || formatCityState(c)) ? (
-                        <>
-                          <span className="text-gray-300">|</span>
-                          <span className="text-xs text-gray-600 truncate">
-                            {c.exact_location || formatCityState(c)}
-                          </span>
-                        </>
-                      ) : null}
-                    </div>
+              {companies.map((c: Company) => {
+                 const hasHiringContacts = (c.hiring_people?.length ?? 0) > 0
+                 const hasActiveJobs = (c.job_postings?.length ?? 0) > 0
+                 const showAlertIcon = hasActiveJobs && !hasHiringContacts
+               
+                 return (
+                   <li key={c.id} className="p-4">
+                     <div className="flex items-center justify-between gap-4">
+                       <div className="flex items-center gap-3 min-w-0">
+                         {/* Info icon: glows green when jobs exist but no hiring contacts */}
+                         <span
+                           className={
+                             'inline-flex items-center justify-center h-5 w-5 rounded-full border text-[10px] font-semibold ' +
+                             (showAlertIcon
+                               ? 'border-emerald-400 text-emerald-600 bg-emerald-50 shadow-[0_0_6px_rgba(16,185,129,0.8)]'
+                               : 'border-gray-300 text-gray-300 bg-white')
+                           }
+                           title={
+                             showAlertIcon
+                               ? 'Search results for this company have identified active job postings with potentially no internal hiring contacts to support with them.'
+                               : ''
+                           }
+                         >
+                           i
+                         </span>
+               
+                         <span className="font-semibold text-base truncate">{c.name || '—'}</span>
+                         {(c.exact_location || formatCityState(c)) ? (
+                           <>
+                             <span className="text-gray-300">|</span>
+                             <span className="text-xs text-gray-600 truncate">
+                               {c.exact_location || formatCityState(c)}
+                             </span>
+                           </>
+                         ) : null}
+                       </div>
 
-                    <div className="shrink-0 flex items-center gap-3">
-                      <a
-                        href={c.linkedin_url || undefined}
-                        target={c.linkedin_url ? '_blank' : undefined}
-                        rel={c.linkedin_url ? 'noreferrer' : undefined}
-                        className={c.linkedin_url ? '' : 'opacity-30 pointer-events-none cursor-default'}
-                        title={c.linkedin_url ? 'Open LinkedIn' : 'LinkedIn not available'}
-                      >
-                        <IconLinkedIn />
-                      </a>
-                      <a
-                        href={c.website_url || undefined}
-                        target={c.website_url ? '_blank' : undefined}
-                        rel={c.website_url ? 'noreferrer' : undefined}
-                        className={c.website_url ? 'text-gray-700 hover:text-gray-900' : 'opacity-30 pointer-events-none cursor-default'}
-                        title={c.website_url ? 'Open company website' : 'Company website not available'}
-                      >
-                        <IconGlobe muted={!c.website_url} />
-                      </a>
-                    </div>
-                  </div>
-
-                  <div className="mt-2 flex items-start justify-between">
-                    <div />
-                    <div className="shrink-0 flex items-center gap-6 text-sm">
-                      <button
-                        type="button"
-                        onClick={() => toggleJobPostings(c.id)}
-                        className="text-gray-700 hover:text-gray-900 inline-flex items-center gap-1"
-                      >
-                        Job postings
-                        <svg width="12" height="12" viewBox="0 0 20 20" className={expandedJobs.has(c.id) ? 'rotate-180 transition-transform' : 'transition-transform'}>
-                          <path fill="currentColor" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z"/>
-                        </svg>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => toggleHiringPeople(c.id)}
-                        className="text-gray-700 hover:text-gray-900 inline-flex items-center gap-1"
-                      >
-                        Hiring contacts
-                        <svg width="12" height="12" viewBox="0 0 20 20" className={expandedHiring.has(c.id) ? 'rotate-180 transition-transform' : 'transition-transform'}>
-                          <path fill="currentColor" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z"/>
-                        </svg>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => toggleNewsArticles(c.id)}
-                        className="text-gray-700 hover:text-gray-900 inline-flex items-center gap-1"
-                      >
-                        News articles
-                        <svg width="12" height="12" viewBox="0 0 20 20" className={expandedNews.has(c.id) ? 'rotate-180 transition-transform' : 'transition-transform'}>
-                          <path fill="currentColor" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z"/>
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-
-                  {expandedJobs.has(c.id) && (
-                    <div className="mt-3 rounded-xl border bg-gray-50 overflow-hidden">
-                      <div className="px-3 py-2 border-b text-xs text-gray-500 grid grid-cols-12">
-                        <div className="col-span-6">Title</div>
-                        <div className="col-span-3">Location</div>
-                        <div className="col-span-2 text-right">Posted</div>
-                        <div className="col-span-1 text-right">Link</div>
+                      <div className="shrink-0 flex items-center gap-3">
+                        <a
+                          href={c.linkedin_url || undefined}
+                          target={c.linkedin_url ? '_blank' : undefined}
+                          rel={c.linkedin_url ? 'noreferrer' : undefined}
+                          className={c.linkedin_url ? '' : 'opacity-30 pointer-events-none cursor-default'}
+                          title={c.linkedin_url ? 'Open LinkedIn' : 'LinkedIn not available'}
+                        >
+                          <IconLinkedIn />
+                        </a>
+                        <a
+                          href={c.website_url || undefined}
+                          target={c.website_url ? '_blank' : undefined}
+                          rel={c.website_url ? 'noreferrer' : undefined}
+                          className={c.website_url ? 'text-gray-700 hover:text-gray-900' : 'opacity-30 pointer-events-none cursor-default'}
+                          title={c.website_url ? 'Open company website' : 'Company website not available'}
+                        >
+                          <IconGlobe muted={!c.website_url} />
+                        </a>
                       </div>
-                      <div className="max-h-60 overflow-auto">
-                        <ul className="text-xs">
-                          {c.job_postings?.length ? (
-                            [...c.job_postings]
-                              .sort((a: any, b: any) => {
-                                const da = a?.posted_at ? new Date(a.posted_at).getTime() : 0
-                                const db = b?.posted_at ? new Date(b.posted_at).getTime() : 0
-                                return db - da
-                              })
-                              .map((j: JobPosting) => {
-                                const location =
-                                  [j.city, j.state, j.country].filter(Boolean).join(', ') || '—'
+                    </div>
 
-                                return (
-                                  <li
-                                    key={j.id}
-                                    className="px-3 py-2 border-t first:border-t-0 grid grid-cols-12 items-center"
-                                  >
-                                    <div className="col-span-6 truncate">
-                                      {j.title || 'Untitled job'}
-                                    </div>
-                                    <div className="col-span-3 truncate">
-                                      {location}
-                                    </div>
-                                    <div className="col-span-2 text-right">
-                                      {j.posted_at
-                                        ? new Date(j.posted_at).toLocaleDateString()
-                                        : '—'}
-                                    </div>
-                                    <div className="col-span-1 text-right">
-                                      {j.url ? (
-                                        <a
-                                          href={j.url}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                          className="inline-flex items-center justify-center text-gray-700 hover:text-gray-900"
-                                          title="Open job posting"
-                                        >
-                                          <IconGlobe />
-                                        </a>
-                                      ) : (
-                                        '—'
-                                      )}
-                                    </div>
-                                  </li>
-                                )
-                              })
+                    <div className="mt-2 flex items-start justify-between">
+                      <div />
+                      <div className="shrink-0 flex items-center gap-6 text-sm">
+                        <button
+                          type="button"
+                          onClick={() => toggleJobPostings(c.id)}
+                          className="text-gray-700 hover:text-gray-900 inline-flex items-center gap-1"
+                        >
+                          Job postings
+                          <svg width="12" height="12" viewBox="0 0 20 20" className={expandedJobs.has(c.id) ? 'rotate-180 transition-transform' : 'transition-transform'}>
+                            <path fill="currentColor" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z"/>
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => toggleHiringPeople(c.id)}
+                          className="text-gray-700 hover:text-gray-900 inline-flex items-center gap-1"
+                        >
+                          Hiring contacts
+                          <svg width="12" height="12" viewBox="0 0 20 20" className={expandedHiring.has(c.id) ? 'rotate-180 transition-transform' : 'transition-transform'}>
+                            <path fill="currentColor" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z"/>
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => toggleNewsArticles(c.id)}
+                          className="text-gray-700 hover:text-gray-900 inline-flex items-center gap-1"
+                        >
+                          News articles
+                          <svg width="12" height="12" viewBox="0 0 20 20" className={expandedNews.has(c.id) ? 'rotate-180 transition-transform' : 'transition-transform'}>
+                            <path fill="currentColor" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z"/>
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+
+                    {expandedJobs.has(c.id) && (
+                      <div className="mt-3 rounded-xl border bg-gray-50 overflow-hidden">
+                        <div className="px-3 py-2 border-b text-xs text-gray-500 grid grid-cols-12">
+                          <div className="col-span-6">Title</div>
+                          <div className="col-span-3">Location</div>
+                          <div className="col-span-2 text-right">Posted</div>
+                          <div className="col-span-1 text-right">Link</div>
+                        </div>
+                        <div className="max-h-60 overflow-auto">
+                          <ul className="text-xs">
+                            {c.job_postings?.length ? (
+                              [...c.job_postings]
+                                .sort((a: any, b: any) => {
+                                  const da = a?.posted_at ? new Date(a.posted_at).getTime() : 0
+                                  const db = b?.posted_at ? new Date(b.posted_at).getTime() : 0
+                                  return db - da
+                                })
+                                .map((j: JobPosting) => {
+                                  const location =
+                                    [j.city, j.state, j.country].filter(Boolean).join(', ') || '—'
+
+                                  return (
+                                    <li
+                                      key={j.id}
+                                      className="px-3 py-2 border-t first:border-t-0 grid grid-cols-12 items-center"
+                                    >
+                                      <div className="col-span-6 truncate">
+                                        {j.title || 'Untitled job'}
+                                      </div>
+                                      <div className="col-span-3 truncate">
+                                        {location}
+                                      </div>
+                                      <div className="col-span-2 text-right">
+                                        {j.posted_at
+                                          ? new Date(j.posted_at).toLocaleDateString()
+                                          : '—'}
+                                      </div>
+                                      <div className="col-span-1 text-right">
+                                        {j.url ? (
+                                          <a
+                                            href={j.url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="text-orange-600 hover:underline"
+                                          >
+                                            view
+                                          </a>
+                                        ) : (
+                                          '—'
+                                        )}
+                                      </div>
+                                    </li>
+                                  )
+                                })
+                            ) : (
+                              <li className="px-3 py-2 text-xs text-gray-500">No job postings.</li>
+                            )}
+                          </ul>
+                        </div>
+                      </div>
+                    )}
+
+                    {expandedHiring.has(c.id) && (
+                      <div className="mt-3 rounded-xl border bg-gray-50 overflow-hidden">
+                        <div className="px-3 py-2 border-b text-xs text-gray-500 grid grid-cols-12">
+                          <div className="col-span-5">Name</div>
+                          <div className="col-span-5">Title</div>
+                          <div className="col-span-2 text-right">LinkedIn</div>
+                        </div>
+                        <ul className="text-xs">
+                          {c.hiring_people?.length ? (
+                            c.hiring_people.map((p: HiringPerson) => (
+                              <li key={p.id} className="px-3 py-2 border-t first:border-t-0 grid grid-cols-12">
+                                <div className="col-span-5 truncate">{p.name || '—'}</div>
+                                <div className="col-span-5 truncate">{p.title || '—'}</div>
+                                <div className="col-span-2 text-right">
+                                  {p.linkedin_url ? (
+                                    <a className="text-orange-600 hover:underline" href={p.linkedin_url} target="_blank" rel="noreferrer">
+                                      view
+                                    </a>
+                                  ) : (
+                                    '—'
+                                  )}
+                                </div>
+                              </li>
+                            ))
                           ) : (
-                            <li className="px-3 py-2 text-xs text-gray-500">No job postings.</li>
+                            <li className="px-3 py-2 text-xs text-gray-500">No hiring contacts.</li>
                           )}
                         </ul>
                       </div>
-                    </div>
-                  )}
+                    )}
 
-                  {expandedHiring.has(c.id) && (
-                    <div className="mt-3 rounded-xl border bg-gray-50 overflow-hidden">
-                      <div className="px-3 py-2 border-b text-xs text-gray-500 grid grid-cols-12">
-                        <div className="col-span-5">Name</div>
-                        <div className="col-span-5">Title</div>
-                        <div className="col-span-2 text-right">LinkedIn</div>
+                    {expandedNews.has(c.id) && (
+                      <div className="mt-3 rounded-xl border bg-gray-50 overflow-hidden">
+                        <div className="px-3 py-2 border-b text-xs text-gray-500 grid grid-cols-12">
+                          <div className="col-span-6">Title</div>
+                          <div className="col-span-3">Category</div>
+                          <div className="col-span-2">Published</div>
+                          <div className="col-span-1 text-right">Link</div>
+                        </div>
+                        <ul className="text-xs">
+                          {c.news_articles?.length ? (
+                            c.news_articles.map((n: NewsArticle) => (
+                              <li key={n.id} className="px-3 py-2 border-t first:border-t-0 grid grid-cols-12">
+                                <div className="col-span-6 truncate">{n.title || '—'}</div>
+                                <div className="col-span-3 truncate">
+                                  {n.event_categories && n.event_categories.length
+                                    ? n.event_categories.join(', ')
+                                    : '—'}
+                                </div>
+                                <div className="col-span-2 truncate">
+                                  {n.published_at ? new Date(n.published_at).toLocaleDateString() : '—'}
+                                </div>
+                                <div className="col-span-1 text-right">
+                                  {n.url ? (
+                                    <a
+                                      className="text-orange-600 hover:underline"
+                                      href={n.url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                    >
+                                      view
+                                    </a>
+                                  ) : (
+                                    '—'
+                                  )}
+                                </div>
+                              </li>
+                            ))
+                          ) : (
+                            <li className="px-3 py-2 text-xs text-gray-500">No news articles.</li>
+                          )}
+                        </ul>
                       </div>
-                      <ul className="text-xs">
-                        {c.hiring_people?.length ? (
-                          c.hiring_people.map((p: HiringPerson) => (
-                            <li key={p.id} className="px-3 py-2 border-t first:border-t-0 grid grid-cols-12">
-                              <div className="col-span-5 truncate">{p.name || '—'}</div>
-                              <div className="col-span-5 truncate">{p.title || '—'}</div>
-                              <div className="col-span-2 text-right">
-                                {p.linkedin_url ? (
-                                  <a className="text-orange-600 hover:underline" href={p.linkedin_url} target="_blank" rel="noreferrer">
-                                    view
-                                  </a>
-                                ) : (
-                                  '—'
-                                )}
-                              </div>
-                            </li>
-                          ))
-                        ) : (
-                          <li className="px-3 py-2 text-xs text-gray-500">No hiring contacts.</li>
-                        )}
-                      </ul>
-                    </div>
-                  )}
-
-                  {expandedNews.has(c.id) && (
-                    <div className="mt-3 rounded-xl border bg-gray-50 overflow-hidden">
-                      <div className="px-3 py-2 border-b text-xs text-gray-500 grid grid-cols-12">
-                        <div className="col-span-6">Title</div>
-                        <div className="col-span-3">Category</div>
-                        <div className="col-span-2">Published</div>
-                        <div className="col-span-1 text-right">Link</div>
-                      </div>
-                      <ul className="text-xs">
-                        {c.news_articles?.length ? (
-                          c.news_articles.map((n: NewsArticle) => (
-                            <li key={n.id} className="px-3 py-2 border-t first:border-t-0 grid grid-cols-12">
-                              <div className="col-span-6 truncate">{n.title || '—'}</div>
-                              <div className="col-span-3 truncate">
-                                {n.event_categories && n.event_categories.length
-                                  ? n.event_categories.join(', ')
-                                  : '—'}
-                              </div>
-                              <div className="col-span-2 truncate">
-                                {n.published_at ? new Date(n.published_at).toLocaleDateString() : '—'}
-                              </div>
-                              <div className="col-span-1 text-right">
-                                {n.url ? (
-                                  <a
-                                    className="inline-flex items-center justify-center text-gray-700 hover:text-gray-900"
-                                    href={n.url}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    title="Open article"
-                                  >
-                                    <IconGlobe />
-                                  </a>
-                                ) : (
-                                  '—'
-                                )}
-                              </div>
-                            </li>
-                          ))
-                        ) : (
-                          <li className="px-3 py-2 text-xs text-gray-500">No news articles.</li>
-                        )}
-                      </ul>
-                    </div>
-                  )}
-                </li>
-              ))}
+                    )}
+                  </li>
+                )
+              })}
             </ul>
           ) : (
             <p className="p-6 text-sm text-gray-500">No companies found.</p>
