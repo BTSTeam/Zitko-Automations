@@ -1157,7 +1157,7 @@ Kind regards,`
                            className={
                              'inline-flex items-center justify-center h-5 w-5 rounded-full border text-[10px] font-semibold ' +
                              (showAlertIcon
-                               ? 'border-emerald-400 text-emerald-600 bg-emerald-50 shadow-[0_0_6px_rgba(16,185,129,0.8)]'
+                               'border-[#F7941D] text-[#F7941D] bg-orange-50 shadow-[0_0_6px_rgba(247,148,29,0.85)]'
                                : 'border-gray-300 text-gray-300 bg-white')
                            }
                            title={
@@ -1208,30 +1208,60 @@ Kind regards,`
                         <button
                           type="button"
                           onClick={() => toggleJobPostings(c.id)}
-                          className="text-gray-700 hover:text-gray-900 inline-flex items-center gap-1"
+                          className={
+                            'inline-flex items-center gap-1 ' +
+                            (expandedJobs.has(c.id)
+                              ? 'text-[#F7941D]'
+                              : 'text-gray-700 hover:text-gray-900')
+                          }
                         >
                           Job postings
-                          <svg width="12" height="12" viewBox="0 0 20 20" className={expandedJobs.has(c.id) ? 'rotate-180 transition-transform' : 'transition-transform'}>
+                          <svg
+                            width="12"
+                            height="12"
+                            viewBox="0 0 20 20"
+                            className={expandedJobs.has(c.id) ? 'rotate-180 transition-transform' : 'transition-transform'}
+                          >
                             <path fill="currentColor" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z"/>
                           </svg>
                         </button>
                         <button
                           type="button"
                           onClick={() => toggleHiringPeople(c.id)}
-                          className="text-gray-700 hover:text-gray-900 inline-flex items-center gap-1"
+                          className={
+                            'inline-flex items-center gap-1 ' +
+                            (expandedHiring.has(c.id)
+                              ? 'text-[#F7941D]'
+                              : 'text-gray-700 hover:text-gray-900')
+                          }
                         >
                           Hiring contacts
-                          <svg width="12" height="12" viewBox="0 0 20 20" className={expandedHiring.has(c.id) ? 'rotate-180 transition-transform' : 'transition-transform'}>
+                          <svg
+                            width="12"
+                            height="12"
+                            viewBox="0 0 20 20"
+                            className={expandedHiring.has(c.id) ? 'rotate-180 transition-transform' : 'transition-transform'}
+                          >
                             <path fill="currentColor" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z"/>
                           </svg>
                         </button>
                         <button
                           type="button"
                           onClick={() => toggleNewsArticles(c.id)}
-                          className="text-gray-700 hover:text-gray-900 inline-flex items-center gap-1"
+                          className={
+                            'inline-flex items-center gap-1 ' +
+                            (expandedNews.has(c.id)
+                              ? 'text-[#F7941D]'
+                              : 'text-gray-700 hover:text-gray-900')
+                          }
                         >
                           News articles
-                          <svg width="12" height="12" viewBox="0 0 20 20" className={expandedNews.has(c.id) ? 'rotate-180 transition-transform' : 'transition-transform'}>
+                          <svg
+                            width="12"
+                            height="12"
+                            viewBox="0 0 20 20"
+                            className={expandedNews.has(c.id) ? 'rotate-180 transition-transform' : 'transition-transform'}
+                          >
                             <path fill="currentColor" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z"/>
                           </svg>
                         </button>
