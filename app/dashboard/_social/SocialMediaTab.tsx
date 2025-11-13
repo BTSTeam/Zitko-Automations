@@ -110,6 +110,16 @@ function extractEmailPhoneFallback(textOrHtml: string) {
   return { email: emailMatch?.[0] ?? '', phone: phoneBest ?? '' }
 }
 
+const FONT_FIELDS: Exclude<PlaceholderKey, 'video'>[] = [
+  'title',
+  'location',
+  'salary',
+  'description',
+  'benefits',
+  'email',
+  'phone',
+]
+
 // ---------- main ----------
 export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
   const [selectedTplId, setSelectedTplId] = useState(TEMPLATES[0].id)
@@ -154,7 +164,6 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     const root = recorderWrapRef.current
     if (!root) return
 
-    // Make “Record” / “Recording…” w/ red text.
     const mo = new MutationObserver(() => {
       const btn = root.querySelector<HTMLButtonElement>('button[data-recorder-start]')
       if (btn) {
@@ -172,9 +181,21 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     Partial<Record<Exclude<PlaceholderKey, 'video'>, { x: number; y: number }>>
   >({})
 
-  // Reset positions when template changes
+  // ---------- draggable state for video ----------
+  const [videoPos, setVideoPos] = useState<{ x: number; y: number } | null>(null)
+
+  // ---------- font size overrides ----------
+  const [fontSizes, setFontSizes] = useState<
+    Partial<Record<Exclude<PlaceholderKey, 'video'>, number>>
+  >({})
+  const [activeFontField, setActiveFontField] =
+    useState<Exclude<PlaceholderKey, 'video'>>('title')
+
+  // Reset layout overrides when template changes
   useEffect(() => {
     setPositions({})
+    setVideoPos(null)
+    setFontSizes({})
   }, [selectedTplId])
 
   function makeDragHandlers(key: Exclude<PlaceholderKey, 'email' | 'phone' | 'video'>) {
@@ -211,6 +232,43 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     }
   }
 
+  function handleVideoDragMouseDown(e: React.MouseEvent<HTMLDivElement>) {
+    e.preventDefault()
+    e.stopPropagation()
+
+    const baseSpec = selectedTpl.layout.video
+    if (!baseSpec) return
+
+    const startX = e.clientX
+    const startY = e.clientY
+    const current = videoPos ?? { x: baseSpec.x, y: baseSpec.y }
+
+    const handleMove = (ev: MouseEvent) => {
+      const dx = (ev.clientX - startX) / scale
+      const dy = (ev.clientY - startY) / scale
+      setVideoPos({ x: current.x + dx, y: current.y + dy })
+    }
+
+    const handleUp = () => {
+      window.removeEventListener('mousemove', handleMove)
+      window.removeEventListener('mouseup', handleUp)
+    }
+
+    window.addEventListener('mousemove', handleMove)
+    window.addEventListener('mouseup', handleUp)
+  }
+
+  function nudgeFontSize(delta: number) {
+    const key = activeFontField
+    const baseSpec = selectedTpl.layout[key]
+    if (!baseSpec) return
+    setFontSizes(prev => {
+      const current = prev[key] ?? baseSpec.fontSize ?? 18
+      const next = Math.min(80, Math.max(10, current + delta))
+      return { ...prev, [key]: next }
+    })
+  }
+
   // ------------ data fetch ------------
   async function fetchJob() {
     const id = jobId.trim()
@@ -224,13 +282,21 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
 
       let extracted: any = {}
       try {
-        const ai = await fetch('/api/job/summarize', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ description: publicDesc }) })
+        const ai = await fetch('/api/job/summarize', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ description: publicDesc }),
+        })
         if (ai.ok) extracted = await ai.json()
       } catch {}
 
       let shortDesc = ''
       try {
-        const teaser = await fetch('/api/job/short-description', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ description: publicDesc }) })
+        const teaser = await fetch('/api/job/short-description', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ description: publicDesc }),
+        })
         if (teaser.ok) shortDesc = (await teaser.json()).description ?? ''
       } catch {}
 
@@ -247,7 +313,9 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
         location: extracted?.location ?? data?.location ?? '',
         salary: extracted?.salary ?? data?.salary ?? '',
         description: shortDesc,
-        benefits: Array.isArray(extracted?.benefits) ? extracted.benefits.join('\n') : String(data?.benefits ?? ''),
+        benefits: Array.isArray(extracted?.benefits)
+          ? extracted.benefits.join('\n')
+          : String(data?.benefits ?? ''),
         email: contactEmail || data?.email || '',
         phone: contactPhone || data?.phone || '',
       })
@@ -287,7 +355,9 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
       templateId: selectedTplId,
     }
     const res = await fetch('/api/job/download-mp4', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
     })
     const contentType = res.headers.get('content-type') || ''
     const isJson = contentType.includes('application/json')
@@ -341,11 +411,15 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
             <button
               key={t.id}
               onClick={() => setSelectedTplId(t.id)}
-              className={`relative rounded-lg overflow-hidden border ${selectedTplId === t.id ? 'ring-2 ring-amber-500' : 'border-gray-200'} hover:opacity-90`}
+              className={`relative rounded-lg overflow-hidden border ${
+                selectedTplId === t.id ? 'ring-2 ring-amber-500' : 'border-gray-200'
+              } hover:opacity-90`}
               title={t.name}
             >
               <img src={t.imageUrl} alt={t.name} className="h-28 w-28 object-cover" />
-              <span className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs px-1 py-0.5">{t.name}</span>
+              <span className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs px-1 py-0.5">
+                {t.name}
+              </span>
             </button>
           ))}
         </div>
@@ -365,7 +439,10 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
             >
               <h3 className="font-semibold text-lg">Video record</h3>
               <svg
-                width="16" height="16" viewBox="0 0 20 20" fill="currentColor"
+                width="16"
+                height="16"
+                viewBox="0 0 20 20"
+                fill="currentColor"
                 className={`${videoOpen ? 'rotate-180' : ''} transition-transform`}
               >
                 <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z" />
@@ -374,7 +451,9 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
 
             <div
               id="video-panel"
-              className={`transition-[max-height] duration-300 ease-in-out ${videoOpen ? 'max-h-[1200px]' : 'max-h-0'}`}
+              className={`transition-[max-height] duration-300 ease-in-out ${
+                videoOpen ? 'max-h-[1200px]' : 'max-h-0'
+              }`}
             >
               <div className="p-4">
                 <div className="flex items-center gap-3 flex-wrap">
@@ -409,7 +488,12 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                   {videoUrl ? (
                     <div className="space-y-3">
                       <div className="aspect-video bg-black rounded-lg overflow-hidden">
-                        <video src={videoUrl} controls playsInline className="w-full h-full object-contain" />
+                        <video
+                          src={videoUrl}
+                          controls
+                          playsInline
+                          className="w-full h-full object-contain"
+                        />
                       </div>
                       <div className="flex items-center gap-2">
                         <button
@@ -437,7 +521,11 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                         onUploaded={(payload: any) => {
                           setVideoUrl(payload.playbackMp4)
                           setVideoPublicId(payload.publicId)
-                          setVideoMeta({ mime: payload.mime, width: payload.width, height: payload.height })
+                          setVideoMeta({
+                            mime: payload.mime,
+                            width: payload.width,
+                            height: payload.height,
+                          })
                         }}
                       />
                     </div>
@@ -451,43 +539,130 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
           <section className="border rounded-xl p-4 bg-white">
             <h3 className="font-semibold text-lg">Job details</h3>
             <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <input className="border rounded px-3 py-2 sm:col-span-2" placeholder="Job ID" value={jobId} onChange={e => setJobId(e.target.value)} />
+              <input
+                className="border rounded px-3 py-2 sm:col-span-2"
+                placeholder="Job ID"
+                value={jobId}
+                onChange={e => setJobId(e.target.value)}
+              />
               <button
                 className="rounded bg-gray-900 text-white px-3 py-2 disabled:opacity-60"
                 onClick={fetchJob}
                 disabled={fetchStatus === 'loading'}
               >
-                {fetchStatus === 'loading' ? 'Fetching…' : fetchStatus === 'done' ? 'Fetched ✓' : 'Fetch'}
+                {fetchStatus === 'loading'
+                  ? 'Fetching…'
+                  : fetchStatus === 'done'
+                  ? 'Fetched ✓'
+                  : 'Fetch'}
               </button>
             </div>
 
             <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <input className="border rounded px-3 py-2" placeholder="Job Title" value={job.title} onChange={e => setJob({ ...job, title: e.target.value })} />
-              <input className="border rounded px-3 py-2" placeholder="Location" value={job.location} onChange={e => setJob({ ...job, location: e.target.value })} />
-              <input className="border rounded px-3 py-2" placeholder="Salary" value={job.salary} onChange={e => setJob({ ...job, salary: e.target.value })} />
-              <input className="border rounded px-3 py-2" placeholder="Email" value={job.email} onChange={e => setJob({ ...job, email: e.target.value })} />
-              <input className="border rounded px-3 py-2" placeholder="Phone Number" value={job.phone} onChange={e => setJob({ ...job, phone: e.target.value })} />
-              <textarea className="border rounded px-3 py-2 sm:col-span-2 min-h-[80px]" placeholder="Short Description" value={job.description} onChange={e => setJob({ ...job, description: e.target.value })} />
-              <textarea className="border rounded px-3 py-2 sm:col-span-2 min-h-[80px]" placeholder="Benefits (one per line)" value={benefitsText} onChange={e => setJob({ ...job, benefits: e.target.value })} />
+              <input
+                className="border rounded px-3 py-2"
+                placeholder="Job Title"
+                value={job.title}
+                onChange={e => setJob({ ...job, title: e.target.value })}
+              />
+              <input
+                className="border rounded px-3 py-2"
+                placeholder="Location"
+                value={job.location}
+                onChange={e => setJob({ ...job, location: e.target.value })}
+              />
+              <input
+                className="border rounded px-3 py-2"
+                placeholder="Salary"
+                value={job.salary}
+                onChange={e => setJob({ ...job, salary: e.target.value })}
+              />
+              <input
+                className="border rounded px-3 py-2"
+                placeholder="Email"
+                value={job.email}
+                onChange={e => setJob({ ...job, email: e.target.value })}
+              />
+              <input
+                className="border rounded px-3 py-2"
+                placeholder="Phone Number"
+                value={job.phone}
+                onChange={e => setJob({ ...job, phone: e.target.value })}
+              />
+              <textarea
+                className="border rounded px-3 py-2 sm:col-span-2 min-h-[80px]"
+                placeholder="Short Description"
+                value={job.description}
+                onChange={e => setJob({ ...job, description: e.target.value })}
+              />
+              <textarea
+                className="border rounded px-3 py-2 sm:col-span-2 min-h-[80px]"
+                placeholder="Benefits (one per line)"
+                value={benefitsText}
+                onChange={e => setJob({ ...job, benefits: e.target.value })}
+              />
             </div>
           </section>
         </div>
 
         {/* RIGHT: preview + export */}
         <div className="border rounded-xl p-4 bg-white">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <h3 className="font-semibold text-lg">Preview</h3>
-            <div className="flex gap-2">
-              <button className="rounded bg-gray-900 text-white px-3 py-2" onClick={downloadPng}>
-                Download PNG
-              </button>
-              <button
-                className={`rounded px-3 py-2 ${videoUrl ? 'bg-amber-600 text-white' : 'bg-gray-200 text-gray-500'}`}
-                onClick={downloadMp4}
-                title={videoUrl ? 'Compose MP4 on server' : 'Add a video to enable'}
-              >
-                Download MP4
-              </button>
+
+            <div className="flex items-center gap-3">
+              {/* Font controls */}
+              <div className="flex items-center gap-2 text-xs">
+                <label className="flex items-center gap-1">
+                  <span>Text field</span>
+                  <select
+                    className="border rounded px-2 py-1 h-7 text-xs"
+                    value={activeFontField}
+                    onChange={e =>
+                      setActiveFontField(e.target.value as Exclude<PlaceholderKey, 'video'>)
+                    }
+                  >
+                    {FONT_FIELDS.map(f => (
+                      <option key={f} value={f}>
+                        {f.charAt(0).toUpperCase() + f.slice(1)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="flex items-center border rounded overflow-hidden">
+                  <button
+                    type="button"
+                    className="px-2 py-1 text-xs hover:bg-gray-100"
+                    onClick={() => nudgeFontSize(-2)}
+                    title="Smaller"
+                  >
+                    A-
+                  </button>
+                  <button
+                    type="button"
+                    className="px-2 py-1 text-xs hover:bg-gray-100"
+                    onClick={() => nudgeFontSize(2)}
+                    title="Larger"
+                  >
+                    A+
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <button className="rounded bg-gray-900 text-white px-3 py-2" onClick={downloadPng}>
+                  Download PNG
+                </button>
+                <button
+                  className={`rounded px-3 py-2 ${
+                    videoUrl ? 'bg-amber-600 text-white' : 'bg-gray-200 text-gray-500'
+                  }`}
+                  onClick={downloadMp4}
+                  title={videoUrl ? 'Compose MP4 on server' : 'Add a video to enable'}
+                >
+                  Download MP4
+                </button>
+              </div>
             </div>
           </div>
 
@@ -525,6 +700,11 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                   ? makeDragHandlers(key as Exclude<PlaceholderKey, 'email' | 'phone' | 'video'>)
                   : {}
 
+                const currentFontSize =
+                  fontSizes[key as Exclude<PlaceholderKey, 'video'>] ??
+                  baseSpec.fontSize ??
+                  18
+
                 const value = (() => {
                   switch (key) {
                     case 'title': return job.title || '[JOB TITLE]'
@@ -556,7 +736,6 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                         .map(s => s.trim())
                         .filter(Boolean)
 
-                  // Fallback placeholders if nothing provided
                   if (benefitsLines.length === 0) {
                     benefitsLines = ['[BENEFIT 1]', '[BENEFIT 2]', '[BENEFIT 3]']
                   }
@@ -569,9 +748,10 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                         position: 'absolute',
                         left: spec.x * scale,
                         top: spec.y * scale,
-                        width: (spec.w ?? (selectedTpl.width - spec.x - 40)) * scale,
+                        width:
+                          (spec.w ?? (selectedTpl.width - spec.x - 40)) * scale,
                         height: spec.h ? spec.h * scale : undefined,
-                        fontSize: (spec.fontSize ?? 18) * scale,
+                        fontSize: currentFontSize * scale,
                         lineHeight: 1.25,
                         textAlign: spec.align ?? 'left',
                         color: 'white',
@@ -606,9 +786,10 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                       position: 'absolute',
                       left: spec.x * scale,
                       top: spec.y * scale,
-                      width: (spec.w ?? (selectedTpl.width - spec.x - 40)) * scale,
+                      width:
+                        (spec.w ?? (selectedTpl.width - spec.x - 40)) * scale,
                       height: spec.h ? spec.h * scale : undefined,
-                      fontSize: (spec.fontSize ?? 18) * scale,
+                      fontSize: currentFontSize * scale,
                       lineHeight: 1.25,
                       whiteSpace: 'pre-wrap',
                       textAlign: spec.align ?? 'left',
@@ -626,46 +807,42 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
               })}
 
               {selectedTpl.layout.video && videoUrl && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    left: selectedTpl.layout.video.x * scale,
-                    top: selectedTpl.layout.video.y * scale,
-                    width: selectedTpl.layout.video.w * scale,
-                    height: selectedTpl.layout.video.h * scale,
-                    overflow: 'hidden',
-                    clipPath: clipPath(mask, roundedR * scale),
-                    background: '#111',
-                  }}
-                >
-                  <video src={videoUrl} controls playsInline preload="metadata" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                </div>
-              )}
-            </div>
-          </div>
-
-          <p className="mt-3 text-xs text-gray-500">
-            Preview scales the poster to fit; PNG exports at the template’s intrinsic size.
-          </p>
-        </div>
-      </div>
-
-      {/* Recorder-specific style tweaks */}
-      <style jsx global>{`
-        /* 4) Upload button orange + 7) shrink camera/mic selects inside the panel */
-        .recorder-slim select { height: 2rem; font-size: 0.875rem; max-width: 280px; }
-        .recorder-slim input[type="number"] { height: 2rem; font-size: 0.875rem; }
-        /* Try to hit common “Upload” button(s) the Recorder renders */
-        .recorder-slim button[data-upload],
-        .recorder-slim button.upload,
-        .recorder-slim button[aria-label="Upload"],
-        .recorder-slim button:where(:not([disabled])):is(.upload-btn) {
-          background: #f97316 !important; /* orange-500 */
-          color: #fff !important;
-        }
-        /* 2) Start button text via data attribute (we also adjust it via MutationObserver) */
-        .recorder-slim button[data-recorder-start].text-red-600 { color: #dc2626 !important; }
-      `}</style>
-    </div>
-  )
-}
+                (() => {
+                  const baseVideo = selectedTpl.layout.video!
+                  const spec = {
+                    x: videoPos?.x ?? baseVideo.x,
+                    y: videoPos?.y ?? baseVideo.y,
+                    w: baseVideo.w,
+                    h: baseVideo.h,
+                  }
+                  return (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        left: spec.x * scale,
+                        top: spec.y * scale,
+                        width: spec.w * scale,
+                        height: spec.h * scale,
+                        overflow: 'hidden',
+                        clipPath: clipPath(mask, roundedR * scale),
+                        background: '#111',
+                      }}
+                    >
+                      <video
+                        src={videoUrl}
+                        controls
+                        playsInline
+                        preload="metadata"
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      />
+                      {/* Drag handle for video */}
+                      <div
+                        onMouseDown={handleVideoDragMouseDown}
+                        style={{
+                          position: 'absolute',
+                          top: 4,
+                          right: 4,
+                          width: 24,
+                          height: 24,
+                          borderRadius: 999,
+                          background: 'rgba(0,
