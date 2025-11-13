@@ -1225,7 +1225,7 @@ Kind regards,`
                         <div className="col-span-1 text-right">Link</div>
                       </div>
                       <div className="max-h-60 overflow-auto">
-                        <ul className="text-sm">
+                        <ul className="text-xs">
                           {c.job_postings?.length ? (
                             [...c.job_postings]
                               .sort((a: any, b: any) => {
@@ -1286,7 +1286,7 @@ Kind regards,`
                         <div className="col-span-5">Title</div>
                         <div className="col-span-2 text-right">LinkedIn</div>
                       </div>
-                      <ul className="text-sm">
+                      <ul className="text-xs">
                         {c.hiring_people?.length ? (
                           c.hiring_people.map((p: HiringPerson) => (
                             <li key={p.id} className="px-3 py-2 border-t first:border-t-0 grid grid-cols-12">
@@ -1318,7 +1318,7 @@ Kind regards,`
                         <div className="col-span-2">Published</div>
                         <div className="col-span-1 text-right">Link</div>
                       </div>
-                      <ul className="text-sm">
+                      <ul className="text-xs">
                         {c.news_articles?.length ? (
                           c.news_articles.map((n: NewsArticle) => (
                             <li key={n.id} className="px-3 py-2 border-t first:border-t-0 grid grid-cols-12">
