@@ -17,26 +17,17 @@ type EmploymentItem = {
   current?: boolean | null
 }
 
-type Company = {
+type JobPosting = {
   id: string
-  org_id: string
-  name: string | null
-  website_url: string | null
-  linkedin_url: string | null
-  exact_location?: string | null
+  title: string | null
+  location: string | null
+  employment_type: string | null
+  remote: boolean | null
+  url: string | null
+  posted_at?: string | null
   city?: string | null
   state?: string | null
-  short_description?: string | null
-  job_postings?: any[]
-  hiring_people?: any[]
-  news_articles?: any[]
-}
-
-function formatCityState(c: Company) {
-  const city = (c.city || '').trim()
-  const state = (c.state || '').trim()
-  if (city && state) return `${city}, ${state}`
-  return city || state || null
+  country?: string | null
 }
 
 type Person = {
@@ -51,28 +42,37 @@ type Person = {
   employment_history: EmploymentItem[]
 }
 
-/* =========================
-   Company-related Types
-   ========================= */
-type JobPosting = {
-  id: string
-  title: string | null
-  location: string | null
-  employment_type: string | null
-  remote: boolean | null
-  url: string | null
-  posted_at?: string | null
-  city?: string | null
-  state?: string | null
-  country?: string | null
-}
-type HiringPerson = Person
 type NewsArticle = {
   id: string
   title: string | null
   description: string | null
   published_at: string | null
   url: string | null
+  event_categories?: string[] | null
+}
+
+type Company = {
+  id: string
+  org_id: string
+  name: string | null
+  website_url: string | null
+  linkedin_url: string | null
+  exact_location?: string | null
+  city?: string | null
+  state?: string | null
+  short_description?: string | null
+  job_postings?: JobPosting[]
+  hiring_people?: Person[]
+  news_articles?: NewsArticle[]
+}
+
+type HiringPerson = Person
+
+function formatCityState(c: Company) {
+  const city = (c.city || '').trim()
+  const state = (c.state || '').trim()
+  if (city && state) return `${city}, ${state}`
+  return city || state || null
 }
 
 /* =========================
@@ -530,32 +530,37 @@ Kind regards,`
         state: c?.state ?? null,
         short_description: c?.short_description ?? null,
         job_postings: [],
-        hiring_people: Array.isArray(c?.hiring_people) ? c.hiring_people.map((p: any) => transformToPerson(p)) : [],
-        news_articles: Array.isArray(c?.news_articles)
-          ? c.news_articles.map((a: any) => ({
-              id: (a?.id ?? a?.article_id ?? '').toString(),
-              title: a?.title ?? null,
-              description: a?.description ?? a?.summary ?? null,
-              published_at: a?.published_at ?? a?.published_date ?? null,
-              url: a?.url ?? a?.article_url ?? null,
-            }))
+        hiring_people: Array.isArray(c?.hiring_people)
+          ? c.hiring_people.map((p: any) => transformToPerson(p))
           : [],
+        news_articles: [],
       }))
 
       setCompanies(mapped)
 
-      // Fetch job postings per organization
       const orgIds = mapped.map(c => c.org_id).filter(Boolean)
-      if (orgIds.length) {
-        const jpRes = await fetch('/api/apollo/job-postings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ org_ids: orgIds, per_page: 10 }),
-        })
-        const jpJson = await jpRes.json()
 
+      if (orgIds.length) {
+        const [jpRes, newsRes] = await Promise.all([
+          fetch('/api/apollo/job-postings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ org_ids: orgIds, per_page: 10 }),
+          }),
+          fetch('/api/apollo/news-articles', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ org_ids: orgIds, per_page: 2 }),
+          }),
+        ])
+
+        const [jpJson, newsJson]: any[] = await Promise.all([
+          jpRes.json(),
+          newsRes.json(),
+        ])
+
+        // ----- Job postings -----
         if (jpRes.ok) {
-          // Preferred: server returns a keyed map
           let postingsByOrg: Record<string, any[]> = jpJson?.postingsByOrg || {}
 
           // Fallback: server returned a flat array (Apollo-style)
@@ -580,15 +585,60 @@ Kind regards,`
             })),
           )
         }
-      } 
+
+        // ----- News articles -----
+        if (newsRes.ok) {
+          let articlesByOrg: Record<string, any[]> = newsJson?.articlesByOrg || {}
+
+          // Fallback: raw array only
+          if (
+            (!articlesByOrg || !Object.keys(articlesByOrg).length) &&
+            (Array.isArray(newsJson?.apollo?.news_articles) ||
+              Array.isArray(newsJson?.news_articles) ||
+              Array.isArray(newsJson?.articles))
+          ) {
+            const raw: any[] =
+              (Array.isArray(newsJson?.apollo?.news_articles) && newsJson.apollo.news_articles) ||
+              (Array.isArray(newsJson?.news_articles) && newsJson.news_articles) ||
+              (Array.isArray(newsJson?.articles) && newsJson.articles) ||
+              []
+            const grouped: Record<string, any[]> = {}
+            for (const a of raw) {
+              const key = (a.organization_id || a.org_id || a.account_id || '').toString().trim()
+              if (!key) continue
+              if (!grouped[key]) grouped[key] = []
+              grouped[key].push(a)
+            }
+            articlesByOrg = grouped
+          }
+
+          setCompanies(prev =>
+            prev.map(c => ({
+              ...c,
+              news_articles: (articlesByOrg[c.org_id] ?? []).map((a: any) => ({
+                id: (a.id ?? a.article_id ?? '').toString(),
+                title: a.title ?? null,
+                description: a.description ?? a.summary ?? null,
+                published_at: a.published_at ?? a.published_date ?? null,
+                url: a.url ?? a.article_url ?? null,
+                event_categories: Array.isArray(a.event_categories)
+                  ? a.event_categories
+                  : typeof a.event_categories === 'string'
+                  ? [a.event_categories]
+                  : null,
+              })),
+            })),
+          )
+        }
+      }
     } catch (err: any) {
       setCompanyError(err?.message || 'Unexpected error')
     } finally {
       setCompanySearchOpen(false)
       setCompanyLoading(false)
     }
-  } 
-   
+  }
+
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
       if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) {
@@ -844,9 +894,6 @@ Kind regards,`
   }
 
   const renderCompanies = () => {
-    const disabledLook = (!activeJobsOnly || isDown) ? 'opacity-50' : ''
-    const isInputsDisabled = !activeJobsOnly || isDown
-
     return (
       <div className="space-y-4">
         {/* Panel 1: Company search */}
@@ -1148,7 +1195,7 @@ Kind regards,`
                               .map((j: JobPosting) => {
                                 const location =
                                   [j.city, j.state, j.country].filter(Boolean).join(', ') || '—'
-                  
+
                                 return (
                                   <li
                                     key={j.id}
@@ -1225,22 +1272,34 @@ Kind regards,`
                   {expandedNews.has(c.id) && (
                     <div className="mt-3 rounded-xl border bg-gray-50 overflow-hidden">
                       <div className="px-3 py-2 border-b text-xs text-gray-500 grid grid-cols-12">
-                        <div className="col-span-8">Title</div>
+                        <div className="col-span-6">Title</div>
+                        <div className="col-span-3">Category</div>
                         <div className="col-span-2">Published</div>
-                        <div className="col-span-2 text-right">Link</div>
+                        <div className="col-span-1 text-right">Link</div>
                       </div>
                       <ul className="text-sm">
                         {c.news_articles?.length ? (
-                          c.news_articles.map((n: any) => (
+                          c.news_articles.map((n: NewsArticle) => (
                             <li key={n.id} className="px-3 py-2 border-t first:border-t-0 grid grid-cols-12">
-                              <div className="col-span-8 truncate">{n.title || '—'}</div>
+                              <div className="col-span-6 truncate">{n.title || '—'}</div>
+                              <div className="col-span-3 truncate">
+                                {n.event_categories && n.event_categories.length
+                                  ? n.event_categories.join(', ')
+                                  : '—'}
+                              </div>
                               <div className="col-span-2 truncate">
                                 {n.published_at ? new Date(n.published_at).toLocaleDateString() : '—'}
                               </div>
-                              <div className="col-span-2 text-right">
+                              <div className="col-span-1 text-right">
                                 {n.url ? (
-                                  <a className="text-orange-600 hover:underline" href={n.url} target="_blank" rel="noreferrer">
-                                    view
+                                  <a
+                                    className="inline-flex items-center justify-center text-gray-700 hover:text-gray-900"
+                                    href={n.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    title="Open article"
+                                  >
+                                    <IconGlobe />
                                   </a>
                                 ) : (
                                   '—'
