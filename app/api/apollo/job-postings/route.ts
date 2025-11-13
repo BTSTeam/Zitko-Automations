@@ -168,8 +168,16 @@ export async function POST(req: NextRequest) {
     for (const org_id of orgIds) {
       const { jobs, _debug } = await fetchOrganizationJobPostings(org_id, headers, tryRefresh, per_page, WANT_DEBUG)
       if (WANT_DEBUG) dbgRows.push(_debug ?? { org_id, note: 'no debug' })
-      // Use raw where available so the output mirrors Apollo fields exactly
-      for (const p of jobs) mergedRaw.push(p.raw ?? p)
+    
+      for (const p of jobs) {
+        const base = p.raw ?? p
+        mergedRaw.push({
+          ...base,
+          organization_id: base.organization_id || org_id,
+          org_id: base.org_id || org_id,
+          _organization_id: base._organization_id || org_id,
+        })
+      }
     }
 
     return NextResponse.json({
