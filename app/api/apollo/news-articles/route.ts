@@ -48,7 +48,8 @@ export async function POST(req: NextRequest) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
+        'Cache-Control': 'no-cache',
+        'X-Api-Key': process.env.APOLLO_API_KEY!,
       },
       body: JSON.stringify({
         organization_ids: org_ids,
