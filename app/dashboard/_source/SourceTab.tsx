@@ -1131,11 +1131,9 @@ Kind regards,`
                   {expandedJobs.has(c.id) && (
                     <div className="mt-3 rounded-xl border bg-gray-50 overflow-hidden">
                       <div className="px-3 py-2 border-b text-xs text-gray-500 grid grid-cols-12">
-                        <div className="col-span-4">Title</div>
-                        <div className="col-span-2">City</div>
-                        <div className="col-span-2">State</div>
-                        <div className="col-span-2">Country</div>
-                        <div className="col-span-1 text-right">Posted</div>
+                        <div className="col-span-6">Title</div>
+                        <div className="col-span-3">Location</div>
+                        <div className="col-span-2 text-right">Posted</div>
                         <div className="col-span-1 text-right">Link</div>
                       </div>
                       <div className="max-h-60 overflow-auto">
@@ -1147,26 +1145,44 @@ Kind regards,`
                                 const db = b?.posted_at ? new Date(b.posted_at).getTime() : 0
                                 return db - da
                               })
-                              .map((j: JobPosting) => (
-                                <li key={j.id} className="px-3 py-2 border-t first:border-t-0 grid grid-cols-12 items-center">
-                                  <div className="col-span-4 truncate">{j.title || 'Untitled job'}</div>
-                                  <div className="col-span-2 truncate">{j.city || '—'}</div>
-                                  <div className="col-span-2 truncate">{j.state || '—'}</div>
-                                  <div className="col-span-2 truncate">{j.country || '—'}</div>
-                                  <div className="col-span-1 text-right">
-                                    {j.posted_at ? new Date(j.posted_at).toLocaleDateString() : '—'}
-                                  </div>
-                                  <div className="col-span-1 text-right">
-                                    {j.url ? (
-                                      <a className="text-orange-600 hover:underline" href={j.url} target="_blank" rel="noreferrer">
-                                        view
-                                      </a>
-                                    ) : (
-                                      '—'
-                                    )}
-                                  </div>
-                                </li>
-                              ))
+                              .map((j: JobPosting) => {
+                                const location =
+                                  [j.city, j.state, j.country].filter(Boolean).join(', ') || '—'
+                  
+                                return (
+                                  <li
+                                    key={j.id}
+                                    className="px-3 py-2 border-t first:border-t-0 grid grid-cols-12 items-center"
+                                  >
+                                    <div className="col-span-6 truncate">
+                                      {j.title || 'Untitled job'}
+                                    </div>
+                                    <div className="col-span-3 truncate">
+                                      {location}
+                                    </div>
+                                    <div className="col-span-2 text-right">
+                                      {j.posted_at
+                                        ? new Date(j.posted_at).toLocaleDateString()
+                                        : '—'}
+                                    </div>
+                                    <div className="col-span-1 text-right">
+                                      {j.url ? (
+                                        <a
+                                          href={j.url}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="inline-flex items-center justify-center text-gray-700 hover:text-gray-900"
+                                          title="Open job posting"
+                                        >
+                                          <IconGlobe />
+                                        </a>
+                                      ) : (
+                                        '—'
+                                      )}
+                                    </div>
+                                  </li>
+                                )
+                              })
                           ) : (
                             <li className="px-3 py-2 text-xs text-gray-500">No job postings.</li>
                           )}
