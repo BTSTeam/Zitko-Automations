@@ -1,73 +1,103 @@
-import { cookies } from 'next/headers';
-import { NextRequest, NextResponse } from 'next/server';
+// app/api/apollo/news-articles/route.ts
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
 
-/**
- * API route used to search news articles for a given organization.
- *
- * This route mirrors the behaviour of `job-postings/route.ts` but queries
- * Apollo’s news articles search endpoint.  It automatically calculates a
- * date range spanning the last 90 days and passes the organisation ID along
- * with pagination parameters.
- */
+import { NextRequest, NextResponse } from 'next/server'
+
+type PostBody = {
+  org_ids?: string[]
+  per_page?: number
+}
+
 export async function POST(req: NextRequest) {
   try {
-    // Extract the organisation ID from the request body
-    const { organization_id } = await req.json();
-    if (!organization_id) {
+    const { org_ids, per_page }: PostBody = await req.json()
+
+    if (!org_ids || !org_ids.length) {
       return NextResponse.json(
-        { error: 'Missing organisation ID' },
+        { error: 'org_ids array is required' },
         { status: 400 },
-      );
+      )
     }
 
-    // Compute the upper (maxDate) and lower (minDate) bounds for the
-    // published_at filters.  Apollo requires YYYY‑MM‑DD strings.
-    const now = new Date();
-    const maxDate = now.toISOString().split('T')[0];
-    const past = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-    const minDate = past.toISOString().split('T')[0];
+    const apiKey = process.env.APOLLO_API_KEY
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: 'Missing APOLLO_API_KEY' },
+        { status: 500 },
+      )
+    }
 
-    // Build the query string for page=1 & per_page=2 and the date range
+    // Date range: today back 90 days (YYYY-MM-DD)
+    const now = new Date()
+    const maxDate = now.toISOString().split('T')[0]
+    const past = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
+    const minDate = past.toISOString().split('T')[0]
+
     const searchParams = new URLSearchParams({
       'published_at[min]': minDate,
       'published_at[max]': maxDate,
       page: '1',
-      per_page: '2',
-    });
-    const url = `https://api.apollo.io/api/v1/news_articles/search?${searchParams.toString()}`;
+      per_page: String(per_page ?? 2),
+    })
 
-    // Send the organisation IDs as an array in the body
-    const body = JSON.stringify({
-      organization_ids: [organization_id],
-    });
+    const url = `https://api.apollo.io/api/v1/news_articles/search?${searchParams.toString()}`
 
-    // Retrieve the API token in the same way as job-postings/route.ts
-    const tokenCookie = cookies().get('apolloToken');
-    const token = tokenCookie?.value || process.env.APOLLO_API_KEY;
-
-    // Execute the call to Apollo's API
-    const response = await fetch(url, {
+    const apolloRes = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${apiKey}`,
       },
-      body,
-    });
+      body: JSON.stringify({
+        organization_ids: org_ids,
+      }),
+    })
 
-    if (!response.ok) {
-      const error = await response.text();
+    if (!apolloRes.ok) {
+      const text = await apolloRes.text()
       return NextResponse.json(
-        { error: `News article search failed: ${error}` },
-        { status: response.status },
-      );
+        {
+          error: `Apollo news_articles/search failed – ${apolloRes.status}`,
+          details: text,
+        },
+        { status: apolloRes.status },
+      )
     }
 
-    // Return whatever Apollo returns so the frontend can map it
-    const data = await response.json();
-    return NextResponse.json(data);
+    const apolloJson: any = await apolloRes.json()
+
+    // Normalise / group by organisation
+    const raw: any[] =
+      (Array.isArray(apolloJson.news_articles) && apolloJson.news_articles) ||
+      (Array.isArray(apolloJson.articles) && apolloJson.articles) ||
+      []
+
+    const articlesByOrg: Record<string, any[]> = {}
+    for (const a of raw) {
+      const key = (
+        a.organization_id ||
+        a.org_id ||
+        a.account_id ||
+        ''
+      )
+        .toString()
+        .trim()
+      if (!key) continue
+      if (!articlesByOrg[key]) articlesByOrg[key] = []
+      articlesByOrg[key].push(a)
+    }
+
+    return NextResponse.json({
+      apollo: apolloJson,
+      articlesByOrg,
+    })
   } catch (err) {
-    console.error(err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    console.error(err)
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 },
+    )
   }
 }
