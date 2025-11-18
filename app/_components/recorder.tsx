@@ -16,6 +16,15 @@ type Props = {
   onUploaded: (payload: UploadedPayload) => void;
 };
 
+const pillBase =
+  'inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#F7941D]';
+const pillPrimary =
+  pillBase +
+  ' bg-[#F7941D] text-white hover:bg-[#e98310] disabled:opacity-60 disabled:cursor-not-allowed';
+const pillSecondary =
+  pillBase +
+  ' bg-[#3B3E44] text-white hover:bg-[#2c2f33] disabled:opacity-60 disabled:cursor-not-allowed';
+
 export default function Recorder({ jobId, onUploaded }: Props) {
   const liveVideoRef = useRef<HTMLVideoElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -263,14 +272,15 @@ export default function Recorder({ jobId, onUploaded }: Props) {
       {/* Controls */}
       <div className="flex flex-wrap gap-2 items-center">
         <button
-          className="border rounded px-3 py-1 text-sm"
+          className={pillSecondary}
           onClick={stream ? stopStream : enableCamera}
+          disabled={isUploading}
         >
           {stream ? 'Disable camera' : 'Enable camera'}
         </button>
 
         <button
-          className="border rounded px-3 py-1 text-sm"
+          className={pillPrimary}
           onClick={isRecording ? stopRecording : startRecording}
           disabled={!stream || isUploading}
         >
@@ -278,7 +288,7 @@ export default function Recorder({ jobId, onUploaded }: Props) {
         </button>
 
         <button
-          className="border rounded px-3 py-1 text-sm"
+          className={pillSecondary}
           onClick={deleteRecording}
           disabled={!recorded || isUploading}
         >
@@ -286,7 +296,7 @@ export default function Recorder({ jobId, onUploaded }: Props) {
         </button>
 
         <button
-          className="ml-auto border rounded px-3 py-1 text-sm bg-amber-500 text-white disabled:opacity-60"
+          className={`${pillPrimary} ml-auto`}
           onClick={uploadRecorded}
           disabled={!recorded || isUploading}
         >
