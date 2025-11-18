@@ -186,17 +186,17 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     'idle' | 'loading' | 'done' | 'error'
   >('idle')
 
-  // ---------- draggable state for text fields ----------
+  // ---------- draggable state for text fields (vertical only) ----------
   const [positions, setPositions] = useState<
     Partial<Record<Exclude<PlaceholderKey, 'video'>, { x: number; y: number }>>
   >({})
 
-  // draggable state for video
+  // draggable state for video (free)
   const [videoPos, setVideoPos] = useState<{ x: number; y: number } | null>(
     null,
   )
 
-  // draggable state for salary-location icon (vertical only)
+  // draggable state for LOCATION icon (vertical only)
   const [locationIconPos, setLocationIconPos] = useState<{ y: number } | null>(
     null,
   )
@@ -214,7 +214,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     setFontSizes({})
   }, [selectedTplId])
 
-  // Only allow vertical movement for text (no left/right)
+  // Only allow vertical movement for text
   function makeDragHandlers(
     key: Exclude<PlaceholderKey, 'email' | 'phone' | 'video'>,
   ) {
@@ -237,7 +237,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
           const dy = (ev.clientY - startY) / scale
           setPositions((prev) => ({
             ...prev,
-            [key]: { x: current.x, y: current.y + dy }, // x fixed
+            [key]: { x: current.x, y: current.y + dy },
           }))
         }
 
@@ -287,10 +287,10 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     }
   }
 
-  // vertical-only drag for salary/location icon
+  // vertical-only drag for LOCATION icon (anchored to location field)
   function makeLocationIconDragHandlers() {
-    const salarySpec = selectedTpl.layout.salary
-    if (!salarySpec) return {}
+    const locSpec = selectedTpl.layout.location
+    if (!locSpec) return {}
 
     return {
       onMouseDown: (e: React.MouseEvent<HTMLDivElement>) => {
@@ -298,7 +298,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
         e.stopPropagation()
 
         const startY = e.clientY
-        const currentY = locationIconPos?.y ?? salarySpec.y
+        const currentY = locationIconPos?.y ?? locSpec.y
 
         const handleMove = (ev: MouseEvent) => {
           const dy = (ev.clientY - startY) / scale
@@ -956,22 +956,22 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                 )
               })}
 
-              {/* Location icon aligned to left of salary text, vertical drag only */}
-              {selectedTpl.layout.salary && (
+              {/* LOCATION icon – left of location text, vertical-drag only */}
+              {selectedTpl.layout.location && (
                 <div
                   {...makeLocationIconDragHandlers()}
                   style={{
                     position: 'absolute',
                     left:
-                      (selectedTpl.layout.salary.x - 48) * scale, // a bit left of salary
+                      (selectedTpl.layout.location.x - 48) * scale,
                     top:
                       (locationIconPos?.y ??
-                        selectedTpl.layout.salary.y) * scale,
+                        selectedTpl.layout.location.y) * scale,
                     width: 32 * scale,
                     height: 32 * scale,
                     cursor: 'move',
                     userSelect: 'none',
-                    zIndex: 20,
+                    zIndex: 50,
                   }}
                 >
                   <img
