@@ -196,6 +196,11 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     null,
   )
 
+  // draggable state for location icon (vertical only)
+  const [locationIconPos, setLocationIconPos] = useState<{ y: number } | null>(
+    null,
+  )
+
   // font size overrides
   const [fontSizes, setFontSizes] = useState<
     Partial<Record<Exclude<PlaceholderKey, 'video'>, number>>
@@ -205,6 +210,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
   useEffect(() => {
     setPositions({})
     setVideoPos(null)
+    setLocationIconPos(null)
     setFontSizes({})
   }, [selectedTplId])
 
@@ -268,6 +274,35 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
             x: current.x + dx,
             y: current.y + dy,
           })
+        }
+
+        const handleUp = () => {
+          window.removeEventListener('mousemove', handleMove)
+          window.removeEventListener('mouseup', handleUp)
+        }
+
+        window.addEventListener('mousemove', handleMove)
+        window.addEventListener('mouseup', handleUp)
+      },
+    }
+  }
+
+  // vertical-only drag for location icon (aligned with salary)
+  function makeLocationIconDragHandlers() {
+    const salarySpec = selectedTpl.layout.salary
+    if (!salarySpec) return {}
+
+    return {
+      onMouseDown: (e: React.MouseEvent<HTMLDivElement>) => {
+        e.preventDefault()
+        e.stopPropagation()
+
+        const startY = e.clientY
+        const currentY = locationIconPos?.y ?? salarySpec.y
+
+        const handleMove = (ev: MouseEvent) => {
+          const dy = (ev.clientY - startY) / scale
+          setLocationIconPos({ y: currentY + dy })
         }
 
         const handleUp = () => {
@@ -920,6 +955,36 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                   </div>
                 )
               })}
+
+              {/* Location icon aligned to the left of salary text, vertical-drag only */}
+              {selectedTpl.layout.salary && (
+                <div
+                  {...makeLocationIconDragHandlers()}
+                  style={{
+                    position: 'absolute',
+                    // base: a bit left of salary.x (e.g. 32px)
+                    left:
+                      (selectedTpl.layout.salary.x - 32) * scale,
+                    top:
+                      (locationIconPos?.y ??
+                        selectedTpl.layout.salary.y) * scale,
+                    width: 24 * scale,
+                    height: 24 * scale,
+                    cursor: 'move',
+                    userSelect: 'none',
+                  }}
+                >
+                  <img
+                    src="/templates/Location-Icon.png"
+                    alt="Location icon"
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'contain',
+                    }}
+                  />
+                </div>
+              )}
 
               {selectedTpl.layout.video && videoUrl && (
                 <div
