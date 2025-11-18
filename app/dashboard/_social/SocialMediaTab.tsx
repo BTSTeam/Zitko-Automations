@@ -196,11 +196,6 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     null,
   )
 
-  // draggable state for LOCATION icon (vertical only)
-  const [locationIconPos, setLocationIconPos] = useState<{ y: number } | null>(
-    null,
-  )
-
   // font size overrides
   const [fontSizes, setFontSizes] = useState<
     Partial<Record<Exclude<PlaceholderKey, 'video'>, number>>
@@ -210,7 +205,6 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
   useEffect(() => {
     setPositions({})
     setVideoPos(null)
-    setLocationIconPos(null)
     setFontSizes({})
   }, [selectedTplId])
 
@@ -274,35 +268,6 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
             x: current.x + dx,
             y: current.y + dy,
           })
-        }
-
-        const handleUp = () => {
-          window.removeEventListener('mousemove', handleMove)
-          window.removeEventListener('mouseup', handleUp)
-        }
-
-        window.addEventListener('mousemove', handleMove)
-        window.addEventListener('mouseup', handleUp)
-      },
-    }
-  }
-
-  // vertical-only drag for LOCATION icon (anchored to location field)
-  function makeLocationIconDragHandlers() {
-    const locSpec = selectedTpl.layout.location
-    if (!locSpec) return {}
-
-    return {
-      onMouseDown: (e: React.MouseEvent<HTMLDivElement>) => {
-        e.preventDefault()
-        e.stopPropagation()
-
-        const startY = e.clientY
-        const currentY = locationIconPos?.y ?? locSpec.y
-
-        const handleMove = (ev: MouseEvent) => {
-          const dy = (ev.clientY - startY) / scale
-          setLocationIconPos({ y: currentY + dy })
         }
 
         const handleUp = () => {
@@ -956,37 +921,44 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                 )
               })}
 
-              {/* LOCATION icon – left of [LOCATION], vertical drag only */}
-              {selectedTpl.layout.location && (
-                <div
-                  {...makeLocationIconDragHandlers()}
-                  style={{
-                    position: 'absolute',
-                    left: (selectedTpl.layout.location.x - 70) * scale,
-                    top:
-                      (locationIconPos?.y ??
-                        selectedTpl.layout.location.y) * scale,
-                    width: 56 * scale,
-                    height: 56 * scale,
-                    cursor: 'move',
-                    userSelect: 'none',
-                    zIndex: 999,
-                    // TEMP debug outline – remove once you're happy
-                    outline: '2px solid #ff0000',
-                  }}
-                >
-                  <img
-                    src="/templates/Location-Icon.png"
-                    alt="Location icon"
+              {/* LOCATION icon – linked with [LOCATION] field */}
+              {selectedTpl.layout.location && (() => {
+                const locSpec = selectedTpl.layout.location
+                const locOverride = positions.location
+                const locationFontSize =
+                  fontSizes.location ?? locSpec.fontSize ?? 20
+                const textHeight = locationFontSize * 1.25
+                const iconSize = 32 // icon size in template px
+                const locY = locOverride?.y ?? locSpec.y
+
+                return (
+                  <div
+                    {...makeDragHandlers('location')}
                     style={{
-                      width: '100%',
-                      height: '100%',
-                      objectFit: 'contain',
-                      display: 'block',
+                      position: 'absolute',
+                      left: (locSpec.x - 70) * scale,
+                      // bottom of icon aligned with bottom of text block
+                      top: (locY + (textHeight - iconSize)) * scale,
+                      width: iconSize * scale,
+                      height: iconSize * scale,
+                      cursor: 'move',
+                      userSelect: 'none',
+                      zIndex: 999,
                     }}
-                  />
-                </div>
-              )}
+                  >
+                    <img
+                      src="/templates/Location-Icon.png"
+                      alt="Location icon"
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'contain',
+                        display: 'block',
+                      }}
+                    />
+                  </div>
+                )
+              })()}
 
               {selectedTpl.layout.video && videoUrl && (
                 <div
