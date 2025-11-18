@@ -17,7 +17,7 @@ type Props = {
 };
 
 export default function Recorder({ jobId, onUploaded }: Props) {
-  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const liveVideoRef = useRef<HTMLVideoElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
 
@@ -36,28 +36,45 @@ export default function Recorder({ jobId, onUploaded }: Props) {
     height: number;
     mime: string;
   } | null>(null);
-  
-  // Optional: clean up blob URL on unmount
+
+  // Clean up blob URL and stream on unmount
   useEffect(() => {
     return () => {
       if (recorded?.url) URL.revokeObjectURL(recorded.url);
+      stopStream();
+      if (
+        mediaRecorderRef.current &&
+        mediaRecorderRef.current.state !== 'inactive'
+      ) {
+        mediaRecorderRef.current.stop();
+      }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recorded?.url]);
-    // Discover devices on mount
-    useEffect(() => {
-      navigator.mediaDevices
-        .enumerateDevices()
-        .then((list) => {
-          setDevices(list);
-          setSelectedCam(list.find((d) => d.kind === 'videoinput')?.deviceId);
-          setSelectedMic(list.find((d) => d.kind === 'audioinput')?.deviceId);
-        })
-        .catch((e) => setError(e?.message || 'Could not access devices'));
-    }, []);
+
+  // Discover devices on mount
+  useEffect(() => {
+    if (!navigator?.mediaDevices?.enumerateDevices) {
+      setError('Media devices not supported in this browser');
+      return;
+    }
+
+    navigator.mediaDevices
+      .enumerateDevices()
+      .then((list) => {
+        setDevices(list);
+        setSelectedCam(list.find((d) => d.kind === 'videoinput')?.deviceId);
+        setSelectedMic(list.find((d) => d.kind === 'audioinput')?.deviceId);
+      })
+      .catch((e) => setError(e?.message || 'Could not access devices'));
+  }, []);
 
   // Open camera/mic
-  async function getStream() {
+  async function enableCamera() {
     try {
+      // stop any previous stream first
+      stopStream();
+
       const s = await navigator.mediaDevices.getUserMedia({
         video: {
           deviceId: selectedCam ? { exact: selectedCam } : undefined,
@@ -71,11 +88,21 @@ export default function Recorder({ jobId, onUploaded }: Props) {
         },
       });
       setStream(s);
-      if (videoRef.current) videoRef.current.srcObject = s;
+      if (liveVideoRef.current) {
+        liveVideoRef.current.srcObject = s;
+      }
       setError(null);
     } catch (e: any) {
       setError(e?.message || 'Failed to enable camera/mic');
     }
+  }
+
+  function stopStream() {
+    stream?.getTracks().forEach((t) => t.stop());
+    if (liveVideoRef.current) {
+      liveVideoRef.current.srcObject = null;
+    }
+    setStream(null);
   }
 
   function getBestMime(): string {
@@ -86,11 +113,18 @@ export default function Recorder({ jobId, onUploaded }: Props) {
       'video/webm',
     ];
     for (const t of candidates) if (MediaRecorder.isTypeSupported(t)) return t;
-    return ''; // let browser choose
+    return '';
   }
 
   function startRecording() {
     if (!stream) return;
+
+    // If there is an existing recording, discard it – new one replaces it
+    if (recorded) {
+      URL.revokeObjectURL(recorded.url);
+      setRecorded(null);
+    }
+
     const mime = getBestMime();
     const mr = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
     mediaRecorderRef.current = mr;
@@ -101,27 +135,26 @@ export default function Recorder({ jobId, onUploaded }: Props) {
     };
 
     mr.onstop = () => {
-      const blob = new Blob(chunksRef.current, { type: mr.mimeType || 'video/webm' });
-      const width = videoRef.current?.videoWidth || 0;
-      const height = videoRef.current?.videoHeight || 0;
-    
-      // Create a local blob URL for review (no upload yet)
+      const blob = new Blob(chunksRef.current, {
+        type: mr.mimeType || 'video/webm',
+      });
+      const width = liveVideoRef.current?.videoWidth || 0;
+      const height = liveVideoRef.current?.videoHeight || 0;
+
       const url = URL.createObjectURL(blob);
       setRecorded({ blob, url, width, height, mime: blob.type });
+      setIsRecording(false);
     };
 
-    mr.start(150); // collect data every 150ms
+    mr.start(150); // 150ms chunks
     setIsRecording(true);
   }
 
   function stopRecording() {
-    mediaRecorderRef.current?.stop();
-    setIsRecording(false);
-  }
-
-  function stopStream() {
-    stream?.getTracks().forEach((t) => t.stop());
-    setStream(null);
+    if (!mediaRecorderRef.current) return;
+    if (mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
   }
 
   async function uploadRecorded() {
@@ -130,20 +163,26 @@ export default function Recorder({ jobId, onUploaded }: Props) {
     setError(null);
     try {
       const body = new FormData();
-      body.append('file', recorded.blob, `recording.${recorded.mime.includes('mp4') ? 'mp4' : 'webm'}`);
+      body.append(
+        'file',
+        recorded.blob,
+        `recording.${recorded.mime.includes('mp4') ? 'mp4' : 'webm'}`,
+      );
       body.append('mime', recorded.mime);
       body.append('jobId', jobId);
-  
+
       const res = await fetch('/api/upload-video', { method: 'POST', body });
       if (!res.ok) {
         const txt = await res.text().catch(() => '');
         throw new Error(`Upload failed${txt ? ` - ${txt}` : ''}`);
       }
-  
+
       const { publicId, playbackMp4, downloadMp4 } = (await res.json()) as {
-        publicId: string; playbackMp4: string; downloadMp4: string;
+        publicId: string;
+        playbackMp4: string;
+        downloadMp4: string;
       };
-  
+
       onUploaded({
         publicId,
         playbackMp4,
@@ -152,29 +191,19 @@ export default function Recorder({ jobId, onUploaded }: Props) {
         width: recorded.width,
         height: recorded.height,
       });
-  
-      // Clear local review state after successful upload
-      URL.revokeObjectURL(recorded.url);
-      setRecorded(null);
     } catch (e: any) {
       setError(e?.message || 'Upload failed');
     } finally {
       setIsUploading(false);
     }
   }
-  
-  function discardRecorded() {
-    if (recorded?.url) URL.revokeObjectURL(recorded.url);
-    setRecorded(null);
-  }
 
   return (
     <div className="space-y-3">
       {/* Device selectors */}
-      <div className="flex items-center gap-3 flex-wrap sm:flex-nowrap">
-        {/* Camera select */}
+      <div className="flex flex-wrap gap-3">
         <select
-          className="border rounded px-2 py-1 w-auto shrink-0 sm:min-w-[240px]"
+          className="border rounded px-2 py-1 flex-1 min-w-[160px] text-sm"
           value={selectedCam}
           onChange={(e) => setSelectedCam(e.target.value)}
         >
@@ -186,10 +215,9 @@ export default function Recorder({ jobId, onUploaded }: Props) {
               </option>
             ))}
         </select>
-  
-        {/* Microphone select */}
+
         <select
-          className="border rounded px-2 py-1 w-auto shrink-0 sm:min-w-[240px]"
+          className="border rounded px-2 py-1 flex-1 min-w-[160px] text-sm"
           value={selectedMic}
           onChange={(e) => setSelectedMic(e.target.value)}
         >
@@ -202,63 +230,57 @@ export default function Recorder({ jobId, onUploaded }: Props) {
             ))}
         </select>
       </div>
-  
-      {/* Live camera preview */}
+
+      {/* Preview area – shows either live camera or last recording */}
       <div className="rounded-lg overflow-hidden bg-black">
-        <video ref={videoRef} autoPlay playsInline muted className="w-full h-auto" />
+        {recorded ? (
+          <video
+            src={recorded.url}
+            controls
+            playsInline
+            className="w-full h-auto"
+          />
+        ) : (
+          <video
+            ref={liveVideoRef}
+            autoPlay
+            playsInline
+            muted
+            className="w-full h-auto"
+          />
+        )}
       </div>
-  
-      {/* Local review player (only shown after you stop recording) */}
-      {recorded && (
-        <div className="mt-3 space-y-2">
-          <div className="rounded-lg overflow-hidden bg-black">
-            <video src={recorded.url} controls playsInline className="w-full h-auto" />
-          </div>
-          <div className="flex gap-2">
-            <button
-              className="border rounded px-3 py-1 bg-emerald-600 text-white disabled:opacity-60"
-              onClick={uploadRecorded}
-              disabled={isUploading}
-            >
-              Use this video (upload)
-            </button>
-            <button
-              className="border rounded px-3 py-1 bg-red-600 text-white"
-              onClick={discardRecorded}
-              disabled={isUploading}
-            >
-              Discard
-            </button>
-            {isUploading && <span className="text-sm opacity-80">Uploading…</span>}
-          </div>
-        </div>
-      )}
-  
+
       {/* Controls */}
-      <div className="flex flex-wrap gap-2">
-        {!stream && (
-          <button className="border rounded px-3 py-1" onClick={getStream}>
-            Enable camera
-          </button>
+      <div className="flex flex-wrap gap-2 items-center">
+        <button
+          className="border rounded px-3 py-1 text-sm"
+          onClick={stream ? stopStream : enableCamera}
+        >
+          {stream ? 'Disable camera' : 'Enable camera'}
+        </button>
+
+        <button
+          className="border rounded px-3 py-1 text-sm"
+          onClick={isRecording ? stopRecording : startRecording}
+          disabled={!stream || isUploading}
+        >
+          {isRecording ? 'Stop' : 'Record'}
+        </button>
+
+        <button
+          className="border rounded px-3 py-1 text-sm bg-amber-500 text-white disabled:opacity-60"
+          onClick={uploadRecorded}
+          disabled={!recorded || isUploading}
+        >
+          Upload
+        </button>
+
+        {isUploading && (
+          <span className="text-xs opacity-80 ml-1">Uploading…</span>
         )}
-        {stream && !isRecording && (
-          <button className="border rounded px-3 py-1" onClick={startRecording}>
-            Start recording
-          </button>
-        )}
-        {isRecording && (
-          <button className="border rounded px-3 py-1 text-red-600" onClick={stopRecording}>
-            Stop recording
-          </button>
-        )}
-        {stream && !isRecording && (
-          <button className="border rounded px-3 py-1" onClick={stopStream}>
-            Turn off camera
-          </button>
-        )}
-        {isUploading && <span className="text-sm opacity-80">Uploading…</span>}
       </div>
-  
+
       {error && <p className="text-red-600 text-sm">{error}</p>}
     </div>
   );
