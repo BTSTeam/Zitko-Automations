@@ -362,7 +362,14 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
 
   async function downloadPng() {
     if (!previewRef.current) return
-    const canvas = await html2canvas(previewRef.current, { scale: 2 })
+  
+    // previewRef is drawn at selectedTpl.width * scale,
+    // so use 1/scale to bring the export back to native size.
+    const canvas = await html2canvas(previewRef.current, {
+      scale: 1 / scale,     // <-- key line: fixes blurriness
+      backgroundColor: null // optional, keeps transparent areas if any
+    })
+  
     const a = document.createElement('a')
     a.href = canvas.toDataURL('image/png')
     a.download = `${selectedTpl.id}.png`
@@ -928,7 +935,9 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                 const locationFontSize =
                   fontSizes.location ?? locSpec.fontSize ?? 20
                 const textHeight = locationFontSize * 1.25
-                const iconSize = 32 // icon size in template px
+                const iconSize = 40 // icon size in template px
+                const iconOffsetX = 45    // right or left
+                const iconOffsetY = 4     // high or low
                 const locY = locOverride?.y ?? locSpec.y
 
                 return (
@@ -936,9 +945,8 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                     {...makeDragHandlers('location')}
                     style={{
                       position: 'absolute',
-                      left: (locSpec.x - 70) * scale,
-                      // bottom of icon aligned with bottom of text block
-                      top: (locY + (textHeight - iconSize)) * scale,
+                      left: (locSpec.x - iconOffsetX) * scale,
+                      top: (locY + (textHeight - iconSize) + iconOffsetY) * scale,
                       width: iconSize * scale,
                       height: iconSize * scale,
                       cursor: 'move',
