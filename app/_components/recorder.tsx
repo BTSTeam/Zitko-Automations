@@ -37,7 +37,7 @@ export default function Recorder({ jobId, onUploaded }: Props) {
     mime: string;
   } | null>(null);
 
-  // Clean up blob URL and stream on unmount
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (recorded?.url) URL.revokeObjectURL(recorded.url);
@@ -52,7 +52,7 @@ export default function Recorder({ jobId, onUploaded }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recorded?.url]);
 
-  // Discover devices on mount
+  // Discover devices
   useEffect(() => {
     if (!navigator?.mediaDevices?.enumerateDevices) {
       setError('Media devices not supported in this browser');
@@ -69,10 +69,9 @@ export default function Recorder({ jobId, onUploaded }: Props) {
       .catch((e) => setError(e?.message || 'Could not access devices'));
   }, []);
 
-  // Open camera/mic
+  // Camera on
   async function enableCamera() {
     try {
-      // stop any previous stream first
       stopStream();
 
       const s = await navigator.mediaDevices.getUserMedia({
@@ -87,6 +86,7 @@ export default function Recorder({ jobId, onUploaded }: Props) {
           noiseSuppression: true,
         },
       });
+
       setStream(s);
       if (liveVideoRef.current) {
         liveVideoRef.current.srcObject = s;
@@ -97,6 +97,7 @@ export default function Recorder({ jobId, onUploaded }: Props) {
     }
   }
 
+  // Camera off
   function stopStream() {
     stream?.getTracks().forEach((t) => t.stop());
     if (liveVideoRef.current) {
@@ -119,7 +120,7 @@ export default function Recorder({ jobId, onUploaded }: Props) {
   function startRecording() {
     if (!stream) return;
 
-    // If there is an existing recording, discard it – new one replaces it
+    // New recording replaces old one
     if (recorded) {
       URL.revokeObjectURL(recorded.url);
       setRecorded(null);
@@ -146,7 +147,7 @@ export default function Recorder({ jobId, onUploaded }: Props) {
       setIsRecording(false);
     };
 
-    mr.start(150); // 150ms chunks
+    mr.start(150);
     setIsRecording(true);
   }
 
@@ -155,6 +156,11 @@ export default function Recorder({ jobId, onUploaded }: Props) {
     if (mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
     }
+  }
+
+  function deleteRecording() {
+    if (recorded?.url) URL.revokeObjectURL(recorded.url);
+    setRecorded(null);
   }
 
   async function uploadRecorded() {
@@ -231,22 +237,25 @@ export default function Recorder({ jobId, onUploaded }: Props) {
         </select>
       </div>
 
-      {/* Preview area – shows either live camera or last recording */}
-      <div className="rounded-lg overflow-hidden bg-black">
-        {recorded ? (
+      {/* Live camera with recording overlaid on top when present */}
+      <div className="relative rounded-lg overflow-hidden bg-black">
+        {/* live camera underneath */}
+        <video
+          ref={liveVideoRef}
+          autoPlay
+          playsInline
+          muted
+          className="w-full h-auto"
+        />
+
+        {/* recording overlay on top */}
+        {recorded && (
           <video
+            key="playback"
             src={recorded.url}
             controls
             playsInline
-            className="w-full h-auto"
-          />
-        ) : (
-          <video
-            ref={liveVideoRef}
-            autoPlay
-            playsInline
-            muted
-            className="w-full h-auto"
+            className="absolute inset-0 w-full h-full object-contain bg-black"
           />
         )}
       </div>
@@ -269,7 +278,15 @@ export default function Recorder({ jobId, onUploaded }: Props) {
         </button>
 
         <button
-          className="border rounded px-3 py-1 text-sm bg-amber-500 text-white disabled:opacity-60"
+          className="border rounded px-3 py-1 text-sm"
+          onClick={deleteRecording}
+          disabled={!recorded || isUploading}
+        >
+          Delete
+        </button>
+
+        <button
+          className="ml-auto border rounded px-3 py-1 text-sm bg-amber-500 text-white disabled:opacity-60"
           onClick={uploadRecorded}
           disabled={!recorded || isUploading}
         >
