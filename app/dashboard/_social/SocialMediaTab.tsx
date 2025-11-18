@@ -50,7 +50,7 @@ const TEMPLATES: TemplateDef[] = [
     width: 1080,
     height: 1080,
     layout: {
-      title: { x: 490, y: 125, w: 560, fontSize: 60 },
+      title: { x: 520, y: 125, w: 560, fontSize: 60 },
       location: { x: 520, y: 330, w: 520, fontSize: 30 },
       salary: { x: 520, y: 400, w: 520, fontSize: 28 },
       description: { x: 520, y: 480, w: 520, h: 80, fontSize: 24 },
