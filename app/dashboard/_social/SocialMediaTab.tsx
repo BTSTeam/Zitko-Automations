@@ -42,6 +42,9 @@ type TemplateDef = {
   }
 }
 
+// x = left/right (lower = left | higher = right //
+// y = up/down (lower = up | higher = down //
+
 const TEMPLATES: TemplateDef[] = [
   {
     id: 'zitko-1',
