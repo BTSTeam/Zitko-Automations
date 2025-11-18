@@ -362,14 +362,12 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
 
   async function downloadPng() {
     if (!previewRef.current) return
-  
-    // previewRef is drawn at selectedTpl.width * scale,
-    // so use 1/scale to bring the export back to native size.
+
     const canvas = await html2canvas(previewRef.current, {
-      scale: 1 / scale,     // <-- key line: fixes blurriness
-      backgroundColor: null // optional, keeps transparent areas if any
+      scale: 2,       // higher resolution export
+      useCORS: true,  // safe if templates served from same origin
     })
-  
+
     const a = document.createElement('a')
     a.href = canvas.toDataURL('image/png')
     a.download = `${selectedTpl.id}.png`
@@ -765,11 +763,13 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
               ref={previewRef}
               className="relative shadow-lg"
               style={{
-                width: selectedTpl.width * scale,
-                height: selectedTpl.height * scale,
+                width: selectedTpl.width,
+                height: selectedTpl.height,
                 backgroundImage: `url(${selectedTpl.imageUrl})`,
                 backgroundSize: 'cover',
                 backgroundPosition: 'center',
+                transform: `scale(${scale})`,
+                transformOrigin: 'top left',
               }}
             >
               {(
@@ -866,13 +866,11 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                       {...dragProps}
                       style={{
                         position: 'absolute',
-                        left: spec.x * scale,
-                        top: spec.y * scale,
-                        width:
-                          (spec.w ??
-                            selectedTpl.width - spec.x - 40) * scale,
-                        height: spec.h ? spec.h * scale : undefined,
-                        fontSize: spec.fontSize * scale,
+                        left: spec.x,
+                        top: spec.y,
+                        width: spec.w ?? selectedTpl.width - spec.x - 40,
+                        height: spec.h,
+                        fontSize: spec.fontSize,
                         lineHeight: 1.25,
                         textAlign: spec.align ?? 'left',
                         color: 'white',
@@ -886,10 +884,10 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                         <div
                           key={i}
                           style={{
-                            paddingLeft: `${16 * scale}px`,
-                            textIndent: `-${8 * scale}px`,
+                            paddingLeft: 16,
+                            textIndent: -8,
                             whiteSpace: 'pre-wrap',
-                            marginBottom: `${8 * scale}px`,
+                            marginBottom: 8,
                           }}
                         >
                           {`• ${line}`}
@@ -905,13 +903,11 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                     {...dragProps}
                     style={{
                       position: 'absolute',
-                      left: spec.x * scale,
-                      top: spec.y * scale,
-                      width:
-                        (spec.w ??
-                          selectedTpl.width - spec.x - 40) * scale,
-                      height: spec.h ? spec.h * scale : undefined,
-                      fontSize: spec.fontSize * scale,
+                      left: spec.x,
+                      top: spec.y,
+                      width: spec.w ?? selectedTpl.width - spec.x - 40,
+                      height: spec.h,
+                      fontSize: spec.fontSize,
                       lineHeight: 1.25,
                       whiteSpace: 'pre-wrap',
                       textAlign: spec.align ?? 'left',
@@ -935,9 +931,9 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                 const locationFontSize =
                   fontSizes.location ?? locSpec.fontSize ?? 20
                 const textHeight = locationFontSize * 1.25
-                const iconSize = 40 // icon size in template px
-                const iconOffsetX = 45    // right or left
-                const iconOffsetY = 2.5     // high or low
+                const iconSize = 40          // size of icon in px
+                const iconOffsetX = 45       // distance left of text
+                const iconOffsetY = 2.5      // adjust up/down
                 const locY = locOverride?.y ?? locSpec.y
 
                 return (
@@ -945,10 +941,10 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                     {...makeDragHandlers('location')}
                     style={{
                       position: 'absolute',
-                      left: (locSpec.x - iconOffsetX) * scale,
-                      top: (locY + (textHeight - iconSize) + iconOffsetY) * scale,
-                      width: iconSize * scale,
-                      height: iconSize * scale,
+                      left: locSpec.x - iconOffsetX,
+                      top: locY + (textHeight - iconSize) + iconOffsetY,
+                      width: iconSize,
+                      height: iconSize,
                       cursor: 'move',
                       userSelect: 'none',
                       zIndex: 999,
@@ -974,15 +970,13 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                   style={{
                     position: 'absolute',
                     left:
-                      (videoPos?.x ??
-                        selectedTpl.layout.video.x) * scale,
+                      videoPos?.x ?? selectedTpl.layout.video.x,
                     top:
-                      (videoPos?.y ??
-                        selectedTpl.layout.video.y) * scale,
-                    width: selectedTpl.layout.video.w * scale,
-                    height: selectedTpl.layout.video.h * scale,
+                      videoPos?.y ?? selectedTpl.layout.video.y,
+                    width: selectedTpl.layout.video.w,
+                    height: selectedTpl.layout.video.h,
                     overflow: 'hidden',
-                    clipPath: clipPath(mask, roundedR * scale),
+                    clipPath: clipPath(mask, roundedR),
                     background: '#111',
                     cursor: 'move',
                     userSelect: 'none',
