@@ -79,6 +79,16 @@ const TEMPLATES: TemplateDef[] = [
   },
 ]
 
+// ---------- shared button styles (pill) ----------
+const pillBase =
+  'inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#F7941D]'
+const pillPrimary =
+  pillBase +
+  ' bg-[#F7941D] text-white hover:bg-[#e98310] disabled:opacity-60 disabled:cursor-not-allowed'
+const pillSecondary =
+  pillBase +
+  ' bg-gray-200 text-gray-900 hover:bg-gray-300 disabled:opacity-60 disabled:cursor-not-allowed'
+
 // ---------- helpers ----------
 function wrapText(text: string, maxCharsPerLine = 34) {
   const words = String(text ?? '').split(/\s+/)
@@ -799,10 +809,10 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                           className="w-full h-full object-contain"
                         />
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <button
                           type="button"
-                          className="px-3 py-2 rounded bg-gray-200 hover:bg-gray-300 text-gray-900 text-sm"
+                          className={pillSecondary}
                           onClick={() => setVideoOpen(false)}
                           title="Hide panel"
                         >
@@ -810,7 +820,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                         </button>
                         <button
                           type="button"
-                          className="px-3 py-2 rounded bg-orange-500 hover:bg-orange-600 text-white text-sm"
+                          className={pillPrimary}
                           onClick={clearVideo}
                           title="Remove this video so you can record/upload a new one"
                         >
@@ -850,7 +860,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                 onChange={(e) => setJobId(e.target.value)}
               />
               <button
-                className="rounded bg-gray-900 text-white px-3 py-2 disabled:opacity-60 text-sm"
+                className={pillSecondary}
                 onClick={fetchJob}
                 disabled={fetchStatus === 'loading'}
               >
@@ -956,8 +966,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                     type="number"
                     className="border rounded px-2 py-1 w-20 text-xs"
                     value={
-                      fontSizes[key as Exclude<PlaceholderKey, 'video'>] ??
-                      ''
+                      fontSizes[key as Exclude<PlaceholderKey, 'video'>] ?? ''
                     }
                     onChange={(e) =>
                       handleFontSizeChange(
@@ -977,27 +986,28 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
 
         {/* RIGHT: preview + export */}
         <div className="border rounded-xl p-4 bg-white">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
             <h3 className="font-semibold text-lg">Preview</h3>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <button
-                className="rounded bg-gray-900 text-white px-3 py-2 text-sm"
+                className={pillSecondary}
                 onClick={downloadPng}
               >
                 Download PNG
               </button>
               <button
-                className={`rounded px-3 py-2 text-sm ${
+                className={
                   videoUrl
-                    ? 'bg-amber-600 text-white'
-                    : 'bg-gray-200 text-gray-500'
-                }`}
+                    ? pillPrimary
+                    : pillSecondary + ' cursor-not-allowed'
+                }
                 onClick={downloadMp4}
                 title={
                   videoUrl
                     ? 'Compose MP4 on server'
                     : 'Add a video to enable'
                 }
+                disabled={!videoUrl}
               >
                 Download MP4
               </button>
