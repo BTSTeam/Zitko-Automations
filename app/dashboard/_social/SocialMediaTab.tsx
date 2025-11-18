@@ -82,12 +82,14 @@ const TEMPLATES: TemplateDef[] = [
 // ---------- shared button styles (pill) ----------
 const pillBase =
   'inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#F7941D]'
+
 const pillPrimary =
   pillBase +
   ' bg-[#F7941D] text-white hover:bg-[#e98310] disabled:opacity-60 disabled:cursor-not-allowed'
+
 const pillSecondary =
   pillBase +
-  ' bg-gray-200 text-gray-900 hover:bg-gray-300 disabled:opacity-60 disabled:cursor-not-allowed'
+  ' bg-[#3B3E44] text-white hover:bg-[#2c2f33] disabled:opacity-60 disabled:cursor-not-allowed'
 
 // ---------- helpers ----------
 function wrapText(text: string, maxCharsPerLine = 34) {
@@ -860,7 +862,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                 onChange={(e) => setJobId(e.target.value)}
               />
               <button
-                className={pillSecondary}
+                className={pillPrimary + ' w-full justify-center'}
                 onClick={fetchJob}
                 disabled={fetchStatus === 'loading'}
               >
@@ -997,9 +999,8 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
               </button>
               <button
                 className={
-                  videoUrl
-                    ? pillPrimary
-                    : pillSecondary + ' cursor-not-allowed'
+                  pillSecondary +
+                  (!videoUrl ? ' opacity-50 cursor-not-allowed' : '')
                 }
                 onClick={downloadMp4}
                 title={
