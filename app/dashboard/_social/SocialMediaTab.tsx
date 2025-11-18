@@ -196,7 +196,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     null,
   )
 
-  // draggable state for location icon (vertical only)
+  // draggable state for salary-location icon (vertical only)
   const [locationIconPos, setLocationIconPos] = useState<{ y: number } | null>(
     null,
   )
@@ -287,7 +287,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     }
   }
 
-  // vertical-only drag for location icon (aligned with salary)
+  // vertical-only drag for salary/location icon
   function makeLocationIconDragHandlers() {
     const salarySpec = selectedTpl.layout.salary
     if (!salarySpec) return {}
@@ -956,22 +956,22 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                 )
               })}
 
-              {/* Location icon aligned to the left of salary text, vertical-drag only */}
+              {/* Location icon aligned to left of salary text, vertical drag only */}
               {selectedTpl.layout.salary && (
                 <div
                   {...makeLocationIconDragHandlers()}
                   style={{
                     position: 'absolute',
-                    // base: a bit left of salary.x (e.g. 32px)
                     left:
-                      (selectedTpl.layout.salary.x - 32) * scale,
+                      (selectedTpl.layout.salary.x - 48) * scale, // a bit left of salary
                     top:
                       (locationIconPos?.y ??
                         selectedTpl.layout.salary.y) * scale,
-                    width: 24 * scale,
-                    height: 24 * scale,
+                    width: 32 * scale,
+                    height: 32 * scale,
                     cursor: 'move',
                     userSelect: 'none',
+                    zIndex: 20,
                   }}
                 >
                   <img
@@ -981,6 +981,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                       width: '100%',
                       height: '100%',
                       objectFit: 'contain',
+                      display: 'block',
                     }}
                   />
                 </div>
