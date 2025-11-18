@@ -478,7 +478,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                   fontSize: spec.fontSize * s,
                   lineHeight: 1.25,
                   textAlign: spec.align ?? 'left',
-                  color: 'white',
+                  color: key === 'salary' ? '#F7941D' : 'white',
                   wordBreak: 'break-word',
                   overflowWrap: 'anywhere',
                   cursor: isDraggable ? 'move' : 'default',
