@@ -79,11 +79,6 @@ const TEMPLATES: TemplateDef[] = [
   },
 ]
 
-const CLOUDINARY_TEMPLATES: Record<string, string> = {
-  'zitko-1': 'job-posts/templates/zitko-1',
-  'zitko-2': 'job-posts/templates/zitko-2',
-}
-
 // ---------- helpers ----------
 function wrapText(text: string, maxCharsPerLine = 34) {
   const words = String(text ?? '').split(/\s+/)
@@ -191,33 +186,6 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     'idle' | 'loading' | 'done' | 'error'
   >('idle')
 
-  // === Recorder UI tweaks (purely cosmetic, doesn’t touch Recorder code) ===
-  const recorderWrapRef = useRef<HTMLDivElement | null>(null)
-  useEffect(() => {
-    const root = recorderWrapRef.current
-    if (!root) return
-
-    const mo = new MutationObserver(() => {
-      const btn =
-        root.querySelector<HTMLButtonElement>(
-          'button[data-recorder-start]',
-        )
-      if (btn) {
-        const isActive =
-          btn.getAttribute('aria-pressed') === 'true' ||
-          btn.dataset.state === 'recording'
-        btn.textContent = isActive ? 'Recording…' : 'Record'
-        btn.classList.toggle('text-red-600', !!isActive)
-      }
-    })
-    mo.observe(root, {
-      subtree: true,
-      attributes: true,
-      childList: true,
-    })
-    return () => mo.disconnect()
-  }, [])
-
   // ---------- draggable state for text fields ----------
   const [positions, setPositions] = useState<
     Partial<Record<Exclude<PlaceholderKey, 'video'>, { x: number; y: number }>>
@@ -240,6 +208,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     setFontSizes({})
   }, [selectedTplId])
 
+  // Only allow vertical movement for text (no left/right)
   function makeDragHandlers(
     key: Exclude<PlaceholderKey, 'email' | 'phone' | 'video'>,
   ) {
@@ -251,7 +220,6 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
         const baseSpec = selectedTpl.layout[key]
         if (!baseSpec) return
 
-        const startX = e.clientX
         const startY = e.clientY
 
         const current = positions[key] ?? {
@@ -260,11 +228,10 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
         }
 
         const handleMove = (ev: MouseEvent) => {
-          const dx = (ev.clientX - startX) / scale
           const dy = (ev.clientY - startY) / scale
           setPositions((prev) => ({
             ...prev,
-            [key]: { x: current.x + dx, y: current.y + dy },
+            [key]: { x: current.x, y: current.y + dy }, // x fixed
           }))
         }
 
@@ -419,7 +386,6 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
       email: job.email || '',
       phone: job.phone || '',
       templateId: selectedTplId,
-      // If you later want to pass positions/fontSizes to server, you can add them here
     }
     const res = await fetch('/api/job/download-mp4', {
       method: 'POST',
@@ -582,7 +548,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
-                          className="px-3 py-2 rounded bg-gray-200 hover:bg-gray-300 text-gray-900"
+                          className="px-3 py-2 rounded bg-gray-200 hover:bg-gray-300 text-gray-900 text-sm"
                           onClick={() => setVideoOpen(false)}
                           title="Hide panel"
                         >
@@ -590,7 +556,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                         </button>
                         <button
                           type="button"
-                          className="px-3 py-2 rounded bg-orange-500 hover:bg-orange-600 text-white"
+                          className="px-3 py-2 rounded bg-orange-500 hover:bg-orange-600 text-white text-sm"
                           onClick={clearVideo}
                           title="Remove this video so you can record/upload a new one"
                         >
@@ -599,10 +565,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                       </div>
                     </div>
                   ) : (
-                    <div
-                      ref={recorderWrapRef}
-                      className="recorder-slim"
-                    >
+                    <div className="recorder-slim">
                       <Recorder
                         jobId={jobId || 'unassigned'}
                         onUploaded={(payload: any) => {
@@ -627,13 +590,13 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
             <h3 className="font-semibold text-lg">Job details</h3>
             <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
               <input
-                className="border rounded px-3 py-2 sm:col-span-2"
+                className="border rounded px-3 py-2 sm:col-span-2 text-sm"
                 placeholder="Job ID"
                 value={jobId}
                 onChange={(e) => setJobId(e.target.value)}
               />
               <button
-                className="rounded bg-gray-900 text-white px-3 py-2 disabled:opacity-60"
+                className="rounded bg-gray-900 text-white px-3 py-2 disabled:opacity-60 text-sm"
                 onClick={fetchJob}
                 disabled={fetchStatus === 'loading'}
               >
@@ -647,7 +610,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
 
             <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
               <input
-                className="border rounded px-3 py-2"
+                className="border rounded px-3 py-2 text-sm"
                 placeholder="Job Title"
                 value={job.title}
                 onChange={(e) =>
@@ -655,7 +618,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                 }
               />
               <input
-                className="border rounded px-3 py-2"
+                className="border rounded px-3 py-2 text-sm"
                 placeholder="Location"
                 value={job.location}
                 onChange={(e) =>
@@ -663,7 +626,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                 }
               />
               <input
-                className="border rounded px-3 py-2"
+                className="border rounded px-3 py-2 text-sm"
                 placeholder="Salary"
                 value={job.salary}
                 onChange={(e) =>
@@ -671,7 +634,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                 }
               />
               <input
-                className="border rounded px-3 py-2"
+                className="border rounded px-3 py-2 text-sm"
                 placeholder="Email"
                 value={job.email}
                 onChange={(e) =>
@@ -679,7 +642,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                 }
               />
               <input
-                className="border rounded px-3 py-2"
+                className="border rounded px-3 py-2 text-sm"
                 placeholder="Phone Number"
                 value={job.phone}
                 onChange={(e) =>
@@ -687,7 +650,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                 }
               />
               <textarea
-                className="border rounded px-3 py-2 sm:col-span-2 min-h-[80px]"
+                className="border rounded px-3 py-2 sm:col-span-2 min-h-[80px] text-sm"
                 placeholder="Short Description"
                 value={job.description}
                 onChange={(e) =>
@@ -695,7 +658,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                 }
               />
               <textarea
-                className="border rounded px-3 py-2 sm:col-span-2 min-h-[80px]"
+                className="border rounded px-3 py-2 sm:col-span-2 min-h-[80px] text-sm"
                 placeholder="Benefits (one per line)"
                 value={benefitsText}
                 onChange={(e) =>
@@ -764,13 +727,13 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
             <h3 className="font-semibold text-lg">Preview</h3>
             <div className="flex gap-2">
               <button
-                className="rounded bg-gray-900 text-white px-3 py-2"
+                className="rounded bg-gray-900 text-white px-3 py-2 text-sm"
                 onClick={downloadPng}
               >
                 Download PNG
               </button>
               <button
-                className={`rounded px-3 py-2 ${
+                className={`rounded px-3 py-2 text-sm ${
                   videoUrl
                     ? 'bg-amber-600 text-white'
                     : 'bg-gray-200 text-gray-500'
@@ -978,7 +941,6 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                     userSelect: 'none',
                   }}
                 >
-                  {/* No controls here so drag is nicer; playback is in the panel above */}
                   <video
                     src={videoUrl}
                     playsInline
@@ -1011,16 +973,6 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
         .recorder-slim input[type='number'] {
           height: 2rem;
           font-size: 0.875rem;
-        }
-        .recorder-slim button[data-upload],
-        .recorder-slim button.upload,
-        .recorder-slim button[aria-label='Upload'],
-        .recorder-slim button:where(:not([disabled])):is(.upload-btn) {
-          background: #f97316 !important;
-          color: #fff !important;
-        }
-        .recorder-slim button[data-recorder-start].text-red-600 {
-          color: #dc2626 !important;
         }
       `}</style>
     </div>
