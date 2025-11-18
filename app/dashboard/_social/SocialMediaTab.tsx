@@ -182,6 +182,8 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
   }, [selectedTpl.width, selectedTpl.height])
 
   const previewRef = useRef<HTMLDivElement | null>(null)
+  const exportRef = useRef<HTMLDivElement | null>(null)
+
   const [fetchStatus, setFetchStatus] = useState<
     'idle' | 'loading' | 'done' | 'error'
   >('idle')
@@ -360,12 +362,259 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     }
   }
 
-  async function downloadPng() {
-    if (!previewRef.current) return
+  // ---------- render poster (re-used for preview + export) ----------
+  function renderPoster(scaleFactor: number, ref?: React.Ref<HTMLDivElement>) {
+    const s = scaleFactor
 
-    const canvas = await html2canvas(previewRef.current, {
-      scale: 2,       // higher resolution export
-      useCORS: true,  // safe if templates served from same origin
+    return (
+      <div
+        ref={ref}
+        className="relative shadow-lg"
+        style={{
+          width: selectedTpl.width * s,
+          height: selectedTpl.height * s,
+          backgroundImage: `url(${selectedTpl.imageUrl})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+        }}
+      >
+        {(
+          [
+            'title',
+            'location',
+            'salary',
+            'description',
+            'benefits',
+            'email',
+            'phone',
+          ] as const
+        ).map((key) => {
+          const baseSpec = selectedTpl.layout[key]
+          if (!baseSpec) return null
+
+          const isDraggable = key !== 'email' && key !== 'phone'
+          const override = isDraggable
+            ? positions[key as Exclude<PlaceholderKey, 'video'>]
+            : undefined
+
+          const effectiveFontSize =
+            fontSizes[key as Exclude<PlaceholderKey, 'video'>] ??
+            baseSpec.fontSize ??
+            18
+
+          const spec = {
+            ...baseSpec,
+            x: override?.x ?? baseSpec.x,
+            y: override?.y ?? baseSpec.y,
+            fontSize: effectiveFontSize,
+          }
+
+          const dragProps = isDraggable
+            ? makeDragHandlers(
+                key as Exclude<
+                  PlaceholderKey,
+                  'email' | 'phone' | 'video'
+                >,
+              )
+            : {}
+
+          const value = (() => {
+            switch (key) {
+              case 'title':
+                return job.title || '[JOB TITLE]'
+              case 'location':
+                return job.location || '[LOCATION]'
+              case 'salary':
+                return job.salary || '[SALARY]'
+              case 'description':
+                return job.description || '[SHORT DESCRIPTION]'
+              case 'benefits': {
+                const tx =
+                  (Array.isArray(job.benefits)
+                    ? job.benefits.join('\n')
+                    : job.benefits) ||
+                  '[BENEFIT 1]\n[BENEFIT 2]\n[BENEFIT 3]'
+                return tx
+                  .split('\n')
+                  .map((l) => `• ${l}`)
+                  .join('\n\n')
+              }
+              case 'email':
+                return job.email || '[EMAIL]'
+              case 'phone':
+                return job.phone || '[PHONE NUMBER]'
+            }
+          })()
+
+          if (key === 'benefits') {
+            let benefitsLines: string[] = Array.isArray(job.benefits)
+              ? (job.benefits as string[])
+                  .map((s) => String(s).trim())
+                  .filter(Boolean)
+              : String(job.benefits || '')
+                  .split('\n')
+                  .map((s) => s.trim())
+                  .filter(Boolean)
+
+            if (benefitsLines.length === 0) {
+              benefitsLines = [
+                '[BENEFIT 1]',
+                '[BENEFIT 2]',
+                '[BENEFIT 3]',
+              ]
+            }
+
+            return (
+              <div
+                key={key}
+                {...dragProps}
+                style={{
+                  position: 'absolute',
+                  left: spec.x * s,
+                  top: spec.y * s,
+                  width:
+                    (spec.w ?? selectedTpl.width - spec.x - 40) * s,
+                  height: spec.h ? spec.h * s : undefined,
+                  fontSize: spec.fontSize * s,
+                  lineHeight: 1.25,
+                  textAlign: spec.align ?? 'left',
+                  color: 'white',
+                  wordBreak: 'break-word',
+                  overflowWrap: 'anywhere',
+                  cursor: isDraggable ? 'move' : 'default',
+                  userSelect: 'none',
+                }}
+              >
+                {benefitsLines.map((line, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      paddingLeft: `${16 * s}px`,
+                      textIndent: `-${8 * s}px`,
+                      whiteSpace: 'pre-wrap',
+                      marginBottom: `${8 * s}px`,
+                    }}
+                  >
+                    {`• ${line}`}
+                  </div>
+                ))}
+              </div>
+            )
+          }
+
+          return (
+            <div
+              key={key}
+              {...dragProps}
+              style={{
+                position: 'absolute',
+                left: spec.x * s,
+                top: spec.y * s,
+                width:
+                  (spec.w ?? selectedTpl.width - spec.x - 40) * s,
+                height: spec.h ? spec.h * s : undefined,
+                fontSize: spec.fontSize * s,
+                lineHeight: 1.25,
+                whiteSpace: 'pre-wrap',
+                textAlign: spec.align ?? 'left',
+                color: 'white',
+                fontWeight: key === 'title' ? 700 : 500,
+                wordBreak: 'break-word',
+                overflowWrap: 'anywhere',
+                cursor: isDraggable ? 'move' : 'default',
+                userSelect: 'none',
+              }}
+            >
+              {value}
+            </div>
+          )
+        })}
+
+        {/* LOCATION icon – linked with [LOCATION] field */}
+        {selectedTpl.layout.location && (() => {
+          const locSpec = selectedTpl.layout.location
+          const locOverride = positions.location
+          const locationFontSize =
+            fontSizes.location ?? locSpec.fontSize ?? 20
+          const textHeight = locationFontSize * 1.25
+          const iconSize = 40
+          const iconOffsetX = 45
+          const iconOffsetY = 2.5
+          const locY = locOverride?.y ?? locSpec.y
+
+          return (
+            <div
+              {...makeDragHandlers('location')}
+              style={{
+                position: 'absolute',
+                left: (locSpec.x - iconOffsetX) * s,
+                top:
+                  (locY +
+                    (textHeight - iconSize) +
+                    iconOffsetY) * s,
+                width: iconSize * s,
+                height: iconSize * s,
+                cursor: 'move',
+                userSelect: 'none',
+                zIndex: 999,
+              }}
+            >
+              <img
+                src="/templates/Location-Icon.png"
+                alt="Location icon"
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'contain',
+                  display: 'block',
+                }}
+              />
+            </div>
+          )
+        })()}
+
+        {selectedTpl.layout.video && videoUrl && (
+          <div
+            {...makeVideoDragHandlers()}
+            style={{
+              position: 'absolute',
+              left:
+                (videoPos?.x ?? selectedTpl.layout.video.x) * s,
+              top:
+                (videoPos?.y ?? selectedTpl.layout.video.y) * s,
+              width: selectedTpl.layout.video.w * s,
+              height: selectedTpl.layout.video.h * s,
+              overflow: 'hidden',
+              clipPath: clipPath(mask, roundedR * s),
+              background: '#111',
+              cursor: 'move',
+              userSelect: 'none',
+            }}
+          >
+            <video
+              src={videoUrl}
+              playsInline
+              preload="metadata"
+              controls
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+              }}
+            />
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ---------- download PNG using full-size hidden poster ----------
+  async function downloadPng() {
+    if (!exportRef.current) return
+
+    const canvas = await html2canvas(exportRef.current, {
+      scale: 2,
+      useCORS: true,
     })
 
     const a = document.createElement('a')
@@ -759,243 +1008,20 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
             ref={previewBoxRef}
             className="mt-3 h-[64vh] min-h-[420px] w-full overflow-hidden flex items-center justify-center bg-muted/20 rounded-lg"
           >
-            <div
-              ref={previewRef}
-              className="relative shadow-lg"
-              style={{
-                width: selectedTpl.width,
-                height: selectedTpl.height,
-                backgroundImage: `url(${selectedTpl.imageUrl})`,
-                backgroundSize: 'cover',
-                backgroundPosition: 'center',
-                transform: `scale(${scale})`,
-                transformOrigin: 'top left',
-              }}
-            >
-              {(
-                [
-                  'title',
-                  'location',
-                  'salary',
-                  'description',
-                  'benefits',
-                  'email',
-                  'phone',
-                ] as const
-              ).map((key) => {
-                const baseSpec = selectedTpl.layout[key]
-                if (!baseSpec) return null
+            {renderPoster(scale, previewRef)}
+          </div>
 
-                const isDraggable = key !== 'email' && key !== 'phone'
-                const override = isDraggable
-                  ? positions[key as Exclude<PlaceholderKey, 'video'>]
-                  : undefined
-
-                const effectiveFontSize =
-                  fontSizes[key as Exclude<PlaceholderKey, 'video'>] ??
-                  baseSpec.fontSize ??
-                  18
-
-                const spec = {
-                  ...baseSpec,
-                  x: override?.x ?? baseSpec.x,
-                  y: override?.y ?? baseSpec.y,
-                  fontSize: effectiveFontSize,
-                }
-
-                const dragProps = isDraggable
-                  ? makeDragHandlers(
-                      key as Exclude<
-                        PlaceholderKey,
-                        'email' | 'phone' | 'video'
-                      >,
-                    )
-                  : {}
-
-                const value = (() => {
-                  switch (key) {
-                    case 'title':
-                      return job.title || '[JOB TITLE]'
-                    case 'location':
-                      return job.location || '[LOCATION]'
-                    case 'salary':
-                      return job.salary || '[SALARY]'
-                    case 'description':
-                      return job.description || '[SHORT DESCRIPTION]'
-                    case 'benefits': {
-                      const tx =
-                        (Array.isArray(job.benefits)
-                          ? job.benefits.join('\n')
-                          : job.benefits) ||
-                        '[BENEFIT 1]\n[BENEFIT 2]\n[BENEFIT 3]'
-                      return tx
-                        .split('\n')
-                        .map((l) => `• ${l}`)
-                        .join('\n\n')
-                    }
-                    case 'email':
-                      return job.email || '[EMAIL]'
-                    case 'phone':
-                      return job.phone || '[PHONE NUMBER]'
-                  }
-                })()
-
-                if (key === 'benefits') {
-                  let benefitsLines: string[] = Array.isArray(
-                    job.benefits,
-                  )
-                    ? (job.benefits as string[])
-                        .map((s) => String(s).trim())
-                        .filter(Boolean)
-                    : String(job.benefits || '')
-                        .split('\n')
-                        .map((s) => s.trim())
-                        .filter(Boolean)
-
-                  if (benefitsLines.length === 0) {
-                    benefitsLines = [
-                      '[BENEFIT 1]',
-                      '[BENEFIT 2]',
-                      '[BENEFIT 3]',
-                    ]
-                  }
-
-                  return (
-                    <div
-                      key={key}
-                      {...dragProps}
-                      style={{
-                        position: 'absolute',
-                        left: spec.x,
-                        top: spec.y,
-                        width: spec.w ?? selectedTpl.width - spec.x - 40,
-                        height: spec.h,
-                        fontSize: spec.fontSize,
-                        lineHeight: 1.25,
-                        textAlign: spec.align ?? 'left',
-                        color: 'white',
-                        wordBreak: 'break-word',
-                        overflowWrap: 'anywhere',
-                        cursor: isDraggable ? 'move' : 'default',
-                        userSelect: 'none',
-                      }}
-                    >
-                      {benefitsLines.map((line, i) => (
-                        <div
-                          key={i}
-                          style={{
-                            paddingLeft: 16,
-                            textIndent: -8,
-                            whiteSpace: 'pre-wrap',
-                            marginBottom: 8,
-                          }}
-                        >
-                          {`• ${line}`}
-                        </div>
-                      ))}
-                    </div>
-                  )
-                }
-
-                return (
-                  <div
-                    key={key}
-                    {...dragProps}
-                    style={{
-                      position: 'absolute',
-                      left: spec.x,
-                      top: spec.y,
-                      width: spec.w ?? selectedTpl.width - spec.x - 40,
-                      height: spec.h,
-                      fontSize: spec.fontSize,
-                      lineHeight: 1.25,
-                      whiteSpace: 'pre-wrap',
-                      textAlign: spec.align ?? 'left',
-                      color: 'white',
-                      fontWeight: key === 'title' ? 700 : 500,
-                      wordBreak: 'break-word',
-                      overflowWrap: 'anywhere',
-                      cursor: isDraggable ? 'move' : 'default',
-                      userSelect: 'none',
-                    }}
-                  >
-                    {value}
-                  </div>
-                )
-              })}
-
-              {/* LOCATION icon – linked with [LOCATION] field */}
-              {selectedTpl.layout.location && (() => {
-                const locSpec = selectedTpl.layout.location
-                const locOverride = positions.location
-                const locationFontSize =
-                  fontSizes.location ?? locSpec.fontSize ?? 20
-                const textHeight = locationFontSize * 1.25
-                const iconSize = 40          // size of icon in px
-                const iconOffsetX = 45       // distance left of text
-                const iconOffsetY = 2.5      // adjust up/down
-                const locY = locOverride?.y ?? locSpec.y
-
-                return (
-                  <div
-                    {...makeDragHandlers('location')}
-                    style={{
-                      position: 'absolute',
-                      left: locSpec.x - iconOffsetX,
-                      top: locY + (textHeight - iconSize) + iconOffsetY,
-                      width: iconSize,
-                      height: iconSize,
-                      cursor: 'move',
-                      userSelect: 'none',
-                      zIndex: 999,
-                    }}
-                  >
-                    <img
-                      src="/templates/Location-Icon.png"
-                      alt="Location icon"
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'contain',
-                        display: 'block',
-                      }}
-                    />
-                  </div>
-                )
-              })()}
-
-              {selectedTpl.layout.video && videoUrl && (
-                <div
-                  {...makeVideoDragHandlers()}
-                  style={{
-                    position: 'absolute',
-                    left:
-                      videoPos?.x ?? selectedTpl.layout.video.x,
-                    top:
-                      videoPos?.y ?? selectedTpl.layout.video.y,
-                    width: selectedTpl.layout.video.w,
-                    height: selectedTpl.layout.video.h,
-                    overflow: 'hidden',
-                    clipPath: clipPath(mask, roundedR),
-                    background: '#111',
-                    cursor: 'move',
-                    userSelect: 'none',
-                  }}
-                >
-                  <video
-                    src={videoUrl}
-                    playsInline
-                    preload="metadata"
-                    controls
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      objectFit: 'cover',
-                    }}
-                  />
-                </div>
-              )}
-            </div>
+          {/* hidden full-size poster for crisp PNG export */}
+          <div
+            style={{
+              position: 'absolute',
+              left: -99999,
+              top: -99999,
+              opacity: 0,
+              pointerEvents: 'none',
+            }}
+          >
+            {renderPoster(1, exportRef)}
           </div>
 
           <p className="mt-3 text-xs text-gray-500">
