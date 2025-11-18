@@ -937,7 +937,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                 const textHeight = locationFontSize * 1.25
                 const iconSize = 40 // icon size in template px
                 const iconOffsetX = 45    // right or left
-                const iconOffsetY = 3.5     // high or low
+                const iconOffsetY = 2.5     // high or low
                 const locY = locOverride?.y ?? locSpec.y
 
                 return (
