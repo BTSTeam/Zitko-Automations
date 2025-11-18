@@ -956,36 +956,34 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                 )
               })}
 
-              {/* LOCATION icon – left of location text, vertical-drag only */}
-              {selectedTpl.layout.location && (
-                <div
-                  {...makeLocationIconDragHandlers()}
+             {selectedTpl.layout.location && (
+              <div
+                {...makeLocationIconDragHandlers()}
+                style={{
+                  position: 'absolute',
+                  left: (selectedTpl.layout.location.x - 48) * scale, // left of [LOCATION]
+                  top:
+                    (locationIconPos?.y ?? selectedTpl.layout.location.y) *
+                    scale,
+                  width: 32 * scale,
+                  height: 32 * scale,
+                  cursor: 'move',
+                  userSelect: 'none',
+                  zIndex: 50, // on top of template + text
+                }}
+              >
+                <img
+                  src="/templates/Location-Icon.png"
+                  alt="Location icon"
                   style={{
-                    position: 'absolute',
-                    left:
-                      (selectedTpl.layout.location.x - 48) * scale,
-                    top:
-                      (locationIconPos?.y ??
-                        selectedTpl.layout.location.y) * scale,
-                    width: 32 * scale,
-                    height: 32 * scale,
-                    cursor: 'move',
-                    userSelect: 'none',
-                    zIndex: 50,
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'contain',
+                    display: 'block',
                   }}
-                >
-                  <img
-                    src="/templates/Location-Icon.png"
-                    alt="Location icon"
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      objectFit: 'contain',
-                      display: 'block',
-                    }}
-                  />
-                </div>
-              )}
+                />
+              </div>
+            )}
 
               {selectedTpl.layout.video && videoUrl && (
                 <div
