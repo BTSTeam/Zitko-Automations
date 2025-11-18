@@ -956,34 +956,37 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                 )
               })}
 
-             {selectedTpl.layout.location && (
-              <div
-                {...makeLocationIconDragHandlers()}
-                style={{
-                  position: 'absolute',
-                  left: (selectedTpl.layout.location.x - 48) * scale, // left of [LOCATION]
-                  top:
-                    (locationIconPos?.y ?? selectedTpl.layout.location.y) *
-                    scale,
-                  width: 32 * scale,
-                  height: 32 * scale,
-                  cursor: 'move',
-                  userSelect: 'none',
-                  zIndex: 50, // on top of template + text
-                }}
-              >
-                <img
-                  src="/templates/Location-Icon.png"
-                  alt="Location icon"
+              {/* LOCATION icon – left of [LOCATION], vertical drag only */}
+              {selectedTpl.layout.location && (
+                <div
+                  {...makeLocationIconDragHandlers()}
                   style={{
-                    width: '100%',
-                    height: '100%',
-                    objectFit: 'contain',
-                    display: 'block',
+                    position: 'absolute',
+                    left: (selectedTpl.layout.location.x - 70) * scale,
+                    top:
+                      (locationIconPos?.y ??
+                        selectedTpl.layout.location.y) * scale,
+                    width: 56 * scale,
+                    height: 56 * scale,
+                    cursor: 'move',
+                    userSelect: 'none',
+                    zIndex: 999,
+                    // TEMP debug outline – remove once you're happy
+                    outline: '2px solid #ff0000',
                   }}
-                />
-              </div>
-            )}
+                >
+                  <img
+                    src="/templates/Location-Icon.png"
+                    alt="Location icon"
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'contain',
+                      display: 'block',
+                    }}
+                  />
+                </div>
+              )}
 
               {selectedTpl.layout.video && videoUrl && (
                 <div
