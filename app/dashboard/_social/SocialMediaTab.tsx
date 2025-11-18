@@ -539,7 +539,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
           const textHeight = locationFontSize * 1.25
           const iconSize = 40
           const iconOffsetX = 45
-          const iconOffsetY = 2.5
+          const iconOffsetY = 1.5
           const locY = locOverride?.y ?? locSpec.y
 
           return (
