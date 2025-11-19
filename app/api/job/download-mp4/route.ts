@@ -22,9 +22,6 @@ cloudinary.config({
   secure: true,
 });
 
-// Cloudinary public_id for the location icon (upload Location-Icon.png and set this)
-const LOCATION_ICON_PUBLIC_ID = "templates/Location-Icon"; // <-- change to your actual public_id
-
 // ---------------- Types ----------------
 
 type PlaceholderKey =
@@ -84,131 +81,23 @@ interface Layout {
 // These should mirror your SocialMediaTab template layouts
 const LAYOUTS: Record<"zitko-1" | "zitko-2", Layout> = {
   "zitko-1": {
-    title: {
-      x: 470,
-      y: 100,
-      w: 560,
-      fs: 60,
-      color: "#ffffff",
-      bold: true,
-      align: "left",
-    },
-    location: {
-      x: 520,
-      y: 330,
-      w: 520,
-      fs: 30,
-      color: "#ffffff",
-      bold: true,
-      align: "left",
-    },
-    salary: {
-      x: 520,
-      y: 400,
-      w: 520,
-      fs: 28,
-      color: "#F7941D",
-      bold: true,
-      align: "left",
-    },
-    description: {
-      x: 520,
-      y: 480,
-      w: 520,
-      h: 80,
-      fs: 24,
-      color: "#ffffff",
-      align: "left",
-    },
-    benefits: {
-      x: 520,
-      y: 650,
-      w: 520,
-      h: 260,
-      fs: 24,
-      color: "#ffffff",
-      align: "left",
-    },
-    email: {
-      x: 800,
-      y: 962,
-      w: 180,
-      fs: 20,
-      color: "#ffffff",
-      align: "left",
-    },
-    phone: {
-      x: 800,
-      y: 1018,
-      w: 180,
-      fs: 20,
-      color: "#ffffff",
-      align: "left",
-    },
+    title: { x: 470, y: 100, w: 560, fs: 60, color: "#ffffff", bold: true, align: "left" },
+    location: { x: 520, y: 330, w: 520, fs: 30, color: "#ffffff", bold: true, align: "left" },
+    salary: { x: 520, y: 400, w: 520, fs: 28, color: "#F7941D", bold: true, align: "left" },
+    description: { x: 520, y: 480, w: 520, h: 80, fs: 24, color: "#ffffff", align: "left" },
+    benefits: { x: 520, y: 650, w: 520, h: 260, fs: 24, color: "#ffffff", align: "left" },
+    email: { x: 800, y: 962, w: 180, fs: 20, color: "#ffffff", align: "left" },
+    phone: { x: 800, y: 1018, w: 180, fs: 20, color: "#ffffff", align: "left" },
     video: { x: 80, y: 400, w: 300, h: 300 },
   },
   "zitko-2": {
-    title: {
-      x: 30,
-      y: 370,
-      w: 520,
-      fs: 60,
-      color: "#ffffff",
-      bold: true,
-      align: "left",
-    },
-    location: {
-      x: 80,
-      y: 480,
-      w: 520,
-      fs: 30,
-      color: "#ffffff",
-      bold: true,
-      align: "left",
-    },
-    salary: {
-      x: 80,
-      y: 530,
-      w: 520,
-      fs: 28,
-      color: "#F7941D",
-      bold: true,
-      align: "left",
-    },
-    description: {
-      x: 80,
-      y: 580,
-      w: 520,
-      h: 120,
-      fs: 24,
-      color: "#ffffff",
-      align: "left",
-    },
-    benefits: {
-      x: 80,
-      y: 750,
-      w: 520,
-      h: 260,
-      fs: 24,
-      color: "#ffffff",
-      align: "left",
-    },
-    email: {
-      x: 800,
-      y: 962,
-      w: 180,
-      fs: 20,
-      color: "#ffffff",
-      align: "left",
-    },
-    phone: {
-      x: 800,
-      y: 1018,
-      w: 180,
-      fs: 20,
-      color: "#ffffff",
-      align: "left",
-    },
+    title: { x: 30, y: 370, w: 520, fs: 60, color: "#ffffff", bold: true, align: "left" },
+    location: { x: 80, y: 480, w: 520, fs: 30, color: "#ffffff", bold: true, align: "left" },
+    salary: { x: 80, y: 530, w: 520, fs: 28, color: "#F7941D", bold: true, align: "left" },
+    description: { x: 80, y: 580, w: 520, h: 120, fs: 24, color: "#ffffff", align: "left" },
+    benefits: { x: 80, y: 750, w: 520, h: 260, fs: 24, color: "#ffffff", align: "left" },
+    email: { x: 800, y: 962, w: 180, fs: 20, color: "#ffffff", align: "left" },
+    phone: { x: 800, y: 1018, w: 180, fs: 20, color: "#ffffff", align: "left" },
     video: { x: 705, y: 540, w: 300, h: 300 },
   },
 };
@@ -289,6 +178,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         ""
       )}/templates/${filename}`;
     }
+
+    // derive base origin for other assets (location icon)
+    let assetsOrigin: string | null = null;
+    try {
+      const u = new URL(effectiveTemplateUrl);
+      assetsOrigin = u.origin;
+    } catch {
+      // best-effort fallback
+      assetsOrigin = originFromReq;
+    }
+    const locationIconUrl = assetsOrigin
+      ? `${assetsOrigin.replace(/\/$/, "")}/templates/Location-Icon.png`
+      : null;
 
     // ----- Sanity-check template URL -----
     try {
@@ -434,7 +336,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     });
 
     // 4) Location icon overlay (matches React preview maths)
-    if (LOCATION_ICON_PUBLIC_ID) {
+    if (locationIconUrl) {
       const locSpec = effectiveLayout.location;
       const locationFontSize = locSpec.fs;
       const textHeight = locationFontSize * 1.25;
@@ -447,12 +349,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       const iconY = locY + (textHeight - iconSize) + iconOffsetY;
 
       transformations.push({
-        overlay: LOCATION_ICON_PUBLIC_ID,
+        overlay: { url: locationIconUrl },
         width: iconSize,
         height: iconSize,
         crop: "scale",
       });
-
       transformations.push({
         gravity: "north_west",
         x: iconX,
