@@ -50,14 +50,14 @@ const LAYOUTS: Record<"zitko-1" | "zitko-2", Layout> = {
       video: { x: 80, y: 400, w: 300, h: 300 },
   },
   "zitko-2": {
-    title:       { x:  80, y: 320, w: 520, fs: 34, color: "#ffffff", bold: true },
-    salary:      { x:  80, y: 370, w: 520, fs: 22, color: "#ffffff", bold: true },
-    location:    { x:  80, y: 410, w: 520, fs: 20, color: "#ffffff", bold: true },
-    description: { x:  80, y: 460, w: 520, h: 120, fs: 18, color: "#ffffff" },
-    benefits:    { x:  80, y: 600, w: 520, h: 140, fs: 18, color: "#ffffff" },
-    email:       { x: 800, y: 960, w: 180, fs: 20, color: "#ffffff" }, // slight lift
-    phone:       { x: 800, y: 1010, w: 180, fs: 20, color: "#ffffff" }, // slight lift
-    video:       { x: 720, y: 360, w: 280, h: 360 },
+      title: { x: 80, y: 380, fontSize: 60 },
+      location: { x: 80, y: 480, w: 520, fontSize: 30 },
+      salary: { x: 80, y: 530, w: 520, fontSize: 28 },
+      description: { x: 80, y: 580, w: 520, h: 120, fontSize: 24 },
+      benefits: { x: 80, y: 750, w: 520, h: 260, fontSize: 24 },
+      email: { x: 800, y: 962, w: 180, fontSize: 20, align: 'left' },
+      phone: { x: 800, y: 1018, w: 180, fontSize: 20, align: 'left' },
+      video: { x: 750, y: 400, w: 300, h: 300 },
   },
 };
 
