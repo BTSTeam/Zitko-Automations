@@ -344,16 +344,22 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       const iconOffsetX = 50;
       const iconOffsetY = 15;
       const locY = locSpec.y;
-
+    
       const iconX = locSpec.x - iconOffsetX;
       const iconY = locY + (textHeight - iconSize) + iconOffsetY;
-
+    
+      // Use a "fetch:" overlay so Cloudinary gets a proper public_id
+      const iconFetchB64 = toBase64Url(locationIconUrl);
+    
+      // 4a) define the overlay as fetch:<base64-url> and scale it
       transformations.push({
-        overlay: { url: locationIconUrl },
+        overlay: `fetch:${iconFetchB64}`,
         width: iconSize,
         height: iconSize,
         crop: "scale",
       });
+    
+      // 4b) apply it at the computed coordinates
       transformations.push({
         gravity: "north_west",
         x: iconX,
@@ -361,6 +367,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         flags: "layer_apply",
       });
     }
+
 
     // 5) Helper for text overlays (title, location, salary, etc.)
     function addTextOverlay(key: PlaceholderKey, value: string) {
