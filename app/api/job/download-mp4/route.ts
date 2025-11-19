@@ -41,9 +41,7 @@ type TextBox = {
   bold?: boolean;
   h?: number;
 };
-
 type VideoBox = { x: number; y: number; w: number; h: number };
-
 type Layout = {
   title: TextBox;
   location: TextBox;
@@ -55,42 +53,138 @@ type Layout = {
   video: VideoBox;
 };
 
-// These mirror your SocialMediaTab template positions/sizes
+// These are aligned with your current SocialMediaTab TEMPLATES
 const LAYOUTS: Record<"zitko-1" | "zitko-2", Layout> = {
   "zitko-1": {
+    // SocialMediaTab:
     // title: { x: 470, y: 100, w: 560, fontSize: 60 }
-    title: { x: 470, y: 100, w: 560, fs: 60, color: "#ffffff", bold: true },
+    title: {
+      x: 470,
+      y: 100,
+      w: 560,
+      fs: 60,
+      color: "#ffffff",
+      bold: true,
+    },
     // location: { x: 520, y: 330, w: 520, fontSize: 30 }
-    location: { x: 520, y: 330, w: 520, fs: 30, color: "#ffffff", bold: true },
+    location: {
+      x: 520,
+      y: 330,
+      w: 520,
+      fs: 30,
+      color: "#ffffff",
+      bold: true,
+    },
     // salary: { x: 520, y: 400, w: 520, fontSize: 28 }
-    salary: { x: 520, y: 400, w: 520, fs: 28, color: "#F7941D", bold: true },
+    salary: {
+      x: 520,
+      y: 400,
+      w: 520,
+      fs: 28,
+      color: "#F7941D", // orange to match PNG
+      bold: true,
+    },
     // description: { x: 520, y: 480, w: 520, h: 80, fontSize: 24 }
-    description: { x: 520, y: 480, w: 520, h: 80, fs: 24, color: "#ffffff" },
+    description: {
+      x: 520,
+      y: 480,
+      w: 520,
+      h: 80,
+      fs: 24,
+      color: "#ffffff",
+    },
     // benefits: { x: 520, y: 650, w: 520, h: 260, fontSize: 24 }
-    benefits: { x: 520, y: 650, w: 520, h: 260, fs: 24, color: "#ffffff" },
+    benefits: {
+      x: 520,
+      y: 650,
+      w: 520,
+      h: 260,
+      fs: 24,
+      color: "#ffffff",
+    },
     // email: { x: 800, y: 962, w: 180, fontSize: 20 }
-    email: { x: 800, y: 962, w: 180, fs: 20, color: "#ffffff" },
+    email: {
+      x: 800,
+      y: 962,
+      w: 180,
+      fs: 20,
+      color: "#ffffff",
+    },
     // phone: { x: 800, y: 1018, w: 180, fontSize: 20 }
-    phone: { x: 800, y: 1018, w: 180, fs: 20, color: "#ffffff" },
+    phone: {
+      x: 800,
+      y: 1018,
+      w: 180,
+      fs: 20,
+      color: "#ffffff",
+    },
     // video: { x: 80, y: 400, w: 300, h: 300 }
     video: { x: 80, y: 400, w: 300, h: 300 },
   },
   "zitko-2": {
+    // SocialMediaTab:
     // title: { x: 80, y: 380, fontSize: 60 }
     // width in React = template.width - x - 40 = 1080 - 80 - 40 = 960
-    title: { x: 80, y: 380, w: 960, fs: 60, color: "#ffffff", bold: true },
+    title: {
+      x: 80,
+      y: 380,
+      w: 960, // full width to match PNG
+      fs: 60,
+      color: "#ffffff",
+      bold: true,
+    },
     // location: { x: 80, y: 480, w: 520, fontSize: 30 }
-    location: { x: 80, y: 480, w: 520, fs: 30, color: "#ffffff", bold: true },
+    location: {
+      x: 80,
+      y: 480,
+      w: 520,
+      fs: 30,
+      color: "#ffffff",
+      bold: true,
+    },
     // salary: { x: 80, y: 530, w: 520, fontSize: 28 }
-    salary: { x: 80, y: 530, w: 520, fs: 28, color: "#F7941D", bold: true },
+    salary: {
+      x: 80,
+      y: 530,
+      w: 520,
+      fs: 28,
+      color: "#F7941D", // orange
+      bold: true,
+    },
     // description: { x: 80, y: 580, w: 520, h: 120, fontSize: 24 }
-    description: { x: 80, y: 580, w: 520, h: 120, fs: 24, color: "#ffffff" },
+    description: {
+      x: 80,
+      y: 580,
+      w: 520,
+      h: 120,
+      fs: 24,
+      color: "#ffffff",
+    },
     // benefits: { x: 80, y: 750, w: 520, h: 260, fontSize: 24 }
-    benefits: { x: 80, y: 750, w: 520, h: 260, fs: 24, color: "#ffffff" },
+    benefits: {
+      x: 80,
+      y: 750,
+      w: 520,
+      h: 260,
+      fs: 24,
+      color: "#ffffff",
+    },
     // email: { x: 800, y: 962, w: 180, fontSize: 20 }
-    email: { x: 800, y: 962, w: 180, fs: 20, color: "#ffffff" },
+    email: {
+      x: 800,
+      y: 962,
+      w: 180,
+      fs: 20,
+      color: "#ffffff",
+    },
     // phone: { x: 800, y: 1018, w: 180, fontSize: 20 }
-    phone: { x: 800, y: 1018, w: 180, fs: 20, color: "#ffffff" },
+    phone: {
+      x: 800,
+      y: 1018,
+      w: 180,
+      fs: 20,
+      color: "#ffffff",
+    },
     // video: { x: 750, y: 400, w: 300, h: 300 }
     video: { x: 750, y: 400, w: 300, h: 300 },
   },
@@ -131,13 +225,13 @@ export async function POST(req: NextRequest) {
       templateUrl,
     } = (await req.json()) as Body;
 
-    // sanitize description to avoid manual wraps
+    // Sanitize description to avoid manual line breaks
     const cleanDescription = String(description || "")
       .replace(/\r\n|\r|\n/g, " ")
       .replace(/\s{2,}/g, " ")
       .trim();
 
-    // trim benefits lines (will be bulleted)
+    // Trim benefits lines (bullets added in formatBenefits)
     const cleanBenefits = String(benefits || "").trim();
 
     if (!videoPublicId) {
@@ -247,36 +341,31 @@ export async function POST(req: NextRequest) {
     const CANVAS = 1080;
     const L = LAYOUTS[templateId] || LAYOUTS["zitko-1"];
 
+    // video slot
+    const overlayIdForLayer = cleanVideoId.replace(/\//g, ":");
+    const videoSize = Math.min(L.video.w, L.video.h);
     const fetchB64 = toBase64Url(effectiveTemplateUrl);
 
-    // For overlay syntax we need : instead of / for foldered IDs
-    const overlayIdForLayer = cleanVideoId.replace(/\//g, ":");
-
+    // This is your original, working transformation shape,
+    // only with updated layout values above.
     const composedUrl = cloudinary.url(cleanVideoId, {
       resource_type: "video",
       type: "authenticated",
       sign_url: true,
       transformation: [
-        // base video scaled to square
         { width: CANVAS, height: CANVAS, crop: "fill" },
 
-        // template PNG over the top
+        // template PNG
         {
           raw_transformation: `l_fetch:${fetchB64}/c_fill,w_${CANVAS},h_${CANVAS}/fl_layer_apply,g_north_west,x_0,y_0`,
         },
 
-        // OVERLAY: the same video in the template's video slot
+        // video into slot
         {
-          overlay: `video:authenticated:${overlayIdForLayer}`,
-          width: L.video.w,
-          height: L.video.h,
-          crop: "fill",
+          raw_transformation: `w_${videoSize},h_${videoSize},c_fill,r_max,l_video:authenticated:${overlayIdForLayer}`,
         },
         {
-          flags: "layer_apply",
-          gravity: "north_west",
-          x: L.video.x,
-          y: L.video.y,
+          raw_transformation: `fl_layer_apply,g_north_west,x_${L.video.x},y_${L.video.y}`,
         },
 
         // TITLE
