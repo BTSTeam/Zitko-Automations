@@ -70,7 +70,7 @@ const TEMPLATES: TemplateDef[] = [
     width: 1080,
     height: 1080,
     layout: {
-      title: { x: 80, y: 380, w: 520, fontSize: 60 },
+      title: { x: 80, y: 380, fontSize: 60 },
       location: { x: 80, y: 480, w: 520, fontSize: 30 },
       salary: { x: 80, y: 530, w: 520, fontSize: 28 },
       description: { x: 80, y: 580, w: 520, h: 120, fontSize: 24 },
