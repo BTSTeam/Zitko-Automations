@@ -77,7 +77,7 @@ const LAYOUTS: Record<"zitko-1" | "zitko-2", Layout> = {
   },
   "zitko-2": {
     // title: { x: 80, y: 380, fontSize: 60 }
-    // React width = (template.width - x - 40) = 1080 - 80 - 40 = 960
+    // width in React = template.width - x - 40 = 1080 - 80 - 40 = 960
     title: { x: 80, y: 380, w: 960, fs: 60, color: "#ffffff", bold: true },
     // location: { x: 80, y: 480, w: 520, fontSize: 30 }
     location: { x: 80, y: 480, w: 520, fs: 30, color: "#ffffff", bold: true },
@@ -249,6 +249,9 @@ export async function POST(req: NextRequest) {
 
     const fetchB64 = toBase64Url(effectiveTemplateUrl);
 
+    // For overlay syntax we need : instead of / for foldered IDs
+    const overlayIdForLayer = cleanVideoId.replace(/\//g, ":");
+
     const composedUrl = cloudinary.url(cleanVideoId, {
       resource_type: "video",
       type: "authenticated",
@@ -262,13 +265,9 @@ export async function POST(req: NextRequest) {
           raw_transformation: `l_fetch:${fetchB64}/c_fill,w_${CANVAS},h_${CANVAS}/fl_layer_apply,g_north_west,x_0,y_0`,
         },
 
-        // OVERLAY: video into template's video slot
+        // OVERLAY: the same video in the template's video slot
         {
-          overlay: {
-            resource_type: "video",
-            type: "authenticated",
-            public_id: cleanVideoId,
-          },
+          overlay: `video:authenticated:${overlayIdForLayer}`,
           width: L.video.w,
           height: L.video.h,
           crop: "fill",
@@ -444,7 +443,8 @@ export async function POST(req: NextRequest) {
         videoRes.headers.get("x-cld-error") || undefined;
       return NextResponse.json(
         {
-          error: "Failed to compose video",
+          error:
+            cldError || "Failed to compose video (see details)",
           status: videoRes.status,
           cloudinaryError: cldError,
           details: errText.slice(0, 2000),
