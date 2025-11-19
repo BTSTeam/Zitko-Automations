@@ -70,10 +70,10 @@ const TEMPLATES: TemplateDef[] = [
     width: 1080,
     height: 1080,
     layout: {
-      title: { x: 80, y: 400, w: 520, fontSize: 34 },
-      location: { x: 80, y: 480, w: 520, fontSize: 22 },
-      salary: { x: 80, y: 550, w: 520, fontSize: 20 },
-      description: { x: 80, y: 580, w: 520, h: 120, fontSize: 18 },
+      title: { x: 80, y: 400, w: 520, fontSize: 60 },
+      location: { x: 80, y: 480, w: 520, fontSize: 30 },
+      salary: { x: 80, y: 550, w: 520, fontSize: 28 },
+      description: { x: 80, y: 580, w: 520, h: 120, fontSize: 24 },
       benefits: { x: 80, y: 750, w: 520, h: 260, fontSize: 24 },
       email: { x: 800, y: 962, w: 180, fontSize: 20, align: 'left' },
       phone: { x: 800, y: 1018, w: 180, fontSize: 20, align: 'left' },
@@ -1004,30 +1004,9 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                 type="button"
                 onClick={resetLayout}
                 title="Reset layout to template defaults"
-                className="inline-flex items-center justify-center w-7 h-7 text-gray-500 hover:text-gray-700"
+                className="inline-flex items-center justify-center w-7 h-7 rounded-full border border-gray-200 bg-white text-[13px] leading-none text-gray-500 hover:text-gray-700 hover:bg-gray-50"
               >
-                <svg
-                  viewBox="0 0 20 20"
-                  className="w-[18px] h-[18px]"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  {/* small circular arrow, open at bottom-left, pointing top-right */}
-                  <path
-                    d="M15 5.25V8.75H11.5"
-                    stroke="currentColor"
-                    strokeWidth="1.3"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  <path
-                    d="M5.25 11C5.25 8.51472 7.26472 6.5 9.75 6.5C11.2456 6.5 12.58 7.24348 13.36 8.41"
-                    stroke="currentColor"
-                    strokeWidth="1.3"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
+                ↻
               </button>
 
               <button
