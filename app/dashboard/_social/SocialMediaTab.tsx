@@ -643,11 +643,12 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     a.click()
   }
 
-  async function downloadMp4() {
+    async function downloadMp4() {
     if (!videoPublicId) {
       alert('Add a video first.')
       return
     }
+
     const payload = {
       videoPublicId,
       title: job.title || 'Job Title',
@@ -660,14 +661,21 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
       email: job.email || '',
       phone: job.phone || '',
       templateId: selectedTplId,
+      // NEW: send layout overrides so MP4 matches preview
+      positions,
+      fontSizes,
+      videoPos,
     }
+
     const res = await fetch('/api/job/download-mp4', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     })
+
     const contentType = res.headers.get('content-type') || ''
     const isJson = contentType.includes('application/json')
+
     if (!res.ok) {
       const errPayload = isJson
         ? await res.json().catch(() => ({}))
@@ -676,6 +684,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
       console.error('Download MP4 error payload:', errPayload)
       return
     }
+
     if (isJson) {
       const j = await res.json().catch(() => ({}))
       if (j.composedUrl) {
@@ -686,6 +695,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
       alert('Unexpected JSON response from server.')
       return
     }
+
     const blob = await res.blob()
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
