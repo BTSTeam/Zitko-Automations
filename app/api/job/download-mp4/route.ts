@@ -40,14 +40,14 @@ type Layout = {
 
 const LAYOUTS: Record<"zitko-1" | "zitko-2", Layout> = {
   "zitko-1": {
-    title:       { x: 520, y: 140, w: 560, fs: 60, color: "#ffffff", bold: true },
-    location:    { x: 520, y: 330, w: 560, fs: 30, color: "#ffffff", bold: true },
-    salary:      { x: 520, y: 400, w: 560, fs: 28, color: "#ffffff", bold: true },
-    description: { x: 520, y: 480, w: 555, h: 220, fs: 24, color: "#ffffff" },
-    benefits:    { x: 520, y: 720, w: 560, h: 220, fs: 24, color: "#ffffff" },
-    email:       { x: 800, y: 980, w: 180, fs: 20, color: "#ffffff" },
-    phone:       { x: 800, y: 1035, w: 180, fs: 20, color: "#ffffff" },
-    video:       { x:  80, y: 400, w: 300, h: 300 },
+      title: { x: 470, y: 100, w: 560, fontSize: 60 },
+      location: { x: 520, y: 330, w: 520, fontSize: 30 },
+      salary: { x: 520, y: 400, w: 520, fontSize: 28 },
+      description: { x: 520, y: 480, w: 520, h: 80, fontSize: 24 },
+      benefits: { x: 520, y: 650, w: 520, h: 260, fontSize: 24 },
+      email: { x: 800, y: 962, w: 180, fontSize: 20, align: 'left' },
+      phone: { x: 800, y: 1018, w: 180, fontSize: 20, align: 'left' },
+      video: { x: 80, y: 400, w: 300, h: 300 },
   },
   "zitko-2": {
     title:       { x:  80, y: 320, w: 520, fs: 34, color: "#ffffff", bold: true },
