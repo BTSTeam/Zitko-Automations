@@ -91,14 +91,14 @@ const LAYOUTS: Record<"zitko-1" | "zitko-2", Layout> = {
     video: { x: 80, y: 400, w: 300, h: 300 },
   },
   "zitko-2": {
-    title: { x: 30, y: 370, fs: 60, color: "#ffffff", bold: true, align: "left" },
+    title: { x: 30, y: 370, w:700 fs: 60, color: "#ffffff", bold: true, align: "left" },
     location: { x: 80, y: 480, w: 520, fs: 30, color: "#ffffff", bold: true, align: "left" },
     salary: { x: 80, y: 530, w: 520, fs: 28, color: "#F7941D", bold: true, align: "left" },
     description: { x: 80, y: 580, w: 520, h: 120, fs: 24, color: "#ffffff", align: "left" },
     benefits: { x: 80, y: 750, w: 520, h: 260, fs: 24, color: "#ffffff", align: "left" },
     email: { x: 800, y: 962, w: 180, fs: 20, color: "#ffffff", align: "left" },
     phone: { x: 800, y: 1018, w: 180, fs: 20, color: "#ffffff", align: "left" },
-    video: { x: 705, y: 540, w: 300, h: 300 },
+    video: { x: 704, y: 540, w: 300, h: 300 },
   },
 };
 
