@@ -218,11 +218,16 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     Partial<Record<Exclude<PlaceholderKey, 'video'>, number>>
   >({})
 
-  // Reset positions and font sizes when template changes
-  useEffect(() => {
+  // Reset all draggable / size overrides back to template defaults
+  const resetLayout = () => {
     setPositions({})
     setVideoPos(null)
     setFontSizes({})
+  }
+
+  // Reset positions and font sizes when template changes
+  useEffect(() => {
+    resetLayout()
   }, [selectedTplId])
 
   // Only allow vertical movement for text
@@ -993,7 +998,45 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
         <div className="border rounded-xl p-4 bg-white">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <h3 className="font-semibold text-lg">Preview</h3>
-            <div className="flex gap-2 flex-wrap">
+            <div className="flex gap-2 flex-wrap items-center">
+              {/* small circular reset button with arrow icon */}
+              <button
+                type="button"
+                onClick={resetLayout}
+                title="Reset layout to template defaults"
+                className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-gray-300 text-gray-500 hover:bg-gray-100 shadow-sm"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 20 20"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M15.25 4.75V8.5H11.5"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <path
+                    d="M4.75 10.75C4.75 7.85051 7.10051 5.5 10 5.5C11.6122 5.5 13.0435 6.25253 13.9616 7.44737L15.25 8.5"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <path
+                    d="M15.25 9.25C15.25 12.1495 12.8995 14.5 10 14.5C8.38779 14.5 6.95655 13.7475 6.03845 12.5526L4.75 11.5"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+
               <button
                 className={pillSecondary}
                 onClick={downloadPng}
