@@ -91,7 +91,7 @@ const LAYOUTS: Record<"zitko-1" | "zitko-2", Layout> = {
     video: { x: 80, y: 400, w: 300, h: 300 },
   },
   "zitko-2": {
-    title: { x: 30, y: 370, w: 520, fs: 60, color: "#ffffff", bold: true, align: "left" },
+    title: { x: 30, y: 370, fs: 60, color: "#ffffff", bold: true, align: "left" },
     location: { x: 80, y: 480, w: 520, fs: 30, color: "#ffffff", bold: true, align: "left" },
     salary: { x: 80, y: 530, w: 520, fs: 28, color: "#F7941D", bold: true, align: "left" },
     description: { x: 80, y: 580, w: 520, h: 120, fs: 24, color: "#ffffff", align: "left" },
