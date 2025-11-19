@@ -50,7 +50,6 @@ type Body = {
   phone?: string;
   templateId?: "zitko-1" | "zitko-2";
   templateUrl?: string;
-  // NEW – overrides from the React preview
   positions?: PositionMap;
   fontSizes?: FontSizeMap;
   videoPos?: { x: number; y: number } | null;
@@ -191,6 +190,14 @@ function stripExt(id: string) {
   return id.replace(/\.(mp4|mov|m4v|webm)$/i, "");
 }
 
+function toBase64Url(s: string) {
+  return Buffer.from(s, "utf8")
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+}
+
 export async function POST(req: NextRequest) {
   try {
     const {
@@ -209,7 +216,6 @@ export async function POST(req: NextRequest) {
       videoPos,
     } = (await req.json()) as Body;
 
-    // Sanitize description
     const cleanDescription = String(description || "")
       .replace(/\r\n|\r|\n/g, " ")
       .replace(/\s{2,}/g, " ")
@@ -327,7 +333,6 @@ export async function POST(req: NextRequest) {
     const baseLayout = LAYOUTS[templateId] || LAYOUTS["zitko-1"];
     const E: Layout = JSON.parse(JSON.stringify(baseLayout));
 
-    // Apply position overrides for text boxes
     if (positions) {
       for (const [key, pos] of Object.entries(positions)) {
         if ((E as any)[key] && typeof pos?.x === "number" && typeof pos?.y === "number") {
@@ -337,7 +342,6 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Apply font-size overrides
     if (fontSizes) {
       for (const [key, fs] of Object.entries(fontSizes)) {
         if ((E as any)[key] && typeof fs === "number" && fs > 0) {
@@ -346,7 +350,6 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Apply video position override
     if (videoPos && typeof videoPos.x === "number" && typeof videoPos.y === "number") {
       E.video.x = videoPos.x;
       E.video.y = videoPos.y;
@@ -354,8 +357,8 @@ export async function POST(req: NextRequest) {
 
     const overlayIdForLayer = cleanVideoId.replace(/\//g, ":");
     const videoSize = Math.min(E.video.w, E.video.h);
+    const fetchB64 = toBase64Url(effectiveTemplateUrl);
 
-    // Build Cloudinary transformation
     const composedUrl = cloudinary.url(cleanVideoId, {
       resource_type: "video",
       type: "authenticated",
@@ -364,23 +367,18 @@ export async function POST(req: NextRequest) {
         // base canvas
         { width: CANVAS, height: CANVAS, crop: "fill" },
 
-        // template PNG over the top
+        // template PNG using fetch (raw transformation, avoids overlay object)
         {
-          overlay: { url: effectiveTemplateUrl },
-          width: CANVAS,
-          height: CANVAS,
-          crop: "fill",
-        },
-        {
-          gravity: "north_west",
-          x: 0,
-          y: 0,
-          flags: "layer_apply",
+          raw_transformation: `l_fetch:${fetchB64}/c_fill,w_${CANVAS},h_${CANVAS}/fl_layer_apply,g_north_west,x_0,y_0`,
         },
 
-        // video into slot – use overlay object, not raw_transformation
+        // video into slot as a proper non-text overlay object
         {
-          overlay: `video:authenticated:${overlayIdForLayer}`,
+          overlay: {
+            resource_type: "video",
+            type: "authenticated",
+            public_id: cleanVideoId,
+          },
           width: videoSize,
           height: videoSize,
           crop: "fill",
