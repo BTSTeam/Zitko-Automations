@@ -55,151 +55,44 @@ type Layout = {
   video: VideoBox;
 };
 
-// NOTE: These mirror your SocialMediaTab template coords & sizes
+// These mirror your SocialMediaTab template positions/sizes
 const LAYOUTS: Record<"zitko-1" | "zitko-2", Layout> = {
   "zitko-1": {
-    // SocialMediaTab:
-    // title: { x: 470, y: 100, w: 560, fontSize: 60 },
-    title: {
-      x: 470,
-      y: 100,
-      w: 560,
-      fs: 60,
-      color: "#ffffff",
-      bold: true,
-    },
-    // location: { x: 520, y: 330, w: 520, fontSize: 30 },
-    location: {
-      x: 520,
-      y: 330,
-      w: 520,
-      fs: 30,
-      color: "#ffffff",
-      bold: true,
-    },
-    // salary: { x: 520, y: 400, w: 520, fontSize: 28 },
-    salary: {
-      x: 520,
-      y: 400,
-      w: 520,
-      fs: 28,
-      color: "#F7941D",
-      bold: true,
-    },
-    // description: { x: 520, y: 480, w: 520, h: 80, fontSize: 24 },
-    description: {
-      x: 520,
-      y: 480,
-      w: 520,
-      h: 80,
-      fs: 24,
-      color: "#ffffff",
-    },
-    // benefits: { x: 520, y: 650, w: 520, h: 260, fontSize: 24 },
-    benefits: {
-      x: 520,
-      y: 650,
-      w: 520,
-      h: 260,
-      fs: 24,
-      color: "#ffffff",
-    },
-    // email: { x: 800, y: 962, w: 180, fontSize: 20, align: 'left' },
-    email: {
-      x: 800,
-      y: 962,
-      w: 180,
-      fs: 20,
-      color: "#ffffff",
-    },
-    // phone: { x: 800, y: 1018, w: 180, fontSize: 20, align: 'left' },
-    phone: {
-      x: 800,
-      y: 1018,
-      w: 180,
-      fs: 20,
-      color: "#ffffff",
-    },
-    // video: { x: 80, y: 400, w: 300, h: 300 },
-    video: {
-      x: 80,
-      y: 400,
-      w: 300,
-      h: 300,
-    },
+    // title: { x: 470, y: 100, w: 560, fontSize: 60 }
+    title: { x: 470, y: 100, w: 560, fs: 60, color: "#ffffff", bold: true },
+    // location: { x: 520, y: 330, w: 520, fontSize: 30 }
+    location: { x: 520, y: 330, w: 520, fs: 30, color: "#ffffff", bold: true },
+    // salary: { x: 520, y: 400, w: 520, fontSize: 28 }
+    salary: { x: 520, y: 400, w: 520, fs: 28, color: "#F7941D", bold: true },
+    // description: { x: 520, y: 480, w: 520, h: 80, fontSize: 24 }
+    description: { x: 520, y: 480, w: 520, h: 80, fs: 24, color: "#ffffff" },
+    // benefits: { x: 520, y: 650, w: 520, h: 260, fontSize: 24 }
+    benefits: { x: 520, y: 650, w: 520, h: 260, fs: 24, color: "#ffffff" },
+    // email: { x: 800, y: 962, w: 180, fontSize: 20 }
+    email: { x: 800, y: 962, w: 180, fs: 20, color: "#ffffff" },
+    // phone: { x: 800, y: 1018, w: 180, fontSize: 20 }
+    phone: { x: 800, y: 1018, w: 180, fs: 20, color: "#ffffff" },
+    // video: { x: 80, y: 400, w: 300, h: 300 }
+    video: { x: 80, y: 400, w: 300, h: 300 },
   },
-
   "zitko-2": {
-    // SocialMediaTab:
-    // title: { x: 80, y: 380, fontSize: 60 },
-    // In React, width is computed as (template.width - x - 40) => 1080-80-40=960
-    title: {
-      x: 80,
-      y: 380,
-      w: 960,
-      fs: 60,
-      color: "#ffffff",
-      bold: true,
-    },
-    // location: { x: 80, y: 480, w: 520, fontSize: 30 },
-    location: {
-      x: 80,
-      y: 480,
-      w: 520,
-      fs: 30,
-      color: "#ffffff",
-      bold: true,
-    },
-    // salary: { x: 80, y: 530, w: 520, fontSize: 28 },
-    salary: {
-      x: 80,
-      y: 530,
-      w: 520,
-      fs: 28,
-      color: "#F7941D",
-      bold: true,
-    },
-    // description: { x: 80, y: 580, w: 520, h: 120, fontSize: 24 },
-    description: {
-      x: 80,
-      y: 580,
-      w: 520,
-      h: 120,
-      fs: 24,
-      color: "#ffffff",
-    },
-    // benefits: { x: 80, y: 750, w: 520, h: 260, fontSize: 24 },
-    benefits: {
-      x: 80,
-      y: 750,
-      w: 520,
-      h: 260,
-      fs: 24,
-      color: "#ffffff",
-    },
-    // email: { x: 800, y: 962, w: 180, fontSize: 20, align: 'left' },
-    email: {
-      x: 800,
-      y: 962,
-      w: 180,
-      fs: 20,
-      color: "#ffffff",
-    },
-    // phone: { x: 800, y: 1018, w: 180, fontSize: 20, align: 'left' },
-    phone: {
-      x: 800,
-      y: 1018,
-      w: 180,
-      fs: 20,
-      color: "#ffffff",
-    },
-    // video: { x: 750, y: 400, w: 300, h: 300 },
-    video: {
-      x: 750,
-      y: 400,
-      w: 300,
-      h: 300,
-    },
+    // title: { x: 80, y: 380, fontSize: 60 }
+    // React width = (template.width - x - 40) = 1080 - 80 - 40 = 960
+    title: { x: 80, y: 380, w: 960, fs: 60, color: "#ffffff", bold: true },
+    // location: { x: 80, y: 480, w: 520, fontSize: 30 }
+    location: { x: 80, y: 480, w: 520, fs: 30, color: "#ffffff", bold: true },
+    // salary: { x: 80, y: 530, w: 520, fontSize: 28 }
+    salary: { x: 80, y: 530, w: 520, fs: 28, color: "#F7941D", bold: true },
+    // description: { x: 80, y: 580, w: 520, h: 120, fontSize: 24 }
+    description: { x: 80, y: 580, w: 520, h: 120, fs: 24, color: "#ffffff" },
+    // benefits: { x: 80, y: 750, w: 520, h: 260, fontSize: 24 }
+    benefits: { x: 80, y: 750, w: 520, h: 260, fs: 24, color: "#ffffff" },
+    // email: { x: 800, y: 962, w: 180, fontSize: 20 }
+    email: { x: 800, y: 962, w: 180, fs: 20, color: "#ffffff" },
+    // phone: { x: 800, y: 1018, w: 180, fontSize: 20 }
+    phone: { x: 800, y: 1018, w: 180, fs: 20, color: "#ffffff" },
+    // video: { x: 750, y: 400, w: 300, h: 300 }
+    video: { x: 750, y: 400, w: 300, h: 300 },
   },
 };
 
@@ -244,7 +137,7 @@ export async function POST(req: NextRequest) {
       .replace(/\s{2,}/g, " ")
       .trim();
 
-    // also trim benefits lines (we still bullet them below)
+    // trim benefits lines (will be bulleted)
     const cleanBenefits = String(benefits || "").trim();
 
     if (!videoPublicId) {
@@ -354,9 +247,6 @@ export async function POST(req: NextRequest) {
     const CANVAS = 1080;
     const L = LAYOUTS[templateId] || LAYOUTS["zitko-1"];
 
-    // video slot
-    const overlayIdForLayer = cleanVideoId.replace(/\//g, ":");
-    const videoSize = Math.min(L.video.w, L.video.h);
     const fetchB64 = toBase64Url(effectiveTemplateUrl);
 
     const composedUrl = cloudinary.url(cleanVideoId, {
@@ -364,22 +254,33 @@ export async function POST(req: NextRequest) {
       type: "authenticated",
       sign_url: true,
       transformation: [
+        // base video scaled to square
         { width: CANVAS, height: CANVAS, crop: "fill" },
 
-        // template
+        // template PNG over the top
         {
           raw_transformation: `l_fetch:${fetchB64}/c_fill,w_${CANVAS},h_${CANVAS}/fl_layer_apply,g_north_west,x_0,y_0`,
         },
 
-        // video
+        // OVERLAY: video into template's video slot
         {
-          raw_transformation: `w_${videoSize},h_${videoSize},c_fill,r_max,l_video:authenticated:${overlayIdForLayer}`,
+          overlay: {
+            resource_type: "video",
+            type: "authenticated",
+            public_id: cleanVideoId,
+          },
+          width: L.video.w,
+          height: L.video.h,
+          crop: "fill",
         },
         {
-          raw_transformation: `fl_layer_apply,g_north_west,x_${L.video.x},y_${L.video.y}`,
+          flags: "layer_apply",
+          gravity: "north_west",
+          x: L.video.x,
+          y: L.video.y,
         },
 
-        // title
+        // TITLE
         {
           overlay: {
             font_family: "Arial",
@@ -399,7 +300,7 @@ export async function POST(req: NextRequest) {
           flags: "layer_apply",
         },
 
-        // location
+        // LOCATION
         {
           overlay: {
             font_family: "Arial",
@@ -419,7 +320,7 @@ export async function POST(req: NextRequest) {
           flags: "layer_apply",
         },
 
-        // salary
+        // SALARY
         {
           overlay: {
             font_family: "Arial",
@@ -482,7 +383,7 @@ export async function POST(req: NextRequest) {
           flags: "layer_apply",
         },
 
-        // email
+        // EMAIL
         {
           overlay: {
             font_family: "Arial",
@@ -501,7 +402,7 @@ export async function POST(req: NextRequest) {
           flags: "layer_apply",
         },
 
-        // phone
+        // PHONE
         {
           overlay: {
             font_family: "Arial",
