@@ -54,8 +54,8 @@ const TEMPLATES: TemplateDef[] = [
     height: 1080,
     layout: {
       title: { x: 470, y: 100, w: 560, fontSize: 60 },
-      location: { x: 520, y: 400, w: 520, fontSize: 30 },
-      salary: { x: 520, y: 330, w: 520, fontSize: 28 },
+      location: { x: 520, y: 330, w: 520, fontSize: 30 },
+      salary: { x: 520, y: 400, w: 520, fontSize: 28 },
       description: { x: 520, y: 480, w: 520, h: 80, fontSize: 24 },
       benefits: { x: 520, y: 650, w: 520, h: 260, fontSize: 24 },
       email: { x: 800, y: 962, w: 180, fontSize: 20, align: 'left' },
@@ -1004,11 +1004,11 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                 type="button"
                 onClick={resetLayout}
                 title="Reset layout to template defaults"
-                className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-gray-300 text-gray-500 hover:bg-gray-100 shadow-sm"
+                className="inline-flex items-center justify-center w-10 h-10 rounded-full border border-gray-300 text-gray-600 hover:bg-gray-100 shadow-sm"
               >
                 <svg
-                  width="14"
-                  height="14"
+                  width="20"
+                  height="20"
                   viewBox="0 0 20 20"
                   fill="none"
                   xmlns="http://www.w3.org/2000/svg"
@@ -1016,21 +1016,21 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                   <path
                     d="M15.25 4.75V8.5H11.5"
                     stroke="currentColor"
-                    strokeWidth="1.5"
+                    strokeWidth="1.6"
                     strokeLinecap="round"
                     strokeLinejoin="round"
                   />
                   <path
                     d="M4.75 10.75C4.75 7.85051 7.10051 5.5 10 5.5C11.6122 5.5 13.0435 6.25253 13.9616 7.44737L15.25 8.5"
                     stroke="currentColor"
-                    strokeWidth="1.5"
+                    strokeWidth="1.6"
                     strokeLinecap="round"
                     strokeLinejoin="round"
                   />
                   <path
                     d="M15.25 9.25C15.25 12.1495 12.8995 14.5 10 14.5C8.38779 14.5 6.95655 13.7475 6.03845 12.5526L4.75 11.5"
                     stroke="currentColor"
-                    strokeWidth="1.5"
+                    strokeWidth="1.6"
                     strokeLinecap="round"
                     strokeLinejoin="round"
                   />
