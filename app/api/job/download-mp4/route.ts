@@ -1,10 +1,13 @@
+// app/api/job/download-mp4/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { v2 as cloudinary } from "cloudinary";
 
 export const runtime = "nodejs";
 
 cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
+  cloud_name:
+    process.env.CLOUDINARY_CLOUD_NAME ||
+    process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY!,
   api_secret: process.env.CLOUDINARY_API_SECRET!,
   secure: true,
@@ -29,42 +32,181 @@ const TEMPLATE_FILES: Record<string, string> = {
 };
 
 // ---------- Layout types + maps ----------
-type TextBox = { x:number; y:number; w:number; fs:number; color:string; bold?:boolean; h?:number };
+type TextBox = {
+  x: number;
+  y: number;
+  w: number;
+  fs: number;
+  color: string;
+  bold?: boolean;
+  h?: number;
+};
+
 type VideoBox = { x: number; y: number; w: number; h: number };
+
 type Layout = {
-  title: TextBox; location: TextBox; salary: TextBox;
-  description: TextBox; benefits: TextBox;
-  email: TextBox; phone: TextBox;
+  title: TextBox;
+  location: TextBox;
+  salary: TextBox;
+  description: TextBox;
+  benefits: TextBox;
+  email: TextBox;
+  phone: TextBox;
   video: VideoBox;
 };
 
+// NOTE: These mirror your SocialMediaTab template coords & sizes
 const LAYOUTS: Record<"zitko-1" | "zitko-2", Layout> = {
   "zitko-1": {
-      title: { x: 470, y: 100, w: 560, fontSize: 60 },
-      location: { x: 520, y: 330, w: 520, fontSize: 30 },
-      salary: { x: 520, y: 400, w: 520, fontSize: 28 },
-      description: { x: 520, y: 480, w: 520, h: 80, fontSize: 24 },
-      benefits: { x: 520, y: 650, w: 520, h: 260, fontSize: 24 },
-      email: { x: 800, y: 962, w: 180, fontSize: 20, align: 'left' },
-      phone: { x: 800, y: 1018, w: 180, fontSize: 20, align: 'left' },
-      video: { x: 80, y: 400, w: 300, h: 300 },
+    // SocialMediaTab:
+    // title: { x: 470, y: 100, w: 560, fontSize: 60 },
+    title: {
+      x: 470,
+      y: 100,
+      w: 560,
+      fs: 60,
+      color: "#ffffff",
+      bold: true,
+    },
+    // location: { x: 520, y: 330, w: 520, fontSize: 30 },
+    location: {
+      x: 520,
+      y: 330,
+      w: 520,
+      fs: 30,
+      color: "#ffffff",
+      bold: true,
+    },
+    // salary: { x: 520, y: 400, w: 520, fontSize: 28 },
+    salary: {
+      x: 520,
+      y: 400,
+      w: 520,
+      fs: 28,
+      color: "#F7941D",
+      bold: true,
+    },
+    // description: { x: 520, y: 480, w: 520, h: 80, fontSize: 24 },
+    description: {
+      x: 520,
+      y: 480,
+      w: 520,
+      h: 80,
+      fs: 24,
+      color: "#ffffff",
+    },
+    // benefits: { x: 520, y: 650, w: 520, h: 260, fontSize: 24 },
+    benefits: {
+      x: 520,
+      y: 650,
+      w: 520,
+      h: 260,
+      fs: 24,
+      color: "#ffffff",
+    },
+    // email: { x: 800, y: 962, w: 180, fontSize: 20, align: 'left' },
+    email: {
+      x: 800,
+      y: 962,
+      w: 180,
+      fs: 20,
+      color: "#ffffff",
+    },
+    // phone: { x: 800, y: 1018, w: 180, fontSize: 20, align: 'left' },
+    phone: {
+      x: 800,
+      y: 1018,
+      w: 180,
+      fs: 20,
+      color: "#ffffff",
+    },
+    // video: { x: 80, y: 400, w: 300, h: 300 },
+    video: {
+      x: 80,
+      y: 400,
+      w: 300,
+      h: 300,
+    },
   },
+
   "zitko-2": {
-      title: { x: 80, y: 380, fontSize: 60 },
-      location: { x: 80, y: 480, w: 520, fontSize: 30 },
-      salary: { x: 80, y: 530, w: 520, fontSize: 28 },
-      description: { x: 80, y: 580, w: 520, h: 120, fontSize: 24 },
-      benefits: { x: 80, y: 750, w: 520, h: 260, fontSize: 24 },
-      email: { x: 800, y: 962, w: 180, fontSize: 20, align: 'left' },
-      phone: { x: 800, y: 1018, w: 180, fontSize: 20, align: 'left' },
-      video: { x: 750, y: 400, w: 300, h: 300 },
+    // SocialMediaTab:
+    // title: { x: 80, y: 380, fontSize: 60 },
+    // In React, width is computed as (template.width - x - 40) => 1080-80-40=960
+    title: {
+      x: 80,
+      y: 380,
+      w: 960,
+      fs: 60,
+      color: "#ffffff",
+      bold: true,
+    },
+    // location: { x: 80, y: 480, w: 520, fontSize: 30 },
+    location: {
+      x: 80,
+      y: 480,
+      w: 520,
+      fs: 30,
+      color: "#ffffff",
+      bold: true,
+    },
+    // salary: { x: 80, y: 530, w: 520, fontSize: 28 },
+    salary: {
+      x: 80,
+      y: 530,
+      w: 520,
+      fs: 28,
+      color: "#F7941D",
+      bold: true,
+    },
+    // description: { x: 80, y: 580, w: 520, h: 120, fontSize: 24 },
+    description: {
+      x: 80,
+      y: 580,
+      w: 520,
+      h: 120,
+      fs: 24,
+      color: "#ffffff",
+    },
+    // benefits: { x: 80, y: 750, w: 520, h: 260, fontSize: 24 },
+    benefits: {
+      x: 80,
+      y: 750,
+      w: 520,
+      h: 260,
+      fs: 24,
+      color: "#ffffff",
+    },
+    // email: { x: 800, y: 962, w: 180, fontSize: 20, align: 'left' },
+    email: {
+      x: 800,
+      y: 962,
+      w: 180,
+      fs: 20,
+      color: "#ffffff",
+    },
+    // phone: { x: 800, y: 1018, w: 180, fontSize: 20, align: 'left' },
+    phone: {
+      x: 800,
+      y: 1018,
+      w: 180,
+      fs: 20,
+      color: "#ffffff",
+    },
+    // video: { x: 750, y: 400, w: 300, h: 300 },
+    video: {
+      x: 750,
+      y: 400,
+      w: 300,
+      h: 300,
+    },
   },
 };
 
 function formatBenefits(raw: string) {
   const lines = String(raw || "")
     .split("\n")
-    .map(s => s.trim())
+    .map((s) => s.trim())
     .filter(Boolean);
   return lines.length ? "• " + lines.join("\n• ") : "";
 }
@@ -83,30 +225,33 @@ function toBase64Url(s: string) {
 
 export async function POST(req: NextRequest) {
   try {
-  const {
-    videoPublicId,
-    title = "JOB TITLE",
-    location = "LOCATION",
-    salary = "SALARY",
-    description = "SHORT DESCRIPTION",
-    benefits = "BENEFITS",
-    email = "EMAIL",
-    phone = "PHONE",
-    templateId = "zitko-1",
-    templateUrl,
-  } = (await req.json()) as Body;
-  
-  // NEW: sanitize description to avoid manual wraps
-  const cleanDescription = String(description || "")
-    .replace(/\r\n|\r|\n/g, " ")
-    .replace(/\s{2,}/g, " ")
-    .trim();
-  
-  // (optional) also trim benefits lines (we still bullet them below)
-  const cleanBenefits = String(benefits || "").trim();
+    const {
+      videoPublicId,
+      title = "JOB TITLE",
+      location = "LOCATION",
+      salary = "SALARY",
+      description = "SHORT DESCRIPTION",
+      benefits = "BENEFITS",
+      email = "EMAIL",
+      phone = "PHONE",
+      templateId = "zitko-1",
+      templateUrl,
+    } = (await req.json()) as Body;
+
+    // sanitize description to avoid manual wraps
+    const cleanDescription = String(description || "")
+      .replace(/\r\n|\r|\n/g, " ")
+      .replace(/\s{2,}/g, " ")
+      .trim();
+
+    // also trim benefits lines (we still bullet them below)
+    const cleanBenefits = String(benefits || "").trim();
 
     if (!videoPublicId) {
-      return NextResponse.json({ error: "Missing videoPublicId" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Missing videoPublicId" },
+        { status: 400 },
+      );
     }
 
     const cleanVideoId = stripExt(videoPublicId);
@@ -114,41 +259,66 @@ export async function POST(req: NextRequest) {
     // Build public template URL
     const originFromReq = req.nextUrl.origin;
     const envBase = process.env.NEXT_PUBLIC_BASE_URL?.trim();
-    const isLocal = /^(http:\/\/)?(localhost|127\.0\.0\.1)(:\d+)?/i.test(originFromReq);
+    const isLocal = /^(http:\/\/)?(localhost|127\.0\.0\.1)(:\d+)?/i.test(
+      originFromReq,
+    );
 
     let effectiveTemplateUrl = templateUrl?.trim();
     if (!effectiveTemplateUrl) {
-      const filename = TEMPLATE_FILES[templateId] || TEMPLATE_FILES["zitko-1"];
+      const filename =
+        TEMPLATE_FILES[templateId] || TEMPLATE_FILES["zitko-1"];
       const baseForCloudinary = isLocal ? envBase : originFromReq;
       if (!baseForCloudinary) {
         return NextResponse.json(
-          { error: "No public base URL. Set NEXT_PUBLIC_BASE_URL or pass templateUrl." },
-          { status: 500 }
+          {
+            error:
+              "No public base URL. Set NEXT_PUBLIC_BASE_URL or pass templateUrl.",
+          },
+          { status: 500 },
         );
       }
-      effectiveTemplateUrl = `${baseForCloudinary.replace(/\/$/, "")}/templates/${filename}`;
+      effectiveTemplateUrl = `${baseForCloudinary.replace(
+        /\/$/,
+        "",
+      )}/templates/${filename}`;
     }
 
     // HEAD check
     try {
-      const head = await fetch(effectiveTemplateUrl, { method: "HEAD", cache: "no-store" });
+      const head = await fetch(effectiveTemplateUrl, {
+        method: "HEAD",
+        cache: "no-store",
+      });
       if (!head.ok) {
         return NextResponse.json(
-          { error: "Template PNG not reachable (HEAD failed)", status: head.status, templateUrl: effectiveTemplateUrl },
-          { status: 502 }
+          {
+            error: "Template PNG not reachable (HEAD failed)",
+            status: head.status,
+            templateUrl: effectiveTemplateUrl,
+          },
+          { status: 502 },
         );
       }
       const ct = head.headers.get("content-type") || "";
       if (!ct.includes("image")) {
         return NextResponse.json(
-          { error: "Template URL did not return an image content-type", contentType: ct, templateUrl: effectiveTemplateUrl },
-          { status: 502 }
+          {
+            error:
+              "Template URL did not return an image content-type",
+            contentType: ct,
+            templateUrl: effectiveTemplateUrl,
+          },
+          { status: 502 },
         );
       }
     } catch (e: any) {
       return NextResponse.json(
-        { error: "Failed to reach template URL", templateUrl: effectiveTemplateUrl, details: e?.message },
-        { status: 502 }
+        {
+          error: "Failed to reach template URL",
+          templateUrl: effectiveTemplateUrl,
+          details: e?.message,
+        },
+        { status: 502 },
       );
     }
 
@@ -161,14 +331,23 @@ export async function POST(req: NextRequest) {
       });
       if (!info || info.type !== "authenticated") {
         return NextResponse.json(
-          { error: "Cloudinary video found but not 'authenticated' type", foundType: info?.type, publicId: cleanVideoId },
-          { status: 404 }
+          {
+            error:
+              "Cloudinary video found but not 'authenticated' type",
+            foundType: info?.type,
+            publicId: cleanVideoId,
+          },
+          { status: 404 },
         );
       }
     } catch (e: any) {
       return NextResponse.json(
-        { error: "Cloudinary video not found", publicId: cleanVideoId, details: e?.message },
-        { status: 404 }
+        {
+          error: "Cloudinary video not found",
+          publicId: cleanVideoId,
+          details: e?.message,
+        },
+        { status: 404 },
       );
     }
 
@@ -188,38 +367,77 @@ export async function POST(req: NextRequest) {
         { width: CANVAS, height: CANVAS, crop: "fill" },
 
         // template
-        { raw_transformation: `l_fetch:${fetchB64}/c_fill,w_${CANVAS},h_${CANVAS}/fl_layer_apply,g_north_west,x_0,y_0` },
+        {
+          raw_transformation: `l_fetch:${fetchB64}/c_fill,w_${CANVAS},h_${CANVAS}/fl_layer_apply,g_north_west,x_0,y_0`,
+        },
 
         // video
-        { raw_transformation: `w_${videoSize},h_${videoSize},c_fill,r_max,l_video:authenticated:${overlayIdForLayer}` },
-        { raw_transformation: `fl_layer_apply,g_north_west,x_${L.video.x},y_${L.video.y}` },
+        {
+          raw_transformation: `w_${videoSize},h_${videoSize},c_fill,r_max,l_video:authenticated:${overlayIdForLayer}`,
+        },
+        {
+          raw_transformation: `fl_layer_apply,g_north_west,x_${L.video.x},y_${L.video.y}`,
+        },
 
         // title
         {
-          overlay: { font_family: "Arial", font_size: L.title.fs, font_weight: L.title.bold ? "bold" : "normal", text: title, text_align: "left" },
+          overlay: {
+            font_family: "Arial",
+            font_size: L.title.fs,
+            font_weight: L.title.bold ? "bold" : "normal",
+            text: title,
+            text_align: "left",
+          },
           color: L.title.color,
           width: L.title.w,
           crop: "fit",
         },
-        { gravity: "north_west", x: L.title.x, y: L.title.y, flags: "layer_apply" },
+        {
+          gravity: "north_west",
+          x: L.title.x,
+          y: L.title.y,
+          flags: "layer_apply",
+        },
 
         // location
         {
-          overlay: { font_family: "Arial", font_size: L.location.fs, font_weight: L.location.bold ? "bold" : "normal", text: location, text_align: "left" },
+          overlay: {
+            font_family: "Arial",
+            font_size: L.location.fs,
+            font_weight: L.location.bold ? "bold" : "normal",
+            text: location,
+            text_align: "left",
+          },
           color: L.location.color,
           width: L.location.w,
           crop: "fit",
         },
-        { gravity: "north_west", x: L.location.x, y: L.location.y, flags: "layer_apply" },
+        {
+          gravity: "north_west",
+          x: L.location.x,
+          y: L.location.y,
+          flags: "layer_apply",
+        },
 
         // salary
         {
-          overlay: { font_family: "Arial", font_size: L.salary.fs, font_weight: L.salary.bold ? "bold" : "normal", text: salary, text_align: "left" },
+          overlay: {
+            font_family: "Arial",
+            font_size: L.salary.fs,
+            font_weight: L.salary.bold ? "bold" : "normal",
+            text: salary,
+            text_align: "left",
+          },
           color: L.salary.color,
           width: L.salary.w,
           crop: "fit",
         },
-        { gravity: "north_west", x: L.salary.x, y: L.salary.y, flags: "layer_apply" },
+        {
+          gravity: "north_west",
+          x: L.salary.x,
+          y: L.salary.y,
+          flags: "layer_apply",
+        },
 
         // DESCRIPTION
         {
@@ -230,13 +448,18 @@ export async function POST(req: NextRequest) {
             text_align: "left",
           },
           color: L.description.color,
-          width: L.description.w,   
-          height: L.description.h,  
+          width: L.description.w,
+          height: L.description.h,
           crop: "fit",
           gravity: "north_west",
         },
-        { gravity: "north_west", x: L.description.x, y: L.description.y, flags: "layer_apply" },
-        
+        {
+          gravity: "north_west",
+          x: L.description.x,
+          y: L.description.y,
+          flags: "layer_apply",
+        },
+
         // BENEFITS
         {
           overlay: {
@@ -252,8 +475,13 @@ export async function POST(req: NextRequest) {
           crop: "fit",
           gravity: "north_west",
         },
-        { gravity: "north_west", x: L.benefits.x, y: L.benefits.y, flags: "layer_apply" },
-        
+        {
+          gravity: "north_west",
+          x: L.benefits.x,
+          y: L.benefits.y,
+          flags: "layer_apply",
+        },
+
         // email
         {
           overlay: {
@@ -266,7 +494,12 @@ export async function POST(req: NextRequest) {
           width: L.email.w,
           crop: "fit",
         },
-        { gravity: "north_west", x: L.email.x, y: L.email.y, flags: "layer_apply" },
+        {
+          gravity: "north_west",
+          x: L.email.x,
+          y: L.email.y,
+          flags: "layer_apply",
+        },
 
         // phone
         {
@@ -280,7 +513,12 @@ export async function POST(req: NextRequest) {
           width: L.phone.w,
           crop: "fit",
         },
-        { gravity: "north_west", x: L.phone.x, y: L.phone.y, flags: "layer_apply" },
+        {
+          gravity: "north_west",
+          x: L.phone.x,
+          y: L.phone.y,
+          flags: "layer_apply",
+        },
 
         { fetch_format: "mp4", quality: "auto" },
       ],
@@ -289,18 +527,30 @@ export async function POST(req: NextRequest) {
     const debug = req.nextUrl.searchParams.get("debug") === "1";
     if (debug) {
       return NextResponse.json(
-        { composedUrl, templateUsed: effectiveTemplateUrl, hint: "Open composedUrl in a new tab if you need to inspect Cloudinary output directly." },
-        { status: 200 }
+        {
+          composedUrl,
+          templateUsed: effectiveTemplateUrl,
+          hint: "Open composedUrl in a new tab if you need to inspect Cloudinary output directly.",
+        },
+        { status: 200 },
       );
     }
 
     const videoRes = await fetch(composedUrl);
     if (!videoRes.ok) {
       const errText = await videoRes.text().catch(() => "");
-      const cldError = videoRes.headers.get("x-cld-error") || undefined;
+      const cldError =
+        videoRes.headers.get("x-cld-error") || undefined;
       return NextResponse.json(
-        { error: "Failed to compose video", status: videoRes.status, cloudinaryError: cldError, details: errText.slice(0, 2000), composedUrl, templateUsed: effectiveTemplateUrl },
-        { status: 500 }
+        {
+          error: "Failed to compose video",
+          status: videoRes.status,
+          cloudinaryError: cldError,
+          details: errText.slice(0, 2000),
+          composedUrl,
+          templateUsed: effectiveTemplateUrl,
+        },
+        { status: 500 },
       );
     }
 
@@ -314,6 +564,9 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message || "Unknown error" }, { status: 500 });
+    return NextResponse.json(
+      { error: err?.message || "Unknown error" },
+      { status: 500 },
+    );
   }
 }
