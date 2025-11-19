@@ -7,6 +7,7 @@ import { v2 as cloudinary } from "cloudinary";
  * - Composites it with the static PNG template
  * - Adds all text fields at positions matching the live preview
  * - Respects dragged positions + font size changes from the UI
+ * - Adds the location icon + circular video mask
  */
 export const runtime = "nodejs";
 
@@ -61,6 +62,7 @@ type TextBox = {
   fs: number;
   color: string;
   bold?: boolean;
+  align?: "left" | "right" | "center";
 };
 
 type VideoBox = { x: number; y: number; w: number; h: number };
@@ -79,23 +81,23 @@ interface Layout {
 // These should mirror your SocialMediaTab template layouts
 const LAYOUTS: Record<"zitko-1" | "zitko-2", Layout> = {
   "zitko-1": {
-    title: { x: 470, y: 100, w: 560, fs: 60, color: "#ffffff", bold: true },
-    location: { x: 520, y: 330, w: 520, fs: 30, color: "#ffffff", bold: true },
-    salary: { x: 520, y: 400, w: 520, fs: 28, color: "#F7941D", bold: true },
-    description: { x: 520, y: 480, w: 520, h: 80, fs: 24, color: "#ffffff" },
-    benefits: { x: 520, y: 650, w: 520, h: 260, fs: 24, color: "#ffffff" },
-    email: { x: 800, y: 962, w: 180, fs: 20, color: "#ffffff" },
-    phone: { x: 800, y: 1018, w: 180, fs: 20, color: "#ffffff" },
+    title: { x: 470, y: 100, w: 560, fs: 60, color: "#ffffff", bold: true, align: "left" },
+    location: { x: 520, y: 330, w: 520, fs: 30, color: "#ffffff", bold: true, align: "left" },
+    salary: { x: 520, y: 400, w: 520, fs: 28, color: "#F7941D", bold: true, align: "left" },
+    description: { x: 520, y: 480, w: 520, h: 80, fs: 24, color: "#ffffff", align: "left" },
+    benefits: { x: 520, y: 650, w: 520, h: 260, fs: 24, color: "#ffffff", align: "left" },
+    email: { x: 800, y: 962, w: 180, fs: 20, color: "#ffffff", align: "left" },
+    phone: { x: 800, y: 1018, w: 180, fs: 20, color: "#ffffff", align: "left" },
     video: { x: 80, y: 400, w: 300, h: 300 },
   },
   "zitko-2": {
-    title: { x: 30, y: 370, w: 520, fs: 60, color: "#ffffff", bold: true },
-    location: { x: 80, y: 480, w: 520, fs: 30, color: "#ffffff", bold: true },
-    salary: { x: 80, y: 530, w: 520, fs: 28, color: "#F7941D", bold: true },
-    description: { x: 80, y: 580, w: 520, h: 120, fs: 24, color: "#ffffff" },
-    benefits: { x: 80, y: 750, w: 520, h: 260, fs: 24, color: "#ffffff" },
-    email: { x: 800, y: 962, w: 180, fs: 20, color: "#ffffff" },
-    phone: { x: 800, y: 1018, w: 180, fs: 20, color: "#ffffff" },
+    title: { x: 30, y: 370, w: 520, fs: 60, color: "#ffffff", bold: true, align: "left" },
+    location: { x: 80, y: 480, w: 520, fs: 30, color: "#ffffff", bold: true, align: "left" },
+    salary: { x: 80, y: 530, w: 520, fs: 28, color: "#F7941D", bold: true, align: "left" },
+    description: { x: 80, y: 580, w: 520, h: 120, fs: 24, color: "#ffffff", align: "left" },
+    benefits: { x: 80, y: 750, w: 520, h: 260, fs: 24, color: "#ffffff", align: "left" },
+    email: { x: 800, y: 962, w: 180, fs: 20, color: "#ffffff", align: "left" },
+    phone: { x: 800, y: 1018, w: 180, fs: 20, color: "#ffffff", align: "left" },
     video: { x: 705, y: 540, w: 300, h: 300 },
   },
 };
@@ -176,6 +178,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         ""
       )}/templates/${filename}`;
     }
+
+    // derive base origin for other assets (location icon)
+    let assetsOrigin: string | null = null;
+    try {
+      const u = new URL(effectiveTemplateUrl);
+      assetsOrigin = u.origin;
+    } catch {
+      // best-effort fallback
+      assetsOrigin = originFromReq;
+    }
+    const locationIconUrl = assetsOrigin
+      ? `${assetsOrigin.replace(/\/$/, "")}/templates/Location-Icon.png`
+      : null;
 
     // ----- Sanity-check template URL -----
     try {
@@ -305,12 +320,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       raw_transformation: `l_fetch:${fetchB64}/c_fill,w_${CANVAS},h_${CANVAS}/fl_layer_apply,g_north_west,x_0,y_0`,
     });
 
-    // 3) Video overlay (THIS IS THE CRITICAL CHANGE)
+    // 3) Video overlay (circular mask)
     transformations.push({
       overlay: `video:authenticated:${overlayIdForLayer}`,
       width: videoSize,
       height: videoSize,
       crop: "fill",
+      radius: "max", // circular mask
     });
     transformations.push({
       gravity: "north_west",
@@ -319,7 +335,34 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       flags: "layer_apply",
     });
 
-    // 4) Helper for text overlays (title, location, salary, etc.)
+    // 4) Location icon overlay (matches React preview maths)
+    if (locationIconUrl) {
+      const locSpec = effectiveLayout.location;
+      const locationFontSize = locSpec.fs;
+      const textHeight = locationFontSize * 1.25;
+      const iconSize = 40;
+      const iconOffsetX = 50;
+      const iconOffsetY = 15;
+      const locY = locSpec.y;
+
+      const iconX = locSpec.x - iconOffsetX;
+      const iconY = locY + (textHeight - iconSize) + iconOffsetY;
+
+      transformations.push({
+        overlay: { url: locationIconUrl },
+        width: iconSize,
+        height: iconSize,
+        crop: "scale",
+      });
+      transformations.push({
+        gravity: "north_west",
+        x: iconX,
+        y: iconY,
+        flags: "layer_apply",
+      });
+    }
+
+    // 5) Helper for text overlays (title, location, salary, etc.)
     function addTextOverlay(key: PlaceholderKey, value: string) {
       const spec = (effectiveLayout as any)[key] as TextBox;
       const overlayCfg: any = {
@@ -328,7 +371,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           font_size: spec.fs,
           font_weight: spec.bold ? "bold" : "normal",
           text: value,
-          text_align: "left",
+          text_align: spec.align || "left",
         },
         color: spec.color,
         width: spec.w,
@@ -360,7 +403,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     addTextOverlay("email", email);
     addTextOverlay("phone", phone);
 
-    // 5) Export as MP4
+    // 6) Export as MP4
     transformations.push({ fetch_format: "mp4", quality: "auto" });
 
     const composedUrl = cloudinary.url(cleanVideoId, {
