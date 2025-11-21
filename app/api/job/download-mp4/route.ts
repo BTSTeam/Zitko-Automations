@@ -150,7 +150,7 @@ const LAYOUTS: Record<TemplateId, Layout> = {
   "zitko-2": {
     title: {
       x: 30,
-      y: 370,
+      y: 380,
       w: 520,
       fs: 60,
       color: "#ffffff",
@@ -195,7 +195,7 @@ const LAYOUTS: Record<TemplateId, Layout> = {
     },
     email: {
       x: 800,
-      y: 962,
+      y: 972,
       w: 180,
       fs: 20,
       color: "#ffffff",
@@ -203,7 +203,7 @@ const LAYOUTS: Record<TemplateId, Layout> = {
     },
     phone: {
       x: 800,
-      y: 1018,
+      y: 1030,
       w: 180,
       fs: 20,
       color: "#ffffff",
@@ -448,27 +448,32 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     // 4) Location icon overlay (matches React preview maths)
     if (locationIconUrl) {
-      const locSpec = effectiveLayout.location;
-      const locationFontSize = locSpec.fs;
-      const textHeight = locationFontSize * 1.25;
-      const iconSize = 40;
-      const iconOffsetX = 50;
-      const iconOffsetY = 15;
-      const locY = locSpec.y;
-
-      const iconX = locSpec.x - iconOffsetX;
-      const iconY = locY + (textHeight - iconSize) + iconOffsetY;
-
-      // Use fetch-based overlay via raw_transformation to avoid "public_id" errors
-      const iconFetch = toBase64Url(locationIconUrl);
+      const locSpec = effectiveLayout.location
+      const locationFontSize = locSpec.fs
+      const textHeight = locationFontSize * 1.25
+      const iconSize = 40
+      const iconOffsetX = 50
+      const iconOffsetY = 15
+      const locY = locSpec.y
+    
+      const iconX = locSpec.x - iconOffsetX
+      const iconY = locY + (textHeight - iconSize) + iconOffsetY
+    
+      // Use fetch-based overlay via l_fetch
+      const iconFetch = toBase64Url(locationIconUrl)
+    
       transformations.push({
-        raw_transformation: `l_fetch:${iconFetch}/c_scale,w_${iconSize},h_${iconSize}/fl_layer_apply,g_north_west,x_${iconX},y_${iconY}`,
-      });
+        raw_transformation:
+          `l_fetch:${iconFetch}` +
+          `/c_scale,w_${iconSize},h_${iconSize}` +
+          `/fl_layer_apply,g_north_west,x_${iconX},y_${iconY}`,
+      })
     }
 
     // 5) Helper for text overlays (title, location, salary, etc.)
     function addTextOverlay(key: PlaceholderKey, value: string) {
       const spec = (effectiveLayout as any)[key] as TextBox;
+    
       const overlayCfg: any = {
         overlay: {
           font_family: "Arial",
@@ -478,12 +483,22 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           text_align: spec.align || "left",
         },
         color: spec.color,
-        width: spec.w,
         crop: "fit",
       };
-      if (spec.h) {
-        overlayCfg.height = spec.h;
+    
+      // ----------------------------------------
+      // 🔥 Only remove width for the title on zitko-2
+      // ----------------------------------------
+      const isZ2 = templateId === "zitko-2";
+      const isTitle = key === "title";
+    
+      if (!(isZ2 && isTitle)) {
+        // keep width for everything else
+        if (spec.w) overlayCfg.width = spec.w;
       }
+    
+      if (spec.h) overlayCfg.height = spec.h;
+    
       transformations.push(overlayCfg);
       transformations.push({
         gravity: "north_west",
