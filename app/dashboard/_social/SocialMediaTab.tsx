@@ -375,14 +375,19 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     }
   }
 
-  // ---------- render poster (re-used for preview + export) ----------
-  function renderPoster(scaleFactor: number, ref?: React.Ref<HTMLDivElement>) {
-    const s = scaleFactor
-
-    return (
-      <div
-        ref={ref}
-        className="relative shadow-lg"
+    // ---------- render poster (re-used for preview + export) ----------
+    function renderPoster(
+      scaleFactor: number,
+      ref?: React.Ref<HTMLDivElement>,
+      options?: { excludeVideo?: boolean },
+    ) {
+      const s = scaleFactor
+      const excludeVideo = options?.excludeVideo ?? false
+    
+      return (
+        <div
+          ref={ref}
+          className="relative shadow-lg"
         style={{
           width: selectedTpl.width * s,
           height: selectedTpl.height * s,
@@ -584,7 +589,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
           )
         })()}
 
-        {selectedTpl.layout.video && videoUrl && (
+          {!excludeVideo && selectedTpl.layout.video && videoUrl && (
           <div
             {...makeVideoDragHandlers()}
             style={{
@@ -618,6 +623,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
       </div>
     )
   }
+
 
   // ---------- download PNG using full-size hidden poster ----------
   async function downloadPng() {
@@ -1085,7 +1091,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
               pointerEvents: 'none',
             }}
           >
-            {renderPoster(1, exportRef)}
+            {renderPoster(1, exportRef, { excludeVideo: true })}
           </div>
 
           <p className="mt-3 text-xs text-gray-500">
