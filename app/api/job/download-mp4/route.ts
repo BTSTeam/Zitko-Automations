@@ -196,7 +196,7 @@ const LAYOUTS: Record<TemplateId, Layout> = {
     },
     email: {
       x: 800,
-      y: 972,
+      y: 980,
       w: 180,
       fs: 20,
       color: "#ffffff",
@@ -204,7 +204,7 @@ const LAYOUTS: Record<TemplateId, Layout> = {
     },
     phone: {
       x: 800,
-      y: 1030,
+      y: 1040,
       w: 180,
       fs: 20,
       color: "#ffffff",
@@ -446,7 +446,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       flags: "layer_apply",
     });
 
-    // 4) Location icon overlay (matches React preview maths) using URL overlay
+    // 4) Location icon overlay via l_fetch (matches React preview maths)
     if (locationIconUrl) {
       const locSpec = effectiveLayout.location;
       const locationFontSize = locSpec.fs;
@@ -455,24 +455,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       const iconOffsetX = 50;
       const iconOffsetY = 15;
       const locY = locSpec.y;
-    
+
       const iconX = locSpec.x - iconOffsetX;
       const iconY = locY + (textHeight - iconSize) + iconOffsetY;
-    
-      // 1) define the overlay image + its size
+
+      const iconFetch = toBase64Url(locationIconUrl);
+
       transformations.push({
-        overlay: { url: locationIconUrl },
-        width: iconSize,
-        height: iconSize,
-        crop: "scale",
-      });
-    
-      // 2) apply it at the correct x/y
-      transformations.push({
-        gravity: "north_west",
-        x: iconX,
-        y: iconY,
-        flags: "layer_apply",
+        raw_transformation:
+          `l_fetch:${iconFetch}` +
+          `/c_scale,w_${iconSize},h_${iconSize}` +
+          `/fl_layer_apply,g_north_west,x_${iconX},y_${iconY}`,
       });
     }
 
