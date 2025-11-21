@@ -475,13 +475,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       });
     }
 
-    // 5) Helper for text overlays (title, location, salary, etc.)
     function addTextOverlay(key: PlaceholderKey, value: string) {
       const spec = (effectiveLayout as any)[key] as TextBox;
-
-      // Always ensure we have *some* text – prevents silent no-op
+    
       const safeText = String(value || "").trim();
-
+      if (!safeText) return; // nothing to draw
+    
+      const isZ2 = templateId === "zitko-2";
+      const isTitle = key === "title";
+    
       const overlayCfg: any = {
         overlay: {
           font_family: "Arial",
@@ -493,18 +495,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         color: spec.color,
         crop: "fit",
       };
-
-      // Only remove width for title on zitko-2
-      const isZ2 = templateId === "zitko-2";
-      const isTitle = key === "title";
+    
+      // same width logic as title/location/salary
       if (!(isZ2 && isTitle) && spec.w) {
         overlayCfg.width = spec.w;
       }
-
+    
       if (spec.h) {
         overlayCfg.height = spec.h;
       }
-
+    
       transformations.push(overlayCfg);
       transformations.push({
         gravity: "north_west",
