@@ -263,6 +263,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       );
     }
 
+    // Helpful debug so you can verify the values actually arriving
+    console.log("MP4 payload text:", {
+      description,
+      benefits,
+    });
+
     const cleanVideoId = stripExt(videoPublicId);
 
     // ----- Build effective template URL -----
@@ -473,12 +479,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     function addTextOverlay(key: PlaceholderKey, value: string) {
       const spec = (effectiveLayout as any)[key] as TextBox;
 
+      // Always ensure we have *some* text – prevents silent no-op
+      const safeText = String(value || "").trim();
+
       const overlayCfg: any = {
         overlay: {
           font_family: "Arial",
           font_size: spec.fs,
           font_weight: spec.bold ? "bold" : "normal",
-          text: value,
+          text: safeText,
           text_align: spec.align || "left",
         },
         color: spec.color,
@@ -505,17 +514,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       });
     }
 
-    const cleanDescription = String(description || "")
-      .replace(/\r\n|\r|\n/g, " ")
-      .replace(/\s{2,}/g, " ")
+    // ---- Prepare description + benefits cleanly ----
+    const cleanDescription = String(description || "SHORT DESCRIPTION")
+      .replace(/\r\n|\r/g, "\n") // normalise newlines
+      .replace(/\s+$/g, "")
       .trim();
-    const cleanBenefits = String(benefits || "").trim();
 
+    const formattedBenefits = formatBenefits(benefits || "BENEFITS");
+
+    // ---- Add ALL text layers (including description + benefits) ----
     addTextOverlay("title", title);
     addTextOverlay("location", location);
     addTextOverlay("salary", salary);
     addTextOverlay("description", cleanDescription);
-    addTextOverlay("benefits", formatBenefits(cleanBenefits));
+    addTextOverlay("benefits", formattedBenefits);
     addTextOverlay("email", email);
     addTextOverlay("phone", phone);
 
@@ -536,6 +548,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           composedUrl,
           templateUsed: effectiveTemplateUrl,
           locationIconUrl,
+          descriptionUsed: cleanDescription,
+          benefitsUsed: formattedBenefits,
           hint: "Open composedUrl in a new tab if you need to inspect Cloudinary output directly.",
         },
         { status: 200 },
