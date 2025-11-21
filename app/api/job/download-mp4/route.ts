@@ -10,6 +10,7 @@ import { v2 as cloudinary } from "cloudinary";
  * - Adds the location icon + circular video mask
  */
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic"; // ensure this route is always dynamic
 
 // ---------------- Cloudinary config ----------------
 
@@ -33,6 +34,8 @@ type PlaceholderKey =
   | "email"
   | "phone";
 
+type TemplateId = "zitko-1" | "zitko-2";
+
 interface Body {
   videoPublicId: string;
   title?: string;
@@ -42,7 +45,7 @@ interface Body {
   benefits?: string;
   email?: string;
   phone?: string;
-  templateId?: "zitko-1" | "zitko-2";
+  templateId?: TemplateId;
   positions?: Partial<Record<PlaceholderKey, { x: number; y: number }>>;
   fontSizes?: Partial<Record<PlaceholderKey, number>>;
   videoPos?: { x: number; y: number };
@@ -79,25 +82,133 @@ interface Layout {
 }
 
 // These should mirror your SocialMediaTab template layouts
-const LAYOUTS: Record<"zitko-1" | "zitko-2", Layout> = {
+const LAYOUTS: Record<TemplateId, Layout> = {
   "zitko-1": {
-    title: { x: 470, y: 100, w: 560, fs: 60, color: "#ffffff", bold: true, align: "left" },
-    location: { x: 520, y: 330, w: 520, fs: 30, color: "#ffffff", bold: true, align: "left" },
-    salary: { x: 520, y: 400, w: 520, fs: 28, color: "#F7941D", bold: true, align: "left" },
-    description: { x: 520, y: 480, w: 520, h: 80, fs: 24, color: "#ffffff", align: "left" },
-    benefits: { x: 520, y: 650, w: 520, h: 260, fs: 24, color: "#ffffff", align: "left" },
-    email: { x: 800, y: 962, w: 180, fs: 20, color: "#ffffff", align: "left" },
-    phone: { x: 800, y: 1018, w: 180, fs: 20, color: "#ffffff", align: "left" },
+    title: {
+      x: 470,
+      y: 100,
+      w: 560,
+      fs: 60,
+      color: "#ffffff",
+      bold: true,
+      align: "left",
+    },
+    location: {
+      x: 520,
+      y: 330,
+      w: 520,
+      fs: 30,
+      color: "#ffffff",
+      bold: true,
+      align: "left",
+    },
+    salary: {
+      x: 520,
+      y: 400,
+      w: 520,
+      fs: 28,
+      color: "#F7941D",
+      bold: true,
+      align: "left",
+    },
+    description: {
+      x: 520,
+      y: 480,
+      w: 520,
+      h: 80,
+      fs: 24,
+      color: "#ffffff",
+      align: "left",
+    },
+    benefits: {
+      x: 520,
+      y: 650,
+      w: 520,
+      h: 260,
+      fs: 24,
+      color: "#ffffff",
+      align: "left",
+    },
+    email: {
+      x: 800,
+      y: 962,
+      w: 180,
+      fs: 20,
+      color: "#ffffff",
+      align: "left",
+    },
+    phone: {
+      x: 800,
+      y: 1018,
+      w: 180,
+      fs: 20,
+      color: "#ffffff",
+      align: "left",
+    },
     video: { x: 80, y: 400, w: 300, h: 300 },
   },
   "zitko-2": {
-    title: { x: 30, y: 370, w: 520, fs: 60, color: "#ffffff", bold: true, align: "left" },
-    location: { x: 80, y: 480, w: 520, fs: 30, color: "#ffffff", bold: true, align: "left" },
-    salary: { x: 80, y: 530, w: 520, fs: 28, color: "#F7941D", bold: true, align: "left" },
-    description: { x: 80, y: 580, w: 520, h: 120, fs: 24, color: "#ffffff", align: "left" },
-    benefits: { x: 80, y: 750, w: 520, h: 260, fs: 24, color: "#ffffff", align: "left" },
-    email: { x: 800, y: 962, w: 180, fs: 20, color: "#ffffff", align: "left" },
-    phone: { x: 800, y: 1018, w: 180, fs: 20, color: "#ffffff", align: "left" },
+    title: {
+      x: 30,
+      y: 370,
+      w: 520,
+      fs: 60,
+      color: "#ffffff",
+      bold: true,
+      align: "left",
+    },
+    location: {
+      x: 80,
+      y: 480,
+      w: 520,
+      fs: 30,
+      color: "#ffffff",
+      bold: true,
+      align: "left",
+    },
+    salary: {
+      x: 80,
+      y: 530,
+      w: 520,
+      fs: 28,
+      color: "#F7941D",
+      bold: true,
+      align: "left",
+    },
+    description: {
+      x: 80,
+      y: 580,
+      w: 520,
+      h: 120,
+      fs: 24,
+      color: "#ffffff",
+      align: "left",
+    },
+    benefits: {
+      x: 80,
+      y: 750,
+      w: 520,
+      h: 260,
+      fs: 24,
+      color: "#ffffff",
+      align: "left",
+    },
+    email: {
+      x: 800,
+      y: 962,
+      w: 180,
+      fs: 20,
+      color: "#ffffff",
+      align: "left",
+    },
+    phone: {
+      x: 800,
+      y: 1018,
+      w: 180,
+      fs: 20,
+      color: "#ffffff",
+      align: "left",
+    },
     video: { x: 705, y: 540, w: 300, h: 300 },
   },
 };
@@ -147,7 +258,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     if (!videoPublicId) {
       return NextResponse.json(
         { error: "Missing videoPublicId" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -158,7 +269,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const originFromReq = req.nextUrl.origin;
     const envBase = process.env.NEXT_PUBLIC_BASE_URL?.trim();
     const isLocal = /^(http:\/\/)?(localhost|127\.0\.0\.1)(:\d+)?/i.test(
-      originFromReq
+      originFromReq,
     );
 
     if (!effectiveTemplateUrl) {
@@ -170,12 +281,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             error:
               "No public base URL. Set NEXT_PUBLIC_BASE_URL or pass templateUrl.",
           },
-          { status: 500 }
+          { status: 500 },
         );
       }
       effectiveTemplateUrl = `${baseForCloudinary.replace(
         /\/$/,
-        ""
+        "",
       )}/templates/${filename}`;
     }
 
@@ -205,7 +316,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             status: head.status,
             templateUrl: effectiveTemplateUrl,
           },
-          { status: 502 }
+          { status: 502 },
         );
       }
       const ct = head.headers.get("content-type") || "";
@@ -216,7 +327,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             contentType: ct,
             templateUrl: effectiveTemplateUrl,
           },
-          { status: 502 }
+          { status: 502 },
         );
       }
     } catch (e: any) {
@@ -226,7 +337,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           templateUrl: effectiveTemplateUrl,
           details: e?.message,
         },
-        { status: 502 }
+        { status: 502 },
       );
     }
 
@@ -244,7 +355,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             foundType: info?.type,
             publicId: cleanVideoId,
           },
-          { status: 404 }
+          { status: 404 },
         );
       }
     } catch (e: any) {
@@ -254,7 +365,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           publicId: cleanVideoId,
           details: e?.message,
         },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -302,7 +413,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const overlayIdForLayer = cleanVideoId.replace(/\//g, ":");
     const videoSize = Math.min(
       effectiveLayout.video.w,
-      effectiveLayout.video.h
+      effectiveLayout.video.h,
     );
 
     // ----- Build Cloudinary transformation -----
@@ -348,17 +459,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       const iconX = locSpec.x - iconOffsetX;
       const iconY = locY + (textHeight - iconSize) + iconOffsetY;
 
+      // Use fetch-based overlay via raw_transformation to avoid "public_id" errors
+      const iconFetch = toBase64Url(locationIconUrl);
       transformations.push({
-        overlay: { url: locationIconUrl },
-        width: iconSize,
-        height: iconSize,
-        crop: "scale",
-      });
-      transformations.push({
-        gravity: "north_west",
-        x: iconX,
-        y: iconY,
-        flags: "layer_apply",
+        raw_transformation: `l_fetch:${iconFetch}/c_scale,w_${iconSize},h_${iconSize}/fl_layer_apply,g_north_west,x_${iconX},y_${iconY}`,
       });
     }
 
@@ -421,7 +525,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           templateUsed: effectiveTemplateUrl,
           hint: "Open composedUrl in a new tab if you need to inspect Cloudinary output directly.",
         },
-        { status: 200 }
+        { status: 200 },
       );
     }
 
@@ -439,7 +543,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           composedUrl,
           templateUsed: effectiveTemplateUrl,
         },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -455,7 +559,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   } catch (err: any) {
     return NextResponse.json(
       { error: err?.message || "Unknown error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
