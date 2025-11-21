@@ -17,7 +17,8 @@ export const dynamic = "force-dynamic"; // ensure dynamic route
 cloudinary.config({
   cloud_name:
     process.env.CLOUDINARY_CLOUD_NAME ||
-    process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
+    process.env.NEXT_PUBLIC_CLOUDINARY_CLOUDINARY_CLOUD_NAME ||
+    process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME, // fallback if typo
   api_key: process.env.CLOUDINARY_API_KEY!,
   api_secret: process.env.CLOUDINARY_API_SECRET!,
   secure: true,
@@ -213,10 +214,6 @@ const LAYOUTS: Record<TemplateId, Layout> = {
   },
 };
 
-// Cloudinary public_id for the location icon (you have templates/Location-Icon.png)
-const LOCATION_ICON_PUBLIC_ID =
-  process.env.CLOUDINARY_LOCATION_ICON_ID || "templates/Location-Icon.png";
-
 // ---------------- Helpers ----------------
 
 function formatBenefits(raw: string): string {
@@ -294,7 +291,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       )}/templates/${filename}`;
     }
 
-    // derive base origin for debug info (not used for icon now)
+    // derive base origin for other assets (location icon)
     let assetsOrigin: string | null = null;
     try {
       const u = new URL(effectiveTemplateUrl);
@@ -449,8 +446,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       flags: "layer_apply",
     });
 
-    // 4) Location icon overlay (matches React preview maths) via Cloudinary public_id
-    if (LOCATION_ICON_PUBLIC_ID) {
+    // 4) Location icon overlay via l_fetch (matches React preview maths)
+    if (locationIconUrl) {
       const locSpec = effectiveLayout.location;
       const locationFontSize = locSpec.fs;
       const textHeight = locationFontSize * 1.25;
@@ -462,24 +459,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       const iconX = locSpec.x - iconOffsetX;
       const iconY = locY + (textHeight - iconSize) + iconOffsetY;
 
-      // define overlay image + its size (explicit public_id form)
-      transformations.push({
-        overlay: {
-          public_id: LOCATION_ICON_PUBLIC_ID,
-          resource_type: "image",
-          type: "upload",
-        },
-        width: iconSize,
-        height: iconSize,
-        crop: "scale",
-      });
+      const iconFetch = toBase64Url(locationIconUrl);
 
-      // apply it at the computed x/y
       transformations.push({
-        gravity: "north_west",
-        x: iconX,
-        y: iconY,
-        flags: "layer_apply",
+        raw_transformation:
+          `l_fetch:${iconFetch}` +
+          `/c_scale,w_${iconSize},h_${iconSize}` +
+          `/fl_layer_apply,g_north_west,x_${iconX},y_${iconY}`,
       });
     }
 
@@ -550,7 +536,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           composedUrl,
           templateUsed: effectiveTemplateUrl,
           locationIconUrl,
-          locationIconPublicId: LOCATION_ICON_PUBLIC_ID,
           hint: "Open composedUrl in a new tab if you need to inspect Cloudinary output directly.",
         },
         { status: 200 },
