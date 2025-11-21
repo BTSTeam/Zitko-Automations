@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { v2 as cloudinary } from "cloudinary";
+import type { UploadApiResponse } from "cloudinary";
 
 export const runtime = "nodejs";
 
@@ -15,7 +16,30 @@ cloudinary.config({
   secure: true,
 });
 
+// Helper: upload a Buffer via Cloudinary's upload_stream
+function uploadFromBuffer(buffer: Buffer): Promise<UploadApiResponse> {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder: "job-posters", // change folder if you want
+        resource_type: "image",
+        format: "png",
+      },
+      (error, result) => {
+        if (error || !result) {
+          return reject(error || new Error("Cloudinary upload returned no result"));
+        }
+        resolve(result);
+      },
+    );
+
+    stream.end(buffer);
+  });
+}
+
 export async function POST(req: NextRequest): Promise<NextResponse> {
+  let bufferLength = 0;
+
   try {
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
@@ -30,25 +54,32 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     // Read file into a Buffer
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
+    bufferLength = buffer.length;
 
-    // Convert to base64 data URI for Cloudinary
-    const mimeType = file.type || "image/png";
-    const base64 = buffer.toString("base64");
-    const dataUri = `data:${mimeType};base64,${base64}`;
+    if (!bufferLength) {
+      return NextResponse.json(
+        { error: "Uploaded file buffer is empty" },
+        { status: 400 },
+      );
+    }
 
-    // Upload to Cloudinary as an image
-    const uploaded = await cloudinary.uploader.upload(dataUri, {
-      folder: "job-posters", // change folder if you want
-      resource_type: "image",
-      // let Cloudinary decide final format or force png; both okay
-      format: "png",
-    });
+    // Upload buffer directly via upload_stream
+    const uploaded = await uploadFromBuffer(buffer);
 
     return NextResponse.json({
       posterPublicId: uploaded.public_id,
+      bytes: uploaded.bytes,
+      format: uploaded.format,
+      secure_url: uploaded.secure_url,
     });
   } catch (err: any) {
-    // Cloudinary errors often have nested info on err.error
+    let rawError: any = null;
+    try {
+      rawError = JSON.parse(JSON.stringify(err));
+    } catch {
+      rawError = String(err);
+    }
+
     const message =
       err?.message ||
       err?.error?.message ||
@@ -59,8 +90,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json(
       {
         error: message,
-        // helpful extra details if you inspect Network tab
         cloudinaryError: err?.error || null,
+        bufferLength,
+        rawError,
       },
       { status: 500 },
     );
