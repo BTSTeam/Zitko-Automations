@@ -375,19 +375,14 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     }
   }
 
-    // ---------- render poster (re-used for preview + export) ----------
-    function renderPoster(
-      scaleFactor: number,
-      ref?: React.Ref<HTMLDivElement>,
-      options?: { excludeVideo?: boolean },
-    ) {
-      const s = scaleFactor
-      const excludeVideo = options?.excludeVideo ?? false
-    
-      return (
-        <div
-          ref={ref}
-          className="relative shadow-lg"
+  // ---------- render poster (re-used for preview + export) ----------
+  function renderPoster(scaleFactor: number, ref?: React.Ref<HTMLDivElement>) {
+    const s = scaleFactor
+
+    return (
+      <div
+        ref={ref}
+        className="relative shadow-lg"
         style={{
           width: selectedTpl.width * s,
           height: selectedTpl.height * s,
@@ -466,7 +461,9 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
 
           if (key === 'benefits') {
             let benefitsLines: string[] = Array.isArray(job.benefits)
-              ? (job.benefits as string[]).map((s) => String(s).trim()).filter(Boolean)
+              ? (job.benefits as string[])
+                  .map((s) => String(s).trim())
+                  .filter(Boolean)
               : String(job.benefits || '')
                   .split('\n')
                   .map((s) => s.trim())
@@ -589,7 +586,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
           )
         })()}
 
-          {!excludeVideo && selectedTpl.layout.video && videoUrl && (
+        {selectedTpl.layout.video && videoUrl && (
           <div
             {...makeVideoDragHandlers()}
             style={{
@@ -624,7 +621,6 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     )
   }
 
-
   // ---------- download PNG using full-size hidden poster ----------
   async function downloadPng() {
     if (!exportRef.current) return
@@ -640,90 +636,27 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     a.click()
   }
 
-  // ---------- helper: generate full-size poster blob ----------
-  async function generatePosterBlob(): Promise<Blob | null> {
-    if (!exportRef.current) {
-      alert('Could not find poster element to export.')
-      return null
-    }
-
-    // use a smaller scale for Cloudinary to avoid oversized uploads
-    const canvas = await html2canvas(exportRef.current, {
-      scale: 1,
-      useCORS: true,
-    })
-
-    return new Promise<Blob | null>((resolve) => {
-      canvas.toBlob(
-        (blob) => {
-          if (!blob) {
-            resolve(null)
-          } else {
-            resolve(blob)
-          }
-        },
-        'image/png',
-      )
-    })
-  }
-
-  // ---------- helper: upload poster to Cloudinary and get public ID ----------
-  async function uploadPosterAndGetPublicId(): Promise<string | null> {
-    const blob = await generatePosterBlob()
-    if (!blob) {
-      alert('Could not generate poster image.')
-      return null
-    }
-
-    const formData = new FormData()
-    formData.append('file', blob, 'poster.png')
-
-    const res = await fetch('/api/job/upload-poster', {
-      method: 'POST',
-      body: formData,
-    })
-
-    if (!res.ok) {
-      let err: any = {}
-      try {
-        err = await res.json()
-      } catch {
-        // ignore JSON parse errors
-      }
-      alert(`Failed to upload poster: ${err.error || res.statusText}`)
-      console.error('Poster upload error payload:', err)
-      return null
-    }
-
-    const data = (await res.json()) as { posterPublicId?: string }
-
-    if (!data.posterPublicId) {
-      alert('Poster upload did not return a posterPublicId.')
-      console.error('Poster upload response missing posterPublicId:', data)
-      return null
-    }
-
-    return data.posterPublicId
-  }
-
   async function downloadMp4() {
     if (!videoPublicId) {
       alert('Add a video first.')
       return
     }
 
-    // 1) Generate + upload poster, get Cloudinary public ID
-    const posterPublicId = await uploadPosterAndGetPublicId()
-    if (!posterPublicId) {
-      // upload failed
-      return
-    }
-
-    // 2) Ask server to compose MP4 using poster + video
     const payload = {
       videoPublicId,
-      posterPublicId,
-      templateId: selectedTplId as 'zitko-1' | 'zitko-2',
+      title: job.title || 'Job Title',
+      location: job.location || 'Location',
+      salary: job.salary || 'Salary',
+      description: wrapText(
+        String(job.description || 'Short description'),
+      ),
+      benefits: benefitsText,
+      email: job.email || '',
+      phone: job.phone || '',
+      templateId: selectedTplId,
+      // Send layout overrides so MP4 matches preview
+      positions,
+      fontSizes,
       videoPos,
     }
 
@@ -745,9 +678,8 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
       return
     }
 
-    // Allow for debug JSON from the API
     if (isJson) {
-      const j = await res.json().catch(() => ({} as any))
+      const j = await res.json().catch(() => ({}))
       if (j.composedUrl) {
         console.log('DEBUG composedUrl:', j.composedUrl)
         alert('Debug: composedUrl logged to console.')
@@ -757,7 +689,6 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
       return
     }
 
-    // 3) Download the composed MP4
     const blob = await res.blob()
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -1091,7 +1022,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
               pointerEvents: 'none',
             }}
           >
-            {renderPoster(1, exportRef, { excludeVideo: true })}
+            {renderPoster(1, exportRef)}
           </div>
 
           <p className="mt-3 text-xs text-gray-500">
