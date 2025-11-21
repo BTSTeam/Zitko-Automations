@@ -669,16 +669,16 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
       alert('Could not generate poster image.')
       return null
     }
-
+  
     const formData = new FormData()
     formData.append('file', blob, 'poster.png')
-
+  
     // NOTE: adjust route path if your upload route is named differently
-    const res = await fetch('/api/job/download-poster', {
+    const res = await fetch('/api/job/upload-poster', {
       method: 'POST',
       body: formData,
     })
-
+  
     if (!res.ok) {
       let err: any = {}
       try {
@@ -690,15 +690,15 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
       console.error('Poster upload error payload:', err)
       return null
     }
-
+  
     const data = (await res.json()) as { posterPublicId?: string }
-
+  
     if (!data.posterPublicId) {
       alert('Poster upload did not return a posterPublicId.')
       console.error('Poster upload response missing posterPublicId:', data)
       return null
     }
-
+  
     return data.posterPublicId
   }
 
