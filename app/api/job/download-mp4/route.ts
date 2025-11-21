@@ -168,7 +168,7 @@ const LAYOUTS: Record<TemplateId, Layout> = {
       align: "left",
     },
     salary: {
-      x: 80,
+      x: 85,
       y: 530,
       w: 520,
       fs: 28,
@@ -177,7 +177,7 @@ const LAYOUTS: Record<TemplateId, Layout> = {
       align: "left",
     },
     description: {
-      x: 80,
+      x: 85,
       y: 580,
       w: 520,
       h: 120,
@@ -186,7 +186,7 @@ const LAYOUTS: Record<TemplateId, Layout> = {
       align: "left",
     },
     benefits: {
-      x: 80,
+      x: 85,
       y: 750,
       w: 520,
       h: 260,
