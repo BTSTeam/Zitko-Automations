@@ -636,27 +636,90 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     a.click()
   }
 
+  // ---------- helper: generate full-size poster blob ----------
+  async function generatePosterBlob(): Promise<Blob | null> {
+    if (!exportRef.current) {
+      alert('Could not find poster element to export.')
+      return null
+    }
+
+    const canvas = await html2canvas(exportRef.current, {
+      scale: 2,
+      useCORS: true,
+    })
+
+    return new Promise<Blob | null>((resolve) => {
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            resolve(null)
+          } else {
+            resolve(blob)
+          }
+        },
+        'image/png',
+      )
+    })
+  }
+
+  // ---------- helper: upload poster to Cloudinary and get public ID ----------
+  async function uploadPosterAndGetPublicId(): Promise<string | null> {
+    const blob = await generatePosterBlob()
+    if (!blob) {
+      alert('Could not generate poster image.')
+      return null
+    }
+
+    const formData = new FormData()
+    formData.append('file', blob, 'poster.png')
+
+    // NOTE: adjust route path if your upload route is named differently
+    const res = await fetch('/api/job/download-poster', {
+      method: 'POST',
+      body: formData,
+    })
+
+    if (!res.ok) {
+      let err: any = {}
+      try {
+        err = await res.json()
+      } catch {
+        // ignore JSON parse errors
+      }
+      alert(`Failed to upload poster: ${err.error || res.statusText}`)
+      console.error('Poster upload error payload:', err)
+      return null
+    }
+
+    const data = (await res.json()) as { posterPublicId?: string }
+
+    if (!data.posterPublicId) {
+      alert('Poster upload did not return a posterPublicId.')
+      console.error('Poster upload response missing posterPublicId:', data)
+      return null
+    }
+
+    return data.posterPublicId
+  }
+
   async function downloadMp4() {
     if (!videoPublicId) {
       alert('Add a video first.')
       return
     }
 
+    // 1) Generate + upload poster, get Cloudinary public ID
+    const posterPublicId = await uploadPosterAndGetPublicId()
+    if (!posterPublicId) {
+      // upload failed
+      return
+    }
+
+    // 2) Ask server to compose MP4 using poster + video
     const payload = {
       videoPublicId,
-      title: job.title || 'Job Title',
-      location: job.location || 'Location',
-      salary: job.salary || 'Salary',
-      description: wrapText(
-        String(job.description || 'Short description'),
-      ),
-      benefits: benefitsText,
-      email: job.email || '',
-      phone: job.phone || '',
-      templateId: selectedTplId,
-      // Send layout overrides so MP4 matches preview
-      positions,
-      fontSizes,
+      posterPublicId,
+      templateId: selectedTplId as 'zitko-1' | 'zitko-2',
       videoPos,
     }
 
@@ -678,8 +741,9 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
       return
     }
 
+    // Allow for debug JSON from the API
     if (isJson) {
-      const j = await res.json().catch(() => ({}))
+      const j = await res.json().catch(() => ({} as any))
       if (j.composedUrl) {
         console.log('DEBUG composedUrl:', j.composedUrl)
         alert('Debug: composedUrl logged to console.')
@@ -689,6 +753,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
       return
     }
 
+    // 3) Download the composed MP4
     const blob = await res.blob()
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
