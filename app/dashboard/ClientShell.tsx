@@ -4,37 +4,37 @@ import { useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 
 // Dynamically import each tab to prevent SSR on client-only code
-const MatchTab               = dynamic(() => import('./_match/MatchTab'),   { ssr: false })
-const SourceTab              = dynamic(() => import('./_source/SourceTab'), { ssr: false })
-const CvTab                  = dynamic(() => import('./_cv/CvTab'),         { ssr: false })
-const SocialMediaTab         = dynamic(() => import('./_social/SocialMediaTab'), { ssr: false })
+const MatchTab                = dynamic(() => import('./_match/MatchTab'),   { ssr: false })
+const SourceTab               = dynamic(() => import('./_source/SourceTab'), { ssr: false })
+const CvTab                   = dynamic(() => import('./_cv/CvTab'),         { ssr: false })
+const SocialMediaTab          = dynamic(() => import('./_social/SocialMediaTab'), { ssr: false })
 const ActiveCampaignUploadTab = dynamic(() => import('./_ac/ActiveCampaignTab'), { ssr: false })
-const ActiveCampaignHtmlTab  = dynamic(() => import('./_ac/ActiveCampaignHtmlTab'), { ssr: false })
+const ActiveCampaignHtmlTab   = dynamic(() => import('./_ac/ActiveCampaignHtmlTab'), { ssr: false })
 
 type TabKey     = 'match' | 'source' | 'cv' | 'social' | 'ac'
 type SourceMode = 'people' | 'companies'
 type CvTemplate = 'uk' | 'us' | 'sales'   // Updated: support UK & US formats
-type SocialMode = 'jobPosts' | 'generalPosts'
+type SocialMode = 'jobPosts'              // General posts removed
 
 //  Toggle to re-enable later
 const DISABLE_SOURCING = true
 const DISABLE_SOCIAL   = false
 
 export default function ClientShell(): JSX.Element {
-  const [tab, setTab]               = useState<TabKey>('match')
+  const [tab, setTab]                 = useState<TabKey>('match')
   const [showWelcome, setShowWelcome] = useState<boolean>(true)
 
-  const [sourceOpen, setSourceOpen] = useState(false)
-  const [sourceMode, setSourceMode] = useState<SourceMode>('people')
+  const [sourceOpen, setSourceOpen]   = useState(false)
+  const [sourceMode, setSourceMode]   = useState<SourceMode>('people')
 
-  const [cvOpen, setCvOpen]         = useState(false)
-  const [cvTemplate, setCvTemplate] = useState<CvTemplate>('uk') // default to UK
+  const [cvOpen, setCvOpen]           = useState(false)
+  const [cvTemplate, setCvTemplate]   = useState<CvTemplate>('uk') // default to UK
 
-  const [socialOpen, setSocialOpen] = useState(false)
-  const [socialMode, setSocialMode] = useState<SocialMode>('jobPosts')
+  const [socialOpen, setSocialOpen]   = useState(false)
+  const [socialMode, setSocialMode]   = useState<SocialMode>('jobPosts')
 
-  const [acOpen, setAcOpen]         = useState(false)
-  const [acMode, setAcMode]         = useState<'upload' | 'html'>('upload')
+  const [acOpen, setAcOpen]           = useState(false)
+  const [acMode, setAcMode]           = useState<'upload' | 'html'>('upload')
 
   useEffect(() => {
     function onClick(e: MouseEvent) {
@@ -147,17 +147,17 @@ export default function ClientShell(): JSX.Element {
                   >
                     US Format
                   </button>
-                    <button
-                      className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${cvTemplate === 'sales' ? 'font-medium' : ''}`}
-                      onClick={() => { setCvTemplate('sales'); setTab('cv'); setCvOpen(false); setShowWelcome(false) }}
-                    >
-                      Sales Format
-                    </button>
+                  <button
+                    className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${cvTemplate === 'sales' ? 'font-medium' : ''}`}
+                    onClick={() => { setCvTemplate('sales'); setTab('cv'); setCvOpen(false); setShowWelcome(false) }}
+                  >
+                    Sales Format
+                  </button>
                 </div>
               )}
             </div>
 
-            {/* Social Media dropdown (now inside left cluster) */}
+            {/* Social Media dropdown (left cluster) */}
             <div className="relative" data-social-root>
               <button
                 onClick={(e) => {
@@ -176,16 +176,16 @@ export default function ClientShell(): JSX.Element {
                 <div className="absolute left-1/2 -translate-x-1/2 mt-2 w-44 rounded-xl border bg-white shadow-lg overflow-hidden z-10">
                   <button
                     className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${socialMode === 'jobPosts' ? 'font-medium' : ''}`}
-                    onClick={() => { setSocialMode('jobPosts'); setTab('social'); setSocialOpen(false); setShowWelcome(false) }}
+                    onClick={() => {
+                      setSocialMode('jobPosts')
+                      setTab('social')
+                      setSocialOpen(false)
+                      setShowWelcome(false)
+                    }}
                   >
                     Job Posts
                   </button>
-                  <button
-                    className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${socialMode === 'generalPosts' ? 'font-medium' : ''}`}
-                    onClick={() => { setSocialMode('generalPosts'); setTab('social'); setSocialOpen(false); setShowWelcome(false) }}
-                  >
-                    General Posts
-                  </button>
+                  {/* General Posts option removed */}
                 </div>
               )}
             </div>
