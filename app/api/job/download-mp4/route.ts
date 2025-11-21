@@ -204,7 +204,7 @@ const LAYOUTS: Record<TemplateId, Layout> = {
     },
     phone: {
       x: 800,
-      y: 1040,
+      y: 1036,
       w: 180,
       fs: 20,
       color: "#ffffff",
