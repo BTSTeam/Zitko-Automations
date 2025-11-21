@@ -95,6 +95,7 @@ const pillSecondary =
   ' bg-[#3B3E44] text-white hover:bg-[#2c2f33] disabled:opacity-60 disabled:cursor-not-allowed'
 
 // ---------- helpers ----------
+
 function wrapText(text: string, maxCharsPerLine = 34) {
   const words = String(text ?? '').split(/\s+/)
   const lines: string[] = []
@@ -112,7 +113,13 @@ function wrapText(text: string, maxCharsPerLine = 34) {
   return lines.join('\n')
 }
 
-const mask: VideoMask = 'circle';
+// video mask type (now fixed to circle)
+type VideoMask = 'circle'
+
+function clipPath(_mask: VideoMask): string {
+  // Only one mask for now, but keep helper for future extension
+  return 'circle(50% at 50% 50%)'
+}
 
 function stripTags(html: string) {
   return String(html ?? '').replace(/<[^>]*>/g, ' ')
@@ -158,8 +165,6 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     width: number
     height: number
   } | null>(null)
-  const [mask, setMask] = useState<VideoMask>('circle')
-  const [roundedR, setRoundedR] = useState(32)
   const [videoOpen, setVideoOpen] = useState(false)
 
   // preview scaling
@@ -593,7 +598,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
               width: selectedTpl.layout.video.w * s,
               height: selectedTpl.layout.video.h * s,
               overflow: 'hidden',
-              clipPath: clipPath(mask, roundedR * s),
+              clipPath: clipPath('circle'),
               background: '#111',
               cursor: 'move',
               userSelect: 'none',
@@ -631,7 +636,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     a.click()
   }
 
-    async function downloadMp4() {
+  async function downloadMp4() {
     if (!videoPublicId) {
       alert('Add a video first.')
       return
@@ -649,7 +654,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
       email: job.email || '',
       phone: job.phone || '',
       templateId: selectedTplId,
-      // NEW: send layout overrides so MP4 matches preview
+      // Send layout overrides so MP4 matches preview
       positions,
       fontSizes,
       videoPos,
@@ -775,37 +780,6 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
               }`}
             >
               <div className="p-4">
-                <div className="flex items-center gap-3 flex-wrap">
-                  <label className="inline-flex items-center gap-2 text-sm">
-                    <span>Mask</span>
-                    <select
-                      className="border rounded px-2 py-1 h-8 text-sm"
-                      value={mask}
-                      onChange={(e) =>
-                        setMask(e.target.value as VideoMask)
-                      }
-                    >
-                      <option value="none">None</option>
-                      <option value="circle">Circle</option>
-                      <option value="rounded">Rounded</option>
-                      <option value="hex">Hex</option>
-                    </select>
-                  </label>
-                  {mask === 'rounded' && (
-                    <label className="inline-flex items-center gap-2 text-sm">
-                      <span>Radius</span>
-                      <input
-                        type="number"
-                        className="w-20 border rounded px-2 py-1 h-8 text-sm"
-                        value={roundedR}
-                        onChange={(e) =>
-                          setRoundedR(Number(e.target.value || 0))
-                        }
-                      />
-                    </label>
-                  )}
-                </div>
-
                 <div className="mt-3">
                   {videoUrl ? (
                     <div className="space-y-3">
