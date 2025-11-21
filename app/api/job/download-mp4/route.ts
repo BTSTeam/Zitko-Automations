@@ -213,6 +213,10 @@ const LAYOUTS: Record<TemplateId, Layout> = {
   },
 };
 
+// Cloudinary public_id for the location icon
+const LOCATION_ICON_PUBLIC_ID =
+  process.env.CLOUDINARY_LOCATION_ICON_ID || "templates/Location-Icon.png";
+
 // ---------------- Helpers ----------------
 
 function formatBenefits(raw: string): string {
@@ -290,7 +294,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       )}/templates/${filename}`;
     }
 
-    // derive base origin for other assets (location icon)
+    // derive base origin for debug info (not used for icon any more)
     let assetsOrigin: string | null = null;
     try {
       const u = new URL(effectiveTemplateUrl);
@@ -445,8 +449,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       flags: "layer_apply",
     });
 
-    // 4) Location icon overlay (matches React preview maths)
-    if (locationIconUrl) {
+    // 4) Location icon overlay (matches React preview maths) via Cloudinary public_id
+    if (LOCATION_ICON_PUBLIC_ID) {
       const locSpec = effectiveLayout.location;
       const locationFontSize = locSpec.fs;
       const textHeight = locationFontSize * 1.25;
@@ -458,13 +462,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       const iconX = locSpec.x - iconOffsetX;
       const iconY = locY + (textHeight - iconSize) + iconOffsetY;
 
-      const iconFetch = toBase64Url(locationIconUrl);
-
+      // define overlay image + its size
       transformations.push({
-        raw_transformation:
-          `l_fetch:${iconFetch}` +
-          `/c_scale,w_${iconSize},h_${iconSize}` +
-          `/fl_layer_apply,g_north_west,x_${iconX},y_${iconY}`,
+        overlay: LOCATION_ICON_PUBLIC_ID,
+        width: iconSize,
+        height: iconSize,
+        crop: "scale",
+      });
+
+      // apply it at the computed x/y
+      transformations.push({
+        gravity: "north_west",
+        x: iconX,
+        y: iconY,
+        flags: "layer_apply",
       });
     }
 
@@ -535,6 +546,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           composedUrl,
           templateUsed: effectiveTemplateUrl,
           locationIconUrl,
+          locationIconPublicId: LOCATION_ICON_PUBLIC_ID,
           hint: "Open composedUrl in a new tab if you need to inspect Cloudinary output directly.",
         },
         { status: 200 },
