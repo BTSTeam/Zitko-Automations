@@ -60,7 +60,7 @@ const TEMPLATES: TemplateDef[] = [
       benefits: { x: 520, y: 670, w: 520, h: 260, fontSize: 24 },
       email: { x: 800, y: 962, w: 180, fontSize: 20, align: 'left' },
       phone: { x: 800, y: 1018, w: 180, fontSize: 20, align: 'left' },
-      video: { x: 80, y: 400, w: 300, h: 300 },
+      // NOTE: no video on zitko-1
     },
   },
   {
@@ -145,6 +145,8 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     [selectedTplId],
   )
 
+  const videoEnabled = selectedTpl.id === 'zitko-2'
+
   // job data
   const [jobId, setJobId] = useState('')
   const [job, setJob] = useState({
@@ -223,6 +225,16 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     resetLayout()
   }, [selectedTplId])
 
+  // Clear any video when leaving the video-enabled template
+  useEffect(() => {
+    if (!videoEnabled) {
+      setVideoUrl(null)
+      setVideoPublicId(null)
+      setVideoMeta(null)
+      setVideoPos(null)
+    }
+  }, [videoEnabled])
+
   // Only allow vertical movement for text
   function makeDragHandlers(
     key: Exclude<PlaceholderKey, 'email' | 'phone' | 'video'>,
@@ -263,7 +275,8 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
 
   function makeVideoDragHandlers() {
     const videoSpec = selectedTpl.layout.video
-    if (!videoSpec) return {}
+    // Do not allow video dragging on Zitko-2
+    if (!videoSpec || selectedTpl.id === 'zitko-2') return {}
 
     return {
       onMouseDown: (e: React.MouseEvent<HTMLDivElement>) => {
@@ -305,6 +318,20 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
       ...prev,
       [key]: Number.isFinite(n) && n > 0 ? n : undefined,
     }))
+  }
+
+  function adjustFontSize(
+    key: Exclude<PlaceholderKey, 'video'>,
+    delta: number,
+  ) {
+    setFontSizes((prev) => {
+      const base =
+        prev[key] ??
+        selectedTpl.layout[key]?.fontSize ??
+        18
+      const next = Math.max(8, base + delta)
+      return { ...prev, [key]: next }
+    })
   }
 
   // ------------ data fetch ------------
@@ -375,6 +402,20 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     }
   }
 
+  const benefitsText = useMemo(() => {
+    if (Array.isArray(job.benefits))
+      return (job.benefits as string[]).join('\n')
+    return String(job.benefits || '')
+  }, [job.benefits])
+
+  const clearVideo = () => {
+    setVideoUrl(null)
+    setVideoPublicId(null)
+    setVideoMeta(null)
+    setVideoOpen(true)
+    setVideoPos(null)
+  }
+
   // ---------- render poster (re-used for preview + export) ----------
   function renderPoster(scaleFactor: number, ref?: React.Ref<HTMLDivElement>) {
     const s = scaleFactor
@@ -405,7 +446,11 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
           const baseSpec = selectedTpl.layout[key]
           if (!baseSpec) return null
 
-          const isDraggable = key !== 'email' && key !== 'phone'
+          const isDraggable =
+            key !== 'email' &&
+            key !== 'phone' &&
+            !(selectedTpl.id === 'zitko-2' && key === 'location')
+
           const override = isDraggable
             ? positions[key as Exclude<PlaceholderKey, 'video'>]
             : undefined
@@ -461,9 +506,9 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
 
           if (key === 'benefits') {
             let benefitsLines: string[] = Array.isArray(job.benefits)
-              ? (job.benefits as string[])
-                  .map((s) => String(s).trim())
-                  .filter(Boolean)
+              ? (job.benefits as string[]).map((s) =>
+                  String(s).trim(),
+                ).filter(Boolean)
               : String(job.benefits || '')
                   .split('\n')
                   .map((s) => s.trim())
@@ -543,7 +588,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
           )
         })}
 
-       {/* LOCATION icon – linked with [LOCATION] field (hidden for zitko-2) */}
+        {/* LOCATION icon – linked with [LOCATION] field (hidden for zitko-2) */}
         {selectedTpl.id !== 'zitko-2' &&
           selectedTpl.layout.location &&
           (() => {
@@ -556,7 +601,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
             const iconOffsetX = 50
             const iconOffsetY = 15
             const locY = locOverride?.y ?? locSpec.y
-        
+
             return (
               <div
                 {...makeDragHandlers('location')}
@@ -602,7 +647,10 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
               overflow: 'hidden',
               clipPath: clipPath('circle'),
               background: '#111',
-              cursor: 'move',
+              cursor:
+                selectedTpl.id === 'zitko-2'
+                  ? 'default'
+                  : 'move',
               userSelect: 'none',
             }}
           >
@@ -639,8 +687,8 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
   }
 
   async function downloadMp4() {
-    if (!videoPublicId) {
-      alert('Add a video first.')
+    if (!videoPublicId || !videoEnabled) {
+      alert('Add a video on the Zitko-2 template first.')
       return
     }
 
@@ -702,25 +750,12 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     URL.revokeObjectURL(url)
   }
 
-  const benefitsText = useMemo(() => {
-    if (Array.isArray(job.benefits))
-      return (job.benefits as string[]).join('\n')
-    return String(job.benefits || '')
-  }, [job.benefits])
-
-  const clearVideo = () => {
-    setVideoUrl(null)
-    setVideoPublicId(null)
-    setVideoMeta(null)
-    setVideoOpen(true)
-    setVideoPos(null)
-  }
+  const canDownloadMp4 = !!videoUrl && videoEnabled
 
   return (
     <div className="flex flex-col gap-4">
-      <h2 className="text-xl font-bold">
-        {mode === 'jobPosts' ? 'Job Posts' : 'General Posts'}
-      </h2>
+      {/* Always Job Posts for now */}
+      <h2 className="text-xl font-bold">Job Posts</h2>
 
       {/* template scroller */}
       <div className="w-full overflow-x-auto border rounded-lg p-3 bg-white">
@@ -783,50 +818,62 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
             >
               <div className="p-4">
                 <div className="mt-3">
-                  {videoUrl ? (
-                    <div className="space-y-3">
-                      <div className="aspect-video bg-black rounded-lg overflow-hidden">
-                        <video
-                          src={videoUrl}
-                          controls
-                          playsInline
-                          className="w-full h-full object-contain"
-                        />
-                      </div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <button
-                          type="button"
-                          className={pillSecondary}
-                          onClick={() => setVideoOpen(false)}
-                          title="Hide panel"
-                        >
-                          Close
-                        </button>
-                        <button
-                          type="button"
-                          className={pillPrimary}
-                          onClick={clearVideo}
-                          title="Remove this video so you can record/upload a new one"
-                        >
-                          Remove video
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="recorder-slim">
-                      <Recorder
-                        jobId={jobId || 'unassigned'}
-                        onUploaded={(payload: any) => {
-                          setVideoUrl(payload.playbackMp4)
-                          setVideoPublicId(payload.publicId)
-                          setVideoMeta({
-                            mime: payload.mime,
-                            width: payload.width,
-                            height: payload.height,
-                          })
-                        }}
-                      />
-                    </div>
+                  {!videoEnabled && (
+                    <p className="text-sm text-gray-500">
+                      Video recording is only available for the
+                      &nbsp;
+                      <strong>Zitko – We’re Looking</strong> template.
+                    </p>
+                  )}
+
+                  {videoEnabled && (
+                    <>
+                      {videoUrl ? (
+                        <div className="space-y-3">
+                          <div className="aspect-video bg-black rounded-lg overflow-hidden">
+                            <video
+                              src={videoUrl}
+                              controls
+                              playsInline
+                              className="w-full h-full object-contain"
+                            />
+                          </div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <button
+                              type="button"
+                              className={pillSecondary}
+                              onClick={() => setVideoOpen(false)}
+                              title="Hide panel"
+                            >
+                              Close
+                            </button>
+                            <button
+                              type="button"
+                              className={pillPrimary}
+                              onClick={clearVideo}
+                              title="Remove this video so you can record/upload a new one"
+                            >
+                              Remove video
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="recorder-slim">
+                          <Recorder
+                            jobId={jobId || 'unassigned'}
+                            onUploaded={(payload: any) => {
+                              setVideoUrl(payload.playbackMp4)
+                              setVideoPublicId(payload.publicId)
+                              setVideoMeta({
+                                mime: payload.mime,
+                                width: payload.width,
+                                height: payload.height,
+                              })
+                            }}
+                          />
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -946,22 +993,55 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                       ? 'Description'
                       : key}
                   </span>
-                  <input
-                    type="number"
-                    className="border rounded px-2 py-1 w-20 text-xs"
-                    value={
-                      fontSizes[key as Exclude<PlaceholderKey, 'video'>] ?? ''
-                    }
-                    onChange={(e) =>
-                      handleFontSizeChange(
-                        key as Exclude<PlaceholderKey, 'video'>,
-                        e.target.value,
-                      )
-                    }
-                    placeholder={String(
-                      selectedTpl.layout[key]?.fontSize ?? '',
-                    )}
-                  />
+                  <div className="relative">
+                    <input
+                      type="number"
+                      className="border rounded px-2 py-1 w-20 text-xs pr-6"
+                      value={
+                        fontSizes[
+                          key as Exclude<PlaceholderKey, 'video'>
+                        ] ?? ''
+                      }
+                      onChange={(e) =>
+                        handleFontSizeChange(
+                          key as Exclude<PlaceholderKey, 'video'>,
+                          e.target.value,
+                        )
+                      }
+                      placeholder={String(
+                        selectedTpl.layout[key]?.fontSize ?? '',
+                      )}
+                    />
+                    {/* inline up/down arrows inside the field */}
+                    <div className="absolute inset-y-0 right-0 flex flex-col justify-center mr-1">
+                      <button
+                        type="button"
+                        className="leading-none text-[10px]"
+                        onClick={() =>
+                          adjustFontSize(
+                            key as Exclude<PlaceholderKey, 'video'>,
+                            1,
+                          )
+                        }
+                        tabIndex={-1}
+                      >
+                        ▲
+                      </button>
+                      <button
+                        type="button"
+                        className="leading-none text-[10px]"
+                        onClick={() =>
+                          adjustFontSize(
+                            key as Exclude<PlaceholderKey, 'video'>,
+                            -1,
+                          )
+                        }
+                        tabIndex={-1}
+                      >
+                        ▼
+                      </button>
+                    </div>
+                  </div>
                 </label>
               ))}
             </div>
@@ -992,15 +1072,17 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
               <button
                 className={
                   pillSecondary +
-                  (!videoUrl ? ' opacity-50 cursor-not-allowed' : '')
+                  (!canDownloadMp4
+                    ? ' opacity-50 cursor-not-allowed'
+                    : '')
                 }
                 onClick={downloadMp4}
                 title={
-                  videoUrl
+                  canDownloadMp4
                     ? 'Compose MP4 on server'
-                    : 'Add a video to enable'
+                    : 'Add a video on Zitko-2 to enable'
                 }
-                disabled={!videoUrl}
+                disabled={!canDownloadMp4}
               >
                 Download MP4
               </button>
