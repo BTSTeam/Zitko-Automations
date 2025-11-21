@@ -195,7 +195,7 @@ const LAYOUTS: Record<TemplateId, Layout> = {
     },
     email: {
       x: 800,
-      y: 962,
+      y: 972,
       w: 180,
       fs: 20,
       color: "#ffffff",
@@ -203,7 +203,7 @@ const LAYOUTS: Record<TemplateId, Layout> = {
     },
     phone: {
       x: 800,
-      y: 1018,
+      y: 1030,
       w: 180,
       fs: 20,
       color: "#ffffff",
