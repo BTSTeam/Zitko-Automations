@@ -112,19 +112,7 @@ function wrapText(text: string, maxCharsPerLine = 34) {
   return lines.join('\n')
 }
 
-type VideoMask = 'none' | 'circle' | 'rounded' | 'hex'
-function clipPath(mask: VideoMask, r: number) {
-  switch (mask) {
-    case 'circle':
-      return 'circle(50% at 50% 50%)'
-    case 'rounded':
-      return `inset(0 round ${r}px)`
-    case 'hex':
-      return 'polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)'
-    default:
-      return 'none'
-  }
-}
+const mask: VideoMask = 'circle';
 
 function stripTags(html: string) {
   return String(html ?? '').replace(/<[^>]*>/g, ' ')
