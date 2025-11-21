@@ -159,8 +159,8 @@ const LAYOUTS: Record<TemplateId, Layout> = {
       align: "left",
     },
     location: {
-      x: 80,
-      y: 480,
+      x: 85,
+      y: 500,
       w: 520,
       fs: 30,
       color: "#ffffff",
