@@ -55,9 +55,9 @@ const TEMPLATES: TemplateDef[] = [
     layout: {
       title: { x: 470, y: 300, w: 560, fontSize: 60 },
       location: { x: 520, y: 450, w: 520, fontSize: 30 },
-      salary: { x: 520, y: 520, w: 520, fontSize: 28 },
+      salary: { x: 520, y: 500, w: 520, fontSize: 28 },
       description: { x: 520, y: 570, w: 520, h: 80, fontSize: 24 },
-      benefits: { x: 520, y: 770, w: 520, h: 260, fontSize: 24 },
+      benefits: { x: 520, y: 760, w: 520, h: 260, fontSize: 24 },
       email: { x: 800, y: 962, w: 180, fontSize: 20, align: 'left' },
       phone: { x: 800, y: 1018, w: 180, fontSize: 20, align: 'left' },
       // NOTE: no video on zitko-1
@@ -978,8 +978,6 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                   'salary',
                   'description',
                   'benefits',
-                  'email',
-                  'phone',
                 ] as const
               ).map((key) => (
                 <label
