@@ -178,7 +178,7 @@ const LAYOUTS: Record<TemplateId, Layout> = {
     },
     description: {
       x: 90,
-      y: 590,
+      y: 600,
       w: 540,
       h: 120,
       fs: 24,
@@ -187,7 +187,7 @@ const LAYOUTS: Record<TemplateId, Layout> = {
     },
     benefits: {
       x: 90,
-      y: 750,
+      y: 770,
       w: 540,
       h: 260,
       fs: 24,
@@ -196,7 +196,7 @@ const LAYOUTS: Record<TemplateId, Layout> = {
     },
     email: {
       x: 800,
-      y: 972,
+      y: 976,
       w: 180,
       fs: 20,
       color: "#ffffff",
@@ -204,7 +204,7 @@ const LAYOUTS: Record<TemplateId, Layout> = {
     },
     phone: {
       x: 800,
-      y: 1030,
+      y: 1034,
       w: 180,
       fs: 20,
       color: "#ffffff",
