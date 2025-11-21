@@ -461,9 +461,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
 
           if (key === 'benefits') {
             let benefitsLines: string[] = Array.isArray(job.benefits)
-              ? (job.benefits as string[])
-                  .map((s) => String(s).trim())
-                  .filter(Boolean)
+              ? (job.benefits as string[]).map((s) => String(s).trim()).filter(Boolean)
               : String(job.benefits || '')
                   .split('\n')
                   .map((s) => s.trim())
@@ -643,8 +641,9 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
       return null
     }
 
+    // use a smaller scale for Cloudinary to avoid oversized uploads
     const canvas = await html2canvas(exportRef.current, {
-      scale: 2,
+      scale: 1,
       useCORS: true,
     })
 
@@ -669,16 +668,15 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
       alert('Could not generate poster image.')
       return null
     }
-  
+
     const formData = new FormData()
     formData.append('file', blob, 'poster.png')
-  
-    // NOTE: adjust route path if your upload route is named differently
+
     const res = await fetch('/api/job/upload-poster', {
       method: 'POST',
       body: formData,
     })
-  
+
     if (!res.ok) {
       let err: any = {}
       try {
@@ -690,15 +688,15 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
       console.error('Poster upload error payload:', err)
       return null
     }
-  
+
     const data = (await res.json()) as { posterPublicId?: string }
-  
+
     if (!data.posterPublicId) {
       alert('Poster upload did not return a posterPublicId.')
       console.error('Poster upload response missing posterPublicId:', data)
       return null
     }
-  
+
     return data.posterPublicId
   }
 
