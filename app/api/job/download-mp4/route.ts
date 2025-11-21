@@ -213,7 +213,7 @@ const LAYOUTS: Record<TemplateId, Layout> = {
   },
 };
 
-// Cloudinary public_id for the location icon
+// Cloudinary public_id for the location icon (you have templates/Location-Icon.png)
 const LOCATION_ICON_PUBLIC_ID =
   process.env.CLOUDINARY_LOCATION_ICON_ID || "templates/Location-Icon.png";
 
@@ -294,7 +294,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       )}/templates/${filename}`;
     }
 
-    // derive base origin for debug info (not used for icon any more)
+    // derive base origin for debug info (not used for icon now)
     let assetsOrigin: string | null = null;
     try {
       const u = new URL(effectiveTemplateUrl);
@@ -462,9 +462,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       const iconX = locSpec.x - iconOffsetX;
       const iconY = locY + (textHeight - iconSize) + iconOffsetY;
 
-      // define overlay image + its size
+      // define overlay image + its size (explicit public_id form)
       transformations.push({
-        overlay: LOCATION_ICON_PUBLIC_ID,
+        overlay: {
+          public_id: LOCATION_ICON_PUBLIC_ID,
+          resource_type: "image",
+          type: "upload",
+        },
         width: iconSize,
         height: iconSize,
         crop: "scale",
