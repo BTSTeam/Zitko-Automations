@@ -543,48 +543,50 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
           )
         })}
 
-        {/* LOCATION icon – linked with [LOCATION] field */}
-        {selectedTpl.layout.location && (() => {
-          const locSpec = selectedTpl.layout.location
-          const locOverride = positions.location
-          const locationFontSize =
-            fontSizes.location ?? locSpec.fontSize ?? 20
-          const textHeight = locationFontSize * 1.25
-          const iconSize = 40
-          const iconOffsetX = 50
-          const iconOffsetY = 15
-          const locY = locOverride?.y ?? locSpec.y
-
-          return (
-            <div
-              {...makeDragHandlers('location')}
-              style={{
-                position: 'absolute',
-                left: (locSpec.x - iconOffsetX) * s,
-                top:
-                  (locY +
-                    (textHeight - iconSize) +
-                    iconOffsetY) * s,
-                width: iconSize * s,
-                height: iconSize * s,
-                cursor: 'move',
-                userSelect: 'none',
-                zIndex: 999,
-              }}
-            >
-              <img
-                src="/templates/Location-Icon.png"
-                alt="Location icon"
+       {/* LOCATION icon – linked with [LOCATION] field (hidden for zitko-2) */}
+        {selectedTpl.id !== 'zitko-2' &&
+          selectedTpl.layout.location &&
+          (() => {
+            const locSpec = selectedTpl.layout.location
+            const locOverride = positions.location
+            const locationFontSize =
+              fontSizes.location ?? locSpec.fontSize ?? 20
+            const textHeight = locationFontSize * 1.25
+            const iconSize = 40
+            const iconOffsetX = 50
+            const iconOffsetY = 15
+            const locY = locOverride?.y ?? locSpec.y
+        
+            return (
+              <div
+                {...makeDragHandlers('location')}
                 style={{
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'contain',
-                  display: 'block',
+                  position: 'absolute',
+                  left: (locSpec.x - iconOffsetX) * s,
+                  top:
+                    (locY +
+                      (textHeight - iconSize) +
+                      iconOffsetY) * s,
+                  width: iconSize * s,
+                  height: iconSize * s,
+                  cursor: 'move',
+                  userSelect: 'none',
+                  zIndex: 999,
                 }}
-              />
-            </div>
-          )
-        })()}
+              >
+                <img
+                  src="/templates/Location-Icon.png"
+                  alt="Location icon"
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'contain',
+                    display: 'block',
+                  }}
+                />
+              </div>
+            )
+          })()}
 
         {selectedTpl.layout.video && videoUrl && (
           <div
