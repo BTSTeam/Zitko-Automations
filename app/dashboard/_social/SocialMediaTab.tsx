@@ -10,7 +10,7 @@ import React, {
 import Recorder from '../../_components/recorder'
 import html2canvas from 'html2canvas'
 
-type SocialMode = 'jobPosts' | 'generalPosts'
+type SocialMode = 'jobPosts'
 
 type PlaceholderKey =
   | 'title'
