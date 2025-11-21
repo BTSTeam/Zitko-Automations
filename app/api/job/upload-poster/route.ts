@@ -40,6 +40,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const uploaded = await cloudinary.uploader.upload(dataUri, {
       folder: "job-posters", // change folder if you want
       resource_type: "image",
+      // let Cloudinary decide final format or force png; both okay
       format: "png",
     });
 
@@ -47,10 +48,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       posterPublicId: uploaded.public_id,
     });
   } catch (err: any) {
+    // Cloudinary errors often have nested info on err.error
+    const message =
+      err?.message ||
+      err?.error?.message ||
+      "Failed to upload poster to Cloudinary";
+
     console.error("upload-poster error:", err);
+
     return NextResponse.json(
       {
-        error: err?.message || "Failed to upload poster",
+        error: message,
+        // helpful extra details if you inspect Network tab
+        cloudinaryError: err?.error || null,
       },
       { status: 500 },
     );
