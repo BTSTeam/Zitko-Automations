@@ -151,7 +151,7 @@ const LAYOUTS: Record<TemplateId, Layout> = {
   "zitko-2": {
     title: {
       x: 30,
-      y: 370,
+      y: 380,
       w: 520,
       fs: 60,
       color: "#ffffff",
@@ -159,7 +159,7 @@ const LAYOUTS: Record<TemplateId, Layout> = {
       align: "left",
     },
     location: {
-      x: 85,
+      x: 90,
       y: 500,
       w: 520,
       fs: 30,
@@ -168,8 +168,8 @@ const LAYOUTS: Record<TemplateId, Layout> = {
       align: "left",
     },
     salary: {
-      x: 85,
-      y: 530,
+      x: 90,
+      y: 540,
       w: 520,
       fs: 28,
       color: "#F7941D",
@@ -177,18 +177,18 @@ const LAYOUTS: Record<TemplateId, Layout> = {
       align: "left",
     },
     description: {
-      x: 85,
-      y: 580,
-      w: 520,
+      x: 90,
+      y: 590,
+      w: 540,
       h: 120,
       fs: 24,
       color: "#ffffff",
       align: "left",
     },
     benefits: {
-      x: 85,
+      x: 90,
       y: 750,
-      w: 520,
+      w: 540,
       h: 260,
       fs: 24,
       color: "#ffffff",
