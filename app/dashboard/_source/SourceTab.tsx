@@ -831,7 +831,7 @@ Kind regards,`
               </div>
               <div className="mt-3 flex justify-end">
                 <div className="text-right text-xs text-gray-500">
-                  If you would like to request a more advanced search, please click{' '}
+                  If you would like to request a more advanced people search, please click{' '}
                   <a
                     href={`mailto:bts@zitko.co.uk?subject=${subjectEncoded}&body=${bodyEncoded}`}
                     className="text-orange-500 hover:text-orange-600 no-underline"
