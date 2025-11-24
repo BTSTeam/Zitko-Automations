@@ -819,7 +819,7 @@ Kind regards,`
               </div>
               <div className="mt-4 flex items-center justify-between">
                 <span className="text-xs text-gray-500">
-                  Please press <kbd className="px-1 border rounded">Enter</kbd> to submit your search criteria for each field.
+                  Please press <kbd className="px-1 border rounded">Enter</kbd> to submit each chip.
                 </span>
                 <button
                   type="submit"
