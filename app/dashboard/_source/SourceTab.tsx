@@ -356,6 +356,29 @@ Kind regards,`
   const subjectEncoded = encodeURIComponent(mailToSubject)
   const bodyEncoded = encodeURIComponent(mailToBody)
 
+  const companyMailToSubject = 'Advanced Search Request (companies)'
+  const companyMailToBody = `Hi BTS Team,
+
+Please can I request an advanced search with the criteria listed below, thank you.
+
+Company Lookalikes: (Provide full company names)
+
+Locations:
+
+Company Keywords:
+  - Exclude:
+
+Number of Employees Range:
+
+Job Postings: 
+  - Date Range:
+  - Job Titles: 
+  - Locations:
+
+Kind regards,`
+  const companySubjectEncoded = encodeURIComponent(companyMailToSubject)
+  const companyBodyEncoded = encodeURIComponent(companyMailToBody)
+   
   function togglePersonExpanded(id: string) {
     setPeopleExpanded(prev => {
       const next = new Set(prev)
@@ -1182,6 +1205,18 @@ Kind regards,`
               </div>
 
               {companyError && <div className="mt-3 text-sm text-red-600">{companyError}</div>}
+
+               <div className="mt-3 flex justify-end">
+                <div className="text-right text-xs text-gray-500">
+                  If you would like to request a more advanced company search, please click{' '}
+                  <a
+                    href={`mailto:bts@zitko.co.uk?subject=${companySubjectEncoded}&body=${companyBodyEncoded}`}
+                    className="text-orange-500 hover:text-orange-600 no-underline"
+                  >
+                    here
+                  </a>
+                </div>
+              </div>
             </form>
           )}
         </div>
