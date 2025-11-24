@@ -8,10 +8,12 @@ import { getSession } from '@/lib/session'
 import { refreshApolloAccessToken } from '@/lib/apolloRefresh'
 
 const APOLLO_NEWS_URL = 'https://api.apollo.io/api/v1/news_articles/search'
+const LOOKBACK_DAYS = 90
+const FIXED_PAGE = 1
+const FIXED_PER_PAGE = 2   // <- hardcoded here
 
 type InBody = {
   org_ids?: string[]
-  per_page?: number
 }
 
 async function buildAuthHeaders() {
@@ -45,7 +47,9 @@ export async function POST(req: NextRequest) {
     req.headers.get('x-debug-apollo') === '1'
 
   let body: InBody = {}
-  try { body = await req.json() } catch {}
+  try {
+    body = await req.json()
+  } catch {}
 
   const orgIds: string[] = Array.isArray(body.org_ids)
     ? body.org_ids.map(s => (s || '').trim()).filter(Boolean)
@@ -55,7 +59,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'org_ids[] is required' }, { status: 400 })
   }
 
-  const per_page = Math.min(10, Math.max(1, Number(body.per_page || 2) || 2))
+  // ─────────────────────────────────────────────
+  // ALWAYS USE LAST 90 DAYS
+  // ─────────────────────────────────────────────
+  const now = new Date()
+  const maxDate = now.toISOString().slice(0, 10)
+  const minDate = new Date(now.getTime() - LOOKBACK_DAYS * 86400000)
+    .toISOString()
+    .slice(0, 10)
 
   // Auth
   const auth = await buildAuthHeaders()
@@ -82,74 +93,92 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const apolloBody = {
-      organization_ids: orgIds,
-      page: 1,
-      per_page,
-    }
+    const articlesByOrg: Record<string, any[]> = {}
+    let totalArticles = 0
 
-    let resp = await fetch(APOLLO_NEWS_URL, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(apolloBody),
-      cache: 'no-store',
-    })
-    if (resp.status === 401 || resp.status === 403) {
-      const h2 = await tryRefresh()
-      resp = await fetch(APOLLO_NEWS_URL, {
+    // Add date filter as query params
+    const qs = new URLSearchParams()
+    qs.set('published_at[min]', minDate)
+    qs.set('published_at[max]', maxDate)
+    const baseUrl = `${APOLLO_NEWS_URL}?${qs.toString()}`
+
+    // ─────────────────────────────────────────────
+    // ONE REQUEST PER ORG ID
+    // ─────────────────────────────────────────────
+    for (const orgId of orgIds) {
+      const apolloBody = {
+        organization_ids: [orgId],
+        page: FIXED_PAGE,
+        per_page: FIXED_PER_PAGE, // <- FIXED HERE
+      }
+
+      let resp = await fetch(baseUrl, {
         method: 'POST',
-        headers: h2,
+        headers,
         body: JSON.stringify(apolloBody),
         cache: 'no-store',
       })
-    }
 
-    const text = await resp.text().catch(() => '')
-    let data: any = {}
-    try { data = text ? JSON.parse(text) : {} } catch {}
+      if (resp.status === 401 || resp.status === 403) {
+        const h2 = await tryRefresh()
+        resp = await fetch(baseUrl, {
+          method: 'POST',
+          headers: h2,
+          body: JSON.stringify(apolloBody),
+          cache: 'no-store',
+        })
+      }
 
-    if (!resp.ok) {
-      return NextResponse.json(
-        {
-          error: `Apollo news_articles/search failed – ${resp.status}`,
-          details: text.slice(0, 1200),
-        },
-        { status: resp.status },
-      )
-    }
+      const text = await resp.text().catch(() => '')
+      let data: any = {}
+      try {
+        data = text ? JSON.parse(text) : {}
+      } catch {}
 
-    // Flatten article list
-    const rawArticles: any[] =
-      (Array.isArray(data.news_articles) && data.news_articles) ||
-      (Array.isArray(data.articles) && data.articles) ||
-      []
+      if (!resp.ok) {
+        return NextResponse.json(
+          {
+            error: `Apollo news_articles/search failed – ${resp.status}`,
+            details: text.slice(0, 1200),
+            orgId,
+          },
+          { status: resp.status },
+        )
+      }
 
-    const articlesByOrg: Record<string, any[]> = {}
+      const rawArticles: any[] =
+        (Array.isArray(data.news_articles) && data.news_articles) ||
+        (Array.isArray(data.articles) && data.articles) ||
+        []
 
-    for (const a of rawArticles) {
-      // IDs can live in several places; also Apollo gives organization_ids[]
-      const primaryId =
-        (a?.organization_id ??
-          a?.org_id ??
-          a?.account_id ??
-          '')?.toString().trim()
+      totalArticles += rawArticles.length
 
-      const extraIds: string[] = Array.isArray(a.organization_ids)
-        ? a.organization_ids.map((x: any) => (x ?? '').toString().trim()).filter(Boolean)
-        : []
+      for (const a of rawArticles) {
+        const primaryId =
+          (a?.organization_id ??
+            a?.org_id ??
+            a?.account_id ??
+            '')?.toString().trim()
 
-      const allIds = [...extraIds, primaryId].filter(Boolean)
+        const extraIds: string[] = Array.isArray(a.organization_ids)
+          ? a.organization_ids.map((x: any) => (x ?? '').toString().trim()).filter(Boolean)
+          : []
 
-      for (const oid of allIds) {
-        if (!articlesByOrg[oid]) articlesByOrg[oid] = []
-        articlesByOrg[oid].push(a)
+        const allIds = [...extraIds, primaryId].filter(Boolean)
+        const idsToUse = allIds.length ? allIds : [orgId]
+
+        for (const oid of idsToUse) {
+          if (!articlesByOrg[oid]) articlesByOrg[oid] = []
+          articlesByOrg[oid].push(a)
+        }
       }
     }
 
     return NextResponse.json({
-      apollo: data,     // raw, for debugging
-      articlesByOrg,   // what SourceTab.tsx consumes
-      debug: WANT_DEBUG ? { orgIds, count: rawArticles.length } : undefined,
+      articlesByOrg,
+      debug: WANT_DEBUG
+        ? { orgIds, count: totalArticles, minDate, maxDate }
+        : undefined,
     })
   } catch (err: any) {
     return NextResponse.json(
