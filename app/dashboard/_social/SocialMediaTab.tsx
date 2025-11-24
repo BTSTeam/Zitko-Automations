@@ -896,10 +896,10 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                 disabled={fetchStatus === 'loading'}
               >
                 {fetchStatus === 'loading'
-                  ? 'Fetching…'
+                  ? 'Retrieving…'
                   : fetchStatus === 'done'
-                  ? 'Fetched ✓'
-                  : 'Fetch'}
+                  ? 'Retrieved ✓'
+                  : 'Retrieve'}
               </button>
             </div>
 
