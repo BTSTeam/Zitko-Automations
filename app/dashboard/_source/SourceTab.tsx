@@ -758,7 +758,16 @@ Kind regards,`
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">Keywords</label>
+                  <label className="block text-sm text-gray-600 mb-1 flex items-center gap-1">
+                    Keywords
+                    <span
+                      className="inline-flex items-center justify-center h-4 w-4 rounded-full border border-gray-300 text-[10px] leading-none text-gray-500 cursor-default"
+                      title={`Please be broader with your keywords.
+                  Keywords such as 'Lenel' or 'C-Cure' will fall under 'Security Systems'.`}
+                    >
+                      i
+                    </span>
+                  </label>
                   <div className="rounded-xl border h-10 px-2">
                     <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
                       {personKeywords.chips.map(v => (
@@ -987,7 +996,16 @@ Kind regards,`
                 </div>
 
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">Keywords</label>
+                  <label className="block text-sm text-gray-600 mb-1 flex items-center gap-1">
+                    Keywords
+                    <span
+                      className="inline-flex items-center justify-center h-4 w-4 rounded-full border border-gray-300 text-[10px] leading-none text-gray-500 cursor-default"
+                      title={`Please be broader with your keywords.
+                  Keywords such as 'Lenel' or 'C-Cure' will fall under 'Security Systems'.`}
+                    >
+                      i
+                    </span>
+                  </label>
                   <div className="rounded-xl border h-10 px-2">
                     <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
                       {companyKeywords.chips.map((v) => (
