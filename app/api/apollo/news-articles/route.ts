@@ -91,87 +91,90 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // Build FULL query-string URL with all organization_ids[]
+    const articlesByOrg: Record<string, any[]> = {}
+    let totalArticles = 0
+
+    // Base URL with date filters only
     const qs = new URLSearchParams()
-
-    for (const id of orgIds) {
-      qs.append('organization_ids[]', id)
-    }
-
     qs.set('published_at[min]', minDate)
     qs.set('published_at[max]', maxDate)
-    qs.set('page', String(FIXED_PAGE))
-    qs.set('per_page', String(FIXED_PER_PAGE))
+    const baseUrl = `${APOLLO_NEWS_URL}?${qs.toString()}`
 
-    const fullUrl = `${APOLLO_NEWS_URL}?${qs.toString()}`
+    // One request per org_id
+    for (const orgId of orgIds) {
+      const apolloBody = {
+        organization_ids: [orgId],
+        page: FIXED_PAGE,
+        per_page: FIXED_PER_PAGE,
+      }
 
-    // Single request – Apollo will handle multiple org IDs
-    let resp = await fetch(fullUrl, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({}), // Apollo reads query-string fields
-      cache: 'no-store',
-    })
-
-    if (resp.status === 401 || resp.status === 403) {
-      const h2 = await tryRefresh()
-      resp = await fetch(fullUrl, {
+      let resp = await fetch(baseUrl, {
         method: 'POST',
-        headers: h2,
-        body: JSON.stringify({}),
+        headers,
+        body: JSON.stringify(apolloBody),
         cache: 'no-store',
       })
-    }
 
-    const text = await resp.text().catch(() => '')
-    let data: any = {}
-    try {
-      data = text ? JSON.parse(text) : {}
-    } catch {}
+      if (resp.status === 401 || resp.status === 403) {
+        const h2 = await tryRefresh()
+        resp = await fetch(baseUrl, {
+          method: 'POST',
+          headers: h2,
+          body: JSON.stringify(apolloBody),
+          cache: 'no-store',
+        })
+      }
 
-    if (!resp.ok) {
-      return NextResponse.json(
-        {
-          error: `Apollo news_articles/search failed – ${resp.status}`,
-          details: text.slice(0, 1200),
-          url: fullUrl,
-        },
-        { status: resp.status },
-      )
-    }
+      const text = await resp.text().catch(() => '')
+      let data: any = {}
+      try {
+        data = text ? JSON.parse(text) : {}
+      } catch {}
 
-    // Extract articles
-    const rawArticles: any[] =
-      (Array.isArray(data.news_articles) && data.news_articles) ||
-      (Array.isArray(data.articles) && data.articles) ||
-      []
+      if (!resp.ok) {
+        return NextResponse.json(
+          {
+            error: `Apollo news_articles/search failed – ${resp.status}`,
+            details: text.slice(0, 1200),
+            orgId,
+            url: baseUrl,
+          },
+          { status: resp.status },
+        )
+      }
 
-    // Group by org_id fields
-    const articlesByOrg: Record<string, any[]> = {}
+      const rawArticles: any[] =
+        (Array.isArray(data.news_articles) && data.news_articles) ||
+        (Array.isArray(data.articles) && data.articles) ||
+        []
 
-    for (const a of rawArticles) {
-      const primaryId =
-        (a?.organization_id ??
-          a?.org_id ??
-          a?.account_id ??
-          '')?.toString().trim()
+      totalArticles += rawArticles.length
 
-      const extraIds: string[] = Array.isArray(a.organization_ids)
-        ? a.organization_ids.map((x: any) => (x ?? '').toString().trim()).filter(Boolean)
-        : []
+      for (const a of rawArticles) {
+        const primaryId =
+          (a?.organization_id ??
+            a?.org_id ??
+            a?.account_id ??
+            '')?.toString().trim()
 
-      const allIds = [...extraIds, primaryId].filter(Boolean)
+        const extraIds: string[] = Array.isArray(a.organization_ids)
+          ? a.organization_ids.map((x: any) => (x ?? '').toString().trim()).filter(Boolean)
+          : []
 
-      for (const oid of allIds) {
-        if (!articlesByOrg[oid]) articlesByOrg[oid] = []
-        articlesByOrg[oid].push(a)
+        const allIds = [...extraIds, primaryId].filter(Boolean)
+        const idsToUse = allIds.length ? allIds : [orgId]
+
+        for (const oid of idsToUse) {
+          if (!articlesByOrg[oid]) articlesByOrg[oid] = []
+          articlesByOrg[oid].push(a)
+        }
       }
     }
 
     return NextResponse.json({
       articlesByOrg,
       debug: WANT_DEBUG
-        ? { url: fullUrl, orgIds, count: rawArticles.length, minDate, maxDate }
+        ? { orgIds, count: totalArticles, minDate, maxDate }
         : undefined,
     })
   } catch (err: any) {
