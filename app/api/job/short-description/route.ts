@@ -44,10 +44,11 @@ You extract job responsibilities and benefits for a TSI social media job card.
 
 Rules:
 - Identify the TOP 3 responsibilities.
-- Combine all benefits into ONE single bullet.
-- Output ONLY bullet-pointed plain text. NO JSON. NO labels. NO extra text.
+- Combine all benefits into ONE short line of text.
+- Write each item on its own line.
+- Do NOT include any bullet symbols (no "•", "-", "*") and no labels.
 
-Format exactly like (do not include bullet points):
+Format exactly like:
 First responsibility
 Second responsibility
 Third responsibility
@@ -58,7 +59,7 @@ One-line combined benefits summary
 Job description:
 ${String(description)}
 
-Extract the responsibilities and benefits in bullet format ONLY.
+Return ONLY the 3 responsibilities and 1 benefits line, each on its own line.
 `.trim();
 
     const resp = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -89,29 +90,33 @@ Extract the responsibilities and benefits in bullet format ONLY.
     const data = await resp.json().catch(() => ({}));
     const raw = (data?.choices?.[0]?.message?.content ?? "").trim();
 
-    // raw is already bullet text — no JSON expected
-    // Split to identify last bullet → benefits
-    const lines = raw
+    // Normalise lines and strip any bullet chars just in case
+    const cleanedLines = raw
       .split("\n")
-      .map((s) => s.trim())
-      .filter((s) => s.startsWith("•"));
+      .map((s) =>
+        s
+          .trim()
+          // remove leading bullets if the model ignored instructions
+          .replace(/^[-•*]\s*/, "")
+      )
+      .filter(Boolean);
 
-    const responsibilities = lines.slice(0, 3).join("\n");
-    const benefits = lines.slice(3).join("\n") || "";
+    const responsibilities = cleanedLines.slice(0, 3).join("\n");
+    const benefits = cleanedLines.slice(3).join(" ").trim();
 
     return NextResponse.json({
-      description: responsibilities,
-      benefits,
-    });
+      description: responsibilities, // <- no bullets, one per line
+      benefits,                      // <- plain text, UI adds bullet
+    } as RespBody);
   }
 
   // -------------------------------------------------------------
   // 🟧 MODE = DEFAULT (Zitko)
   // -------------------------------------------------------------
   const systemPrompt =
-    "You craft concise, engaging summaries for job postings. "
-    + "Your output must be a single plain-text sentence no longer than 196 characters. "
-    + "Do not include the Job Title, Salary or any benefits.";
+    "You craft concise, engaging summaries for job postings. " +
+    "Your output must be a single plain-text sentence no longer than 196 characters. " +
+    "Do not include the Job Title, Salary or any benefits.";
 
   const userPrompt = `Job description:\n\n${String(
     description
@@ -150,7 +155,5 @@ Extract the responsibilities and benefits in bullet format ONLY.
     text = text.slice(0, 196).trimEnd();
   }
 
-  return NextResponse.json({
-    description: text,
-  });
+  return NextResponse.json({ description: text } as RespBody);
 }
