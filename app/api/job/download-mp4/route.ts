@@ -248,6 +248,7 @@ const LAYOUTS: Record<TemplateId, Layout> = {
       x: 80,
       y: 540,
       w: 620,
+      h: 140,
       fs: 24,
       color: "#ffffff",
       align: "left",
@@ -256,6 +257,7 @@ const LAYOUTS: Record<TemplateId, Layout> = {
       x: 80,
       y: 730,
       w: 610,
+      h: 260,
       fs: 24,
       color: "#ffffff",
       align: "left",
@@ -696,17 +698,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     addTextOverlay("salary", salary);
 
     if (templateId === "zitko-4") {
-      // TSI video:
-      // - RESPONSIBILITIES heading in red + plain lines beneath
-      // - BENEFITS heading in red + bullet list beneath
       addHeadingPlusBullets(
         "description",
         "RESPONSIBILITIES",
-        responsibilitiesText,
+        formatBullets(responsibilitiesText)
       );
-      addHeadingPlusBullets("benefits", "BENEFITS", formattedBenefits);
+      addHeadingPlusBullets(
+        "benefits",
+        "BENEFITS",
+        formatBullets(benefitsRaw)
+      );
     } else {
-      // Normal templates
       addTextOverlay("description", cleanDescription);
       addTextOverlay("benefits", formattedBenefits);
     }
