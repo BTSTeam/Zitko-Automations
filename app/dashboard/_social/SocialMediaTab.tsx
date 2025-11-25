@@ -374,10 +374,14 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
   }
 
   // ------------ data fetch ------------
-  async function fetchJob() {
+   async function fetchJob() {
     const id = jobId.trim()
     if (!id) return
     setFetchStatus('loading')
+  
+    const isTSI =
+      selectedTplId === 'zitko-3' || selectedTplId === 'zitko-4'
+  
     try {
       const r = await fetch(
         `/api/vincere/position/${encodeURIComponent(id)}`,
@@ -390,26 +394,34 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
         data?.publicDescription ||
         data?.description ||
         ''
-
+  
       let extracted: any = {}
       try {
         const ai = await fetch('/api/job/summarize', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ description: publicDesc }),
+          body: JSON.stringify({
+            description: publicDesc,
+            mode: isTSI ? 'tsi' : 'default',   // 👈 NEW
+          }),
         })
         if (ai.ok) extracted = await ai.json()
       } catch {}
-
+  
       let shortDesc = ''
       try {
         const teaser = await fetch('/api/job/short-description', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ description: publicDesc }),
+          body: JSON.stringify({
+            description: publicDesc,
+            mode: isTSI ? 'tsi' : 'default',   // 👈 NEW
+          }),
         })
-        if (teaser.ok)
-          shortDesc = (await teaser.json()).description ?? ''
+        if (teaser.ok) {
+          const t = await teaser.json()
+          shortDesc = t.description ?? ''
+        }
       } catch {}
 
       let contactEmail = String(extracted?.contactEmail ?? '').trim()
