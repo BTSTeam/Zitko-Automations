@@ -27,7 +27,6 @@ cloudinary.config({
 // ---------------- Types / constants ----------------
 
 const BRAND_ORANGE = "#F7941D";
-const TSI_RED = "#C6242A";
 
 type PlaceholderKey =
   | "title"
@@ -38,7 +37,7 @@ type PlaceholderKey =
   | "email"
   | "phone";
 
-type TemplateId = "zitko-1" | "zitko-2" | "zitko-4";
+type TemplateId = "zitko-1" | "zitko-2";
 
 interface Body {
   videoPublicId: string;
@@ -59,7 +58,6 @@ interface Body {
 const TEMPLATE_FILES: Record<string, string> = {
   "zitko-1": "zitko-dark-arc.png",
   "zitko-2": "zitko-looking.png",
-  "zitko-4": "TSI-Video.png",
 };
 
 type TextBox = {
@@ -216,70 +214,6 @@ const LAYOUTS: Record<TemplateId, Layout> = {
     },
     video: { x: 704, y: 540, w: 300, h: 300 },
   },
-  "zitko-4": {
-    title: {
-      x: 40,
-      y: 350,
-      w: 720,
-      fs: 60,
-      color: "#ffffff",
-      bold: true,
-      align: "left",
-    },
-    location: {
-      x: 80,
-      y: 440,
-      w: 720,
-      fs: 30,
-      color: "#ffffff",
-      bold: true,
-      align: "left",
-    },
-    salary: {
-      x: 80,
-      y: 490,
-      w: 520,
-      fs: 28,
-      color: TSI_RED, // TSI red salary
-      bold: true,
-      align: "left",
-    },
-    description: {
-      x: 80,
-      y: 540,
-      w: 620,
-      h: 140,
-      fs: 24,
-      color: "#ffffff",
-      align: "left",
-    },
-    benefits: {
-      x: 80,
-      y: 730,
-      w: 610,
-      h: 260,
-      fs: 24,
-      color: "#ffffff",
-      align: "left",
-    },
-    email: {
-      x: 800,
-      y: 957,
-      w: 190,
-      fs: 20,
-      color: "#ffffff",
-      align: "left",
-    },
-    phone: {
-      x: 800,
-      y: 1018,
-      w: 190,
-      fs: 20,
-      color: "#ffffff",
-      align: "left",
-    },
-    video: { x: 712, y: 60, w: 300, h: 300 },
-  },
 };
 
 // ---------------- Helpers ----------------
@@ -369,10 +303,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       assetsOrigin = originFromReq;
     }
 
-    const locationIconPath =
-      templateId === "zitko-4"
-        ? "/templates/TSI-Location-Icon.png"
-        : "/templates/Location-Icon.png";
+    const locationIconPath = "/templates/Location-Icon.png";
 
     const locationIconUrl = assetsOrigin
       ? `${assetsOrigin.replace(/\/$/, "")}${locationIconPath}`
@@ -522,12 +453,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     });
 
     // 4) Location icon overlay via l_fetch
-    if (
-      locationIconUrl &&
-      templateId !== "zitko-2" &&
-      templateId !== "zitko-4"
-    ) {
-      // z2 has no icon; z4 uses TSI layout icon baked in
+    if (locationIconUrl && templateId !== "zitko-2") {
+      // zitko-2 has no icon (icon baked into template for zitko-1 only)
       const locSpec = effectiveLayout.location;
       const locationFontSize = locSpec.fs;
       const textHeight = locationFontSize * 1.25;
@@ -618,25 +545,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       rawBenefits ||
       "[BENEFIT 1]\n[BENEFIT 2]\n[BENEFIT 3]";
 
-    const formattedBenefits =
-      templateId === "zitko-4"
-        ? benefitsRaw
-        : formatBullets(benefitsRaw);
+    const formattedBenefits = formatBullets(benefitsRaw);
 
         // ---- Add ALL text layers ----
     addTextOverlay("title", title);
     addTextOverlay("location", location);
     addTextOverlay("salary", salary);
 
-    if (templateId === "zitko-4") {
-      // Headers are baked into TSI-Video.png, so we only draw the text bodies
-      addTextOverlay("description", formatBullets(responsibilitiesText));
-      addTextOverlay("benefits", formatBullets(benefitsRaw));
-    } else {
-      // Normal templates (same as Zitko-2 behaviour)
-      addTextOverlay("description", cleanDescription);
-      addTextOverlay("benefits", formattedBenefits);
-    }
+    addTextOverlay("description", cleanDescription);
+    addTextOverlay("benefits", formattedBenefits);
 
     addTextOverlay("email", email);
     addTextOverlay("phone", phone);
