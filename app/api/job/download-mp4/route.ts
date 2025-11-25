@@ -623,59 +623,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         ? benefitsRaw
         : formatBullets(benefitsRaw);
 
-    // ---- Add ALL text layers ----
+        // ---- Add ALL text layers ----
     addTextOverlay("title", title);
     addTextOverlay("location", location);
     addTextOverlay("salary", salary);
 
     if (templateId === "zitko-4") {
-      // Four overlays: red headings + white bullet bodies
-
-      // RESPONSIBILITIES heading
-      const descSpec = effectiveLayout.description;
-      const descGap = descSpec.fs * 1.3;
-
-      addTextOverlayFromSpec(
-        { ...descSpec, h: undefined as any },
-        "RESPONSIBILITIES",
-        TSI_RED,
-        true,
-      );
-
-      // RESPONSIBILITIES body
-      addTextOverlayFromSpec(
-        {
-          ...descSpec,
-          y: descSpec.y + descGap,
-          h: undefined as any,
-        },
-        formatBullets(responsibilitiesText),
-        "#ffffff",
-        false,
-      );
-
-      // BENEFITS heading
-      const benSpec = effectiveLayout.benefits;
-      const benGap = benSpec.fs * 1.3;
-
-      addTextOverlayFromSpec(
-        { ...benSpec, h: undefined as any },
-        "BENEFITS",
-        TSI_RED,
-        true,
-      );
-
-      // BENEFITS body
-      addTextOverlayFromSpec(
-        {
-          ...benSpec,
-          y: benSpec.y + benGap,
-          h: undefined as any,
-        },
-        formatBullets(benefitsRaw),
-        "#ffffff",
-        false,
-      );
+      // Headers are baked into TSI-Video.png, so we only draw the text bodies
+      addTextOverlay("description", formatBullets(responsibilitiesText));
+      addTextOverlay("benefits", formatBullets(benefitsRaw));
     } else {
       // Normal templates (same as Zitko-2 behaviour)
       addTextOverlay("description", cleanDescription);
