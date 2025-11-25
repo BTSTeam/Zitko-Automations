@@ -248,7 +248,7 @@ const LAYOUTS: Record<TemplateId, Layout> = {
       x: 80,
       y: 540,
       w: 620,
-      h: 140, // ensures responsibilities text has room
+      h: 140,
       fs: 24,
       color: "#ffffff",
       align: "left",
@@ -257,7 +257,7 @@ const LAYOUTS: Record<TemplateId, Layout> = {
       x: 80,
       y: 730,
       w: 610,
-      h: 260, // ensures benefits bullets have room
+      h: 260,
       fs: 24,
       color: "#ffffff",
       align: "left",
@@ -330,12 +330,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         { status: 400 },
       );
     }
-
-    console.log("MP4 payload text:", {
-      description,
-      benefits,
-      templateId,
-    });
 
     const cleanVideoId = stripExt(videoPublicId);
 
@@ -526,7 +520,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       flags: "layer_apply",
     });
 
-    // 4) Location icon overlay via l_fetch (matches React preview maths)
+    // 4) Location icon overlay via l_fetch
     if (
       locationIconUrl &&
       templateId !== "zitko-2" &&
@@ -554,35 +548,24 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       });
     }
 
-    function addTextOverlay(key: PlaceholderKey, value: string) {
-      const spec = (effectiveLayout as any)[key] as TextBox;
-
-      const safeText = String(value || "").trim();
-      if (!safeText) return; // nothing to draw
-
-      const isZ2 = templateId === "zitko-2";
-      const isTitle = key === "title";
+    function addTextOverlayFromSpec(spec: TextBox, text: string, color?: string, bold?: boolean) {
+      const safeText = String(text || "").trim();
+      if (!safeText) return;
 
       const overlayCfg: any = {
         overlay: {
           font_family: "Arial",
           font_size: spec.fs,
-          font_weight: spec.bold ? "bold" : "normal",
+          font_weight: bold ? "bold" : spec.bold ? "bold" : "normal",
           text: safeText,
           text_align: spec.align || "left",
         },
-        color: spec.color,
+        color: color || spec.color,
         crop: "fit",
       };
 
-      // same width logic as title/location/salary
-      if (!(isZ2 && isTitle) && spec.w) {
-        overlayCfg.width = spec.w;
-      }
-
-      if (spec.h) {
-        overlayCfg.height = spec.h;
-      }
+      if (spec.w) overlayCfg.width = spec.w;
+      if (spec.h) overlayCfg.height = spec.h;
 
       transformations.push(overlayCfg);
       transformations.push({
@@ -593,49 +576,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       });
     }
 
-    function addHeadingPlusBullets(
-      key: PlaceholderKey,
-      heading: string,
-      bullets: string,
-    ) {
+    function addTextOverlay(key: PlaceholderKey, value: string) {
       const spec = (effectiveLayout as any)[key] as TextBox;
-
-      const headingText = heading.trim();
-      const bulletsText = String(bullets || "").trim();
-      if (!headingText && !bulletsText) return;
-
-      const gap = spec.fs * 1.2;
-
-      // keep original spec so we can restore after drawing
-      const original: TextBox = { ...spec };
-
-      // 1) Heading in TSI red (RESPONSIBILITIES / BENEFITS)
-      if (headingText) {
-        spec.color = TSI_RED;
-        spec.bold = true;
-        spec.y = original.y;
-        addTextOverlay(key, headingText);
-      }
-
-      // 2) Body text in white, just under the heading
-      if (bulletsText) {
-        spec.color = "#ffffff";
-        spec.bold = false;
-        spec.y = original.y + gap;
-        addTextOverlay(key, bulletsText);
-      }
-
-      // restore original spec so nothing else is affected
-      (effectiveLayout as any)[key] = original;
+      addTextOverlayFromSpec(spec, value);
     }
 
     // ---- Prepare description + benefits cleanly ----
-    // Start with raw values from the payload
     let rawDesc = String(description || "").trim();
     let rawBenefits = String(benefits || "").trim();
 
-    // If description accidentally came through as JSON that contains
-    // { "description": "...", "benefits": "..." } we recover from it.
     if (rawDesc.startsWith("{") && rawDesc.includes("description")) {
       try {
         const parsed = JSON.parse(rawDesc);
@@ -646,47 +595,73 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           rawBenefits = parsed.benefits;
         }
       } catch {
-        // ignore JSON parse errors, fall back to rawDesc/rawBenefits
+        // ignore JSON parse errors
       }
     }
 
     const cleanDescription = rawDesc
-      .replace(/\r\n|\r/g, "\n") // normalise newlines
+      .replace(/\r\n|\r/g, "\n")
       .replace(/\s+$/g, "")
       .trim();
 
-    const benefitsRaw = rawBenefits || "BENEFITS";
+    const responsibilitiesText =
+      cleanDescription ||
+      "[RESPONSIBILITY 1]\n[RESPONSIBILITY 2]\n[RESPONSIBILITY 3]";
 
-    // For benefits we always want standard bullets (for non-TSI)
+    const benefitsRaw =
+      rawBenefits ||
+      "[BENEFIT 1]\n[BENEFIT 2]\n[BENEFIT 3]";
+
     const formattedBenefits =
       templateId === "zitko-4"
         ? benefitsRaw
         : formatBullets(benefitsRaw);
 
-    // TSI responsibilities use cleanDescription; others use it directly
-    const responsibilitiesText = cleanDescription;
-
-    // ---- Add ALL text layers (including description + benefits) ----
+    // ---- Add ALL text layers ----
     addTextOverlay("title", title);
     addTextOverlay("location", location);
     addTextOverlay("salary", salary);
 
     if (templateId === "zitko-4") {
-      // TSI video:
-      // - RESPONSIBILITIES heading in red + white lines beneath
-      // - BENEFITS heading in red + white bullet list beneath
-      addHeadingPlusBullets(
-        "description",
+      // RESPONSIBILITIES block
+      const descSpec = effectiveLayout.description;
+      const gap = descSpec.fs * 1.2;
+
+      // Heading (red)
+      addTextOverlayFromSpec(
+        { ...descSpec },
         "RESPONSIBILITIES",
-        responsibilitiesText,
+        TSI_RED,
+        true,
       );
-      addHeadingPlusBullets(
-        "benefits",
+
+      // Body (white bullets, pushed down by gap)
+      addTextOverlayFromSpec(
+        { ...descSpec, y: descSpec.y + gap, h: descSpec.h ? descSpec.h - gap : descSpec.h },
+        formatBullets(responsibilitiesText),
+        "#ffffff",
+        false,
+      );
+
+      // BENEFITS block
+      const benSpec = effectiveLayout.benefits;
+      const benGap = benSpec.fs * 1.2;
+
+      addTextOverlayFromSpec(
+        { ...benSpec },
         "BENEFITS",
+        TSI_RED,
+        true,
+      );
+
+      addTextOverlayFromSpec(
+        { ...benSpec, y: benSpec.y + benGap, h: benSpec.h ? benSpec.h - benGap : benSpec.h },
         formatBullets(benefitsRaw),
+        "#ffffff",
+        false,
       );
     } else {
-      // Normal templates
+      // Normal templates (same as Zitko-2 behaviour)
       addTextOverlay("description", cleanDescription);
       addTextOverlay("benefits", formattedBenefits);
     }
@@ -711,12 +686,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           composedUrl,
           templateUsed: effectiveTemplateUrl,
           locationIconUrl,
-          descriptionUsed: cleanDescription,
-          benefitsUsed:
-            templateId === "zitko-4"
-              ? formatBullets(benefitsRaw)
-              : formattedBenefits,
-          responsibilitiesUsed: responsibilitiesText,
+          descriptionUsed: responsibilitiesText,
+          benefitsUsed: formatBullets(benefitsRaw),
           hint: "Open composedUrl in a new tab if you need to inspect Cloudinary output directly.",
         },
         { status: 200 },
