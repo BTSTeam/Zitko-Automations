@@ -100,23 +100,6 @@ const TEMPLATES: TemplateDef[] = [
       phone: { x: 800, y: 1018, w: 200, fontSize: 20, align: 'left' },
     },
   },
-  {
-    id: 'zitko-4',
-    name: 'TSI - Video',
-    imageUrl: '/templates/TSI-Video.png',
-    width: 1080,
-    height: 1080,
-    layout: {
-      title: { x: 40, y: 320, w: 720, fontSize: 60 },
-      location: { x: 80, y: 420, w: 720, fontSize: 30 },
-      salary: { x: 80, y: 470, w: 520, fontSize: 28 },
-      description: { x: 80, y: 530, w: 620, h: 120, fontSize: 24 },
-      benefits: { x: 80, y: 750, w: 610, h: 260, fontSize: 24 },
-      email: { x: 800, y: 957, w: 200, fontSize: 20, align: 'left' },
-      phone: { x: 800, y: 1018, w: 200, fontSize: 20, align: 'left' },
-      video: { x: 712, y: 60, w: 300, h: 300 },
-    },
-  },
 ]
 
 // ---------- shared button styles (pill) ----------
@@ -181,13 +164,10 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     () => TEMPLATES.find((t) => t.id === selectedTplId)!,
     [selectedTplId],
   )
-  const isTSITemplate =
-    selectedTpl.id === 'zitko-3' || selectedTpl.id === 'zitko-4'
-
-  const isTSIVideo = selectedTpl.id === 'zitko-4'
+  const isTSITemplate = selectedTpl.id === 'zitko-3'
 
   const videoEnabled =
-    selectedTpl.id === 'zitko-2' || selectedTpl.id === 'zitko-4'
+    selectedTpl.id === 'zitko-2'
 
   // job data
   const [jobId, setJobId] = useState('')
@@ -383,7 +363,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     setFetchStatus('loading')
 
     const isTSI =
-      selectedTplId === 'zitko-3' || selectedTplId === 'zitko-4'
+      selectedTplId === 'zitko-3'
 
     try {
       const r = await fetch(
@@ -573,7 +553,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
 
           // BENEFITS special rendering
           if (key === 'benefits') {
-            const showHeading = isTSITemplate && !isTSIVideo
+            const showHeading = isTSITemplate
 
             let benefitsLines: string[] = Array.isArray(job.benefits)
               ? (job.benefits as string[])
@@ -683,17 +663,16 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                   userSelect: 'none',
                 }}
               >
-                {!isTSIVideo && (
-                  <div
-                    style={{
-                      fontWeight: 700,
-                      color: TSI_RED,
-                      marginBottom: `${8 * s}px`,
-                      whiteSpace: 'pre-wrap',
-                    }}
-                  >
-                    RESPONSIBILITIES
-                  </div>
+                <div
+                  style={{
+                    fontWeight: 700,
+                    color: TSI_RED,
+                    marginBottom: `${8 * s}px`,
+                    whiteSpace: 'pre-wrap',
+                  }}
+                >
+                  RESPONSIBILITIES
+</div>
                 )}
                 {respLines.map((line, i) => (
                   <div
@@ -753,7 +732,6 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
         {/* LOCATION icon – linked with [LOCATION] field 
             Hidden for zitko-2 and zitko-4 (TSI Video) */}
         {selectedTpl.id !== 'zitko-2' &&
-          selectedTpl.id !== 'zitko-4' &&
           selectedTpl.layout.location &&
           (() => {
             const locSpec = selectedTpl.layout.location
@@ -855,14 +833,13 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     a.click()
   }
 
-  async function downloadMp4() {
     if (!videoPublicId || !videoEnabled) {
-      alert('Add a video on the Zitko-2 or TSI Video template first.')
+      alert('Add a video on the Zitko – We’re Looking template first.')
       return
     }
+    
+    const isTSITemplateLocal = selectedTplId === 'zitko-3'
 
-    const isTSITemplateLocal =
-      selectedTplId === 'zitko-3' || selectedTplId === 'zitko-4'
 
     const payload = {
       videoPublicId,
