@@ -403,7 +403,6 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             description: publicDesc,
-            // mode is ignored by summarize, but harmless to send
             mode: isTSI ? 'tsi' : 'default',
           }),
         })
@@ -418,14 +417,13 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             description: publicDesc,
-            mode: isTSI ? 'tsi' : 'default',
+            mode: isTSI ? 'tsi' : 'default', // C: responsibilities from short-description
           }),
         })
         if (teaser.ok) {
           const t = await teaser.json()
           shortDesc = t.description ?? ''
 
-          // for TSI templates, also capture the single-line benefits summary
           if (isTSI && typeof t.benefits === 'string') {
             tsiBenefits = t.benefits
           }
@@ -444,6 +442,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
         title: extracted?.title ?? data?.title ?? '',
         location: extracted?.location ?? data?.location ?? '',
         salary: extracted?.salary ?? data?.salary ?? '',
+        // C: responsibilities/description from short-description endpoint
         description: shortDesc,
         benefits:
           isTSITemplate && tsiBenefits
@@ -857,22 +856,40 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
       return
     }
 
+    // ensure MP4 always gets content, even if user leaves fields blank
+    const descFallback = isTSITemplate
+      ? '[RESPONSIBILITY 1]\n[RESPONSIBILITY 2]\n[RESPONSIBILITY 3]'
+      : 'Short description'
+
+    const rawDescriptionForExport =
+      job.description && job.description.trim().length > 0
+        ? job.description
+        : descFallback
+
+    const benefitsFallback =
+      '[BENEFIT 1]\n[BENEFIT 2]\n[BENEFIT 3]'
+
+    const benefitsForExport =
+      benefitsText && benefitsText.trim().length > 0
+        ? benefitsText
+        : benefitsFallback
+
     const payload = {
       videoPublicId,
       title: job.title || 'Job Title',
       location: job.location || 'Location',
       salary: job.salary || 'Salary',
-      // IMPORTANT: for TSI (zitko-3/4) send raw responsibilities;
-      // for standard Zitko templates, keep wrapped short description.
+      // TSI (zitko-3/4) → raw responsibilities;
+      // others → wrapped short description.
       description: isTSITemplate
-        ? String(job.description || '')
-        : wrapText(String(job.description || 'Short description')),
-      // benefits: plain multi-line text; server adds bullets for non-TSI
-      benefits: benefitsText,
+        ? String(rawDescriptionForExport)
+        : wrapText(String(rawDescriptionForExport)),
+      // benefits: plain multi-line; server formats bullets where needed
+      benefits: benefitsForExport,
       email: job.email || '',
       phone: job.phone || '',
       templateId: selectedTplId,
-      // Send layout overrides so MP4 matches preview
+      // layout overrides so MP4 matches preview
       positions,
       fontSizes,
       videoPos,
