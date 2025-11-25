@@ -218,9 +218,9 @@ const LAYOUTS: Record<TemplateId, Layout> = {
   },
   "zitko-4": {
     title: {
-      x: 80,
+      x: 40,
       y: 320,
-      w: 520,
+      w: 720,
       fs: 60,
       color: "#ffffff",
       bold: true,
@@ -229,7 +229,7 @@ const LAYOUTS: Record<TemplateId, Layout> = {
     location: {
       x: 80,
       y: 420,
-      w: 520,
+      w: 720,
       fs: 30,
       color: "#ffffff",
       bold: true,
@@ -246,8 +246,8 @@ const LAYOUTS: Record<TemplateId, Layout> = {
     },
     description: {
       x: 80,
-      y: 520,
-      w: 520,
+      y: 530,
+      w: 620,
       h: 120,
       fs: 24,
       color: "#ffffff",
@@ -255,8 +255,8 @@ const LAYOUTS: Record<TemplateId, Layout> = {
     },
     benefits: {
       x: 80,
-      y: 700,
-      w: 520,
+      y: 740,
+      w: 610,
       h: 260,
       fs: 24,
       color: "#ffffff",
@@ -264,7 +264,7 @@ const LAYOUTS: Record<TemplateId, Layout> = {
     },
     email: {
       x: 800,
-      y: 962,
+      y: 957,
       w: 180,
       fs: 20,
       color: "#ffffff",
@@ -278,7 +278,7 @@ const LAYOUTS: Record<TemplateId, Layout> = {
       color: "#ffffff",
       align: "left",
     },
-    video: { x: 705, y: 540, w: 300, h: 300 },
+    video: { x: 712, y: 60, w: 300, h: 300 },
   },
 };
 
