@@ -38,7 +38,7 @@ type PlaceholderKey =
   | "email"
   | "phone";
 
-type TemplateId = "zitko-1" | "zitko-2" | "zitko-3";
+type TemplateId = "zitko-1" | "zitko-2" | "zitko-3" | "zitko-4"; 
 
 interface Body {
   videoPublicId: string;
@@ -375,7 +375,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     const locationIconPath =
-      templateId === "zitko-3"
+      templateId === "zitko-4"
         ? "/templates/TSI-Location-Icon.png"
         : "/templates/Location-Icon.png";
 
@@ -668,7 +668,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     addTextOverlay("location", location);
     addTextOverlay("salary", salary);
 
-    if (templateId === "zitko-3") {
+    if (templateId === "zitko-4") {
       // RESPONSIBILITIES + BENEFITS headings in TSI red, bullets white
       addHeadingPlusBullets(
         "description",
