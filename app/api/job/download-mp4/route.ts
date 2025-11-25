@@ -606,54 +606,27 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
       const gap = spec.fs * 1.2;
 
-      // heading in TSI red
+      // keep original spec so we can restore after drawing
+      const original: TextBox = { ...spec };
+
+      // 1) Heading in TSI red (RESPONSIBILITIES / BENEFITS)
       if (headingText) {
-        const headingCfg: any = {
-          overlay: {
-            font_family: "Arial",
-            font_size: spec.fs,
-            font_weight: "bold",
-            text: headingText,
-            text_align: spec.align || "left",
-          },
-          color: TSI_RED,
-          crop: "fit",
-        };
-        if (spec.w) headingCfg.width = spec.w;
-
-        transformations.push(headingCfg);
-        transformations.push({
-          gravity: "north_west",
-          x: spec.x,
-          y: spec.y,
-          flags: "layer_apply",
-        });
+        spec.color = TSI_RED;
+        spec.bold = true;
+        spec.y = original.y;
+        addTextOverlay(key, headingText);
       }
 
-      // bullets / lines in white, below heading
+      // 2) Body text in white, just under the heading
       if (bulletsText) {
-        const bulletsCfg: any = {
-          overlay: {
-            font_family: "Arial",
-            font_size: spec.fs,
-            font_weight: "normal",
-            text: bulletsText,
-            text_align: spec.align || "left",
-          },
-          color: "#ffffff",
-          crop: "fit",
-        };
-        if (spec.w) bulletsCfg.width = spec.w;
-        if (spec.h) bulletsCfg.height = spec.h;
-
-        transformations.push(bulletsCfg);
-        transformations.push({
-          gravity: "north_west",
-          x: spec.x,
-          y: spec.y + gap,
-          flags: "layer_apply",
-        });
+        spec.color = "#ffffff";
+        spec.bold = false;
+        spec.y = original.y + gap;
+        addTextOverlay(key, bulletsText);
       }
+
+      // restore original spec so nothing else is affected
+      (effectiveLayout as any)[key] = original;
     }
 
     // ---- Prepare description + benefits cleanly ----
@@ -700,8 +673,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     if (templateId === "zitko-4") {
       // TSI video:
-      // - RESPONSIBILITIES heading in red + plain lines beneath
-      // - BENEFITS heading in red + bullet list beneath
+      // - RESPONSIBILITIES heading in red + white lines beneath
+      // - BENEFITS heading in red + white bullet list beneath
       addHeadingPlusBullets(
         "description",
         "RESPONSIBILITIES",
