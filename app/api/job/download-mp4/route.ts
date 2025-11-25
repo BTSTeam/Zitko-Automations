@@ -342,7 +342,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     );
 
     if (!effectiveTemplateUrl) {
-      const filename = TEMPLATE_FILES[templateId] || TEMPLATE_FILES["zitko-1"];
+      const filename =
+        TEMPLATE_FILES[templateId] || TEMPLATE_FILES["zitko-1"];
       const baseForCloudinary = isLocal ? envBase : originFromReq;
       if (!baseForCloudinary) {
         return NextResponse.json(
@@ -548,7 +549,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       });
     }
 
-    function addTextOverlayFromSpec(spec: TextBox, text: string, color?: string, bold?: boolean) {
+    function addTextOverlayFromSpec(
+      spec: TextBox,
+      text: string,
+      color?: string,
+      bold?: boolean,
+    ) {
       const safeText = String(text || "").trim();
       if (!safeText) return;
 
@@ -623,16 +629,55 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     addTextOverlay("salary", salary);
 
     if (templateId === "zitko-4") {
-      // Simpler, Zitko-2-style: one overlay for each block
-      const responsibilitiesBlock =
-        "RESPONSIBILITIES\n" + formatBullets(responsibilitiesText);
-      const benefitsBlock =
-        "BENEFITS\n" + formatBullets(benefitsRaw);
+      // Four overlays: red headings + white bullet bodies
 
-      addTextOverlay("description", responsibilitiesBlock);
-      addTextOverlay("benefits", benefitsBlock);
+      // RESPONSIBILITIES heading
+      const descSpec = effectiveLayout.description;
+      const descGap = descSpec.fs * 1.3;
+
+      addTextOverlayFromSpec(
+        { ...descSpec, h: undefined as any },
+        "RESPONSIBILITIES",
+        TSI_RED,
+        true,
+      );
+
+      // RESPONSIBILITIES body
+      addTextOverlayFromSpec(
+        {
+          ...descSpec,
+          y: descSpec.y + descGap,
+          h: undefined as any,
+        },
+        formatBullets(responsibilitiesText),
+        "#ffffff",
+        false,
+      );
+
+      // BENEFITS heading
+      const benSpec = effectiveLayout.benefits;
+      const benGap = benSpec.fs * 1.3;
+
+      addTextOverlayFromSpec(
+        { ...benSpec, h: undefined as any },
+        "BENEFITS",
+        TSI_RED,
+        true,
+      );
+
+      // BENEFITS body
+      addTextOverlayFromSpec(
+        {
+          ...benSpec,
+          y: benSpec.y + benGap,
+          h: undefined as any,
+        },
+        formatBullets(benefitsRaw),
+        "#ffffff",
+        false,
+      );
     } else {
-      // Normal templates
+      // Normal templates (same as Zitko-2 behaviour)
       addTextOverlay("description", cleanDescription);
       addTextOverlay("benefits", formattedBenefits);
     }
