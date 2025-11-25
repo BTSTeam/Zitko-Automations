@@ -623,45 +623,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     addTextOverlay("salary", salary);
 
     if (templateId === "zitko-4") {
-      // RESPONSIBILITIES block
-      const descSpec = effectiveLayout.description;
-      const gap = descSpec.fs * 1.2;
+      // Simpler, Zitko-2-style: one overlay for each block
+      const responsibilitiesBlock =
+        "RESPONSIBILITIES\n" + formatBullets(responsibilitiesText);
+      const benefitsBlock =
+        "BENEFITS\n" + formatBullets(benefitsRaw);
 
-      // Heading (red)
-      addTextOverlayFromSpec(
-        { ...descSpec },
-        "RESPONSIBILITIES",
-        TSI_RED,
-        true,
-      );
-
-      // Body (white bullets, pushed down by gap)
-      addTextOverlayFromSpec(
-        { ...descSpec, y: descSpec.y + gap, h: undefined as any },
-        formatBullets(responsibilitiesText),
-        "#ffffff",
-        false,
-      );
-
-      // BENEFITS block
-      const benSpec = effectiveLayout.benefits;
-      const benGap = benSpec.fs * 1.2;
-
-      addTextOverlayFromSpec(
-        { ...benSpec },
-        "BENEFITS",
-        TSI_RED,
-        true,
-      );
-
-      addTextOverlayFromSpec(
-        { ...benSpec, y: benSpec.y + benGap, h: undefined as any },
-        formatBullets(benefitsRaw),
-        "#ffffff",
-        false,
-      );
+      addTextOverlay("description", responsibilitiesBlock);
+      addTextOverlay("benefits", benefitsBlock);
     } else {
-      // Normal templates (same as Zitko-2 behaviour)
+      // Normal templates
       addTextOverlay("description", cleanDescription);
       addTextOverlay("benefits", formattedBenefits);
     }
