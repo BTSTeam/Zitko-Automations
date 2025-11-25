@@ -156,7 +156,7 @@ const LAYOUTS: Record<TemplateId, Layout> = {
     title: {
       x: 30,
       y: 380,
-      w: 520,
+      w: 720,
       fs: 60,
       color: "#ffffff",
       bold: true,
