@@ -467,138 +467,207 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     setVideoPos(null)
   }
 
-  // ---------- render poster (re-used for preview + export) ----------
-  function renderPoster(scaleFactor: number, ref?: React.Ref<HTMLDivElement>) {
-    const s = scaleFactor
-
-    return (
-      <div
-        ref={ref}
-        className="relative shadow-lg"
-        style={{
-          width: selectedTpl.width * s,
-          height: selectedTpl.height * s,
-          backgroundImage: `url(${selectedTpl.imageUrl})`,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-        }}
-      >
-        {(
-          [
-            'title',
-            'location',
-            'salary',
-            'description',
-            'benefits',
-            'email',
-            'phone',
-          ] as const
-        ).map((key) => {
-          const baseSpec = selectedTpl.layout[key]
-          if (!baseSpec) return null
-
-          const isDraggable =
-            key !== 'email' &&
-            key !== 'phone' &&
-            !(selectedTpl.id === 'zitko-2' && key === 'location')
-
-          const override = isDraggable
-            ? positions[key as Exclude<PlaceholderKey, 'video'>]
-            : undefined
-
-          const effectiveFontSize =
-            fontSizes[key as Exclude<PlaceholderKey, 'video'>] ??
-            baseSpec.fontSize ??
-            18
-
-          const spec = {
-            ...baseSpec,
-            x: override?.x ?? baseSpec.x,
-            y: override?.y ?? baseSpec.y,
-            fontSize: effectiveFontSize,
-          }
-
-          const dragProps = isDraggable
-            ? makeDragHandlers(
-                key as Exclude<
-                  PlaceholderKey,
-                  'email' | 'phone' | 'video'
-                >,
-              )
-            : {}
-
-          const value = (() => {
-            switch (key) {
-              case 'title':
-                return job.title || '[JOB TITLE]'
-              case 'location':
-                return job.location || '[LOCATION]'
-              case 'salary':
-                return job.salary || '[SALARY]'
-              case 'description':
-                return job.description ||
-                  (isTSITemplate
-                    ? '[RESPONSIBILITY 1]\n[RESPONSIBILITY 2]'
-                    : '[SHORT DESCRIPTION]')
-              case 'benefits': {
-                const tx =
-                  (Array.isArray(job.benefits)
-                    ? job.benefits.join('\n')
-                    : job.benefits) ||
-                  '[BENEFIT 1]\n[BENEFIT 2]\n[BENEFIT 3]'
-                return tx
-                  .split('\n')
-                  .map((l) => `• ${l}`)
-                  .join('\n\n')
+    // ---------- render poster (re-used for preview + export) ----------
+    function renderPoster(scaleFactor: number, ref?: React.Ref<HTMLDivElement>) {
+      const s = scaleFactor
+  
+      return (
+        <div
+          ref={ref}
+          className="relative shadow-lg"
+          style={{
+            width: selectedTpl.width * s,
+            height: selectedTpl.height * s,
+            backgroundImage: `url(${selectedTpl.imageUrl})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+          }}
+        >
+          {(
+            [
+              'title',
+              'location',
+              'salary',
+              'description',
+              'benefits',
+              'email',
+              'phone',
+            ] as const
+          ).map((key) => {
+            const baseSpec = selectedTpl.layout[key]
+            if (!baseSpec) return null
+  
+            const isDraggable =
+              key !== 'email' &&
+              key !== 'phone' &&
+              !(selectedTpl.id === 'zitko-2' && key === 'location')
+  
+            const override = isDraggable
+              ? positions[key as Exclude<PlaceholderKey, 'video'>]
+              : undefined
+  
+            const effectiveFontSize =
+              fontSizes[key as Exclude<PlaceholderKey, 'video'>] ??
+              baseSpec.fontSize ??
+              18
+  
+            const spec = {
+              ...baseSpec,
+              x: override?.x ?? baseSpec.x,
+              y: override?.y ?? baseSpec.y,
+              fontSize: effectiveFontSize,
+            }
+  
+            const dragProps = isDraggable
+              ? makeDragHandlers(
+                  key as Exclude<
+                    PlaceholderKey,
+                    'email' | 'phone' | 'video'
+                  >,
+                )
+              : {}
+  
+            const value = (() => {
+              switch (key) {
+                case 'title':
+                  return job.title || '[JOB TITLE]'
+                case 'location':
+                  return job.location || '[LOCATION]'
+                case 'salary':
+                  return job.salary || '[SALARY]'
+                case 'description':
+                  return job.description ||
+                    (isTSITemplate
+                      ? '[RESPONSIBILITY 1]\n[RESPONSIBILITY 2]\n[RESPONSIBILITY 3]'
+                      : '[SHORT DESCRIPTION]')
+                case 'benefits': {
+                  const tx =
+                    (Array.isArray(job.benefits)
+                      ? job.benefits.join('\n')
+                      : job.benefits) ||
+                    '[BENEFIT 1]\n[BENEFIT 2]\n[BENEFIT 3]'
+                  return tx
+                    .split('\n')
+                    .map((l) => `• ${l}`)
+                    .join('\n\n')
+                }
+                case 'email':
+                  return job.email || '[EMAIL]'
+                case 'phone':
+                  return job.phone || '[PHONE NUMBER]'
               }
-              case 'email':
-                return job.email || '[EMAIL]'
-              case 'phone':
-                return job.phone || '[PHONE NUMBER]'
+            })()
+  
+            // BENEFITS special rendering (TSI gets heading in red)
+            if (key === 'benefits') {
+              let benefitsLines: string[] = Array.isArray(job.benefits)
+                ? (job.benefits as string[]).map((s) =>
+                    String(s).trim(),
+                  ).filter(Boolean)
+                : String(job.benefits || '')
+                    .split('\n')
+                    .map((s) => s.trim())
+                    .filter(Boolean)
+  
+              if (benefitsLines.length === 0) {
+                benefitsLines = [
+                  '[BENEFIT 1]',
+                  '[BENEFIT 2]',
+                  '[BENEFIT 3]',
+                ]
+              }
+  
+              return (
+                <div
+                  key={key}
+                  {...dragProps}
+                  style={{
+                    position: 'absolute',
+                    left: spec.x * s,
+                    top: spec.y * s,
+                    width:
+                      (spec.w ?? selectedTpl.width - spec.x - 40) * s,
+                    height: spec.h ? spec.h * s : undefined,
+                    fontSize: spec.fontSize * s,
+                    lineHeight: 1.25,
+                    textAlign: spec.align ?? 'left',
+                    color: 'white',
+                    wordBreak: 'break-word',
+                    overflowWrap: 'anywhere',
+                    cursor: isDraggable ? 'move' : 'default',
+                    userSelect: 'none',
+                  }}
+                >
+                  {isTSITemplate && (
+                    <div
+                      style={{
+                        fontWeight: 700,
+                        color: TSI_RED,
+                        marginBottom: `${8 * s}px`,
+                        whiteSpace: 'pre-wrap',
+                      }}
+                    >
+                      BENEFITS
+                    </div>
+                  )}
+  
+                  {benefitsLines.map((line, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        paddingLeft: `${16 * s}px`,
+                        textIndent: `-${8 * s}px`,
+                        whiteSpace: 'pre-wrap',
+                        marginBottom: `${8 * s}px`,
+                        color: 'white',
+                      }}
+                    >
+                      {`• ${line}`}
+                    </div>
+                  ))}
+                </div>
+              )
             }
-          })()
-
-          // BENEFITS special rendering (TSI gets heading in red)
-          if (key === 'benefits') {
-            let benefitsLines: string[] = Array.isArray(job.benefits)
-              ? (job.benefits as string[]).map((s) =>
-                  String(s).trim(),
-                ).filter(Boolean)
-              : String(job.benefits || '')
-                  .split('\n')
-                  .map((s) => s.trim())
-                  .filter(Boolean)
-
-            if (benefitsLines.length === 0) {
-              benefitsLines = [
-                '[BENEFIT 1]',
-                '[BENEFIT 2]',
-                '[BENEFIT 3]',
-              ]
-            }
-
-            return (
-              <div
-                key={key}
-                {...dragProps}
-                style={{
-                  position: 'absolute',
-                  left: spec.x * s,
-                  top: spec.y * s,
-                  width:
-                    (spec.w ?? selectedTpl.width - spec.x - 40) * s,
-                  height: spec.h ? spec.h * s : undefined,
-                  fontSize: spec.fontSize * s,
-                  lineHeight: 1.25,
-                  textAlign: spec.align ?? 'left',
-                  color: 'white',
-                  wordBreak: 'break-word',
-                  overflowWrap: 'anywhere',
-                  cursor: isDraggable ? 'move' : 'default',
-                  userSelect: 'none',
-                }}
-              >
-                {isTSITemplate && (
+  
+            // DESCRIPTION special rendering for TSI templates = RESPONSIBILITIES block
+            if (key === 'description' && isTSITemplate) {
+              let respLines: string[] = String(
+                job.description ||
+                  '[RESPONSIBILITY 1]\n[RESPONSIBILITY 2]\n[RESPONSIBILITY 3]',
+              )
+                .split('\n')
+                .map((s) => s.trim())
+                .filter(Boolean)
+  
+              if (respLines.length === 0) {
+                respLines = [
+                  '[RESPONSIBILITY 1]',
+                  '[RESPONSIBILITY 2]',
+                  '[RESPONSIBILITY 3]',
+                ]
+              }
+  
+              return (
+                <div
+                  key={key}
+                  {...dragProps}
+                  style={{
+                    position: 'absolute',
+                    left: spec.x * s,
+                    top: spec.y * s,
+                    width:
+                      (spec.w ?? selectedTpl.width - spec.x - 40) * s,
+                    height: spec.h ? spec.h * s : undefined,
+                    fontSize: spec.fontSize * s,
+                    lineHeight: 1.25,
+                    textAlign: spec.align ?? 'left',
+                    color: 'white',
+                    wordBreak: 'break-word',
+                    overflowWrap: 'anywhere',
+                    cursor: isDraggable ? 'move' : 'default',
+                    userSelect: 'none',
+                  }}
+                >
                   <div
                     style={{
                       fontWeight: 700,
@@ -607,46 +676,35 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                       whiteSpace: 'pre-wrap',
                     }}
                   >
-                    BENEFITS
+                    RESPONSIBILITIES
                   </div>
-                )}
-
-                {benefitsLines.map((line, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      paddingLeft: `${16 * s}px`,
-                      textIndent: `-${8 * s}px`,
-                      whiteSpace: 'pre-wrap',
-                      marginBottom: `${8 * s}px`,
-                      color: 'white',
-                    }}
-                  >
-                    {`• ${line}`}
-                  </div>
-                ))}
-              </div>
-            )
-          }
-
-          // DESCRIPTION special rendering for Zitko-3 = RESPONSIBILITIES block
-          if (key === 'description' && isTSITemplate) {
-            let respLines: string[] = String(
-              job.description ||
-                '[RESPONSIBILITY 1]\n[RESPONSIBILITY 2]\n[RESPONSIBILITY 3]',
-            )
-              .split('\n')
-              .map((s) => s.trim())
-              .filter(Boolean)
-
-            if (respLines.length === 0) {
-              respLines = [
-                '[RESPONSIBILITY 1]',
-                '[RESPONSIBILITY 2]',
-                '[RESPONSIBILITY 3]',
-              ]
+                  {respLines.map((line, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        paddingLeft: `${16 * s}px`,
+                        textIndent: `-${8 * s}px`,
+                        whiteSpace: 'pre-wrap',
+                        marginBottom: `${8 * s}px`,
+                        color: 'white',
+                      }}
+                    >
+                      {`• ${line}`}
+                    </div>
+                  ))}
+                </div>
+              )
             }
-
+  
+            // generic text rendering
+            const isSalary = key === 'salary'
+            const textColor =
+              isSalary && isTSITemplate
+                ? TSI_RED // TSI salary red
+                : isSalary
+                ? BRAND_ORANGE // other templates salary orange
+                : 'white'
+  
             return (
               <div
                 key={key}
@@ -660,167 +718,110 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                   height: spec.h ? spec.h * s : undefined,
                   fontSize: spec.fontSize * s,
                   lineHeight: 1.25,
+                  whiteSpace: 'pre-wrap',
                   textAlign: spec.align ?? 'left',
-                  color: 'white',
+                  color: textColor,
+                  fontWeight: key === 'title' ? 700 : 500,
                   wordBreak: 'break-word',
                   overflowWrap: 'anywhere',
                   cursor: isDraggable ? 'move' : 'default',
                   userSelect: 'none',
                 }}
               >
-                <div
-                  style={{
-                    fontWeight: 700,
-                    color: TSI_RED,
-                    marginBottom: `${8 * s}px`,
-                    whiteSpace: 'pre-wrap',
-                  }}
-                >
-                  RESPONSIBILITIES
-                </div>
-                {respLines.map((line, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      paddingLeft: `${16 * s}px`,
-                      textIndent: `-${8 * s}px`,
-                      whiteSpace: 'pre-wrap',
-                      marginBottom: `${8 * s}px`,
-                      color: 'white',
-                    }}
-                  >
-                    {`• ${line}`}
-                  </div>
-                ))}
+                {value}
               </div>
             )
-          }
-
-          // generic text rendering
-          const isSalary = key === 'salary'
-          const textColor =
-            isSalary && isTSITemplate
-              ? TSI_RED // TSI salary red
-              : isSalary
-              ? BRAND_ORANGE // other templates salary orange
-              : 'white'
-
-          return (
+          })}
+  
+          {/* LOCATION icon – linked with [LOCATION] field 
+              Hidden for zitko-2 and zitko-4 (TSI Video) */}
+          {selectedTpl.id !== 'zitko-2' &&
+            selectedTpl.id !== 'zitko-4' &&
+            selectedTpl.layout.location &&
+            (() => {
+              const locSpec = selectedTpl.layout.location
+              const locOverride = positions.location
+              const locationFontSize =
+                fontSizes.location ?? locSpec.fontSize ?? 20
+              const textHeight = locationFontSize * 1.25
+              const iconSize = 40
+              const iconOffsetX = 50
+              const iconOffsetY = 15
+              const locY = locOverride?.y ?? locSpec.y
+  
+              const iconSrc =
+                selectedTpl.id === 'zitko-3'
+                  ? '/templates/TSI-Location-Icon.png'
+                  : '/templates/Location-Icon.png'
+  
+              return (
+                <div
+                  {...makeDragHandlers('location')}
+                  style={{
+                    position: 'absolute',
+                    left: (locSpec.x - iconOffsetX) * s,
+                    top:
+                      (locY +
+                        (textHeight - iconSize) +
+                        iconOffsetY) * s,
+                    width: iconSize * s,
+                    height: iconSize * s,
+                    cursor: 'move',
+                    userSelect: 'none',
+                    zIndex: 999,
+                  }}
+                >
+                  <img
+                    src={iconSrc}
+                    alt="Location icon"
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'contain',
+                      display: 'block',
+                    }}
+                  />
+                </div>
+              )
+            })()}
+  
+          {selectedTpl.layout.video && videoUrl && (
             <div
-              key={key}
-              {...dragProps}
+              {...makeVideoDragHandlers()}
               style={{
                 position: 'absolute',
-                left: spec.x * s,
-                top: spec.y * s,
-                width:
-                  (spec.w ?? selectedTpl.width - spec.x - 40) * s,
-                height: spec.h ? spec.h * s : undefined,
-                fontSize: spec.fontSize * s,
-                lineHeight: 1.25,
-                whiteSpace: 'pre-wrap',
-                textAlign: spec.align ?? 'left',
-                color: textColor,
-                fontWeight: key === 'title' ? 700 : 500,
-                wordBreak: 'break-word',
-                overflowWrap: 'anywhere',
-                cursor: isDraggable ? 'move' : 'default',
+                left:
+                  (videoPos?.x ?? selectedTpl.layout.video.x) * s,
+                top:
+                  (videoPos?.y ?? selectedTpl.layout.video.y) * s,
+                width: selectedTpl.layout.video.w * s,
+                height: selectedTpl.layout.video.h * s,
+                overflow: 'hidden',
+                clipPath: clipPath('circle'),
+                background: '#111',
+                cursor:
+                  selectedTpl.id === 'zitko-2'
+                    ? 'default'
+                    : 'move',
                 userSelect: 'none',
               }}
             >
-              {value}
-            </div>
-          )
-        })}
-
-        {/* LOCATION icon – linked with [LOCATION] field (hidden for zitko-2) */}
-        {selectedTpl.id !== 'zitko-2' &&
-          selectedTpl.id !== 'zitko-4 &&
-          selectedTpl.layout.location &&
-          (() => {
-            const locSpec = selectedTpl.layout.location
-            const locOverride = positions.location
-            const locationFontSize =
-              fontSizes.location ?? locSpec.fontSize ?? 20
-            const textHeight = locationFontSize * 1.25
-            const iconSize = 40
-            const iconOffsetX = 50
-            const iconOffsetY = 15
-            const locY = locOverride?.y ?? locSpec.y
-
-            const iconSrc =
-              selectedTpl.id === 'zitko-3' || selectedTpl.id === 'zitko-4'
-                ? '/templates/TSI-Location-Icon.png'
-                : '/templates/Location-Icon.png'
-
-            return (
-              <div
-                {...makeDragHandlers('location')}
+              <video
+                src={videoUrl}
+                playsInline
+                preload="metadata"
+                controls
                 style={{
-                  position: 'absolute',
-                  left: (locSpec.x - iconOffsetX) * s,
-                  top:
-                    (locY +
-                      (textHeight - iconSize) +
-                      iconOffsetY) * s,
-                  width: iconSize * s,
-                  height: iconSize * s,
-                  cursor: 'move',
-                  userSelect: 'none',
-                  zIndex: 999,
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
                 }}
-              >
-                <img
-                  src={iconSrc}
-                  alt="Location icon"
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    objectFit: 'contain',
-                    display: 'block',
-                  }}
-                />
-              </div>
-            )
-          })()}
-
-        {selectedTpl.layout.video && videoUrl && (
-          <div
-            {...makeVideoDragHandlers()}
-            style={{
-              position: 'absolute',
-              left:
-                (videoPos?.x ?? selectedTpl.layout.video.x) * s,
-              top:
-                (videoPos?.y ?? selectedTpl.layout.video.y) * s,
-              width: selectedTpl.layout.video.w * s,
-              height: selectedTpl.layout.video.h * s,
-              overflow: 'hidden',
-              clipPath: clipPath('circle'),
-              background: '#111',
-              cursor:
-                selectedTpl.id === 'zitko-2'
-                  ? 'default'
-                  : 'move',
-              userSelect: 'none',
-            }}
-          >
-            <video
-              src={videoUrl}
-              playsInline
-              preload="metadata"
-              controls
-              style={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover',
-              }}
-            />
-          </div>
-        )}
-      </div>
-    )
-  }
+              />
+            </div>
+          )}
+        </div>
+      )
+    }
 
   // ---------- download PNG using full-size hidden poster ----------
   async function downloadPng() {
