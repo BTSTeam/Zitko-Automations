@@ -16,6 +16,7 @@ type PlaceholderKey =
   | 'title'
   | 'location'
   | 'salary'
+  | 'responsibilites'
   | 'description'
   | 'benefits'
   | 'email'
