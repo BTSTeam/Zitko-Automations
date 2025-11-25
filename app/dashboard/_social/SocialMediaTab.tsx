@@ -86,7 +86,7 @@ const TEMPLATES: TemplateDef[] = [
   },
   {
     id: 'zitko-3',
-    name: 'Zitko – New Template',
+    name: 'TSI - Standard',
     imageUrl: '/templates/TSI-Standard.png',
     width: 1080,
     height: 1080,
@@ -98,12 +98,11 @@ const TEMPLATES: TemplateDef[] = [
       benefits: { x: 80, y: 700, w: 520, h: 260, fontSize: 24 },
       email: { x: 800, y: 962, w: 180, fontSize: 20, align: 'left' },
       phone: { x: 800, y: 1018, w: 180, fontSize: 20, align: 'left' },
-      video: { x: 705, y: 540, w: 300, h: 300 },
     },
   },
   {
       id: 'zitko-4',
-      name: 'Zitko – New Template',
+      name: 'TSI - Video',
       imageUrl: '/templates/TSI-Video.png',
       width: 1080,
       height: 1080,
@@ -316,7 +315,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
   function makeVideoDragHandlers() {
     const videoSpec = selectedTpl.layout.video
     // Do not allow video dragging on Zitko-2
-    if (!videoSpec || selectedTpl.id === 'zitko-2') return {}
+    if (!videoSpec || !videoEnabled) return {}
 
     return {
       onMouseDown: (e: React.MouseEvent<HTMLDivElement>) => {
@@ -959,9 +958,8 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                 <div className="mt-3">
                   {!videoEnabled && (
                     <p className="text-sm text-gray-500">
-                      Video recording is only available for the
-                      &nbsp;
-                      <strong>Zitko – We’re Looking</strong> template.
+                      Video recording is only available for the <strong>Zitko – We’re Looking</strong> and 
+                      <strong> Zitko – TSI Video</strong> templates.
                     </p>
                   )}
 
