@@ -637,7 +637,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
       // Body (white bullets, pushed down by gap)
       addTextOverlayFromSpec(
-        { ...descSpec, y: descSpec.y + gap, h: descSpec.h ? descSpec.h - gap : descSpec.h },
+        { ...descSpec, y: descSpec.y + gap, h: undefined as any },
         formatBullets(responsibilitiesText),
         "#ffffff",
         false,
@@ -655,7 +655,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       );
 
       addTextOverlayFromSpec(
-        { ...benSpec, y: benSpec.y + benGap, h: benSpec.h ? benSpec.h - benGap : benSpec.h },
+        { ...benSpec, y: benSpec.y + benGap, h: undefined as any },
         formatBullets(benefitsRaw),
         "#ffffff",
         false,
