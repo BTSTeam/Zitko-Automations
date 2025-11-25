@@ -80,6 +80,23 @@ const TEMPLATES: TemplateDef[] = [
       video: { x: 705, y: 540, w: 300, h: 300 },
     },
   },
+  {
+    id: 'zitko-3',
+    name: 'Zitko – New Template',
+    imageUrl: '/templates/TSI-Template.png',
+    width: 1080,
+    height: 1080,
+    layout: {
+      title: { x: 80, y: 320, w: 520, fontSize: 60 },
+      location: { x: 80, y: 420, w: 520, fontSize: 30 },
+      salary: { x: 80, y: 470, w: 520, fontSize: 28 },
+      description: { x: 80, y: 520, w: 520, h: 120, fontSize: 24 },
+      benefits: { x: 80, y: 700, w: 520, h: 260, fontSize: 24 },
+      email: { x: 800, y: 962, w: 180, fontSize: 20, align: 'left' },
+      phone: { x: 800, y: 1018, w: 180, fontSize: 20, align: 'left' },
+      video: { x: 705, y: 540, w: 300, h: 300 },
+    },
+  },
 ]
 
 // ---------- shared button styles (pill) ----------
@@ -145,7 +162,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     [selectedTplId],
   )
 
-  const videoEnabled = selectedTpl.id === 'zitko-2'
+  const videoEnabled = selectedTpl.id === 'zitko-2' || selectedTpl.id === 'zitko-3'
 
   // job data
   const [jobId, setJobId] = useState('')
