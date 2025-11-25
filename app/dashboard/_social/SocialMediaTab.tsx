@@ -672,8 +672,8 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                   }}
                 >
                   RESPONSIBILITIES
-</div>
-                )}
+                </div>
+                
                 {respLines.map((line, i) => (
                   <div
                     key={i}
