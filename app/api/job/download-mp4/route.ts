@@ -35,7 +35,7 @@ type PlaceholderKey =
   | "email"
   | "phone";
 
-type TemplateId = "zitko-1" | "zitko-2";
+type TemplateId = "zitko-1" | "zitko-2" | "zitko-3";
 
 interface Body {
   videoPublicId: string;
@@ -56,6 +56,7 @@ interface Body {
 const TEMPLATE_FILES: Record<string, string> = {
   "zitko-1": "zitko-dark-arc.png",
   "zitko-2": "zitko-looking.png",
+  "zitko-3": "TSI-Template.png",
 };
 
 type TextBox = {
@@ -212,7 +213,71 @@ const LAYOUTS: Record<TemplateId, Layout> = {
     },
     video: { x: 704, y: 540, w: 300, h: 300 },
   },
-};
+  "zitko-3": {
+      title: {
+        x: 80,
+        y: 320,
+        w: 520,
+        fs: 60,
+        color: "#ffffff",
+        bold: true,
+        align: "left",
+      },
+      location: {
+        x: 80,
+        y: 420,
+        w: 520,
+        fs: 30,
+        color: "#ffffff",
+        bold: true,
+        align: "left",
+      },
+      salary: {
+        x: 80,
+        y: 470,
+        w: 520,
+        fs: 28,
+        color: "#F7941D",
+        bold: true,
+        align: "left",
+      },
+      description: {
+        x: 80,
+        y: 520,
+        w: 520,
+        h: 120,
+        fs: 24,
+        color: "#ffffff",
+        align: "left",
+      },
+      benefits: {
+        x: 80,
+        y: 700,
+        w: 520,
+        h: 260,
+        fs: 24,
+        color: "#ffffff",
+        align: "left",
+      },
+      email: {
+        x: 800,
+        y: 962,
+        w: 180,
+        fs: 20,
+        color: "#ffffff",
+        align: "left",
+      },
+      phone: {
+        x: 800,
+        y: 1018,
+        w: 180,
+        fs: 20,
+        color: "#ffffff",
+        align: "left",
+      },
+      video: { x: 705, y: 540, w: 300, h: 300 },
+    },
+  };
 
 // ---------------- Helpers ----------------
 
