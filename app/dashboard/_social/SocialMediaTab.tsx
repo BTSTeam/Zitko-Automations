@@ -730,7 +730,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
         })}
 
         {/* LOCATION icon – linked with [LOCATION] field 
-            Hidden for zitko-2 and zitko-4 (TSI Video) */}
+            Hidden for zitko-2 */}
         {selectedTpl.id !== 'zitko-2' &&
           selectedTpl.layout.location &&
           (() => {
@@ -833,13 +833,15 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     a.click()
   }
 
+  async function downloadMp4() {
     if (!videoPublicId || !videoEnabled) {
-      alert('Add a video on the Zitko – We’re Looking template first.')
+      alert(
+        'Add a video on the "Zitko – We’re Looking" template first.',
+      )
       return
     }
-    
-    const isTSITemplateLocal = selectedTplId === 'zitko-3'
 
+    const isTSITemplateLocal = selectedTplId === 'zitko-3'
 
     const payload = {
       videoPublicId,
@@ -971,8 +973,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                   {!videoEnabled && (
                     <p className="text-sm text-gray-500">
                       Video recording is only available for the{' '}
-                      <strong>Zitko – We’re Looking</strong> and
-                      <strong> Zitko – TSI Video</strong> templates.
+                      <strong>Zitko – We’re Looking</strong> template.
                     </p>
                   )}
 
