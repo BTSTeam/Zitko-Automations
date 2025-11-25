@@ -38,7 +38,7 @@ type PlaceholderKey =
   | "email"
   | "phone";
 
-type TemplateId = "zitko-1" | "zitko-2" | "zitko-3" | "zitko-4"; 
+type TemplateId = "zitko-1" | "zitko-2" | "zitko-4"; 
 
 interface Body {
   videoPublicId: string;
