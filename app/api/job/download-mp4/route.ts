@@ -59,7 +59,7 @@ interface Body {
 const TEMPLATE_FILES: Record<string, string> = {
   "zitko-1": "zitko-dark-arc.png",
   "zitko-2": "zitko-looking.png",
-  "zitko-3": "TSI-Template.png",
+  "zitko-4": "TSI-Video.png",
 };
 
 type TextBox = {
@@ -216,7 +216,7 @@ const LAYOUTS: Record<TemplateId, Layout> = {
     },
     video: { x: 704, y: 540, w: 300, h: 300 },
   },
-  "zitko-3": {
+  "zitko-4": {
     title: {
       x: 80,
       y: 320,
