@@ -655,15 +655,42 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     // ---- Prepare description + benefits cleanly ----
-    const cleanDescription = String(description || "SHORT DESCRIPTION")
+    // Start with raw values from the payload
+    let rawDesc = String(description || "").trim();
+    let rawBenefits = String(benefits || "").trim();
+
+    // If description accidentally came through as JSON that contains
+    // { "description": "...", "benefits": "..." } we recover from it.
+    if (rawDesc.startsWith("{") && rawDesc.includes("description")) {
+      try {
+        const parsed = JSON.parse(rawDesc);
+        if (typeof parsed.description === "string") {
+          rawDesc = parsed.description;
+        }
+        if (!rawBenefits && typeof parsed.benefits === "string") {
+          rawBenefits = parsed.benefits;
+        }
+      } catch {
+        // ignore JSON parse errors, fall back to rawDesc/rawBenefits
+      }
+    }
+
+    const cleanDescription = rawDesc
       .replace(/\r\n|\r/g, "\n") // normalise newlines
       .replace(/\s+$/g, "")
       .trim();
 
-    const formattedBenefits = formatBullets(benefits || "BENEFITS");
-    const formattedResponsibilities = formatBullets(
-      cleanDescription || "RESPONSIBILITIES",
-    );
+    const benefitsRaw = rawBenefits || "BENEFITS";
+
+    // For benefits we always want standard bullets
+    const formattedBenefits = formatBullets(benefitsRaw);
+
+    // For TSI video (zitko-4) we DO NOT add bullets here – we keep
+    // the lines as-is. Other templates still get bullet formatting.
+    const responsibilitiesText =
+      templateId === "zitko-4"
+        ? cleanDescription
+        : formatBullets(cleanDescription || "RESPONSIBILITIES");
 
     // ---- Add ALL text layers (including description + benefits) ----
     addTextOverlay("title", title);
@@ -671,14 +698,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     addTextOverlay("salary", salary);
 
     if (templateId === "zitko-4") {
-      // RESPONSIBILITIES + BENEFITS headings in TSI red, bullets white
+      // TSI video:
+      // - RESPONSIBILITIES heading in red + plain lines beneath
+      // - BENEFITS heading in red + bullet list beneath
       addHeadingPlusBullets(
         "description",
         "RESPONSIBILITIES",
-        formattedResponsibilities,
+        responsibilitiesText,
       );
       addHeadingPlusBullets("benefits", "BENEFITS", formattedBenefits);
     } else {
+      // Normal templates
       addTextOverlay("description", cleanDescription);
       addTextOverlay("benefits", formattedBenefits);
     }
