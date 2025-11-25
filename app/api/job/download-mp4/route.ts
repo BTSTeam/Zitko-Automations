@@ -527,7 +527,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     });
 
     // 4) Location icon overlay via l_fetch (matches React preview maths)
-    if (locationIconUrl && templateId !== "zitko-2") {
+    if (locationIconUrl && 
+      templateId !== "zitko-2" &&
+      templateId !== "zitko-4") {
       // z2 has no icon
       const locSpec = effectiveLayout.location;
       const locationFontSize = locSpec.fs;
