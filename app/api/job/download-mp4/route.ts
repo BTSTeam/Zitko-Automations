@@ -219,7 +219,7 @@ const LAYOUTS: Record<TemplateId, Layout> = {
   "zitko-4": {
     title: {
       x: 40,
-      y: 320,
+      y: 350,
       w: 720,
       fs: 60,
       color: "#ffffff",
@@ -228,7 +228,7 @@ const LAYOUTS: Record<TemplateId, Layout> = {
     },
     location: {
       x: 80,
-      y: 420,
+      y: 440,
       w: 720,
       fs: 30,
       color: "#ffffff",
@@ -237,7 +237,7 @@ const LAYOUTS: Record<TemplateId, Layout> = {
     },
     salary: {
       x: 80,
-      y: 470,
+      y: 490,
       w: 520,
       fs: 28,
       color: TSI_RED, // TSI red salary
@@ -246,7 +246,7 @@ const LAYOUTS: Record<TemplateId, Layout> = {
     },
     description: {
       x: 80,
-      y: 530,
+      y: 540,
       w: 620,
       h: 120,
       fs: 24,
@@ -255,7 +255,7 @@ const LAYOUTS: Record<TemplateId, Layout> = {
     },
     benefits: {
       x: 80,
-      y: 740,
+      y: 730,
       w: 610,
       h: 260,
       fs: 24,
