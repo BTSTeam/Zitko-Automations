@@ -735,6 +735,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
 
         {/* LOCATION icon – linked with [LOCATION] field (hidden for zitko-2) */}
         {selectedTpl.id !== 'zitko-2' &&
+          selectedTpl.id !== 'zitko-4 &&
           selectedTpl.layout.location &&
           (() => {
             const locSpec = selectedTpl.layout.location
