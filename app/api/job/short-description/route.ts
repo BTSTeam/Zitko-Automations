@@ -47,11 +47,11 @@ Rules:
 - Combine all benefits into ONE single bullet.
 - Output ONLY bullet-pointed plain text. NO JSON. NO labels. NO extra text.
 
-Format exactly like:
-• First responsibility
-• Second responsibility
-• Third responsibility
-• One-line combined benefits summary
+Format exactly like (do not include bullet points):
+First responsibility
+Second responsibility
+Third responsibility
+One-line combined benefits summary
 `.trim();
 
     const userPrompt = `
