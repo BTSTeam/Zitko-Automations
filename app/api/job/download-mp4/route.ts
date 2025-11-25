@@ -10,7 +10,7 @@ import { v2 as cloudinary } from "cloudinary";
  * - Adds the location icon + circular video mask
  */
 export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
+export const dynamic = "force-dynamic"; // ensure dynamic route
 
 // ---------------- Cloudinary config ----------------
 
@@ -18,7 +18,7 @@ cloudinary.config({
   cloud_name:
     process.env.CLOUDINARY_CLOUD_NAME ||
     process.env.NEXT_PUBLIC_CLOUDINARY_CLOUDINARY_CLOUD_NAME ||
-    process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
+    process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME, // fallback if typo
   api_key: process.env.CLOUDINARY_API_KEY!,
   api_secret: process.env.CLOUDINARY_API_SECRET!,
   secure: true,
@@ -38,7 +38,7 @@ type PlaceholderKey =
   | "email"
   | "phone";
 
-type TemplateId = "zitko-1" | "zitko-2" | "zitko-4"; // no MP4 for 3 (standard only)
+type TemplateId = "zitko-1" | "zitko-2" | "zitko-4"; 
 
 interface Body {
   videoPublicId: string;
@@ -56,7 +56,7 @@ interface Body {
   templateUrl?: string;
 }
 
-const TEMPLATE_FILES: Record<TemplateId, string> = {
+const TEMPLATE_FILES: Record<string, string> = {
   "zitko-1": "zitko-dark-arc.png",
   "zitko-2": "zitko-looking.png",
   "zitko-4": "TSI-Video.png",
@@ -218,9 +218,9 @@ const LAYOUTS: Record<TemplateId, Layout> = {
   },
   "zitko-4": {
     title: {
-      x: 80,
-      y: 320,
-      w: 520,
+      x: 40,
+      y: 350,
+      w: 720,
       fs: 60,
       color: "#ffffff",
       bold: true,
@@ -228,8 +228,8 @@ const LAYOUTS: Record<TemplateId, Layout> = {
     },
     location: {
       x: 80,
-      y: 420,
-      w: 520,
+      y: 440,
+      w: 720,
       fs: 30,
       color: "#ffffff",
       bold: true,
@@ -237,17 +237,17 @@ const LAYOUTS: Record<TemplateId, Layout> = {
     },
     salary: {
       x: 80,
-      y: 470,
+      y: 490,
       w: 520,
       fs: 28,
-      color: TSI_RED,
+      color: TSI_RED, // TSI red salary
       bold: true,
       align: "left",
     },
     description: {
       x: 80,
-      y: 520,
-      w: 520,
+      y: 540,
+      w: 620,
       h: 120,
       fs: 24,
       color: "#ffffff",
@@ -255,8 +255,8 @@ const LAYOUTS: Record<TemplateId, Layout> = {
     },
     benefits: {
       x: 80,
-      y: 700,
-      w: 520,
+      y: 730,
+      w: 610,
       h: 260,
       fs: 24,
       color: "#ffffff",
@@ -264,7 +264,7 @@ const LAYOUTS: Record<TemplateId, Layout> = {
     },
     email: {
       x: 800,
-      y: 962,
+      y: 957,
       w: 180,
       fs: 20,
       color: "#ffffff",
@@ -278,7 +278,7 @@ const LAYOUTS: Record<TemplateId, Layout> = {
       color: "#ffffff",
       align: "left",
     },
-    video: { x: 705, y: 540, w: 300, h: 300 },
+    video: { x: 712, y: 60, w: 300, h: 300 },
   },
 };
 
@@ -322,7 +322,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       positions = {},
       fontSizes = {},
       videoPos,
-    } = (await req.json().catch(() => ({}))) as Body;
+    } = (await req.json()) as Body;
 
     if (!videoPublicId) {
       return NextResponse.json(
@@ -330,6 +330,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         { status: 400 },
       );
     }
+
+    console.log("MP4 payload text:", {
+      description,
+      benefits,
+      templateId,
+    });
 
     const cleanVideoId = stripExt(videoPublicId);
 
@@ -368,14 +374,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       assetsOrigin = originFromReq;
     }
 
-    // default icon path (TSI standard icon remains possible for zitko-3 only,
-    // but we never use 3 here; we just *skip* icon for zitko-4 below)
-    const locationIconPath = "/templates/Location-Icon.png";
+    const locationIconPath =
+      templateId === "zitko-4"
+        ? "/templates/TSI-Location-Icon.png"
+        : "/templates/Location-Icon.png";
 
-    const locationIconUrl =
-      assetsOrigin && templateId !== "zitko-4" // 🔴 no icon on TSI-Video
-        ? `${assetsOrigin.replace(/\/$/, "")}${locationIconPath}`
-        : null;
+    const locationIconUrl = assetsOrigin
+      ? `${assetsOrigin.replace(/\/$/, "")}${locationIconPath}`
+      : null;
 
     // ----- Sanity-check template URL -----
     try {
@@ -511,7 +517,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       width: videoSize,
       height: videoSize,
       crop: "fill",
-      radius: "max",
+      radius: "max", // circular mask
     });
     transformations.push({
       gravity: "north_west",
@@ -520,8 +526,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       flags: "layer_apply",
     });
 
-    // 4) Location icon overlay (skip for zitko-2 and zitko-4)
-    if (locationIconUrl && templateId !== "zitko-2" && templateId !== "zitko-4") {
+    // 4) Location icon overlay via l_fetch (matches React preview maths)
+    if (locationIconUrl && 
+      templateId !== "zitko-2" &&
+      templateId !== "zitko-4") {
+      // z2 has no icon
       const locSpec = effectiveLayout.location;
       const locationFontSize = locSpec.fs;
       const textHeight = locationFontSize * 1.25;
@@ -547,7 +556,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       const spec = (effectiveLayout as any)[key] as TextBox;
 
       const safeText = String(value || "").trim();
-      if (!safeText) return;
+      if (!safeText) return; // nothing to draw
 
       const isZ2 = templateId === "zitko-2";
       const isTitle = key === "title";
@@ -564,9 +573,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         crop: "fit",
       };
 
+      // same width logic as title/location/salary
       if (!(isZ2 && isTitle) && spec.w) {
         overlayCfg.width = spec.w;
       }
+
       if (spec.h) {
         overlayCfg.height = spec.h;
       }
@@ -643,33 +654,61 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }
     }
 
-    // ---- Prepare description + benefits text ----
-    const cleanDescription = String(description || "")
-      .replace(/\r\n|\r/g, "\n")
+    // ---- Prepare description + benefits cleanly ----
+    // Start with raw values from the payload
+    let rawDesc = String(description || "").trim();
+    let rawBenefits = String(benefits || "").trim();
+
+    // If description accidentally came through as JSON that contains
+    // { "description": "...", "benefits": "..." } we recover from it.
+    if (rawDesc.startsWith("{") && rawDesc.includes("description")) {
+      try {
+        const parsed = JSON.parse(rawDesc);
+        if (typeof parsed.description === "string") {
+          rawDesc = parsed.description;
+        }
+        if (!rawBenefits && typeof parsed.benefits === "string") {
+          rawBenefits = parsed.benefits;
+        }
+      } catch {
+        // ignore JSON parse errors, fall back to rawDesc/rawBenefits
+      }
+    }
+
+    const cleanDescription = rawDesc
+      .replace(/\r\n|\r/g, "\n") // normalise newlines
       .replace(/\s+$/g, "")
       .trim();
 
-    const formattedBenefits = formatBullets(benefits || "");
-    const formattedResponsibilities =
-      templateId === "zitko-4"
-        ? formatBullets(cleanDescription || "RESPONSIBILITIES")
-        : cleanDescription;
+    const benefitsRaw = rawBenefits || "BENEFITS";
 
-    // ---- Add text layers ----
+    // For benefits we always want standard bullets
+    const formattedBenefits =
+      templateId === "zitko-4"
+        ? benefitsRaw
+        : formatBullets(benefitsRaw);
+
+    // For TSI video (zitko-4) we DO NOT add bullets here – we keep
+    // the lines as-is. Other templates still get bullet formatting.
+    const responsibilitiesText = cleanDescription;
+
+    // ---- Add ALL text layers (including description + benefits) ----
     addTextOverlay("title", title);
     addTextOverlay("location", location);
     addTextOverlay("salary", salary);
 
     if (templateId === "zitko-4") {
-      // TSI-Video: headers + bullets
+      // TSI video:
+      // - RESPONSIBILITIES heading in red + plain lines beneath
+      // - BENEFITS heading in red + bullet list beneath
       addHeadingPlusBullets(
         "description",
         "RESPONSIBILITIES",
-        formattedResponsibilities,
+        responsibilitiesText,
       );
       addHeadingPlusBullets("benefits", "BENEFITS", formattedBenefits);
     } else {
-      // normal templates
+      // Normal templates
       addTextOverlay("description", cleanDescription);
       addTextOverlay("benefits", formattedBenefits);
     }
@@ -696,7 +735,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           locationIconUrl,
           descriptionUsed: cleanDescription,
           benefitsUsed: formattedBenefits,
-          responsibilitiesUsed: formattedResponsibilities,
+          responsibilitiesUsed: responsibilitiesText,
+          hint: "Open composedUrl in a new tab if you need to inspect Cloudinary output directly.",
         },
         { status: 200 },
       );
