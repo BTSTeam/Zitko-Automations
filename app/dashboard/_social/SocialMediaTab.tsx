@@ -181,7 +181,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     () => TEMPLATES.find((t) => t.id === selectedTplId)!,
     [selectedTplId],
   )
-  const isTSITemplate = selectedTpl.id === 'zitko-3'
+  const isTSITemplate = selectedTpl.id === 'zitko-3' || selectedTpl.id === 'zitko-4'
 
   const videoEnabled =
     selectedTpl.id === 'zitko-2' || selectedTpl.id === 'zitko-4'
@@ -736,7 +736,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
             const locY = locOverride?.y ?? locSpec.y
 
             const iconSrc =
-              selectedTpl.id === 'zitko-3'
+              selectedTpl.id === 'zitko-3' || selectedTpl.id === 'zitko-4'
                 ? '/templates/TSI-Location-Icon.png'
                 : '/templates/Location-Icon.png'
 
