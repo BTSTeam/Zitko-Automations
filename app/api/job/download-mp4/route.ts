@@ -735,7 +735,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           locationIconUrl,
           descriptionUsed: cleanDescription,
           benefitsUsed: formattedBenefits,
-          responsibilitiesUsed: formattedResponsibilities,
+          responsibilitiesUsed: responsibilitiesText,
           hint: "Open composedUrl in a new tab if you need to inspect Cloudinary output directly.",
         },
         { status: 200 },
