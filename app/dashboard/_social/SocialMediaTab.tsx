@@ -91,7 +91,7 @@ const TEMPLATES: TemplateDef[] = [
     width: 1080,
     height: 1080,
     layout: {
-      title: { x: 80, y: 340, w: 720, fontSize: 60 },
+      title: { x: 65, y: 340, w: 720, fontSize: 60 },
       location: { x: 80, y: 420, w: 720, fontSize: 30 },
       salary: { x: 80, y: 470, w: 520, fontSize: 28 },
       description: { x: 80, y: 520, w: 620, h: 120, fontSize: 24 },
@@ -107,7 +107,7 @@ const TEMPLATES: TemplateDef[] = [
       width: 1080,
       height: 1080,
       layout: {
-        title: { x: 80, y: 340, w: 720, fontSize: 60 },
+        title: { x: 65, y: 340, w: 720, fontSize: 60 },
         location: { x: 80, y: 420, w: 720, fontSize: 30 },
         salary: { x: 80, y: 470, w: 520, fontSize: 28 },
         description: { x: 80, y: 520, w: 620, h: 120, fontSize: 24 },
