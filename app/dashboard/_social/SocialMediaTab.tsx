@@ -87,14 +87,13 @@ const TEMPLATES: TemplateDef[] = [
   {
     id: 'zitko-3',
     name: 'Zitko – New Template',
-    imageUrl: '/templates/TSI-Template.png',
+    imageUrl: '/templates/TSI-Standard.png',
     width: 1080,
     height: 1080,
     layout: {
       title: { x: 80, y: 320, w: 520, fontSize: 60 },
       location: { x: 80, y: 420, w: 520, fontSize: 30 },
       salary: { x: 80, y: 470, w: 520, fontSize: 28 },
-      // this will display as RESPONSIBILITIES section in the UI/preview
       description: { x: 80, y: 520, w: 520, h: 120, fontSize: 24 },
       benefits: { x: 80, y: 700, w: 520, h: 260, fontSize: 24 },
       email: { x: 800, y: 962, w: 180, fontSize: 20, align: 'left' },
@@ -102,7 +101,24 @@ const TEMPLATES: TemplateDef[] = [
       video: { x: 705, y: 540, w: 300, h: 300 },
     },
   },
-]
+  {
+      id: 'zitko-4',
+      name: 'Zitko – New Template',
+      imageUrl: '/templates/TSI-Video.png',
+      width: 1080,
+      height: 1080,
+      layout: {
+        title: { x: 80, y: 320, w: 520, fontSize: 60 },
+        location: { x: 80, y: 420, w: 520, fontSize: 30 },
+        salary: { x: 80, y: 470, w: 520, fontSize: 28 },
+        description: { x: 80, y: 520, w: 520, h: 120, fontSize: 24 },
+        benefits: { x: 80, y: 700, w: 520, h: 260, fontSize: 24 },
+        email: { x: 800, y: 962, w: 180, fontSize: 20, align: 'left' },
+        phone: { x: 800, y: 1018, w: 180, fontSize: 20, align: 'left' },
+        video: { x: 705, y: 540, w: 300, h: 300 },
+      },
+    },
+  ]
 
 // ---------- shared button styles (pill) ----------
 const pillBase =
@@ -169,7 +185,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
   const isTSITemplate = selectedTpl.id === 'zitko-3'
 
   const videoEnabled =
-    selectedTpl.id === 'zitko-2' || selectedTpl.id === 'zitko-3'
+    selectedTpl.id === 'zitko-2' || selectedTpl.id === 'zitko-4'
 
   // job data
   const [jobId, setJobId] = useState('')
