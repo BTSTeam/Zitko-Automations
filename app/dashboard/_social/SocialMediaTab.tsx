@@ -374,7 +374,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
   }
 
   // ------------ data fetch ------------
-   async function fetchJob() {
+  async function fetchJob() {
     const id = jobId.trim()
     if (!id) return
     setFetchStatus('loading')
@@ -402,28 +402,35 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             description: publicDesc,
-            mode: isTSI ? 'tsi' : 'default',   // 👈 NEW
+            // mode is ignored by summarize, but harmless to send
+            mode: isTSI ? 'tsi' : 'default',
           }),
         })
         if (ai.ok) extracted = await ai.json()
       } catch {}
   
       let shortDesc = ''
+      let tsiBenefits: string | undefined // 👈 NEW
       try {
         const teaser = await fetch('/api/job/short-description', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             description: publicDesc,
-            mode: isTSI ? 'tsi' : 'default',   // 👈 NEW
+            mode: isTSI ? 'tsi' : 'default', // 👈 NEW
           }),
         })
         if (teaser.ok) {
           const t = await teaser.json()
           shortDesc = t.description ?? ''
+  
+          // for TSI templates, also capture the single-line benefits summary
+          if (isTSI && typeof t.benefits === 'string') {
+            tsiBenefits = t.benefits
+          }
         }
       } catch {}
-
+  
       let contactEmail = String(extracted?.contactEmail ?? '').trim()
       let contactPhone = String(extracted?.contactPhone ?? '').trim()
       if (!contactEmail || !contactPhone) {
@@ -431,15 +438,18 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
         contactEmail = contactEmail || fb.email
         contactPhone = contactPhone || fb.phone
       }
-
+  
       setJob({
         title: extracted?.title ?? data?.title ?? '',
         location: extracted?.location ?? data?.location ?? '',
         salary: extracted?.salary ?? data?.salary ?? '',
         description: shortDesc,
-        benefits: Array.isArray(extracted?.benefits)
-          ? extracted.benefits.join('\n')
-          : String(data?.benefits ?? ''),
+        benefits:
+          isTSITemplate && tsiBenefits
+            ? tsiBenefits                             // 👈 NEW: use TSI combined benefits line
+            : Array.isArray(extracted?.benefits)
+            ? extracted.benefits.join('\n')
+            : String(data?.benefits ?? ''),
         email: contactEmail || data?.email || '',
         phone: contactPhone || data?.phone || '',
       })
