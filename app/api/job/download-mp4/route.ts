@@ -24,7 +24,10 @@ cloudinary.config({
   secure: true,
 });
 
-// ---------------- Types ----------------
+// ---------------- Types / constants ----------------
+
+const BRAND_ORANGE = "#F7941D";
+const TSI_RED = "#C6242A";
 
 type PlaceholderKey =
   | "title"
@@ -83,7 +86,7 @@ interface Layout {
   video: VideoBox;
 }
 
-// These should mirror your SocialMediaTab template layouts
+// These mirror SocialMediaTab template layouts (positions + base sizes)
 const LAYOUTS: Record<TemplateId, Layout> = {
   "zitko-1": {
     title: {
@@ -109,7 +112,7 @@ const LAYOUTS: Record<TemplateId, Layout> = {
       y: 400,
       w: 520,
       fs: 28,
-      color: "#F7941D",
+      color: BRAND_ORANGE,
       bold: true,
       align: "left",
     },
@@ -173,7 +176,7 @@ const LAYOUTS: Record<TemplateId, Layout> = {
       y: 540,
       w: 520,
       fs: 28,
-      color: "#F7941D",
+      color: BRAND_ORANGE,
       bold: true,
       align: "left",
     },
@@ -214,74 +217,74 @@ const LAYOUTS: Record<TemplateId, Layout> = {
     video: { x: 704, y: 540, w: 300, h: 300 },
   },
   "zitko-3": {
-      title: {
-        x: 80,
-        y: 320,
-        w: 520,
-        fs: 60,
-        color: "#ffffff",
-        bold: true,
-        align: "left",
-      },
-      location: {
-        x: 80,
-        y: 420,
-        w: 520,
-        fs: 30,
-        color: "#ffffff",
-        bold: true,
-        align: "left",
-      },
-      salary: {
-        x: 80,
-        y: 470,
-        w: 520,
-        fs: 28,
-        color: "#F7941D",
-        bold: true,
-        align: "left",
-      },
-      description: {
-        x: 80,
-        y: 520,
-        w: 520,
-        h: 120,
-        fs: 24,
-        color: "#ffffff",
-        align: "left",
-      },
-      benefits: {
-        x: 80,
-        y: 700,
-        w: 520,
-        h: 260,
-        fs: 24,
-        color: "#ffffff",
-        align: "left",
-      },
-      email: {
-        x: 800,
-        y: 962,
-        w: 180,
-        fs: 20,
-        color: "#ffffff",
-        align: "left",
-      },
-      phone: {
-        x: 800,
-        y: 1018,
-        w: 180,
-        fs: 20,
-        color: "#ffffff",
-        align: "left",
-      },
-      video: { x: 705, y: 540, w: 300, h: 300 },
+    title: {
+      x: 80,
+      y: 320,
+      w: 520,
+      fs: 60,
+      color: "#ffffff",
+      bold: true,
+      align: "left",
     },
-  };
+    location: {
+      x: 80,
+      y: 420,
+      w: 520,
+      fs: 30,
+      color: "#ffffff",
+      bold: true,
+      align: "left",
+    },
+    salary: {
+      x: 80,
+      y: 470,
+      w: 520,
+      fs: 28,
+      color: TSI_RED, // TSI red salary
+      bold: true,
+      align: "left",
+    },
+    description: {
+      x: 80,
+      y: 520,
+      w: 520,
+      h: 120,
+      fs: 24,
+      color: "#ffffff",
+      align: "left",
+    },
+    benefits: {
+      x: 80,
+      y: 700,
+      w: 520,
+      h: 260,
+      fs: 24,
+      color: "#ffffff",
+      align: "left",
+    },
+    email: {
+      x: 800,
+      y: 962,
+      w: 180,
+      fs: 20,
+      color: "#ffffff",
+      align: "left",
+    },
+    phone: {
+      x: 800,
+      y: 1018,
+      w: 180,
+      fs: 20,
+      color: "#ffffff",
+      align: "left",
+    },
+    video: { x: 705, y: 540, w: 300, h: 300 },
+  },
+};
 
 // ---------------- Helpers ----------------
 
-function formatBenefits(raw: string): string {
+function formatBullets(raw: string): string {
   const lines = String(raw || "")
     .split("\n")
     .map((s) => s.trim())
@@ -328,10 +331,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       );
     }
 
-    // Helpful debug so you can verify the values actually arriving
     console.log("MP4 payload text:", {
       description,
       benefits,
+      templateId,
     });
 
     const cleanVideoId = stripExt(videoPublicId);
@@ -370,8 +373,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     } catch {
       assetsOrigin = originFromReq;
     }
+
+    const locationIconPath =
+      templateId === "zitko-3"
+        ? "/templates/TSI-Location-Icon.png"
+        : "/templates/Location-Icon.png";
+
     const locationIconUrl = assetsOrigin
-      ? `${assetsOrigin.replace(/\/$/, "")}/templates/Location-Icon.png`
+      ? `${assetsOrigin.replace(/\/$/, "")}${locationIconPath}`
       : null;
 
     // ----- Sanity-check template URL -----
@@ -518,7 +527,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     });
 
     // 4) Location icon overlay via l_fetch (matches React preview maths)
-    if (locationIconUrl) {
+    if (locationIconUrl && templateId !== "zitko-2") {
+      // z2 has no icon
       const locSpec = effectiveLayout.location;
       const locationFontSize = locSpec.fs;
       const textHeight = locationFontSize * 1.25;
@@ -542,13 +552,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     function addTextOverlay(key: PlaceholderKey, value: string) {
       const spec = (effectiveLayout as any)[key] as TextBox;
-    
+
       const safeText = String(value || "").trim();
       if (!safeText) return; // nothing to draw
-    
+
       const isZ2 = templateId === "zitko-2";
       const isTitle = key === "title";
-    
+
       const overlayCfg: any = {
         overlay: {
           font_family: "Arial",
@@ -560,16 +570,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         color: spec.color,
         crop: "fit",
       };
-    
+
       // same width logic as title/location/salary
       if (!(isZ2 && isTitle) && spec.w) {
         overlayCfg.width = spec.w;
       }
-    
+
       if (spec.h) {
         overlayCfg.height = spec.h;
       }
-    
+
       transformations.push(overlayCfg);
       transformations.push({
         gravity: "north_west",
@@ -579,20 +589,98 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       });
     }
 
+    function addHeadingPlusBullets(
+      key: PlaceholderKey,
+      heading: string,
+      bullets: string,
+    ) {
+      const spec = (effectiveLayout as any)[key] as TextBox;
+
+      const headingText = heading.trim();
+      const bulletsText = String(bullets || "").trim();
+      if (!headingText && !bulletsText) return;
+
+      const gap = spec.fs * 1.2;
+
+      // heading in TSI red
+      if (headingText) {
+        const headingCfg: any = {
+          overlay: {
+            font_family: "Arial",
+            font_size: spec.fs,
+            font_weight: "bold",
+            text: headingText,
+            text_align: spec.align || "left",
+          },
+          color: TSI_RED,
+          crop: "fit",
+        };
+        if (spec.w) headingCfg.width = spec.w;
+
+        transformations.push(headingCfg);
+        transformations.push({
+          gravity: "north_west",
+          x: spec.x,
+          y: spec.y,
+          flags: "layer_apply",
+        });
+      }
+
+      // bullets in white, below heading
+      if (bulletsText) {
+        const bulletsCfg: any = {
+          overlay: {
+            font_family: "Arial",
+            font_size: spec.fs,
+            font_weight: "normal",
+            text: bulletsText,
+            text_align: spec.align || "left",
+          },
+          color: "#ffffff",
+          crop: "fit",
+        };
+        if (spec.w) bulletsCfg.width = spec.w;
+        if (spec.h) bulletsCfg.height = spec.h;
+
+        transformations.push(bulletsCfg);
+        transformations.push({
+          gravity: "north_west",
+          x: spec.x,
+          y: spec.y + gap,
+          flags: "layer_apply",
+        });
+      }
+    }
+
     // ---- Prepare description + benefits cleanly ----
     const cleanDescription = String(description || "SHORT DESCRIPTION")
       .replace(/\r\n|\r/g, "\n") // normalise newlines
       .replace(/\s+$/g, "")
       .trim();
 
-    const formattedBenefits = formatBenefits(benefits || "BENEFITS");
+    const formattedBenefits = formatBullets(benefits || "BENEFITS");
+    const formattedResponsibilities = formatBullets(
+      cleanDescription || "RESPONSIBILITIES",
+    );
 
     // ---- Add ALL text layers (including description + benefits) ----
     addTextOverlay("title", title);
     addTextOverlay("location", location);
     addTextOverlay("salary", salary);
-    addTextOverlay("description", cleanDescription);
-    addTextOverlay("benefits", formattedBenefits);
+
+    if (templateId === "zitko-3") {
+      // RESPONSIBILITIES + BENEFITS headings in TSI red, bullets white
+      addHeadingPlusBullets(
+        "description",
+        "RESPONSIBILITIES",
+        formattedResponsibilities,
+      );
+      addHeadingPlusBullets("benefits", "BENEFITS", formattedBenefits);
+    } else {
+      addTextOverlay("description", cleanDescription);
+      addTextOverlay("benefits", formattedBenefits);
+    }
+
     addTextOverlay("email", email);
     addTextOverlay("phone", phone);
 
@@ -615,6 +703,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           locationIconUrl,
           descriptionUsed: cleanDescription,
           benefitsUsed: formattedBenefits,
+          responsibilitiesUsed: formattedResponsibilities,
           hint: "Open composedUrl in a new tab if you need to inspect Cloudinary output directly.",
         },
         { status: 200 },
