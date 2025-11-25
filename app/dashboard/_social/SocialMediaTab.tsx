@@ -851,55 +851,44 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
   }
 
   async function downloadMp4() {
-    if (!videoPublicId || !videoEnabled) {
-      alert('Add a video on the Zitko-2 template first.')
-      return
-    }
+  if (!videoPublicId || !videoEnabled) {
+    alert('Add a video on the Zitko-2 or TSI Video template first.');
+    return;
+  }
 
-    // ensure MP4 always gets content, even if user leaves fields blank
-    const descFallback = isTSITemplate
-      ? '[RESPONSIBILITY 1]\n[RESPONSIBILITY 2]\n[RESPONSIBILITY 3]'
-      : 'Short description'
+  const isTSITemplate =
+    selectedTplId === 'zitko-3' || selectedTplId === 'zitko-4';
 
-    const rawDescriptionForExport =
-      job.description && job.description.trim().length > 0
-        ? job.description
-        : descFallback
+  const payload = {
+    videoPublicId,
+    title: job.title || 'Job Title',
+    location: job.location || 'Location',
+    salary: job.salary || 'Salary',
 
-    const benefitsFallback =
-      '[BENEFIT 1]\n[BENEFIT 2]\n[BENEFIT 3]'
+    // 🔴 IMPORTANT PART:
+    // For TSI we send the *exact* responsibilities + benefits text
+    // that drives the preview, no wrapText, no extra defaults.
+    description: isTSITemplate
+      ? String(job.description || '').trim()
+      : wrapText(String(job.description || 'Short description')),
 
-    const benefitsForExport =
-      benefitsText && benefitsText.trim().length > 0
-        ? benefitsText
-        : benefitsFallback
+    benefits: isTSITemplate
+      ? String(benefitsText || '').trim()
+      : benefitsText,
 
-    const payload = {
-      videoPublicId,
-      title: job.title || 'Job Title',
-      location: job.location || 'Location',
-      salary: job.salary || 'Salary',
-      // TSI (zitko-3/4) → raw responsibilities;
-      // others → wrapped short description.
-      description: isTSITemplate
-        ? String(rawDescriptionForExport)
-        : wrapText(String(rawDescriptionForExport)),
-      // benefits: plain multi-line; server formats bullets where needed
-      benefits: benefitsForExport,
-      email: job.email || '',
-      phone: job.phone || '',
-      templateId: selectedTplId,
-      // layout overrides so MP4 matches preview
-      positions,
-      fontSizes,
-      videoPos,
-    }
+    email: job.email || '',
+    phone: job.phone || '',
+    templateId: selectedTplId,
+    positions,
+    fontSizes,
+    videoPos,
+  };
 
-    const res = await fetch('/api/job/download-mp4', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
+  const res = await fetch('/api/job/download-mp4', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
 
     const contentType = res.headers.get('content-type') || ''
     const isJson = contentType.includes('application/json')
