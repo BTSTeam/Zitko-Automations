@@ -16,7 +16,6 @@ type PlaceholderKey =
   | 'title'
   | 'location'
   | 'salary'
-  | 'responsibilites'
   | 'description'
   | 'benefits'
   | 'email'
@@ -42,6 +41,10 @@ type TemplateDef = {
     video?: { x: number; y: number; w: number; h: number }
   }
 }
+
+// brand colours
+const BRAND_ORANGE = '#F7941D'
+const TSI_RED = '#C6242A' // from TSI-Location-Icon.png
 
 // x = left/right (lower = left | higher = right //
 // y = up/down (lower = up | higher = down //
@@ -91,6 +94,7 @@ const TEMPLATES: TemplateDef[] = [
       title: { x: 80, y: 320, w: 520, fontSize: 60 },
       location: { x: 80, y: 420, w: 520, fontSize: 30 },
       salary: { x: 80, y: 470, w: 520, fontSize: 28 },
+      // this will display as RESPONSIBILITIES section in the UI/preview
       description: { x: 80, y: 520, w: 520, h: 120, fontSize: 24 },
       benefits: { x: 80, y: 700, w: 520, h: 260, fontSize: 24 },
       email: { x: 800, y: 962, w: 180, fontSize: 20, align: 'left' },
@@ -162,8 +166,10 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     () => TEMPLATES.find((t) => t.id === selectedTplId)!,
     [selectedTplId],
   )
+  const isTSITemplate = selectedTpl.id === 'zitko-3'
 
-  const videoEnabled = selectedTpl.id === 'zitko-2' || selectedTpl.id === 'zitko-3'
+  const videoEnabled =
+    selectedTpl.id === 'zitko-2' || selectedTpl.id === 'zitko-3'
 
   // job data
   const [jobId, setJobId] = useState('')
@@ -503,7 +509,10 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
               case 'salary':
                 return job.salary || '[SALARY]'
               case 'description':
-                return job.description || '[SHORT DESCRIPTION]'
+                return job.description ||
+                  (isTSITemplate
+                    ? '[RESPONSIBILITY 1]\n[RESPONSIBILITY 2]'
+                    : '[SHORT DESCRIPTION]')
               case 'benefits': {
                 const tx =
                   (Array.isArray(job.benefits)
@@ -522,6 +531,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
             }
           })()
 
+          // BENEFITS special rendering (TSI gets heading in red)
           if (key === 'benefits') {
             let benefitsLines: string[] = Array.isArray(job.benefits)
               ? (job.benefits as string[]).map((s) =>
@@ -561,6 +571,19 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                   userSelect: 'none',
                 }}
               >
+                {isTSITemplate && (
+                  <div
+                    style={{
+                      fontWeight: 700,
+                      color: TSI_RED,
+                      marginBottom: `${8 * s}px`,
+                      whiteSpace: 'pre-wrap',
+                    }}
+                  >
+                    BENEFITS
+                  </div>
+                )}
+
                 {benefitsLines.map((line, i) => (
                   <div
                     key={i}
@@ -569,6 +592,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                       textIndent: `-${8 * s}px`,
                       whiteSpace: 'pre-wrap',
                       marginBottom: `${8 * s}px`,
+                      color: 'white',
                     }}
                   >
                     {`• ${line}`}
@@ -577,6 +601,82 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
               </div>
             )
           }
+
+          // DESCRIPTION special rendering for Zitko-3 = RESPONSIBILITIES block
+          if (key === 'description' && isTSITemplate) {
+            let respLines: string[] = String(
+              job.description ||
+                '[RESPONSIBILITY 1]\n[RESPONSIBILITY 2]\n[RESPONSIBILITY 3]',
+            )
+              .split('\n')
+              .map((s) => s.trim())
+              .filter(Boolean)
+
+            if (respLines.length === 0) {
+              respLines = [
+                '[RESPONSIBILITY 1]',
+                '[RESPONSIBILITY 2]',
+                '[RESPONSIBILITY 3]',
+              ]
+            }
+
+            return (
+              <div
+                key={key}
+                {...dragProps}
+                style={{
+                  position: 'absolute',
+                  left: spec.x * s,
+                  top: spec.y * s,
+                  width:
+                    (spec.w ?? selectedTpl.width - spec.x - 40) * s,
+                  height: spec.h ? spec.h * s : undefined,
+                  fontSize: spec.fontSize * s,
+                  lineHeight: 1.25,
+                  textAlign: spec.align ?? 'left',
+                  color: 'white',
+                  wordBreak: 'break-word',
+                  overflowWrap: 'anywhere',
+                  cursor: isDraggable ? 'move' : 'default',
+                  userSelect: 'none',
+                }}
+              >
+                <div
+                  style={{
+                    fontWeight: 700,
+                    color: TSI_RED,
+                    marginBottom: `${8 * s}px`,
+                    whiteSpace: 'pre-wrap',
+                  }}
+                >
+                  RESPONSIBILITIES
+                </div>
+                {respLines.map((line, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      paddingLeft: `${16 * s}px`,
+                      textIndent: `-${8 * s}px`,
+                      whiteSpace: 'pre-wrap',
+                      marginBottom: `${8 * s}px`,
+                      color: 'white',
+                    }}
+                  >
+                    {`• ${line}`}
+                  </div>
+                ))}
+              </div>
+            )
+          }
+
+          // generic text rendering
+          const isSalary = key === 'salary'
+          const textColor =
+            isSalary && isTSITemplate
+              ? TSI_RED // TSI salary red
+              : isSalary
+              ? BRAND_ORANGE // other templates salary orange
+              : 'white'
 
           return (
             <div
@@ -593,7 +693,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                 lineHeight: 1.25,
                 whiteSpace: 'pre-wrap',
                 textAlign: spec.align ?? 'left',
-                color: key === 'salary' ? '#F7941D' : 'white',
+                color: textColor,
                 fontWeight: key === 'title' ? 700 : 500,
                 wordBreak: 'break-word',
                 overflowWrap: 'anywhere',
@@ -620,6 +720,11 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
             const iconOffsetY = 15
             const locY = locOverride?.y ?? locSpec.y
 
+            const iconSrc =
+              selectedTpl.id === 'zitko-3'
+                ? '/templates/TSI-Location-Icon.png'
+                : '/templates/Location-Icon.png'
+
             return (
               <div
                 {...makeDragHandlers('location')}
@@ -638,7 +743,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                 }}
               >
                 <img
-                  src="/templates/Location-Icon.png"
+                  src={iconSrc}
                   alt="Location icon"
                   style={{
                     width: '100%',
@@ -964,7 +1069,11 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
               />
               <textarea
                 className="border rounded px-3 py-2 sm:col-span-2 min-h-[80px] text-sm"
-                placeholder="Short Description"
+                placeholder={
+                  isTSITemplate
+                    ? 'Responsibilities (one per line)'
+                    : 'Short Description'
+                }
                 value={job.description}
                 onChange={(e) =>
                   setJob({ ...job, description: e.target.value })
@@ -1006,7 +1115,9 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                     {key === 'salary'
                       ? 'Salary'
                       : key === 'description'
-                      ? 'Description'
+                      ? isTSITemplate
+                        ? 'Responsibilities'
+                        : 'Description'
                       : key}
                   </span>
                   <div className="relative">
