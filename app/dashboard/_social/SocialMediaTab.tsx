@@ -184,6 +184,8 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
   const isTSITemplate =
     selectedTpl.id === 'zitko-3' || selectedTpl.id === 'zitko-4'
 
+  const isTSIVideo = selectedTpl.id === 'zitko-4'
+
   const videoEnabled =
     selectedTpl.id === 'zitko-2' || selectedTpl.id === 'zitko-4'
 
@@ -417,7 +419,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             description: publicDesc,
-            mode: isTSI ? 'tsi' : 'default', // C: responsibilities from short-description
+            mode: isTSI ? 'tsi' : 'default', // responsibilities from short-description
           }),
         })
         if (teaser.ok) {
@@ -442,7 +444,6 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
         title: extracted?.title ?? data?.title ?? '',
         location: extracted?.location ?? data?.location ?? '',
         salary: extracted?.salary ?? data?.salary ?? '',
-        // C: responsibilities/description from short-description endpoint
         description: shortDesc,
         benefits:
           isTSITemplate && tsiBenefits
@@ -570,8 +571,10 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
             }
           })()
 
-          // BENEFITS special rendering (TSI gets heading in red)
+          // BENEFITS special rendering
           if (key === 'benefits') {
+            const showHeading = isTSITemplate && !isTSIVideo
+
             let benefitsLines: string[] = Array.isArray(job.benefits)
               ? (job.benefits as string[])
                   .map((s) => String(s).trim())
@@ -610,7 +613,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                   userSelect: 'none',
                 }}
               >
-                {isTSITemplate && (
+                {showHeading && (
                   <div
                     style={{
                       fontWeight: 700,
@@ -680,16 +683,18 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                   userSelect: 'none',
                 }}
               >
-                <div
-                  style={{
-                    fontWeight: 700,
-                    color: TSI_RED,
-                    marginBottom: `${8 * s}px`,
-                    whiteSpace: 'pre-wrap',
-                  }}
-                >
-                  RESPONSIBILITIES
-                </div>
+                {!isTSIVideo && (
+                  <div
+                    style={{
+                      fontWeight: 700,
+                      color: TSI_RED,
+                      marginBottom: `${8 * s}px`,
+                      whiteSpace: 'pre-wrap',
+                    }}
+                  >
+                    RESPONSIBILITIES
+                  </div>
+                )}
                 {respLines.map((line, i) => (
                   <div
                     key={i}
@@ -851,44 +856,38 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
   }
 
   async function downloadMp4() {
-  if (!videoPublicId || !videoEnabled) {
-    alert('Add a video on the Zitko-2 or TSI Video template first.');
-    return;
-  }
+    if (!videoPublicId || !videoEnabled) {
+      alert('Add a video on the Zitko-2 or TSI Video template first.')
+      return
+    }
 
-  const isTSITemplate =
-    selectedTplId === 'zitko-3' || selectedTplId === 'zitko-4';
+    const isTSITemplateLocal =
+      selectedTplId === 'zitko-3' || selectedTplId === 'zitko-4'
 
-  const payload = {
-    videoPublicId,
-    title: job.title || 'Job Title',
-    location: job.location || 'Location',
-    salary: job.salary || 'Salary',
+    const payload = {
+      videoPublicId,
+      title: job.title || 'Job Title',
+      location: job.location || 'Location',
+      salary: job.salary || 'Salary',
+      description: isTSITemplateLocal
+        ? String(job.description || '').trim()
+        : wrapText(String(job.description || 'Short description')),
+      benefits: isTSITemplateLocal
+        ? String(benefitsText || '').trim()
+        : benefitsText,
+      email: job.email || '',
+      phone: job.phone || '',
+      templateId: selectedTplId,
+      positions,
+      fontSizes,
+      videoPos,
+    }
 
-    // 🔴 IMPORTANT PART:
-    // For TSI we send the *exact* responsibilities + benefits text
-    // that drives the preview, no wrapText, no extra defaults.
-    description: isTSITemplate
-      ? String(job.description || '').trim()
-      : wrapText(String(job.description || 'Short description')),
-
-    benefits: isTSITemplate
-      ? String(benefitsText || '').trim()
-      : benefitsText,
-
-    email: job.email || '',
-    phone: job.phone || '',
-    templateId: selectedTplId,
-    positions,
-    fontSizes,
-    videoPos,
-  };
-
-  const res = await fetch('/api/job/download-mp4', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+    const res = await fetch('/api/job/download-mp4', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
 
     const contentType = res.headers.get('content-type') || ''
     const isJson = contentType.includes('application/json')
