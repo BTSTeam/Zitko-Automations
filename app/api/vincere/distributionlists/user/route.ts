@@ -3,7 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { config } from '@/lib/config';
 import { getSession } from '@/lib/session';
-import { vincereRefresh } from '@/lib/vincereRefresh';
+import { refreshIdToken } from '@/lib/vincereRefresh';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -110,7 +110,7 @@ export async function GET(req: NextRequest) {
     // -------------------------------------------------
     let res = await doFetch();
     if (res.status === 401 || res.status === 403) {
-      const ok = await vincereRefresh(userKey);
+      const ok = await refreshIdToken(userKey);
       if (!ok) {
         return NextResponse.json(
           { error: 'Auth refresh failed' },
