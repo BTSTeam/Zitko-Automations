@@ -8,9 +8,15 @@ type Tag = { id: string; tag: string }
 
 const TP_USER_ID = process.env.NEXT_PUBLIC_VINCERE_TALENTPOOL_USER_ID || '29018'
 
+type SourceMode = 'talentpool' | 'distribution'
+
 function normalizeEnvPw(s: string | undefined | null) {
   const t = String(s ?? '').trim()
-  if ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith("'") && t.endsWith("'"))) return t.slice(1, -1)
+  if (
+    (t.startsWith('"') && t.endsWith('"')) ||
+    (t.startsWith("'") && t.endsWith("'"))
+  )
+    return t.slice(1, -1)
   return t
 }
 const RAW_ENV = process.env.NEXT_PUBLIC_ACTIVE_CAMPAIGN_TAB ?? ''
@@ -42,11 +48,17 @@ export default function ActiveCampaignTab() {
   const [pw, setPw] = useState('')
   const [pwError, setPwError] = useState('')
 
+  // Source mode: Talent Pools vs Distribution Lists
+  const [sourceMode, setSourceMode] = useState<SourceMode | null>(null)
+
   function tryUnlock(e?: React.FormEvent) {
     e?.preventDefault()
-    if (!TAB_PW) return setPwError('Password is not configured on this deployment.')
-    if (pw.trim() === TAB_PW) { setUnlocked(true); setPwError('') }
-    else setPwError('Incorrect password. Access denied.')
+    if (!TAB_PW)
+      return setPwError('Password is not configured on this deployment.')
+    if (pw.trim() === TAB_PW) {
+      setUnlocked(true)
+      setPwError('')
+    } else setPwError('Incorrect password. Access denied.')
   }
 
   // State
@@ -99,35 +111,85 @@ export default function ActiveCampaignTab() {
     setPoolTotal(null)
     setConfirmSend(false)
     setCurrentTag('')
-    if (esRef.current) { esRef.current.close(); esRef.current = null }
+    if (esRef.current) {
+      esRef.current.close()
+      esRef.current = null
+    }
   }, [selectedTags, listName, poolId])
 
-  // Load data after unlock
+  // Load data after unlock & mode selection
   useEffect(() => {
-    if (!unlocked) return
+    if (!unlocked || !sourceMode) return
 
-    // Talent Pools
-    fetch('/api/vincere/talentpools/user', { cache: 'no-store' })
+    setMessage('')
+    setPools([])
+    setPoolId('')
+    setCandidates([])
+    setPoolTotal(null)
+    setProgress(null)
+
+    const url =
+      sourceMode === 'talentpool'
+        ? '/api/vincere/talentpools/user'
+        : '/api/vincere/distributionlists/user'
+
+    // Talent Pools or Distribution Lists
+    fetch(url, { cache: 'no-store' })
       .then(async (r) => {
         const used = r.headers.get('x-vincere-userid') || ''
-        if (!r.ok) throw new Error(`Pools fetch ${r.status}. userId=${used}. ${await r.text()}`)
+        if (!r.ok)
+          throw new Error(
+            `Pools fetch ${r.status}. userId=${used}. ${await r.text()}`,
+          )
         const data = await r.json()
         const arr: any[] =
-          Array.isArray(data?.pools) ? data.pools :
-          Array.isArray(data?.docs) ? data.docs :
-          Array.isArray(data?.items) ? data.items :
-          Array.isArray(data) ? data : []
+          Array.isArray(data?.pools)
+            ? data.pools
+            : Array.isArray(data?.docs)
+            ? data.docs
+            : Array.isArray(data?.items)
+            ? data.items
+            : Array.isArray(data)
+            ? data
+            : []
 
-        const mapped: Pool[] = arr.map((p: any) => ({
-          id: p.id ?? p.pool_id ?? p.talent_pool_id ?? String(p?.uid ?? ''),
-          name: p.name ?? p.title ?? p.pool_name ?? '(unnamed pool)',
-        })).filter((p) => p.id)
+        const mapped: Pool[] = arr
+          .map((p: any) => ({
+            id:
+              p.id ??
+              p.pool_id ??
+              p.talent_pool_id ??
+              p.distribution_list_id ??
+              String(p?.uid ?? ''),
+            name:
+              p.name ??
+              p.title ??
+              p.pool_name ??
+              p.list_name ??
+              '(unnamed list)',
+          }))
+          .filter((p) => p.id)
 
         setPools(mapped)
-        if (mapped.length && !poolId) setPoolId(String(mapped[0].id))
-        if (!mapped.length) setMessage('No Talent Pools returned for user.')
+        if (mapped.length) setPoolId(String(mapped[0].id))
+        if (!mapped.length) {
+          setMessage(
+            sourceMode === 'talentpool'
+              ? 'No Talent Pools returned for user.'
+              : 'No Distribution Lists returned for user.',
+          )
+        }
       })
-      .catch((e) => { setPools([]); setMessage(e?.message ?? 'Failed to load Talent Pools') })
+      .catch((e) => {
+        setPools([])
+        setPoolId('')
+        setMessage(
+          e?.message ??
+            (sourceMode === 'talentpool'
+              ? 'Failed to load Talent Pools'
+              : 'Failed to load Distribution Lists'),
+        )
+      })
 
     // ActiveCampaign Tags
     fetch('/api/activecampaign/tags', { cache: 'no-store' })
@@ -136,73 +198,180 @@ export default function ActiveCampaignTab() {
         if (data?.error) return setTags([])
         const raw = Array.isArray(data?.tags) ? data.tags : []
         const filtered = raw
-          .filter((t: any) => String(t?.tag || '').trim().toLowerCase() !== 'customer')
+          .filter(
+            (t: any) =>
+              String(t?.tag || '').trim().toLowerCase() !== 'customer',
+          )
           .sort((a: any, b: any) => String(a.tag).localeCompare(String(b.tag)))
         setTags(filtered)
       })
       .catch(() => setTags([]))
-  }, [unlocked, poolId])
+  }, [unlocked, sourceMode])
 
   const filteredTags = useMemo(
-    () => tags.filter(t => t.tag.toLowerCase().includes(tagQuery.toLowerCase())),
-    [tags, tagQuery]
+    () =>
+      tags.filter((t) =>
+        t.tag.toLowerCase().includes(tagQuery.toLowerCase()),
+      ),
+    [tags, tagQuery],
   )
 
   async function retrievePoolCandidates() {
     setMessage('')
-    if (!poolId) { setMessage('Select a Talent Pool'); return }
+
+    if (!sourceMode) {
+      setMessage('Select a source (Talent Pools or Distribution Lists) first.')
+      return
+    }
+
+    if (!poolId) {
+      setMessage(
+        sourceMode === 'talentpool'
+          ? 'Select a Talent Pool'
+          : 'Select a Distribution List',
+      )
+      return
+    }
+
     setLoading(true)
     try {
-      const qs = new URLSearchParams({ limit: String(SAMPLE_PREVIEW_LIMIT), rows: String(SAMPLE_PREVIEW_LIMIT) }).toString()
-      const res = await fetch(`/api/vincere/talentpool/${encodeURIComponent(poolId)}/user/${encodeURIComponent(TP_USER_ID)}/candidates?${qs}`, { cache: 'no-store' })
-      if (!res.ok) throw new Error(`Failed to fetch pool candidates (${res.status}): ${await res.text()}`)
+      const qs = new URLSearchParams({
+        limit: String(SAMPLE_PREVIEW_LIMIT),
+        rows: String(SAMPLE_PREVIEW_LIMIT),
+      }).toString()
+
+      const endpoint =
+        sourceMode === 'talentpool'
+          ? `/api/vincere/talentpool/${encodeURIComponent(
+              poolId,
+            )}/user/${encodeURIComponent(TP_USER_ID)}/candidates?${qs}`
+          : `/api/vincere/distributionlists/${encodeURIComponent(
+              poolId,
+            )}/user/${encodeURIComponent(TP_USER_ID)}/contacts?${qs}`
+
+      const res = await fetch(endpoint, { cache: 'no-store' })
+      if (!res.ok)
+        throw new Error(
+          `Failed to fetch ${
+            sourceMode === 'talentpool' ? 'pool candidates' : 'list contacts'
+          } (${res.status}): ${await res.text()}`,
+        )
+
       const data = await res.json()
-      const rows: Candidate[] = Array.isArray(data?.candidates) ? data.candidates : []
+
+      let rows: Candidate[] = []
+
+      if (sourceMode === 'talentpool') {
+        rows = Array.isArray(data?.candidates) ? data.candidates : []
+      } else {
+        // distribution list contacts – our route already normalises the shape
+        rows = Array.isArray(data?.contacts) ? data.contacts : []
+      }
+
       setCandidates(rows)
 
       const headerTotalStr = res.headers.get('x-vincere-total')
-      const headerTotal = headerTotalStr && headerTotalStr.trim() !== '' ? Number(headerTotalStr) : NaN
+      const headerTotal =
+        headerTotalStr && headerTotalStr.trim() !== ''
+          ? Number(headerTotalStr)
+          : NaN
       let total: number | null =
-        typeof data?.meta?.total === 'number' ? data.meta.total :
-        !Number.isNaN(headerTotal) ? headerTotal : null
+        typeof data?.meta?.total === 'number'
+          ? data.meta.total
+          : !Number.isNaN(headerTotal)
+          ? headerTotal
+          : null
       setPoolTotal(total)
 
-      try {
-        const cRes = await fetch(`/api/vincere/talentpool/${encodeURIComponent(poolId)}/count`, { cache: 'no-store' })
-        if (cRes.ok) {
-          const cData = await cRes.json().catch(() => ({}))
-          const h2 = cRes.headers.get('x-vincere-total')
-          const n2 = h2 && h2.trim() !== '' ? Number(h2) : NaN
-          const t2 = typeof cData?.total === 'number' ? cData.total : !Number.isNaN(n2) ? n2 : null
-          if (t2 != null) setPoolTotal(t2)
+      // For Talent Pools we have an extra /count endpoint
+      if (sourceMode === 'talentpool') {
+        try {
+          const cRes = await fetch(
+            `/api/vincere/talentpool/${encodeURIComponent(poolId)}/count`,
+            { cache: 'no-store' },
+          )
+          if (cRes.ok) {
+            const cData = await cRes.json().catch(() => ({}))
+            const h2 = cRes.headers.get('x-vincere-total')
+            const n2 = h2 && h2.trim() !== '' ? Number(h2) : NaN
+            const t2 =
+              typeof cData?.total === 'number'
+                ? cData.total
+                : !Number.isNaN(n2)
+                ? n2
+                : null
+            if (t2 != null) setPoolTotal(t2)
+          }
+        } catch {
+          // ignore
         }
-      } catch {}
+      }
 
-      if (!rows.length) setMessage('No candidates found in this pool.')
+      if (!rows.length) {
+        setMessage(
+          sourceMode === 'talentpool'
+            ? 'No candidates found in this pool.'
+            : 'No contacts found in this distribution list.',
+        )
+      }
     } catch (e: any) {
-      setMessage(e?.message ?? 'Failed to load candidates')
-      setCandidates([]); setPoolTotal(null)
-    } finally { setLoading(false) }
+      setMessage(
+        e?.message ??
+          (sourceMode === 'talentpool'
+            ? 'Failed to load candidates'
+            : 'Failed to load contacts'),
+      )
+      setCandidates([])
+      setPoolTotal(null)
+    } finally {
+      setLoading(false)
+    }
   }
 
-  const acEnabled = (selectedTags.length > 0 || listName.trim().length > 0) && poolId !== ''
+  const acEnabled =
+    (selectedTags.length > 0 || listName.trim().length > 0) && poolId !== ''
 
   // ---- helper: run ONE import job (single tag) and resolve on finish
-  async function runSingleImport(tagName: string | undefined, listId: number | null) {
+  async function runSingleImport(
+    tagName: string | undefined,
+    listId: number | null,
+  ) {
+    if (!sourceMode)
+      throw new Error('Source mode not selected (internal error).')
+
+    const url =
+      sourceMode === 'talentpool'
+        ? '/api/activecampaign/import-pool/start'
+        : '/api/activecampaign/import-distribution/start'
+
+    const body =
+      sourceMode === 'talentpool'
+        ? {
+            poolId,
+            userId: TP_USER_ID,
+            tagName: tagName || undefined, // same backend field as before
+            listId: listId ?? undefined,
+            rows: 200,
+            max: 100000,
+            chunk: 25,
+            pauseMs: 150,
+          }
+        : {
+            distributionListsId: poolId,
+            userId: TP_USER_ID,
+            tagName: tagName || undefined,
+            listId: listId ?? undefined,
+            rows: 200,
+            max: 100000,
+            chunk: 25,
+            pauseMs: 150,
+          }
+
     // start job
-    const res = await fetch('/api/activecampaign/import-pool/start', {
+    const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        poolId,
-        userId: TP_USER_ID,
-        tagName: tagName || undefined, // same backend field as before
-        listId: listId ?? undefined,
-        rows: 200,
-        max: 100000,
-        chunk: 25,
-        pauseMs: 150,
-      }),
+      body: JSON.stringify(body),
     })
     const data = await res.json()
     if (!res.ok || !data?.jobId) {
@@ -211,7 +380,10 @@ export default function ActiveCampaignTab() {
 
     // listen to progress via SSE and resolve when done
     if (esRef.current) esRef.current.close()
-    const es = new EventSource(`/api/activecampaign/import-pool/progress/${data.jobId}`)
+    // We reuse the same progress endpoint for both types
+    const es = new EventSource(
+      `/api/activecampaign/import-pool/progress/${data.jobId}`,
+    )
     esRef.current = es
 
     await new Promise<void>((resolve, reject) => {
@@ -220,10 +392,15 @@ export default function ActiveCampaignTab() {
         setProgress(payload)
         if (payload?.tagName) setCurrentTag(payload.tagName)
         if (payload.status === 'done') {
-          es.close(); esRef.current = null
+          es.close()
+          esRef.current = null
           resolve()
-        } else if (payload.status === 'error' || payload.status === 'not-found') {
-          es.close(); esRef.current = null
+        } else if (
+          payload.status === 'error' ||
+          payload.status === 'not-found'
+        ) {
+          es.close()
+          esRef.current = null
           reject(new Error(payload.error || 'Import failed'))
         }
       }
@@ -239,7 +416,7 @@ export default function ActiveCampaignTab() {
     setCurrentTag('')
 
     // normalize inputs
-    const tagsToApply = selectedTags.map(t => t.trim()).filter(Boolean)
+    const tagsToApply = selectedTags.map((t) => t.trim()).filter(Boolean)
     const effectiveList = listName.trim()
 
     if (tagsToApply.length === 0 && !effectiveList) {
@@ -289,14 +466,18 @@ export default function ActiveCampaignTab() {
   }
 
   function handleSendClick() {
-    if (!confirmSend) { setConfirmSend(true); return }
-    setConfirmSend(false); sendToActiveCampaign()
+    if (!confirmSend) {
+      setConfirmSend(true)
+      return
+    }
+    setConfirmSend(false)
+    sendToActiveCampaign()
   }
 
   function onTagFieldKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
     if (e.key === 'Backspace' && selectedTags.length && !tagQuery) {
       e.preventDefault()
-      setSelectedTags(prev => prev.slice(0, -1))
+      setSelectedTags((prev) => prev.slice(0, -1))
       setConfirmSend(false)
     }
   }
@@ -305,34 +486,61 @@ export default function ActiveCampaignTab() {
   const totalInPool = (progress?.totals?.poolTotal ?? poolTotal) ?? null
   const sent = progress?.totals?.sent ?? 0
   const denominator = (progress?.totals?.valid ?? totalInPool) ?? null
-  const percent = denominator && denominator > 0 ? Math.min(100, Math.round((sent / denominator) * 100)) : 0
-  const fmt = (n: number | null | undefined) => typeof n === 'number' ? new Intl.NumberFormat().format(n) : '—'
+  const percent =
+    denominator && denominator > 0
+      ? Math.min(100, Math.round((sent / denominator) * 100))
+      : 0
+  const fmt = (n: number | null | undefined) =>
+    typeof n === 'number' ? new Intl.NumberFormat().format(n) : '—'
   const RING_SIZE = 360
   const RING_THICKNESS = 28
-  const pctDeg = Math.max(0, Math.min(360, Math.round((percent / 100) * 360)))
+  const pctDeg = Math.max(
+    0,
+    Math.min(360, Math.round((percent / 100) * 360)),
+  )
+
+  // -------------------------------
+  //  Render
+  // -------------------------------
 
   if (!unlocked) {
     return (
       <div className="relative min-h-[60vh]">
         <div className="absolute inset-0 grid place-items-center bg-white">
-          <form onSubmit={tryUnlock} className="w-full max-w-sm rounded-2xl border bg-white p-6 shadow-sm">
+          <form
+            onSubmit={tryUnlock}
+            className="w-full max-w-sm rounded-2xl border bg-white p-6 shadow-sm"
+          >
             <div className="text-center mb-4">
-              <div className="text-4xl">🔒</div>
+              <div className="text-4xl" />
               <h2 className="mt-2 text-lg font-semibold">Restricted Area</h2>
-              <p className="text-sm text-gray-600">Enter the password to access Active Campaign tools.</p>
+              <p className="text-sm text-gray-600">
+                Enter the password to access Active Campaign tools.
+              </p>
             </div>
             <label className="grid gap-1">
               <span className="text-sm font-medium">Password</span>
               <input
                 type="password"
-                className={`rounded-xl border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#001961] ${pwError ? 'border-red-500' : ''}`}
+                className={`rounded-xl border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#001961] ${
+                  pwError ? 'border-red-500' : ''
+                }`}
                 value={pw}
-                onChange={(e) => { setPw(e.target.value); if (pwError) setPwError('') }}
-                placeholder="••••••••" autoFocus
+                onChange={(e) => {
+                  setPw(e.target.value)
+                  if (pwError) setPwError('')
+                }}
+                placeholder="••••••••"
+                autoFocus
               />
             </label>
-            {pwError && <div className="mt-2 text-sm text-red-600">{pwError}</div>}
-            <button type="submit" className="mt-4 w-full rounded-full px-5 py-3 font-medium !bg-[#001961] !text-white hover:opacity-95">
+            {pwError && (
+              <div className="mt-2 text-sm text-red-600">{pwError}</div>
+            )}
+            <button
+              type="submit"
+              className="mt-4 w-full rounded-full px-5 py-3 font-medium !bg-[#001961] !text-white hover:opacity-95"
+            >
               Unlock
             </button>
           </form>
@@ -341,17 +549,70 @@ export default function ActiveCampaignTab() {
     )
   }
 
+  // Popup to choose Talent Pools vs Distribution Lists
+  if (unlocked && !sourceMode) {
+    const chooseMode = (mode: SourceMode) => {
+      setSourceMode(mode)
+      setPools([])
+      setPoolId('')
+      setCandidates([])
+      setPoolTotal(null)
+      setMessage('')
+      setProgress(null)
+    }
+
+    return (
+      <div className="relative min-h-[60vh]">
+        <div className="absolute inset-0 bg-black/30 flex items-center justify-center z-10">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-lg">
+            <h2 className="text-lg font-semibold mb-2">Choose data source</h2>
+            <p className="text-sm text-gray-600 mb-4">
+              What would you like to send to ActiveCampaign?
+            </p>
+            <div className="grid gap-3">
+              <button
+                type="button"
+                onClick={() => chooseMode('talentpool')}
+                className="w-full rounded-xl border px-4 py-3 text-left hover:bg-gray-50"
+              >
+                <div className="font-medium">Talent Pools</div>
+                <div className="text-xs text-gray-600">
+                  Select candidates from a Vincere Talent Pool.
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => chooseMode('distribution')}
+                className="w-full rounded-xl border px-4 py-3 text-left hover:bg-gray-50"
+              >
+                <div className="font-medium">Distribution Lists</div>
+                <div className="text-xs text-gray-600">
+                  Select contacts from a Vincere Distribution List.
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Main UI
   return (
     <div className="grid gap-6">
       {/* Controls Card */}
       <div className="rounded-2xl border bg-white p-4 overflow-visible">
         {/* Two rows x two cols:
-            Row 1 = Talent Pool (L) + Tags (R)
+            Row 1 = Talent Pool/List (L) + Tags (R)
             Row 2 = Active Campaign List (L) + Buttons (R) */}
         <div className="grid gap-4 md:grid-cols-2 md:grid-rows-[auto_auto] items-start">
-          {/* Row 1, Col 1 — Talent Pool */}
+          {/* Row 1, Col 1 — Talent Pool / Distribution List */}
           <label className="grid gap-1">
-            <span className="text-sm font-medium">Talent Pool</span>
+            <span className="text-sm font-medium">
+              {sourceMode === 'distribution'
+                ? 'Distribution List'
+                : 'Talent Pool'}
+            </span>
             <div className="relative">
               <select
                 value={poolId}
@@ -359,14 +620,24 @@ export default function ActiveCampaignTab() {
                 className="w-full rounded-xl border px-3 py-2 appearance-none pr-9 focus:outline-none focus:ring-2 focus:ring-[#001961]"
               >
                 {pools.length === 0 ? (
-                  <option value="" disabled>No Talent Pools</option>
+                  <option value="" disabled>
+                    {sourceMode === 'distribution'
+                      ? 'No Distribution Lists'
+                      : 'No Talent Pools'}
+                  </option>
                 ) : (
                   pools.map((p) => (
-                    <option key={`${p.id}`} value={`${p.id}`}>{p.name}</option>
+                    <option key={`${p.id}`} value={`${p.id}`}>
+                      {p.name}
+                    </option>
                   ))
                 )}
               </select>
-              <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" viewBox="0 0 20 20" fill="currentColor">
+              <svg
+                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+              >
                 <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.116l3.71-2.885a.75.75 0 1 1 .92 1.18l-4.2 3.265a.75.75 0 0 1-.92 0L5.25 8.39a.75.75 0 0 1-.02-1.18z" />
               </svg>
             </div>
@@ -382,20 +653,24 @@ export default function ActiveCampaignTab() {
               role="combobox"
               aria-expanded={tagOpen}
               tabIndex={0}
-              onClick={() => setTagOpen(o => !o)}
+              onClick={() => setTagOpen((o) => !o)}
               onKeyDown={onTagFieldKeyDown}
               className="w-full rounded-xl border px-2 py-1.5 min-h-[42px] flex items-center flex-wrap gap-2
                          focus-within:ring-2 focus-within:ring-[#001961] bg-white cursor-text"
             >
               {selectedTags.length === 0 && (
-                <span className="text-sm text-gray-400 px-1">No tags selected</span>
+                <span className="text-sm text-gray-400 px-1">
+                  No tags selected
+                </span>
               )}
 
               {selectedTags.map((t) => (
                 <span
                   key={t}
                   className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm bg-gray-50"
-                  onClick={(e) => { e.stopPropagation() }}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                  }}
                 >
                   {t}
                   <button
@@ -405,7 +680,7 @@ export default function ActiveCampaignTab() {
                     className="text-gray-500 hover:text-gray-700"
                     onClick={(e) => {
                       e.stopPropagation()
-                      setSelectedTags(prev => prev.filter(x => x !== t))
+                      setSelectedTags((prev) => prev.filter((x) => x !== t))
                       setConfirmSend(false)
                     }}
                   >
@@ -417,7 +692,9 @@ export default function ActiveCampaignTab() {
               {/* caret */}
               <svg
                 className="ml-auto mr-1 h-4 w-4 text-gray-500 pointer-events-none"
-                viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                aria-hidden="true"
               >
                 <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.116l3.71-2.885a.75.75 0 1 1 .92 1.18l-4.2 3.265a.75.75 0 0 1-.92 0L5.25 8.39a.75.75 0 0 1-.02-1.18z" />
               </svg>
@@ -432,7 +709,9 @@ export default function ActiveCampaignTab() {
                 <div className="border-b px-3 py-2">
                   <input
                     value={tagQuery}
-                    onChange={(e) => { setTagQuery(e.target.value) }}
+                    onChange={(e) => {
+                      setTagQuery(e.target.value)
+                    }}
                     placeholder="Search tags..."
                     className="w-full outline-none text-sm"
                     autoFocus
@@ -446,7 +725,11 @@ export default function ActiveCampaignTab() {
                         key={t.id}
                         className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 cursor-pointer select-none"
                         onClick={() => {
-                          setSelectedTags(prev => checked ? prev.filter(x => x !== t.tag) : [...prev, t.tag])
+                          setSelectedTags((prev) =>
+                            checked
+                              ? prev.filter((x) => x !== t.tag)
+                              : [...prev, t.tag],
+                          )
                           setConfirmSend(false)
                         }}
                       >
@@ -461,7 +744,9 @@ export default function ActiveCampaignTab() {
                     )
                   })}
                   {filteredTags.length === 0 && (
-                    <div className="px-3 py-3 text-sm text-gray-500">No tags match your search.</div>
+                    <div className="px-3 py-3 text-sm text-gray-500">
+                      No tags match your search.
+                    </div>
                   )}
                 </div>
               </div>
@@ -486,20 +771,28 @@ export default function ActiveCampaignTab() {
               onClick={retrievePoolCandidates}
               disabled={loading || !poolId || isSending}
               className={`rounded-full px-6 py-3 font-medium shadow-sm transition
-                ${!loading && poolId && !isSending
-                  ? '!bg-[#001961] !text-white hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#001961]'
-                  : 'bg-gray-100 text-gray-500 cursor-not-allowed'}`}
+                ${
+                  !loading && poolId && !isSending
+                    ? '!bg-[#001961] !text-white hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#001961]'
+                    : 'bg-gray-100 text-gray-500 cursor-not-allowed'
+                }`}
             >
-              {loading ? 'Retrieving…' : 'Retrieve TP Candidates'}
+              {loading
+                ? 'Retrieving…'
+                : sourceMode === 'distribution'
+                ? 'Retrieve Contacts'
+                : 'Retrieve TP Candidates'}
             </button>
 
             <button
               onClick={handleSendClick}
               disabled={!acEnabled || isSending}
               className={`rounded-full px-5 py-3 font-medium shadow-sm transition 
-                ${acEnabled && !isSending
-                  ? '!bg-[#001961] !text-white hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#001961]'
-                  : 'bg-gray-100 text-gray-500 cursor-not-allowed'}`}
+                ${
+                  acEnabled && !isSending
+                    ? '!bg-[#001961] !text-white hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#001961]'
+                    : 'bg-gray-100 text-gray-500 cursor-not-allowed'
+                }`}
               aria-live="polite"
             >
               {sendState === 'success'
@@ -516,6 +809,14 @@ export default function ActiveCampaignTab() {
         {message && sendState !== 'success' && (
           <div className="mt-2 text-sm text-gray-700">{message}</div>
         )}
+
+        {candidates.length > 0 && (
+          <div className="mt-4 text-xs text-gray-500">
+            Previewing {candidates.length} of{' '}
+            {fmt(poolTotal ?? candidates.length)}{' '}
+            {sourceMode === 'distribution' ? 'contacts' : 'candidates'}.
+          </div>
+        )}
       </div>
 
       {/* Progress Card */}
@@ -523,23 +824,43 @@ export default function ActiveCampaignTab() {
         <div className="text-[#001961] font-semibold text-lg">
           {selectedTags.length && listName.trim() ? (
             <>
-              Tagging candidates as <span className="font-normal text-gray-600">“{selectedTags.join(', ')}”</span> and adding to list <span className="font-normal text-gray-600">“{listName.trim()}”</span>
+              {sourceMode === 'distribution' ? 'Tagging contacts' : 'Tagging candidates'} as{' '}
+              <span className="font-normal text-gray-600">
+                “{selectedTags.join(', ')}”
+              </span>{' '}
+              and adding to list{' '}
+              <span className="font-normal text-gray-600">
+                “{listName.trim()}”
+              </span>
             </>
           ) : selectedTags.length ? (
-            <>Tagging candidates as <span className="font-normal text-gray-600">“{selectedTags.join(', ')}”</span></>
+            <>
+              {sourceMode === 'distribution' ? 'Tagging contacts' : 'Tagging candidates'} as{' '}
+              <span className="font-normal text-gray-600">
+                “{selectedTags.join(', ')}”
+              </span>
+            </>
           ) : listName.trim() ? (
-            <>Adding candidates to list <span className="font-normal text-gray-600">“{listName.trim()}”</span></>
+            <>
+              Adding{' '}
+              {sourceMode === 'distribution' ? 'contacts' : 'candidates'} to list{' '}
+              <span className="font-normal text-gray-600">
+                “{listName.trim()}”
+              </span>
+            </>
           ) : (
             <>No tag or list specified</>
           )}
         </div>
 
         {currentTag && sendState === 'sending' && (
-          <div className="mt-1 text-sm text-gray-500">Applying tag: “{currentTag}”</div>
+          <div className="mt-1 text-sm text-gray-500">
+            Applying tag: “{currentTag}”
+          </div>
         )}
 
         <div className="mt-6 flex items-center justify-center">
-          <div className="relative" style={{ width: 360, height: 360 }}>
+          <div className="relative" style={{ width: RING_SIZE, height: RING_SIZE }}>
             <div
               className="absolute inset-0 rounded-full"
               style={{
@@ -549,16 +870,28 @@ export default function ActiveCampaignTab() {
                 filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.06))',
               }}
             />
-            <div className="absolute rounded-full bg-white" style={{ inset: RING_THICKNESS, boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.05)' }} />
+            <div
+              className="absolute rounded-full bg-white"
+              style={{
+                inset: RING_THICKNESS,
+                boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.05)',
+              }}
+            />
             <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-              <div className="text-xs text-gray-500">{fmt(sent)} of {fmt(denominator)}</div>
-              <div className="text-5xl font-bold text-[#001961] mt-1">{percent}%</div>
+              <div className="text-xs text-gray-500">
+                {fmt(sent)} of {fmt(denominator)}
+              </div>
+              <div className="text-5xl font-bold text-[#001961] mt-1">
+                {percent}%
+              </div>
             </div>
           </div>
         </div>
 
         {progress?.status === 'error' && (
-          <div className="mt-4 text-sm text-red-600">{progress?.error || 'Import failed'}</div>
+          <div className="mt-4 text-sm text-red-600">
+            {progress?.error || 'Import failed'}
+          </div>
         )}
       </div>
     </div>
