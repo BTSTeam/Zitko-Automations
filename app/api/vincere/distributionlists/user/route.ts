@@ -72,8 +72,8 @@ export async function GET(req: NextRequest) {
   try {
     // Get session + id-token
     let session = await getSession();
-    let idToken = session?.idToken;
-    const userKey = session?.email ?? 'unknown';
+    let idToken = session.tokens?.idToken;
+    const userKey = session.user?.email ?? 'unknown';
 
     if (!idToken) {
       return NextResponse.json(
@@ -119,15 +119,15 @@ export async function GET(req: NextRequest) {
       }
 
       session = await getSession();
-      idToken = session?.idToken;
-
+      idToken = session.tokens?.idToken;
+    
       if (!idToken) {
         return NextResponse.json(
           { error: 'No idToken after refresh' },
           { status: 401 }
         );
       }
-
+    
       headers.set('id-token', idToken);
       headers.set('Authorization', `Bearer ${idToken}`);
       res = await doFetch();
