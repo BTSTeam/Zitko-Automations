@@ -97,7 +97,7 @@ export async function GET(req: NextRequest) {
 
     const headers = new Headers({
       'id-token': idToken,
-      'x-api-key': config.VINCERE_PUBLIC_API_KEY || config.VINCERE_API_KEY,
+      'x-api-key': (config as any).VINCERE_PUBLIC_API_KEY || config.VINCERE_API_KEY,
       accept: 'application/json',
       Authorization: `Bearer ${idToken}`,
     });
