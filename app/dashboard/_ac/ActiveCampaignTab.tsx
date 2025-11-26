@@ -810,11 +810,11 @@ export default function ActiveCampaignTab() {
           <div className="mt-2 text-sm text-gray-700">{message}</div>
         )}
 
-        {candidates.length > 0 && (
+        {(poolTotal != null || candidates.length > 0) && (
           <div className="mt-4 text-xs text-gray-500">
-            Previewing {candidates.length} of{' '}
-            {fmt(poolTotal ?? candidates.length)}{' '}
-            {sourceMode === 'distribution' ? 'contacts' : 'candidates'}.
+            {sourceMode === 'distribution'
+              ? <>Retrieved {fmt(poolTotal ?? candidates.length)} contacts in this list.</>
+              : <>Retrieved {fmt(poolTotal ?? candidates.length)} candidates in this pool.</>}
           </div>
         )}
       </div>
