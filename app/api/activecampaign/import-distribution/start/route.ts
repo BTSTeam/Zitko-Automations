@@ -201,12 +201,10 @@ export async function POST(req: NextRequest) {
 
       // 🔁 keep the loop – we just change the URL inside it
       while (!last && job.totals.valid < max && sliceIndex < 400) {
-        const url = `${BASE}/distributionlists/${encodeURIComponent(
-          poolId,
-        )}/user/${encodeURIComponent(
-          userId,
-        )}/contacts/slice?slice_index=${sliceIndex}`
-
+        const url = `${BASE}/distributionlist/${encodeURIComponent(
+          poolId
+        )}/user/${encodeURIComponent(userId)}/contacts?index=${sliceIndex}`
+      
         const res = await withRefresh(() => doGet(url))
 
         if (!res.ok) {
