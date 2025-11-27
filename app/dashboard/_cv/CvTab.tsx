@@ -1566,11 +1566,14 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                     form.employment.map((e, i) => {
                       const canUp = i > 0
                       const canDown = i < form.employment.length - 1
-
+                    
                       return (
-                        <div key={i} className="border rounded-xl p-3 grid gap-2 relative">
-                          {/* per-role reorder controls */}
-                          <div className="absolute left-2 top-2 flex items-center gap-1">
+                        <div
+                          key={i}
+                          className="border rounded-xl p-3 grid gap-2 relative pt-8"
+                        >
+                          {/* per-role reorder controls (now on a small chip) */}
+                          <div className="absolute left-2 top-2 flex items-center gap-1 z-10 bg-white/90 px-1.5 py-0.5 rounded">
                             <button
                               type="button"
                               className="text-[11px] text-gray-500 disabled:opacity-30"
@@ -1590,18 +1593,17 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                               ▼
                             </button>
                           </div>
-
+                    
                           <button
                             type="button"
-                            className="absolute right-2 top-2 text-[11px] text-gray-500 underline"
+                            className="absolute right-2 top-2 text-[11px] text-gray-500 underline z-10 bg-white/90 px-1 rounded"
                             onClick={() => removeEmployment(i)}
                             title="Remove this role"
                           >
                             Remove role
                           </button>
-
+                    
                           <label className="grid gap-1">
-                            <span className="sr-only">Title</span>
                             <input
                               className={`input ${prefill.employment?.[i]?.title ? 'text-[11px]' : ''}`}
                               placeholder="Title"
@@ -1617,10 +1619,9 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                               }}
                             />
                           </label>
-
+                    
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             <label className="grid gap-1">
-                              <span className="sr-only">Company</span>
                               <input
                                 className={`input ${prefill.employment?.[i]?.company ? 'text-[11px]' : ''}`}
                                 placeholder="Company"
@@ -1636,10 +1637,9 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                                 }}
                               />
                             </label>
-
+                    
                             <div className="grid grid-cols-2 gap-2">
                               <label className="grid gap-1">
-                                <span className="sr-only">Start</span>
                                 <input
                                   className={`input ${prefill.employment?.[i]?.start ? 'text-[11px]' : ''}`}
                                   placeholder="Start"
@@ -1655,9 +1655,8 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                                   }}
                                 />
                               </label>
-
+                    
                               <label className="grid gap-1">
-                                <span className="sr-only">End</span>
                                 <input
                                   className={`input ${prefill.employment?.[i]?.end ? 'text-[11px]' : ''}`}
                                   placeholder="End"
@@ -1675,9 +1674,8 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                               </label>
                             </div>
                           </div>
-
+                    
                           <label className="grid gap-1">
-                            <span className="sr-only">Description</span>
                             <textarea
                               className={`input min-h-[80px] ${prefill.employment?.[i]?.description ? 'text-[11px]' : ''}`}
                               placeholder="Description"
@@ -1733,11 +1731,14 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                     form.education.map((e, i) => {
                       const canUp = i > 0
                       const canDown = i < form.education.length - 1
-
+                    
                       return (
-                        <div key={i} className="border rounded-xl p-3 grid gap-3 relative">
+                        <div
+                          key={i}
+                          className="border rounded-xl p-3 grid gap-3 relative pt-8"
+                        >
                           {/* per-qualification reorder controls */}
-                          <div className="absolute left-2 top-2 flex items-center gap-1">
+                          <div className="absolute left-2 top-2 flex items-center gap-1 z-10 bg-white/90 px-1.5 py-0.5 rounded">
                             <button
                               type="button"
                               className="text-[11px] text-gray-500 disabled:opacity-30"
@@ -1757,22 +1758,20 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                               ▼
                             </button>
                           </div>
-
+                    
                           <button
                             type="button"
-                            className="absolute right-2 top-2 text-[11px] text-gray-500 underline"
+                            className="absolute right-2 top-2 text-[11px] text-gray-500 underline z-10 bg-white/90 px-1 rounded"
                             onClick={() => removeEducation(i)}
                             title="Remove this qualification"
                           >
                             Remove qualification
                           </button>
-
-                          {/* Institution (bound to course for bold title) */}
+                    
                           <label className="grid gap-1">
-                            <span className="sr-only">Institution</span>
                             <input
                               className="input text-[11px]"
-                              placeholder="Institution (e.g. University of Cambridge)"
+                              placeholder="Institution"
                               value={e.course || ''}
                               onChange={(ev) => {
                                 const v = ev.target.value
@@ -1784,12 +1783,12 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                               }}
                             />
                           </label>
-
+                    
                           <div className="grid grid-cols-2 gap-2">
                             <label className="grid gap-1">
-                              <span className="sr-only">Start</span>
                               <input
                                 className="input text-[11px]"
+                                placeholder="Start"
                                 value={e.start || ''}
                                 onChange={(ev) => {
                                   const v = ev.target.value
@@ -1799,14 +1798,13 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                                     return copy
                                   })
                                 }}
-                                placeholder="Start (e.g. 2019-09 or 09/2019)"
                               />
                             </label>
-
+                    
                             <label className="grid gap-1">
-                              <span className="sr-only">End</span>
                               <input
                                 className="input text-[11px]"
+                                placeholder="End"
                                 value={e.end || ''}
                                 onChange={(ev) => {
                                   const v = ev.target.value
@@ -1816,15 +1814,14 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                                     return copy
                                   })
                                 }}
-                                placeholder="End (e.g. 2022-06 or 06/2022)"
                               />
                             </label>
                           </div>
-
+                    
                           <label className="grid gap-1">
-                            <span className="sr-only">Description</span>
                             <textarea
                               className="input min-h-[120px] resize-y text-[11px]"
+                              placeholder="Description"
                               value={e.institution || ''}
                               onChange={(ev) => {
                                 const v = ev.target.value
@@ -1834,7 +1831,6 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                                   return copy
                                 })
                               }}
-                              placeholder={`Description (course details, modules, awards...)\n(Press Enter for new lines)`}
                             />
                             <span className="text-[10px] text-gray-400">
                               Line breaks will be preserved in the PDF.
