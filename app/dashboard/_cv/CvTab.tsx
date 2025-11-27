@@ -495,26 +495,77 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
     )
   }
 
-  function addEmployment() {
-    setForm(prev => ({
-      ...prev,
-      employment: [...prev.employment, { title: '', company: '', start: '', end: '', description: '' }],
-    }))
-    setPrefill(prev => ({
-      ...prev,
-      employment: [...prev.employment, { title: false, company: false, start: false, end: false, description: false }],
-    }))
-  }
-  function removeEmployment(index: number) {
-    setForm(prev => { const copy = structuredClone(prev); copy.employment.splice(index, 1); return copy })
-    setPrefill(prev => { const pf = structuredClone(prev); pf.employment.splice(index, 1); return pf })
-  }
-  function addEducation() {
-    setForm(prev => ({ ...prev, education: [...prev.education, { course: '', institution: '', start: '', end: '' }] }))
-  }
-  function removeEducation(index: number) {
-    setForm(prev => { const copy = structuredClone(prev); copy.education.splice(index, 1); return copy })
-  }
+    function addEmployment() {
+      setForm(prev => ({
+        ...prev,
+        employment: [...prev.employment, { title: '', company: '', start: '', end: '', description: '' }],
+      }))
+      setPrefill(prev => ({
+        ...prev,
+        employment: [...prev.employment, { title: false, company: false, start: false, end: false, description: false }],
+      }))
+    }
+  
+    function removeEmployment(index: number) {
+      setForm(prev => {
+        const copy = structuredClone(prev)
+        copy.employment.splice(index, 1)
+        return copy
+      })
+      setPrefill(prev => {
+        const pf = structuredClone(prev)
+        pf.employment.splice(index, 1)
+        return pf
+      })
+    }
+  
+    // ✅ NEW: move an employment item up/down (also keeps prefill aligned)
+    function moveEmploymentItem(index: number, dir: -1 | 1) {
+      setForm(prev => {
+        const copy = structuredClone(prev)
+        const ni = index + dir
+        if (ni < 0 || ni >= copy.employment.length) return prev
+        ;[copy.employment[index], copy.employment[ni]] =
+          [copy.employment[ni], copy.employment[index]]
+        return copy
+      })
+  
+      setPrefill(prev => {
+        const pf = structuredClone(prev)
+        const ni = index + dir
+        if (ni < 0 || ni >= pf.employment.length) return prev
+        ;[pf.employment[index], pf.employment[ni]] =
+          [pf.employment[ni], pf.employment[index]]
+        return pf
+      })
+    }
+  
+    function addEducation() {
+      setForm(prev => ({
+        ...prev,
+        education: [...prev.education, { course: '', institution: '', start: '', end: '' }]
+      }))
+    }
+  
+    function removeEducation(index: number) {
+      setForm(prev => {
+        const copy = structuredClone(prev)
+        copy.education.splice(index, 1)
+        return copy
+      })
+    }
+  
+    // ✅ NEW: move an education item up/down
+    function moveEducationItem(index: number, dir: -1 | 1) {
+      setForm(prev => {
+        const copy = structuredClone(prev)
+        const ni = index + dir
+        if (ni < 0 || ni >= copy.education.length) return prev
+        ;[copy.education[index], copy.education[ni]] =
+          [copy.education[ni], copy.education[index]]
+        return copy
+      })
+    }
 
   // ========== AI profile (UK/US) ==========
   async function generateProfile() {
@@ -1492,16 +1543,42 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                   {form.employment.length === 0 ? (
                     <div className="text-[12px] text-gray-500">No employment history yet.</div>
                   ) : (
-                    form.employment.map((e, i) => (
-                      <div key={i} className="border rounded-xl p-3 grid gap-2 relative">
-                        <button
-                          type="button"
-                          className="absolute right-2 top-2 text-[11px] text-gray-500 underline"
-                          onClick={() => removeEmployment(i)}
-                          title="Remove this role"
-                        >
-                          Remove role
-                        </button>
+                    form.employment.map((e, i) => {
+                      const canUp = i > 0
+                      const canDown = i < form.employment.length - 1
+
+                      return (
+                        <div key={i} className="border rounded-xl p-3 grid gap-2 relative">
+                          {/* ✅ NEW: per-role reorder controls */}
+                          <div className="absolute left-2 top-2 flex items-center gap-1">
+                            <button
+                              type="button"
+                              className="text-[11px] text-gray-500 disabled:opacity-30"
+                              onClick={() => moveEmploymentItem(i, -1)}
+                              disabled={!canUp}
+                              title="Move role up"
+                            >
+                              ▲
+                            </button>
+                            <button
+                              type="button"
+                              className="text-[11px] text-gray-500 disabled:opacity-30"
+                              onClick={() => moveEmploymentItem(i, +1)}
+                              disabled={!canDown}
+                              title="Move role down"
+                            >
+                              ▼
+                            </button>
+                          </div>
+
+                          <button
+                            type="button"
+                            className="absolute right-2 top-2 text-[11px] text-gray-500 underline"
+                            onClick={() => removeEmployment(i)}
+                            title="Remove this role"
+                          >
+                            Remove role
+                          </button>
 
                         <label className="grid gap-1">
                           <span className="text-[11px] text-gray-500">Title</span>
@@ -1625,16 +1702,42 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                   {form.education.length === 0 ? (
                     <div className="text-[12px] text-gray-500">No education yet.</div>
                   ) : (
-                    form.education.map((e, i) => (
-                      <div key={i} className="border rounded-xl p-3 grid gap-3 relative">
-                        <button
-                          type="button"
-                          className="absolute right-2 top-2 text-[11px] text-gray-500 underline"
-                          onClick={() => removeEducation(i)}
-                          title="Remove this qualification"
-                        >
-                          Remove qualification
-                        </button>
+                    form.education.map((e, i) => {
+                      const canUp = i > 0
+                      const canDown = i < form.education.length - 1
+
+                      return (
+                        <div key={i} className="border rounded-xl p-3 grid gap-3 relative">
+                          {/* ✅ NEW: per-qualification reorder controls */}
+                          <div className="absolute left-2 top-2 flex items-center gap-1">
+                            <button
+                              type="button"
+                              className="text-[11px] text-gray-500 disabled:opacity-30"
+                              onClick={() => moveEducationItem(i, -1)}
+                              disabled={!canUp}
+                              title="Move qualification up"
+                            >
+                              ▲
+                            </button>
+                            <button
+                              type="button"
+                              className="text-[11px] text-gray-500 disabled:opacity-30"
+                              onClick={() => moveEducationItem(i, +1)}
+                              disabled={!canDown}
+                              title="Move qualification down"
+                            >
+                              ▼
+                            </button>
+                          </div>
+
+                          <button
+                            type="button"
+                            className="absolute right-2 top-2 text-[11px] text-gray-500 underline"
+                            onClick={() => removeEducation(i)}
+                            title="Remove this qualification"
+                          >
+                            Remove qualification
+                          </button>
 
                         {/* Institution (bound to course for bold title) */}
                         <label className="grid gap-1">
