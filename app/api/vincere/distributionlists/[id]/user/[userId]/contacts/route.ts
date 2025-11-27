@@ -1,3 +1,5 @@
+// app/api/vincere/distributionlists/[id]/user/[userId]/contacts/route.ts
+
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -48,8 +50,7 @@ async function fetchWithRefresh(
       headers: {
         'Content-Type': 'application/json',
         'id-token': token || '',
-        'x-api-key':
-          (config as any).VINCERE_PUBLIC_API_KEY || config.VINCERE_API_KEY,
+        'x-api-key': (config as any).VINCERE_PUBLIC_API_KEY || config.VINCERE_API_KEY,
         accept: 'application/json',
         Authorization: `Bearer ${token || ''}`,
         ...(init.headers || {}),
@@ -70,7 +71,7 @@ async function fetchWithRefresh(
 
 export async function GET(
   req: Request,
-  // userId is optional; we fall back to env config the same way as the talent pool routes
+  // userId is optional; we fall back to env-configured IDs just like the talent pool routes
   { params }: { params: { id: string; userId?: string } },
 ) {
   try {
@@ -88,7 +89,7 @@ export async function GET(
 
     const BASE = withApiV2(config.VINCERE_TENANT_API_BASE)
 
-    // Mirror the talent pool env pattern for the Vincere user
+    // Same env pattern as the distributionlists/user route / talent pools
     const resolvedUserId =
       userId ||
       process.env.VINCERE_DISTRIBUTIONLIST_USER_ID ||
@@ -97,8 +98,19 @@ export async function GET(
       '29018'
 
     const { searchParams } = new URL(req.url)
-    const limitRaw = searchParams.get('limit') ?? searchParams.get('rows') ?? '50'
-    const limit = Math.max(1, Math.min(200, Number(limitRaw) || 50))
+
+    // ----- LIMIT HANDLING -----
+    // If no limit is provided, we now fetch ALL contacts (subject to slice/400 safety cap).
+    // You can still request a preview with ?limit=50 etc.
+    const limitParam = searchParams.get('limit') ?? searchParams.get('rows')
+    let limit: number
+    if (!limitParam || limitParam.toLowerCase() === 'all') {
+      // effectively "no limit", we let the API's `last` flag stop the loop
+      limit = Number.MAX_SAFE_INTEGER
+    } else {
+      const n = Number(limitParam)
+      limit = Math.max(1, Math.min(200, n || 50))
+    }
 
     const contacts: ContactPreview[] = []
     let sliceIndex = 0
@@ -135,9 +147,7 @@ export async function GET(
       if (sliceIndex === 0) {
         const headerTotalStr = res.headers.get('x-vincere-total')
         const headerTotal =
-          headerTotalStr && headerTotalStr.trim() !== ''
-            ? Number(headerTotalStr)
-            : NaN
+          headerTotalStr && headerTotalStr.trim() !== '' ? Number(headerTotalStr) : NaN
         if (typeof slice.totalElements === 'number') {
           total = slice.totalElements
         } else if (!Number.isNaN(headerTotal)) {
@@ -167,10 +177,16 @@ export async function GET(
       slicesFetched += 1
     }
 
+    // If the API never told us the total, but we've fetched everything we intend to,
+    // fall back to the number of contacts we actually have so the UI can show it.
+    if (total == null) {
+      total = contacts.length
+    }
+
     const resp = NextResponse.json(
       {
         contacts,
-        meta: { total, slicesFetched, previewLimit: limit },
+        meta: { total, slicesFetched, previewLimit: limit === Number.MAX_SAFE_INTEGER ? null : limit },
       },
       { status: 200 },
     )
