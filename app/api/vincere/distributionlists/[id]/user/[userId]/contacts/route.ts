@@ -50,7 +50,8 @@ async function fetchWithRefresh(
       headers: {
         'Content-Type': 'application/json',
         'id-token': token || '',
-        'x-api-key': (config as any).VINCERE_PUBLIC_API_KEY || config.VINCERE_API_KEY,
+        'x-api-key':
+          (config as any).VINCERE_PUBLIC_API_KEY || config.VINCERE_API_KEY,
         accept: 'application/json',
         Authorization: `Bearer ${token || ''}`,
         ...(init.headers || {}),
@@ -86,7 +87,6 @@ export async function GET(
 
     const session = await getSession()
     const userKey = session.user?.email ?? 'unknown'
-
     const BASE = withApiV2(config.VINCERE_TENANT_API_BASE)
 
     // Same env pattern as the distributionlists/user route / talent pools
@@ -97,20 +97,8 @@ export async function GET(
       process.env.VINCERE_TALENTPOOL_USER_ID ||
       '29018'
 
-    const { searchParams } = new URL(req.url)
-
-    // ----- LIMIT HANDLING -----
-    // If no limit is provided, we now fetch ALL contacts (subject to slice/400 safety cap).
-    // You can still request a preview with ?limit=50 etc.
-    const limitParam = searchParams.get('limit') ?? searchParams.get('rows')
-    let limit: number
-    if (!limitParam || limitParam.toLowerCase() === 'all') {
-      // effectively "no limit", we let the API's `last` flag stop the loop
-      limit = Number.MAX_SAFE_INTEGER
-    } else {
-      const n = Number(limitParam)
-      limit = Math.max(1, Math.min(200, n || 50))
-    }
+    // ✅ We IGNORE any ?limit / ?rows query params now.
+    // We always fetch ALL contacts, bounded only by a hard safety cap.
 
     const contacts: ContactPreview[] = []
     let sliceIndex = 0
@@ -118,10 +106,12 @@ export async function GET(
     let slicesFetched = 0
     let total: number | null = null
 
-    while (!last && contacts.length < limit && sliceIndex < 400) {
+    while (!last && sliceIndex < 5000) {
       const url = `${BASE}/distributionlist/${encodeURIComponent(
         id,
-      )}/user/${encodeURIComponent(resolvedUserId)}/contacts?index=${sliceIndex}`
+      )}/user/${encodeURIComponent(
+        resolvedUserId,
+      )}/contacts?index=${sliceIndex}`
 
       const res = await fetchWithRefresh(userKey, url, { method: 'GET' })
 
@@ -158,7 +148,6 @@ export async function GET(
       }
 
       for (const c of arr) {
-        if (contacts.length >= limit) break
         contacts.push({
           first_name: c?.first_name ?? c?.firstname ?? c?.firstName ?? '',
           last_name: c?.last_name ?? c?.lastname ?? c?.lastName ?? '',
@@ -177,8 +166,7 @@ export async function GET(
       slicesFetched += 1
     }
 
-    // If the API never told us the total, but we've fetched everything we intend to,
-    // fall back to the number of contacts we actually have so the UI can show it.
+    // If the API never told us the total, fall back to what we actually fetched
     if (total == null) {
       total = contacts.length
     }
@@ -186,7 +174,12 @@ export async function GET(
     const resp = NextResponse.json(
       {
         contacts,
-        meta: { total, slicesFetched, previewLimit: limit === Number.MAX_SAFE_INTEGER ? null : limit },
+        meta: {
+          total,
+          slicesFetched,
+          // no preview limit any more – this is a full list fetch
+          previewLimit: null,
+        },
       },
       { status: 200 },
     )
