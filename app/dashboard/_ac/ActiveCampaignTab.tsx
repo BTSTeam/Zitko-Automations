@@ -503,6 +503,31 @@ export default function ActiveCampaignTab() {
   //  Render
   // -------------------------------
 
+  function handleBackToSourceSelect() {
+  // stop any running SSE
+  if (esRef.current) {
+    esRef.current.close()
+    esRef.current = null
+  }
+
+  // reset UI state
+  setPools([])
+  setPoolId('')
+  setCandidates([])
+  setPoolTotal(null)
+  setMessage('')
+  setProgress(null)
+  setSelectedTags([])
+  setTagQuery('')
+  setListName('')
+  setConfirmSend(false)
+  setSendState('idle')
+  setCurrentTag('')
+
+  // go back to Talent Pool / Distribution List chooser
+  setSourceMode(null)
+}
+
   if (!unlocked) {
     return (
       <div className="relative min-h-[60vh]">
