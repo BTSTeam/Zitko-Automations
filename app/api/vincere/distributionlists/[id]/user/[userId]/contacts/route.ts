@@ -48,7 +48,8 @@ async function fetchWithRefresh(
       headers: {
         'Content-Type': 'application/json',
         'id-token': token || '',
-        'x-api-key': (config as any).VINCERE_PUBLIC_API_KEY || config.VINCERE_API_KEY,
+        'x-api-key':
+          (config as any).VINCERE_PUBLIC_API_KEY || config.VINCERE_API_KEY,
         accept: 'application/json',
         Authorization: `Bearer ${token || ''}`,
         ...(init.headers || {}),
@@ -69,13 +70,15 @@ async function fetchWithRefresh(
 
 export async function GET(
   req: Request,
-  { params }: { params: { id: string; userId: string } },
+  // userId is optional; we fall back to env config the same way as the talent pool routes
+  { params }: { params: { id: string; userId?: string } },
 ) {
   try {
     const { id, userId } = params
-    if (!id || !userId) {
+
+    if (!id) {
       return NextResponse.json(
-        { error: 'Missing distribution list id or userId' },
+        { error: 'Missing distribution list id' },
         { status: 400 },
       )
     }
@@ -84,6 +87,14 @@ export async function GET(
     const userKey = session.user?.email ?? 'unknown'
 
     const BASE = withApiV2(config.VINCERE_TENANT_API_BASE)
+
+    // Mirror the talent pool env pattern for the Vincere user
+    const resolvedUserId =
+      userId ||
+      process.env.VINCERE_DISTRIBUTIONLIST_USER_ID ||
+      process.env.NEXT_PUBLIC_VINCERE_DISTRIBUTIONLIST_USER_ID ||
+      process.env.VINCERE_TALENTPOOL_USER_ID ||
+      '29018'
 
     const { searchParams } = new URL(req.url)
     const limitRaw = searchParams.get('limit') ?? searchParams.get('rows') ?? '50'
@@ -98,7 +109,7 @@ export async function GET(
     while (!last && contacts.length < limit && sliceIndex < 400) {
       const url = `${BASE}/distributionlist/${encodeURIComponent(
         id,
-      )}/user/${encodeURIComponent(userId)}/contacts?index=${sliceIndex}`
+      )}/user/${encodeURIComponent(resolvedUserId)}/contacts?index=${sliceIndex}`
 
       const res = await fetchWithRefresh(userKey, url, { method: 'GET' })
 
@@ -124,7 +135,9 @@ export async function GET(
       if (sliceIndex === 0) {
         const headerTotalStr = res.headers.get('x-vincere-total')
         const headerTotal =
-          headerTotalStr && headerTotalStr.trim() !== '' ? Number(headerTotalStr) : NaN
+          headerTotalStr && headerTotalStr.trim() !== ''
+            ? Number(headerTotalStr)
+            : NaN
         if (typeof slice.totalElements === 'number') {
           total = slice.totalElements
         } else if (!Number.isNaN(headerTotal)) {
@@ -161,9 +174,11 @@ export async function GET(
       },
       { status: 200 },
     )
+
     if (typeof total === 'number') {
       resp.headers.set('x-vincere-total', String(total))
     }
+
     return resp
   } catch (e: any) {
     return NextResponse.json(
