@@ -114,7 +114,7 @@ export async function GET(
     let last = false
     let slicesFetched = 0
 
-    while (!last && candidates.length < limit && sliceIndex < 400) {
+    while (!last && candidates.length < limit && sliceIndex < 5000) {
       const sliceRes = await fetchWithRefresh(
         userKey,
         `${BASE}/talentpool/${encodeURIComponent(id)}/user/${encodeURIComponent(
