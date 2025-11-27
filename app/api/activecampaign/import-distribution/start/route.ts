@@ -199,17 +199,22 @@ export async function POST(req: NextRequest) {
         job.updatedAt = Date.now()
       }
 
+      // 🔁 keep the loop – we just change the URL inside it
       while (!last && job.totals.valid < max && sliceIndex < 400) {
         const url = `${BASE}/distributionlists/${encodeURIComponent(
           poolId,
-        )}/user/${encodeURIComponent(userId)}/contacts?index=${sliceIndex}`
+        )}/user/${encodeURIComponent(
+          userId,
+        )}/contacts/slice?slice_index=${sliceIndex}`
 
         const res = await withRefresh(() => doGet(url))
 
         if (!res.ok) {
           const t = await res.text().catch(() => '')
           if (sliceIndex === 0) {
-            throw new Error(`Vincere distribution list slice fetch failed (${res.status}) ${t}`)
+            throw new Error(
+              `Vincere distribution list slice fetch failed (${res.status}) ${t}`,
+            )
           } else {
             break
           }
@@ -275,7 +280,7 @@ export async function POST(req: NextRequest) {
       if (gathered.length) {
         await importBatch(gathered)
       }
-
+      
       job.status = 'done'
       job.updatedAt = Date.now()
       jobs.set(job.id, job)
