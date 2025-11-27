@@ -602,6 +602,37 @@ export default function ActiveCampaignTab() {
     <div className="grid gap-6">
       {/* Controls Card */}
       <div className="rounded-2xl border bg-white p-4 overflow-visible">
+        {/* Back to source selection */}
+        <div className="mb-4 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleBackToSourceSelect}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border hover:bg-gray-50"
+            aria-label="Back to source selection"
+          >
+            <svg
+              viewBox="0 0 20 20"
+              className="h-4 w-4 text-gray-700"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.8}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M12.5 4.5 7 10l5.5 5.5" />
+            </svg>
+          </button>
+  
+          <div className="flex flex-col">
+            <span className="text-[11px] uppercase tracking-wide text-gray-400">
+              Source
+            </span>
+            <span className="text-sm font-medium text-gray-800">
+              {sourceMode === 'distribution' ? 'Distribution Lists' : 'Talent Pools'}
+            </span>
+          </div>
+        </div>
+  
         {/* Two rows x two cols:
             Row 1 = Talent Pool/List (L) + Tags (R)
             Row 2 = Active Campaign List (L) + Buttons (R) */}
