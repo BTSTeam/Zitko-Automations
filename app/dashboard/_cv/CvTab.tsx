@@ -1529,10 +1529,19 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                 <h3 className="font-semibold text-sm">Employment History</h3>
                 <div className="flex items-center gap-3">
                   <ReorderControls id="work" />
-                  <button type="button" className="text-[11px] text-gray-500 underline" onClick={addEmployment} disabled={loading}>
+                  <button
+                    type="button"
+                    className="text-[11px] text-gray-500 underline"
+                    onClick={addEmployment}
+                    disabled={loading}
+                  >
                     Add role
                   </button>
-                  <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('work')}>
+                  <button
+                    type="button"
+                    className="text-[11px] text-gray-500 underline"
+                    onClick={() => toggle('work')}
+                  >
                     {open.work ? 'Hide' : 'Show'}
                   </button>
                 </div>
@@ -1549,7 +1558,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
                       return (
                         <div key={i} className="border rounded-xl p-3 grid gap-2 relative">
-                          {/* ✅ NEW: per-role reorder controls */}
+                          {/* per-role reorder controls */}
                           <div className="absolute left-2 top-2 flex items-center gap-1">
                             <button
                               type="button"
@@ -1580,94 +1589,97 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                             Remove role
                           </button>
 
-                        <label className="grid gap-1">
-                          <span className="text-[11px] text-gray-500">Title</span>
-                          <input
-                            className={`input ${prefill.employment?.[i]?.title ? 'text-[11px]' : ''}`}
-                            value={e.title || ''}
-                            onChange={ev => {
-                              clearPrefill(`employment.${i}.title`)
-                              const v = ev.target.value
-                              setForm(prev => {
-                                const copy = structuredClone(prev)
-                                copy.employment[i].title = v
-                                return copy
-                              })
-                            }}
-                          />
-                        </label>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <label className="grid gap-1">
-                            <span className="text-[11px] text-gray-500">Company</span>
+                            <span className="text-[11px] text-gray-500">Title</span>
                             <input
-                              className={`input ${prefill.employment?.[i]?.company ? 'text-[11px]' : ''}`}
-                              value={e.company || ''}
+                              className={`input ${prefill.employment?.[i]?.title ? 'text-[11px]' : ''}`}
+                              value={e.title || ''}
                               onChange={ev => {
-                                clearPrefill(`employment.${i}.company`)
+                                clearPrefill(`employment.${i}.title`)
                                 const v = ev.target.value
                                 setForm(prev => {
                                   const copy = structuredClone(prev)
-                                  copy.employment[i].company = v
+                                  copy.employment[i].title = v
                                   return copy
                                 })
                               }}
                             />
                           </label>
-                          <div className="grid grid-cols-2 gap-2">
-                            <label className="grid gap-1">
-                              <span className="text-[11px] text-gray-500">Start</span>
-                              <input
-                                className={`input ${prefill.employment?.[i]?.start ? 'text-[11px]' : ''}`}
-                                value={e.start || ''}
-                                onChange={ev => {
-                                  clearPrefill(`employment.${i}.start`)
-                                  const v = ev.target.value
-                                  setForm(prev => {
-                                    const copy = structuredClone(prev)
-                                    copy.employment[i].start = v
-                                    return copy
-                                  })
-                                }}
-                              />
-                            </label>
-                            <label className="grid gap-1">
-                              <span className="text-[11px] text-gray-500">End</span>
-                              <input
-                                className={`input ${prefill.employment?.[i]?.end ? 'text-[11px]' : ''}`}
-                                value={e.end || ''}
-                                onChange={ev => {
-                                  clearPrefill(`employment.${i}.end`)
-                                  const v = ev.target.value
-                                  setForm(prev => {
-                                    const copy = structuredClone(prev)
-                                    copy.employment[i].end = v
-                                    return copy
-                                  })
-                                }}
-                              />
-                            </label>
-                          </div>
-                        </div>
 
-                        <label className="grid gap-1">
-                          <span className="text-[11px] text-gray-500">Description</span>
-                          <textarea
-                            className={`input min-h-[80px] ${prefill.employment?.[i]?.description ? 'text-[11px]' : ''}`}
-                            value={e.description || ''}
-                            onChange={ev => {
-                              clearPrefill(`employment.${i}.description`)
-                              const v = ev.target.value
-                              setForm(prev => {
-                                const copy = structuredClone(prev)
-                                copy.employment[i].description = v
-                                return copy
-                              })
-                            }}
-                          />
-                        </label>
-                      </div>
-                    ))
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <label className="grid gap-1">
+                              <span className="text-[11px] text-gray-500">Company</span>
+                              <input
+                                className={`input ${prefill.employment?.[i]?.company ? 'text-[11px]' : ''}`}
+                                value={e.company || ''}
+                                onChange={ev => {
+                                  clearPrefill(`employment.${i}.company`)
+                                  const v = ev.target.value
+                                  setForm(prev => {
+                                    const copy = structuredClone(prev)
+                                    copy.employment[i].company = v
+                                    return copy
+                                  })
+                                }}
+                              />
+                            </label>
+
+                            <div className="grid grid-cols-2 gap-2">
+                              <label className="grid gap-1">
+                                <span className="text-[11px] text-gray-500">Start</span>
+                                <input
+                                  className={`input ${prefill.employment?.[i]?.start ? 'text-[11px]' : ''}`}
+                                  value={e.start || ''}
+                                  onChange={ev => {
+                                    clearPrefill(`employment.${i}.start`)
+                                    const v = ev.target.value
+                                    setForm(prev => {
+                                      const copy = structuredClone(prev)
+                                      copy.employment[i].start = v
+                                      return copy
+                                    })
+                                  }}
+                                />
+                              </label>
+
+                              <label className="grid gap-1">
+                                <span className="text-[11px] text-gray-500">End</span>
+                                <input
+                                  className={`input ${prefill.employment?.[i]?.end ? 'text-[11px]' : ''}`}
+                                  value={e.end || ''}
+                                  onChange={ev => {
+                                    clearPrefill(`employment.${i}.end`)
+                                    const v = ev.target.value
+                                    setForm(prev => {
+                                      const copy = structuredClone(prev)
+                                      copy.employment[i].end = v
+                                      return copy
+                                    })
+                                  }}
+                                />
+                              </label>
+                            </div>
+                          </div>
+
+                          <label className="grid gap-1">
+                            <span className="text-[11px] text-gray-500">Description</span>
+                            <textarea
+                              className={`input min-h-[80px] ${prefill.employment?.[i]?.description ? 'text-[11px]' : ''}`}
+                              value={e.description || ''}
+                              onChange={ev => {
+                                clearPrefill(`employment.${i}.description`)
+                                const v = ev.target.value
+                                setForm(prev => {
+                                  const copy = structuredClone(prev)
+                                  copy.employment[i].description = v
+                                  return copy
+                                })
+                              }}
+                            />
+                          </label>
+                        </div>
+                      )
+                    })
                   )}
                 </div>
               )}
@@ -1708,7 +1720,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
                       return (
                         <div key={i} className="border rounded-xl p-3 grid gap-3 relative">
-                          {/* ✅ NEW: per-qualification reorder controls */}
+                          {/* per-qualification reorder controls */}
                           <div className="absolute left-2 top-2 flex items-center gap-1">
                             <button
                               type="button"
@@ -1739,80 +1751,82 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
                             Remove qualification
                           </button>
 
-                        {/* Institution (bound to course for bold title) */}
-                        <label className="grid gap-1">
-                          <span className="text-[11px] text-gray-500">Institution</span>
-                          <input
-                            className="input text-[11px]"
-                            value={e.course || ''}
-                            onChange={(ev) => {
-                              const v = ev.target.value
-                              setForm(prev => {
-                                const copy = structuredClone(prev)
-                                copy.education[i].course = v
-                                return copy
-                              })
-                            }}
-                            placeholder="e.g. University of Cambridge"
-                          />
-                        </label>
-
-                        <div className="grid grid-cols-2 gap-2">
+                          {/* Institution (bound to course for bold title) */}
                           <label className="grid gap-1">
-                            <span className="text-[11px] text-gray-500">Start</span>
+                            <span className="text-[11px] text-gray-500">Institution</span>
                             <input
                               className="input text-[11px]"
-                              value={e.start || ''}
+                              value={e.course || ''}
                               onChange={(ev) => {
                                 const v = ev.target.value
                                 setForm(prev => {
                                   const copy = structuredClone(prev)
-                                  copy.education[i].start = v
+                                  copy.education[i].course = v
                                   return copy
                                 })
                               }}
-                              placeholder="e.g. 2019-09 or 09/2019"
+                              placeholder="e.g. University of Cambridge"
                             />
                           </label>
+
+                          <div className="grid grid-cols-2 gap-2">
+                            <label className="grid gap-1">
+                              <span className="text-[11px] text-gray-500">Start</span>
+                              <input
+                                className="input text-[11px]"
+                                value={e.start || ''}
+                                onChange={(ev) => {
+                                  const v = ev.target.value
+                                  setForm(prev => {
+                                    const copy = structuredClone(prev)
+                                    copy.education[i].start = v
+                                    return copy
+                                  })
+                                }}
+                                placeholder="e.g. 2019-09 or 09/2019"
+                              />
+                            </label>
+
+                            <label className="grid gap-1">
+                              <span className="text-[11px] text-gray-500">End</span>
+                              <input
+                                className="input text-[11px]"
+                                value={e.end || ''}
+                                onChange={(ev) => {
+                                  const v = ev.target.value
+                                  setForm(prev => {
+                                    const copy = structuredClone(prev)
+                                    copy.education[i].end = v
+                                    return copy
+                                  })
+                                }}
+                                placeholder="e.g. 2022-06 or 06/2022"
+                              />
+                            </label>
+                          </div>
+
                           <label className="grid gap-1">
-                            <span className="text-[11px] text-gray-500">End</span>
-                            <input
-                              className="input text-[11px]"
-                              value={e.end || ''}
+                            <span className="text-[11px] text-gray-500">Description</span>
+                            <textarea
+                              className="input min-h-[120px] resize-y text-[11px]"
+                              value={e.institution || ''}
                               onChange={(ev) => {
                                 const v = ev.target.value
                                 setForm(prev => {
                                   const copy = structuredClone(prev)
-                                  copy.education[i].end = v
+                                  copy.education[i].institution = v
                                   return copy
                                 })
                               }}
-                              placeholder="e.g. 2022-06 or 06/2022"
+                              placeholder={`Course details, modules, awards...\n(Press Enter for new lines)`}
                             />
+                            <span className="text-[10px] text-gray-400">
+                              Line breaks will be preserved in the PDF.
+                            </span>
                           </label>
                         </div>
-
-                        <label className="grid gap-1">
-                          <span className="text-[11px] text-gray-500">Description</span>
-                          <textarea
-                            className="input min-h-[120px] resize-y text-[11px]"
-                            value={e.institution || ''}
-                            onChange={(ev) => {
-                              const v = ev.target.value
-                              setForm(prev => {
-                                const copy = structuredClone(prev)
-                                copy.education[i].institution = v
-                                return copy
-                              })
-                            }}
-                            placeholder={`Course details, modules, awards...\n(Press Enter for new lines)`}
-                          />
-                          <span className="text-[10px] text-gray-400">
-                            Line breaks will be preserved in the PDF.
-                          </span>
-                        </label>
-                      </div>
-                    ))
+                      )
+                    })
                   )}
                 </div>
               )}
