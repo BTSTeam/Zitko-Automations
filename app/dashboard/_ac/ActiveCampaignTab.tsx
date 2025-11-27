@@ -357,7 +357,7 @@ export default function ActiveCampaignTab() {
             pauseMs: 150,
           }
         : {
-            distributionListsId: poolId,
+            distributionListId: poolId,
             userId: TP_USER_ID,
             tagName: tagName || undefined,
             listId: listId ?? undefined,
