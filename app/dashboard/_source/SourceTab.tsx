@@ -92,6 +92,95 @@ const SENIORITIES = [
   'Intern',
 ] as const
 
+const KEYWORD_SUGGESTIONS = [
+  'Access Control',
+  'CCTV',
+  'CCTV Cameras',
+  'CCTV Installation',
+  'CCTV Integration',
+  'CCTV Monitoring',
+  'CCTV Security',
+  'CCTV Solutions',
+  'CCTV Surveillance',
+  'CCTV Systems',
+  'Data Center',
+  'Fire Alarm Installation',
+  'Fire Alarm Systems',
+  'Fire Alarms',
+  'Fire Code Compliance',
+  'Fire Detection',
+  'Fire Detection Systems',
+  'Fire Doors',
+  'Fire Extinguishers',
+  'Fire Extinguishing Systems',
+  'Fire Prevention',
+  'Fire Prevention Strategies',
+  'Fire Prevention Systems',
+  'Fire Protection',
+  'Fire Protection Solutions',
+  'Fire Protection Systems',
+  'Fire Rated Doors',
+  'Fire Safety Management',
+  'Fire Safety Solutions',
+  'Fire Safety Systems',
+  'Fire Sprinkler Systems',
+  'Fire Suppression',
+  'Fire Suppression Systems',
+  'Intruder',
+  'Intruder Alarms',
+  'Security',
+  'Security Alarms',
+  'Security Analytics',
+  'Security Assessments',
+  'Security Audits',
+  'Security Awareness Training',
+  'Security Cameras',
+  'Security Compliance',
+  'Security Consulting',
+  'Security Controls',
+  'Security Doors',
+  'Security Features',
+  'Security Fencing',
+  'Security Frameworks',
+  'Security Gates',
+  'Security Infrastructure',
+  'Security Installation',
+  'Security Integration',
+  'Security Lighting',
+  'Security Management',
+  'Security Measures',
+  'Security Monitoring',
+  'Security Policies',
+  'Security Products',
+  'Security Professionals',
+  'Security Protocols',
+  'Security Services',
+  'Security Software',
+  'Security Solutions',
+  'Security Surveillance',
+  'Security System Installation',
+  'Security Systems',
+  'Security Systems Services',
+  'Security Technologies',
+  'Security Technology',
+  'Security Tools',
+  'Security Training',
+] as const
+
+function getKeywordSuggestions(query: string, existing: string[]): string[] {
+  const q = query.trim().toLowerCase()
+  if (!q) return []
+
+  return KEYWORD_SUGGESTIONS
+    .map(k => k as string)
+    // Don’t suggest something that’s already a chip
+    .filter(k => !existing.includes(k))
+    // Simple contains match – “cc” will match “CCTV…”
+    .filter(k => k.toLowerCase().includes(q))
+    // Only show first 10
+    .slice(0, 10)
+}
+
 const phIfEmpty = (value: string, chips: string[] | undefined, text: string) =>
   (value?.trim() || (chips && chips.length)) ? '' : text
 
@@ -781,34 +870,70 @@ Kind regards,`
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1 flex items-center gap-1">
-                    Keywords
-                    <span
-                      className="inline-flex items-center justify-center h-4 w-4 rounded-full border border-gray-300 text-[10px] leading-none text-gray-500 cursor-default"
-                      title={`Please be broader with your keywords.
-                  Keywords such as 'Lenel' or 'C-Cure' will fall under 'Security Systems'.`}
-                    >
-                      i
-                    </span>
-                  </label>
-                  <div className="rounded-xl border h-10 px-2">
-                    <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
-                      {personKeywords.chips.map(v => (
-                        <Chip key={v} onRemove={() => personKeywords.removeChip(v)}>
-                          {v}
-                        </Chip>
-                      ))}
-                      <input
-                        className="flex-1 min-w-0 outline-none text-sm h-8 px-2"
-                        placeholder={phIfEmpty(personKeywords.input, personKeywords.chips, 'e.g. Fire, Security, CCTV')}
-                        value={personKeywords.input}
-                        onChange={e => personKeywords.setInput(e.target.value)}
-                        onKeyDown={personKeywords.onKeyDown}
-                        disabled={isDown}
-                      />
-                    </div>
-                  </div>
-                </div>
+                 <label className="block text-sm text-gray-600 mb-1 flex items-center gap-1">
+                   Keywords
+                   <span
+                     className="inline-flex items-center justify-center h-4 w-4 rounded-full border border-gray-300 text-[10px] leading-none text-gray-500 cursor-default"
+                     title={`Please be broader with your keywords.
+                                 Keywords such as 'Lenel' or 'C-Cure' will fall under 'Security Systems'.`}
+                   >
+                     i
+                   </span>
+                 </label>
+                 <div className="rounded-xl border h-10 px-2 relative">
+                   <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
+                     {personKeywords.chips.map(v => (
+                       <Chip key={v} onRemove={() => personKeywords.removeChip(v)}>
+                         {v}
+                       </Chip>
+                     ))}
+                     <input
+                       className="flex-1 min-w-0 outline-none text-sm h-8 px-2"
+                       placeholder={phIfEmpty(
+                         personKeywords.input,
+                         personKeywords.chips,
+                         'e.g. Fire, Security, CCTV',
+                       )}
+                       value={personKeywords.input}
+                       onChange={e => personKeywords.setInput(e.target.value)}
+                       onKeyDown={personKeywords.onKeyDown}
+                       disabled={isDown}
+                     />
+                   </div>
+               
+                   {/* Keyword suggestions dropdown */}
+                   {(() => {
+                     const suggestions = getKeywordSuggestions(
+                       personKeywords.input,
+                       personKeywords.chips,
+                     )
+                     if (!suggestions.length) return null
+               
+                     return (
+                       <ul
+                         className="absolute left-0 right-0 mt-1 top-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-40 overflow-y-auto text-sm z-20"
+                       >
+                         {suggestions.map(option => (
+                           <li
+                             key={option}
+                             className="px-3 py-1.5 hover:bg-gray-50 cursor-pointer"
+                             // onMouseDown so we don't lose focus before updating state
+                             onMouseDown={e => {
+                               e.preventDefault()
+                               personKeywords.setChips(prev =>
+                                 prev.includes(option) ? prev : [...prev, option],
+                               )
+                               personKeywords.setInput('')
+                             }}
+                           >
+                             {option}
+                           </li>
+                         ))}
+                       </ul>
+                     )
+                   })()}
+                 </div>
+               </div>
                 <MultiSelect
                   label="Seniorities"
                   options={SENIORITIES as unknown as string[]}
@@ -1019,38 +1144,69 @@ Kind regards,`
                 </div>
 
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1 flex items-center gap-1">
-                    Keywords
-                    <span
-                      className="inline-flex items-center justify-center h-4 w-4 rounded-full border border-gray-300 text-[10px] leading-none text-gray-500 cursor-default"
-                      title={`Please be broader with your keywords.
-                  Keywords such as 'Lenel' or 'C-Cure' will fall under 'Security Systems'.`}
-                    >
-                      i
-                    </span>
-                  </label>
-                  <div className="rounded-xl border h-10 px-2">
-                    <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
-                      {companyKeywords.chips.map((v) => (
-                        <Chip key={v} onRemove={() => companyKeywords.removeChip(v)}>
-                          {v}
-                        </Chip>
-                      ))}
-                      <input
-                        className="flex-1 min-w-0 outline-none text-sm h-8 px-2"
-                        placeholder={phIfEmpty(
-                          companyKeywords.input,
-                          companyKeywords.chips,
-                          'e.g. Fire, Security, CCTV',
-                        )}
-                        value={companyKeywords.input}
-                        onChange={(e) => companyKeywords.setInput(e.target.value)}
-                        onKeyDown={companyKeywords.onKeyDown}
-                        disabled={isDown}
-                      />
-                    </div>
-                  </div>
-                </div>
+                 <label className="block text-sm text-gray-600 mb-1 flex items-center gap-1">
+                   Keywords
+                   <span
+                     className="inline-flex items-center justify-center h-4 w-4 rounded-full border border-gray-300 text-[10px] leading-none text-gray-500 cursor-default"
+                     title={`Please be broader with your keywords.
+                                 Keywords such as 'Lenel' or 'C-Cure' will fall under 'Security Systems'.`}
+                   >
+                     i
+                   </span>
+                 </label>
+                 <div className="rounded-xl border h-10 px-2 relative">
+                   <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
+                     {companyKeywords.chips.map(v => (
+                       <Chip key={v} onRemove={() => companyKeywords.removeChip(v)}>
+                         {v}
+                       </Chip>
+                     ))}
+                     <input
+                       className="flex-1 min-w-0 outline-none text-sm h-8 px-2"
+                       placeholder={phIfEmpty(
+                         companyKeywords.input,
+                         companyKeywords.chips,
+                         'e.g. Fire, Security, CCTV',
+                       )}
+                       value={companyKeywords.input}
+                       onChange={e => companyKeywords.setInput(e.target.value)}
+                       onKeyDown={companyKeywords.onKeyDown}
+                       disabled={isDown}
+                     />
+                   </div>
+               
+                   {/* Keyword suggestions dropdown */}
+                   {(() => {
+                     const suggestions = getKeywordSuggestions(
+                       companyKeywords.input,
+                       companyKeywords.chips,
+                     )
+                     if (!suggestions.length) return null
+               
+                     return (
+                       <ul
+                         className="absolute left-0 right-0 mt-1 top-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-40 overflow-y-auto text-sm z-20"
+                       >
+                         {suggestions.map(option => (
+                           <li
+                             key={option}
+                             className="px-3 py-1.5 hover:bg-gray-50 cursor-pointer"
+                             onMouseDown={e => {
+                               e.preventDefault()
+                               companyKeywords.setChips(prev =>
+                                 prev.includes(option) ? prev : [...prev, option],
+                               )
+                               companyKeywords.setInput('')
+                             }}
+                           >
+                             {option}
+                           </li>
+                         ))}
+                       </ul>
+                     )
+                   })()}
+                 </div>
+               </div>
               </div>
 
               {/* Row 2: Employees | Active Job Listings */}
