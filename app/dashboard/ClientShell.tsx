@@ -14,7 +14,7 @@ const ActiveCampaignHtmlTab   = dynamic(() => import('./_ac/ActiveCampaignHtmlTa
 type TabKey     = 'match' | 'source' | 'cv' | 'social' | 'ac'
 type SourceMode = 'people' | 'companies'
 type CvTemplate = 'uk' | 'us' | 'sales'   // Updated: support UK & US formats
-type SocialMode = 'jobPosts'              // General posts removed
+type SocialMode = 'jobPosts' | 'jobZone'         
 
 //  Toggle to re-enable later
 const DISABLE_SOURCING = false
@@ -175,7 +175,9 @@ export default function ClientShell(): JSX.Element {
               {!DISABLE_SOCIAL && socialOpen && (
                 <div className="absolute left-1/2 -translate-x-1/2 mt-2 w-44 rounded-xl border bg-white shadow-lg overflow-hidden z-10">
                   <button
-                    className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${socialMode === 'jobPosts' ? 'font-medium' : ''}`}
+                    className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${
+                      socialMode === 'jobPosts' ? 'font-medium' : ''
+                    }`}
                     onClick={() => {
                       setSocialMode('jobPosts')
                       setTab('social')
@@ -185,7 +187,19 @@ export default function ClientShell(): JSX.Element {
                   >
                     Job Posts
                   </button>
-                  {/* General Posts option removed */}
+                  <button
+                    className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${
+                      socialMode === 'jobZone' ? 'font-medium' : ''
+                    }`}
+                    onClick={() => {
+                      setSocialMode('jobZone')
+                      setTab('social')
+                      setSocialOpen(false)
+                      setShowWelcome(false)
+                    }}
+                  >
+                    Job Zone
+                  </button>
                 </div>
               )}
             </div>
