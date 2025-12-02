@@ -9,6 +9,7 @@ import React, {
 } from 'react'
 import Recorder from '../../_components/recorder'
 import html2canvas from 'html2canvas'
+import { JobZoneSection } from './JobZoneSection';
 
 type SocialMode = 'jobPosts'
 
@@ -45,6 +46,9 @@ type TemplateDef = {
 // brand colours
 const BRAND_ORANGE = '#F7941D'
 const TSI_RED = '#C6242A' // from TSI-Location-Icon.png
+
+const JOB_ZONE_ENABLED =
+  process.env.NEXT_PUBLIC_JOB_ZONE_ENABLED === '1';
 
 // x = left/right (lower = left | higher = right )
 // y = up/down (lower = up | higher = down )
