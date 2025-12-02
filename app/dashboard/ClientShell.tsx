@@ -261,7 +261,7 @@ export default function ClientShell(): JSX.Element {
               {tab === 'cv' && <CvTab templateFromShell={cvTemplate} />}
 
               {tab === 'social' && socialMode === 'jobPosts' && (
-                <SocialMediaTab />
+                <SocialMediaTab mode="jobPosts" />
               )}
               {tab === 'social' && socialMode === 'jobZone' && (
                 <JobZoneTab />
