@@ -9,7 +9,7 @@ import React, {
 } from 'react'
 import Recorder from '../../_components/recorder'
 import html2canvas from 'html2canvas'
-import { JobZoneSection } from './JobZoneSection';
+import { JobZoneSection } from './JobZoneSection'
 
 type SocialMode = 'jobPosts'
 
@@ -48,7 +48,7 @@ const BRAND_ORANGE = '#F7941D'
 const TSI_RED = '#C6242A' // from TSI-Location-Icon.png
 
 const JOB_ZONE_ENABLED =
-  process.env.NEXT_PUBLIC_JOB_ZONE_ENABLED === '1';
+  process.env.NEXT_PUBLIC_JOB_ZONE_ENABLED === '1'
 
 // x = left/right (lower = left | higher = right )
 // y = up/down (lower = up | higher = down )
@@ -170,8 +170,10 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
   )
   const isTSITemplate = selectedTpl.id === 'zitko-3'
 
-  const videoEnabled =
-    selectedTpl.id === 'zitko-2'
+  const videoEnabled = selectedTpl.id === 'zitko-2'
+
+  // Dropdown selection: Job Posts or Job Zone
+  const [view, setView] = useState<'jobPosts' | 'jobZone'>('jobPosts')
 
   // job data
   const [jobId, setJobId] = useState('')
@@ -366,8 +368,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     if (!id) return
     setFetchStatus('loading')
 
-    const isTSI =
-      selectedTplId === 'zitko-3'
+    const isTSI = selectedTplId === 'zitko-3'
 
     try {
       const r = await fetch(
@@ -677,7 +678,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
                 >
                   RESPONSIBILITIES
                 </div>
-                
+
                 {respLines.map((line, i) => (
                   <div
                     key={i}
@@ -907,373 +908,398 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
   }
 
   const canDownloadMp4 = !!videoUrl && videoEnabled
+  const isJobPostsView = !JOB_ZONE_ENABLED || view === 'jobPosts'
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Always Job Posts for now */}
-      <h2 className="text-xl font-bold">Job Posts</h2>
-
-      {/* template scroller */}
-      <div className="w-full overflow-x-auto border rounded-lg p-3 bg-white">
-        <div className="flex gap-3 min-w-max">
-          {TEMPLATES.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setSelectedTplId(t.id)}
-              className={`relative rounded-lg overflow-hidden border ${
-                selectedTplId === t.id
-                  ? 'ring-2 ring-amber-500'
-                  : 'border-gray-200'
-              } hover:opacity-90`}
-              title={t.name}
-            >
-              <img
-                src={t.imageUrl}
-                alt={t.name}
-                className="h-28 w-28 object-cover"
-              />
-              <span className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs px-1 py-0.5">
-                {t.name}
-              </span>
-            </button>
-          ))}
-        </div>
+      {/* Header + dropdown like sourcing People/Companies */}
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-xl font-bold">Social Media</h2>
+        {JOB_ZONE_ENABLED && (
+          <select
+            className="border rounded-md px-2 py-1 text-sm bg-white"
+            value={view}
+            onChange={(e) =>
+              setView(e.target.value as 'jobPosts' | 'jobZone')
+            }
+          >
+            <option value="jobPosts">Job Posts</option>
+            <option value="jobZone">Job Zone</option>
+          </select>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* LEFT: recorder + form */}
-        <div className="flex flex-col gap-6">
-          {/* recorder (collapsible) */}
-          <section className="rounded-2xl border bg-white shadow-sm overflow-hidden">
-            <button
-              type="button"
-              onClick={() => setVideoOpen((o) => !o)}
-              className="w-full flex items-center justify-between px-4 py-3 border-b"
-              aria-expanded={videoOpen}
-              aria-controls="video-panel"
-            >
-              <h3 className="font-semibold text-lg">Video record</h3>
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 20 20"
-                fill="currentColor"
-                className={`${
-                  videoOpen ? 'rotate-180' : ''
-                } transition-transform`}
-              >
-                <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z" />
-              </svg>
-            </button>
-
-            <div
-              id="video-panel"
-              className={`transition-[max-height] duration-300 ease-in-out ${
-                videoOpen ? 'max-h-[1200px]' : 'max-h-0'
-              }`}
-            >
-              <div className="p-4">
-                <div className="mt-3">
-                  {!videoEnabled && (
-                    <p className="text-sm text-gray-500">
-                      Video recording is only available for the{' '}
-                      <strong>Zitko – We’re Looking</strong> template.
-                    </p>
-                  )}
-
-                  {videoEnabled && (
-                    <>
-                      {videoUrl ? (
-                        <div className="space-y-3">
-                          <div className="aspect-video bg-black rounded-lg overflow-hidden">
-                            <video
-                              src={videoUrl}
-                              controls
-                              playsInline
-                              className="w-full h-full object-contain"
-                            />
-                          </div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <button
-                              type="button"
-                              className={pillSecondary}
-                              onClick={() => setVideoOpen(false)}
-                              title="Hide panel"
-                            >
-                              Close
-                            </button>
-                            <button
-                              type="button"
-                              className={pillPrimary}
-                              onClick={clearVideo}
-                              title="Remove this video so you can record/upload a new one"
-                            >
-                              Remove video
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="recorder-slim">
-                          <Recorder
-                            jobId={jobId || 'unassigned'}
-                            onUploaded={(payload: any) => {
-                              setVideoUrl(payload.playbackMp4)
-                              setVideoPublicId(payload.publicId)
-                              setVideoMeta({
-                                mime: payload.mime,
-                                width: payload.width,
-                                height: payload.height,
-                              })
-                            }}
-                          />
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {/* job details */}
-          <section className="border rounded-xl p-4 bg-white">
-            <h3 className="font-semibold text-lg">Job details</h3>
-            <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <input
-                className="border rounded px-3 py-2 sm:col-span-2 text-sm"
-                placeholder="Job ID"
-                value={jobId}
-                onChange={(e) => setJobId(e.target.value)}
-              />
-              <button
-                className={pillPrimary + ' w-full justify-center'}
-                onClick={fetchJob}
-                disabled={fetchStatus === 'loading'}
-              >
-                {fetchStatus === 'loading'
-                  ? 'Retrieving…'
-                  : fetchStatus === 'done'
-                  ? 'Retrieved ✓'
-                  : 'Retrieve'}
-              </button>
-            </div>
-
-            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <input
-                className="border rounded px-3 py-2 text-sm"
-                placeholder="Job Title"
-                value={job.title}
-                onChange={(e) =>
-                  setJob({ ...job, title: e.target.value })
-                }
-              />
-              <input
-                className="border rounded px-3 py-2 text-sm"
-                placeholder="Location"
-                value={job.location}
-                onChange={(e) =>
-                  setJob({ ...job, location: e.target.value })
-                }
-              />
-              <input
-                className="border rounded px-3 py-2 text-sm"
-                placeholder="Salary"
-                value={job.salary}
-                onChange={(e) =>
-                  setJob({ ...job, salary: e.target.value })
-                }
-              />
-              <input
-                className="border rounded px-3 py-2 text-sm"
-                placeholder="Email"
-                value={job.email}
-                onChange={(e) =>
-                  setJob({ ...job, email: e.target.value })
-                }
-              />
-              <input
-                className="border rounded px-3 py-2 text-sm"
-                placeholder="Phone Number"
-                value={job.phone}
-                onChange={(e) =>
-                  setJob({ ...job, phone: e.target.value })
-                }
-              />
-              <textarea
-                className="border rounded px-3 py-2 sm:col-span-2 min-h-[80px] text-sm"
-                placeholder={
-                  isTSITemplate
-                    ? 'Responsibilities (one per line)'
-                    : 'Short Description'
-                }
-                value={job.description}
-                onChange={(e) =>
-                  setJob({ ...job, description: e.target.value })
-                }
-              />
-              <textarea
-                className="border rounded px-3 py-2 sm:col-span-2 min-h-[80px] text-sm"
-                placeholder="Benefits (one per line)"
-                value={benefitsText}
-                onChange={(e) =>
-                  setJob({ ...job, benefits: e.target.value })
-                }
-              />
-            </div>
-          </section>
-
-          {/* font size controls */}
-          <section className="border rounded-xl p-4 bg-white">
-            <h3 className="font-semibold text-lg">Font sizes</h3>
-            <p className="text-xs text-gray-500 mb-2">
-              Adjust text size for each field (template defaults are used
-              when left blank).
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              {(
-                [
-                  'title',
-                  'location',
-                  'salary',
-                  'description',
-                  'benefits',
-                ] as const
-              ).map((key) => (
-                <label
-                  key={key}
-                  className="flex items-center justify-between gap-2 text-xs"
+      {/* JOB POSTS VIEW (existing UI) */}
+      {isJobPostsView && (
+        <>
+          {/* template scroller */}
+          <div className="w-full overflow-x-auto border rounded-lg p-3 bg-white">
+            <div className="flex gap-3 min-w-max">
+              {TEMPLATES.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setSelectedTplId(t.id)}
+                  className={`relative rounded-lg overflow-hidden border ${
+                    selectedTplId === t.id
+                      ? 'ring-2 ring-amber-500'
+                      : 'border-gray-200'
+                  } hover:opacity-90`}
+                  title={t.name}
                 >
-                  <span className="capitalize">
-                    {key === 'salary'
-                      ? 'Salary'
-                      : key === 'description'
-                      ? isTSITemplate
-                        ? 'Responsibilities'
-                        : 'Description'
-                      : key}
+                  <img
+                    src={t.imageUrl}
+                    alt={t.name}
+                    className="h-28 w-28 object-cover"
+                  />
+                  <span className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs px-1 py-0.5">
+                    {t.name}
                   </span>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      className="border rounded px-2 py-1 w-20 text-xs pr-6"
-                      value={
-                        fontSizes[
-                          key as Exclude<PlaceholderKey, 'video'>
-                        ] ?? ''
-                      }
-                      onChange={(e) =>
-                        handleFontSizeChange(
-                          key as Exclude<PlaceholderKey, 'video'>,
-                          e.target.value,
-                        )
-                      }
-                      placeholder={String(
-                        selectedTpl.layout[key]?.fontSize ?? '',
-                      )}
-                    />
-                    {/* inline up/down arrows inside the field */}
-                    <div className="absolute inset-y-0 right-0 flex flex-col justify-center mr-1">
-                      <button
-                        type="button"
-                        className="leading-none text-[10px]"
-                        onClick={() =>
-                          adjustFontSize(
-                            key as Exclude<PlaceholderKey, 'video'>,
-                            1,
-                          )
-                        }
-                        tabIndex={-1}
-                      >
-                        ▲
-                      </button>
-                      <button
-                        type="button"
-                        className="leading-none text-[10px]"
-                        onClick={() =>
-                          adjustFontSize(
-                            key as Exclude<PlaceholderKey, 'video'>,
-                            -1,
-                          )
-                        }
-                        tabIndex={-1}
-                      >
-                        ▼
-                      </button>
-                    </div>
-                  </div>
-                </label>
+                </button>
               ))}
             </div>
-          </section>
-        </div>
+          </div>
 
-        {/* RIGHT: preview + export */}
-        <div className="border rounded-xl p-4 bg-white">
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <h3 className="font-semibold text-lg">Preview</h3>
-            <div className="flex gap-2 flex-wrap items-center">
-              {/* small circular reset button with arrow icon */}
-              <button
-                type="button"
-                onClick={resetLayout}
-                title="Reset layout to template defaults"
-                className="inline-flex items-center justify-center w-7 h-7 rounded-full border border-gray-200 bg-white text-[13px] leading-none text-gray-500 hover:text-gray-700 hover:bg-gray-50"
-              >
-                ↻
-              </button>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* LEFT: recorder + form */}
+            <div className="flex flex-col gap-6">
+              {/* recorder (collapsible) */}
+              <section className="rounded-2xl border bg-white shadow-sm overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setVideoOpen((o) => !o)}
+                  className="w-full flex items-center justify-between px-4 py-3 border-b"
+                  aria-expanded={videoOpen}
+                  aria-controls="video-panel"
+                >
+                  <h3 className="font-semibold text-lg">Video record</h3>
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                    className={`${
+                      videoOpen ? 'rotate-180' : ''
+                    } transition-transform`}
+                  >
+                    <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z" />
+                  </svg>
+                </button>
 
-              <button
-                className={pillSecondary}
-                onClick={downloadPng}
+                <div
+                  id="video-panel"
+                  className={`transition-[max-height] duration-300 ease-in-out ${
+                    videoOpen ? 'max-h-[1200px]' : 'max-h-0'
+                  }`}
+                >
+                  <div className="p-4">
+                    <div className="mt-3">
+                      {!videoEnabled && (
+                        <p className="text-sm text-gray-500">
+                          Video recording is only available for the{' '}
+                          <strong>Zitko – We’re Looking</strong> template.
+                        </p>
+                      )}
+
+                      {videoEnabled && (
+                        <>
+                          {videoUrl ? (
+                            <div className="space-y-3">
+                              <div className="aspect-video bg-black rounded-lg overflow-hidden">
+                                <video
+                                  src={videoUrl}
+                                  controls
+                                  playsInline
+                                  className="w-full h-full object-contain"
+                                />
+                              </div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <button
+                                  type="button"
+                                  className={pillSecondary}
+                                  onClick={() => setVideoOpen(false)}
+                                  title="Hide panel"
+                                >
+                                  Close
+                                </button>
+                                <button
+                                  type="button"
+                                  className={pillPrimary}
+                                  onClick={clearVideo}
+                                  title="Remove this video so you can record/upload a new one"
+                                >
+                                  Remove video
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="recorder-slim">
+                              <Recorder
+                                jobId={jobId || 'unassigned'}
+                                onUploaded={(payload: any) => {
+                                  setVideoUrl(payload.playbackMp4)
+                                  setVideoPublicId(payload.publicId)
+                                  setVideoMeta({
+                                    mime: payload.mime,
+                                    width: payload.width,
+                                    height: payload.height,
+                                  })
+                                }}
+                              />
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {/* job details */}
+              <section className="border rounded-xl p-4 bg-white">
+                <h3 className="font-semibold text-lg">Job details</h3>
+                <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <input
+                    className="border rounded px-3 py-2 sm:col-span-2 text-sm"
+                    placeholder="Job ID"
+                    value={jobId}
+                    onChange={(e) => setJobId(e.target.value)}
+                  />
+                  <button
+                    className={pillPrimary + ' w-full justify-center'}
+                    onClick={fetchJob}
+                    disabled={fetchStatus === 'loading'}
+                  >
+                    {fetchStatus === 'loading'
+                      ? 'Retrieving…'
+                      : fetchStatus === 'done'
+                      ? 'Retrieved ✓'
+                      : 'Retrieve'}
+                  </button>
+                </div>
+
+                <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <input
+                    className="border rounded px-3 py-2 text-sm"
+                    placeholder="Job Title"
+                    value={job.title}
+                    onChange={(e) =>
+                      setJob({ ...job, title: e.target.value })
+                    }
+                  />
+                  <input
+                    className="border rounded px-3 py-2 text-sm"
+                    placeholder="Location"
+                    value={job.location}
+                    onChange={(e) =>
+                      setJob({ ...job, location: e.target.value })
+                    }
+                  />
+                  <input
+                    className="border rounded px-3 py-2 text-sm"
+                    placeholder="Salary"
+                    value={job.salary}
+                    onChange={(e) =>
+                      setJob({ ...job, salary: e.target.value })
+                    }
+                  />
+                  <input
+                    className="border rounded px-3 py-2 text-sm"
+                    placeholder="Email"
+                    value={job.email}
+                    onChange={(e) =>
+                      setJob({ ...job, email: e.target.value })
+                    }
+                  />
+                  <input
+                    className="border rounded px-3 py-2 text-sm"
+                    placeholder="Phone Number"
+                    value={job.phone}
+                    onChange={(e) =>
+                      setJob({ ...job, phone: e.target.value })
+                    }
+                  />
+                  <textarea
+                    className="border rounded px-3 py-2 sm:col-span-2 min-h-[80px] text-sm"
+                    placeholder={
+                      isTSITemplate
+                        ? 'Responsibilities (one per line)'
+                        : 'Short Description'
+                    }
+                    value={job.description}
+                    onChange={(e) =>
+                      setJob({ ...job, description: e.target.value })
+                    }
+                  />
+                  <textarea
+                    className="border rounded px-3 py-2 sm:col-span-2 min-h-[80px] text-sm"
+                    placeholder="Benefits (one per line)"
+                    value={benefitsText}
+                    onChange={(e) =>
+                      setJob({ ...job, benefits: e.target.value })
+                    }
+                  />
+                </div>
+              </section>
+
+              {/* font size controls */}
+              <section className="border rounded-xl p-4 bg-white">
+                <h3 className="font-semibold text-lg">Font sizes</h3>
+                <p className="text-xs text-gray-500 mb-2">
+                  Adjust text size for each field (template defaults are used
+                  when left blank).
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {(
+                    [
+                      'title',
+                      'location',
+                      'salary',
+                      'description',
+                      'benefits',
+                    ] as const
+                  ).map((key) => (
+                    <label
+                      key={key}
+                      className="flex items-center justify-between gap-2 text-xs"
+                    >
+                      <span className="capitalize">
+                        {key === 'salary'
+                          ? 'Salary'
+                          : key === 'description'
+                          ? isTSITemplate
+                            ? 'Responsibilities'
+                            : 'Description'
+                          : key}
+                      </span>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          className="border rounded px-2 py-1 w-20 text-xs pr-6"
+                          value={
+                            fontSizes[
+                              key as Exclude<PlaceholderKey, 'video'>
+                            ] ?? ''
+                          }
+                          onChange={(e) =>
+                            handleFontSizeChange(
+                              key as Exclude<PlaceholderKey, 'video'>,
+                              e.target.value,
+                            )
+                          }
+                          placeholder={String(
+                            selectedTpl.layout[key]?.fontSize ?? '',
+                          )}
+                        />
+                        {/* inline up/down arrows inside the field */}
+                        <div className="absolute inset-y-0 right-0 flex flex-col justify-center mr-1">
+                          <button
+                            type="button"
+                            className="leading-none text-[10px]"
+                            onClick={() =>
+                              adjustFontSize(
+                                key as Exclude<PlaceholderKey, 'video'>,
+                                1,
+                              )
+                            }
+                            tabIndex={-1}
+                          >
+                            ▲
+                          </button>
+                          <button
+                            type="button"
+                            className="leading-none text-[10px]"
+                            onClick={() =>
+                              adjustFontSize(
+                                key as Exclude<PlaceholderKey, 'video'>,
+                                -1,
+                              )
+                            }
+                            tabIndex={-1}
+                          >
+                            ▼
+                          </button>
+                        </div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </section>
+            </div>
+
+            {/* RIGHT: preview + export */}
+            <div className="border rounded-xl p-4 bg-white">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <h3 className="font-semibold text-lg">Preview</h3>
+                <div className="flex gap-2 flex-wrap items-center">
+                  {/* small circular reset button with arrow icon */}
+                  <button
+                    type="button"
+                    onClick={resetLayout}
+                    title="Reset layout to template defaults"
+                    className="inline-flex items-center justify-center w-7 h-7 rounded-full border border-gray-200 bg-white text-[13px] leading-none text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+                  >
+                    ↻
+                  </button>
+
+                  <button
+                    className={pillSecondary}
+                    onClick={downloadPng}
+                  >
+                    Download PNG
+                  </button>
+                  <button
+                    className={
+                      pillSecondary +
+                      (!canDownloadMp4
+                        ? ' opacity-50 cursor-not-allowed'
+                        : '')
+                    }
+                    onClick={downloadMp4}
+                    title={
+                      canDownloadMp4
+                        ? 'Compose MP4 on server'
+                        : 'Add a video on Zitko-2 to enable'
+                    }
+                    disabled={!canDownloadMp4}
+                  >
+                    Download MP4
+                  </button>
+                </div>
+              </div>
+
+              <div
+                ref={previewBoxRef}
+                className="mt-3 h-[64vh] min-h-[420px] w-full overflow-hidden flex items-center justify-center bg-muted/20 rounded-lg"
               >
-                Download PNG
-              </button>
-              <button
-                className={
-                  pillSecondary +
-                  (!canDownloadMp4
-                    ? ' opacity-50 cursor-not-allowed'
-                    : '')
-                }
-                onClick={downloadMp4}
-                title={
-                  canDownloadMp4
-                    ? 'Compose MP4 on server'
-                    : 'Add a video on Zitko-2 to enable'
-                }
-                disabled={!canDownloadMp4}
+                {renderPoster(scale, previewRef)}
+              </div>
+
+              {/* hidden full-size poster for crisp PNG export */}
+              <div
+                style={{
+                  position: 'absolute',
+                  left: -99999,
+                  top: -99999,
+                  opacity: 0,
+                  pointerEvents: 'none',
+                }}
               >
-                Download MP4
-              </button>
+                {renderPoster(1, exportRef)}
+              </div>
+
+              <p className="mt-3 text-xs text-gray-500">
+                Preview scales the poster to fit; PNG exports at the
+                template’s intrinsic size.
+              </p>
             </div>
           </div>
+        </>
+      )}
 
-          <div
-            ref={previewBoxRef}
-            className="mt-3 h-[64vh] min-h-[420px] w-full overflow-hidden flex items-center justify-center bg-muted/20 rounded-lg"
-          >
-            {renderPoster(scale, previewRef)}
-          </div>
-
-          {/* hidden full-size poster for crisp PNG export */}
-          <div
-            style={{
-              position: 'absolute',
-              left: -99999,
-              top: -99999,
-              opacity: 0,
-              pointerEvents: 'none',
-            }}
-          >
-            {renderPoster(1, exportRef)}
-          </div>
-
-          <p className="mt-3 text-xs text-gray-500">
-            Preview scales the poster to fit; PNG exports at the
-            template’s intrinsic size.
-          </p>
-        </div>
-      </div>
+      {/* JOB ZONE VIEW */}
+      {JOB_ZONE_ENABLED && view === 'jobZone' && (
+        <JobZoneSection enabled={JOB_ZONE_ENABLED} />
+      )}
 
       {/* Recorder-specific style tweaks */}
       <style jsx global>{`
