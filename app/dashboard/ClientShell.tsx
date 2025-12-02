@@ -8,13 +8,14 @@ const MatchTab                = dynamic(() => import('./_match/MatchTab'),   { s
 const SourceTab               = dynamic(() => import('./_source/SourceTab'), { ssr: false })
 const CvTab                   = dynamic(() => import('./_cv/CvTab'),         { ssr: false })
 const SocialMediaTab          = dynamic(() => import('./_social/SocialMediaTab'), { ssr: false })
+const JobZoneTab              = dynamic(() => import('./_social/JobZoneTab'), { ssr: false })
 const ActiveCampaignUploadTab = dynamic(() => import('./_ac/ActiveCampaignTab'), { ssr: false })
 const ActiveCampaignHtmlTab   = dynamic(() => import('./_ac/ActiveCampaignHtmlTab'), { ssr: false })
 
 type TabKey     = 'match' | 'source' | 'cv' | 'social' | 'ac'
 type SourceMode = 'people' | 'companies'
 type CvTemplate = 'uk' | 'us' | 'sales'   // Updated: support UK & US formats
-type SocialMode = 'jobPosts' | 'jobZone'         
+type SocialMode = 'jobPosts' | 'jobZone'
 
 //  Toggle to re-enable later
 const DISABLE_SOURCING = false
@@ -258,7 +259,14 @@ export default function ClientShell(): JSX.Element {
               {tab === 'match' && <MatchTab />}
               {tab === 'source' && <SourceTab mode={sourceMode} />}
               {tab === 'cv' && <CvTab templateFromShell={cvTemplate} />}
-              {tab === 'social' && <SocialMediaTab mode={socialMode} />}
+
+              {tab === 'social' && socialMode === 'jobPosts' && (
+                <SocialMediaTab />
+              )}
+              {tab === 'social' && socialMode === 'jobZone' && (
+                <JobZoneTab />
+              )}
+
               {tab === 'ac' && acMode === 'upload' && <ActiveCampaignUploadTab />}
               {tab === 'ac' && acMode === 'html'   && <ActiveCampaignHtmlTab />}
             </>
