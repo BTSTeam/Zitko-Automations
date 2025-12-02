@@ -661,46 +661,41 @@ export default function JobZoneTab(): JSX.Element {
   return (
     <div className="flex flex-col gap-6">
       {/* Region selector */}
-      <div className="flex flex-wrap items-center gap-3">
-        <span className="text-sm font-medium text-gray-700">
-          Region:
-        </span>
-        <button
-          type="button"
-          className={
-            region === 'ire' ? pillPrimary : pillSecondary
-          }
-          onClick={() => setRegion('ire')}
-        >
-          IRE
-        </button>
-        <button
-          type="button"
-          className={
-            region === 'uk' ? pillPrimary : pillSecondary
-          }
-          onClick={() => setRegion('uk')}
-        >
-          UK
-        </button>
-        <button
-          type="button"
-          className={
-            region === 'us' ? pillPrimary : pillSecondary
-          }
-          onClick={() => setRegion('us')}
-        >
-          US
-        </button>
-      </div>
-
-      {/* Job ID inputs */}
       <div className="rounded-2xl border bg-white/70 p-4 shadow-sm">
-        <label className="text-sm font-semibold text-gray-800 mb-3 block">
-          Job IDs (max 8)
-        </label>
+        
+        {/* Header Row: Left = Title, Right = Region Selector */}
+        <div className="flex items-center justify-between mb-3">
+          <label className="text-sm font-semibold text-gray-800">
+            Job IDs (max 8)
+          </label>
       
-        {/* 4×2 Grid like HTML Builder */}
+          {/* Region Selector (aligned right) */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className={region === 'ire' ? pillPrimary : pillSecondary}
+              onClick={() => setRegion('ire')}
+            >
+              IRE
+            </button>
+            <button
+              type="button"
+              className={region === 'uk' ? pillPrimary : pillSecondary}
+              onClick={() => setRegion('uk')}
+            >
+              UK
+            </button>
+            <button
+              type="button"
+              className={region === 'us' ? pillPrimary : pillSecondary}
+              onClick={() => setRegion('us')}
+            >
+              US
+            </button>
+          </div>
+        </div>
+      
+        {/* 4×2 grid of inputs */}
         <div className="grid grid-cols-4 gap-3 mb-4">
           {jobIds.map((val, idx) => (
             <input
@@ -713,7 +708,7 @@ export default function JobZoneTab(): JSX.Element {
           ))}
         </div>
       
-        {/* Full-width orange button */}
+        {/* Full width Retrieve button */}
         <button
           type="button"
           onClick={retrieveJobs}
