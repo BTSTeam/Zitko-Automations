@@ -167,7 +167,11 @@ export default function JobZoneTab(): JSX.Element {
   const [region, setRegion] = useState<ZoneRegion>('ire')
 
   // Up to 5 job IDs
+  // Up to 8 job IDs
   const [jobIds, setJobIds] = useState<string[]>([
+    '',
+    '',
+    '',
     '',
     '',
     '',
@@ -302,7 +306,7 @@ export default function JobZoneTab(): JSX.Element {
 
     const results: ZoneJob[] = []
 
-    for (const id of ids.slice(0, 5)) {
+    for (const id of ids.slice(0, 8)) {
       try {
         const r = await fetch(
           `/api/vincere/position/${encodeURIComponent(id)}`,
@@ -695,7 +699,7 @@ export default function JobZoneTab(): JSX.Element {
         <div className="flex flex-wrap items-end gap-3">
           <div className="flex flex-col gap-2 flex-1 min-w-[220px]">
             <label className="text-xs font-medium text-gray-600">
-              Job IDs (max 5)
+              Job IDs (max 8)
             </label>
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
               {jobIds.map((val, idx) => (
