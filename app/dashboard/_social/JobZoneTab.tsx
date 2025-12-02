@@ -696,35 +696,32 @@ export default function JobZoneTab(): JSX.Element {
 
       {/* Job ID inputs */}
       <div className="rounded-2xl border bg-white/70 p-4 shadow-sm">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="flex flex-col gap-2 flex-1 min-w-[220px]">
-            <label className="text-xs font-medium text-gray-600">
-              Job IDs (max 8)
-            </label>
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-              {jobIds.map((val, idx) => (
-                <input
-                  key={idx}
-                  value={val}
-                  onChange={(e) =>
-                    updateJobId(idx, e.target.value)
-                  }
-                  placeholder={`ID ${idx + 1}`}
-                  className="input input-bordered input-sm w-full"
-                />
-              ))}
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={retrieveJobs}
-            disabled={loadingJobs}
-            className={pillPrimary}
-          >
-            {loadingJobs ? 'Retrieving…' : 'Retrieve Jobs'}
-          </button>
+        <label className="text-sm font-semibold text-gray-800 mb-3 block">
+          Job IDs (max 8)
+        </label>
+      
+        {/* 4×2 Grid like HTML Builder */}
+        <div className="grid grid-cols-4 gap-3 mb-4">
+          {jobIds.map((val, idx) => (
+            <input
+              key={idx}
+              value={val}
+              onChange={(e) => updateJobId(idx, e.target.value)}
+              placeholder={`Job ID ${idx + 1}`}
+              className="input input-bordered w-full"
+            />
+          ))}
         </div>
+      
+        {/* Full-width orange button */}
+        <button
+          type="button"
+          onClick={retrieveJobs}
+          disabled={loadingJobs}
+          className="w-full bg-[#F7941D] hover:bg-[#e98310] text-white font-semibold py-3 rounded-full transition"
+        >
+          {loadingJobs ? 'Retrieving…' : 'Retrieve'}
+        </button>
       </div>
 
       {/* Cover preview */}
