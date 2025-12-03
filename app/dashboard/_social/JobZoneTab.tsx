@@ -480,29 +480,42 @@ export default function JobZoneTab(): JSX.Element {
         })}
 
         {tpl.layout.location && (
-          <img
-            src={LOCATION_ICON_SRC}
-            alt="Location"
-            style={{
-              position: 'absolute',
-              left:
-                ((layout.positions.location?.x ??
-                  tpl.layout.location.x) -
-                  45) *
-                scale,
-              top:
-                ((layout.positions.location?.y ??
-                  tpl.layout.location.y) -
-                  10) *
-                scale,
-              width: 32 * scale,
-              height: 32 * scale,
-            }}
-          />
+          (() => {
+            const base = tpl.layout.location
+            const override = layout.positions.location
+        
+            // current x/y of the location text
+            const locX = override?.x ?? base.x
+            const locY = override?.y ?? base.y
+        
+            // current font size of the location text
+            const fontSize =
+              layout.fontSizes.location ?? base.fontSize ?? 30
+        
+            // icon dimensions
+            const iconSize = 32 * scale
+            const iconHalf = iconSize / 2
+        
+            return (
+              <img
+                src={LOCATION_ICON_SRC}
+                alt="Location"
+                style={{
+                  position: 'absolute',
+        
+                  // place icon left of the text (adjust -45 if needed)
+                  left: (locX - 45) * scale,
+        
+                  // vertical centering:
+                  top: (locY * scale) + (fontSize * scale) / 2 - iconHalf,
+        
+                  width: iconSize,
+                  height: iconSize,
+                }}
+              />
+            )
+          })()
         )}
-      </div>
-    )
-  }
 
   function renderCover(
     scale: number,
