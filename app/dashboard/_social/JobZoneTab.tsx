@@ -9,11 +9,6 @@ import React, {
 } from 'react'
 import html2canvas from 'html2canvas'
 
-// NOTE: make sure you install jsPDF in your project:
-//   npm install jspdf
-// or
-//   yarn add jspdf
-
 type PlaceholderKey =
   | 'title'
   | 'location'
@@ -61,10 +56,8 @@ type LayoutState = {
 
 // --- constants --------------------------------------------------------------
 
-const BRAND_ORANGE = '#F7941D'
 const PREVIEW_SCALE = 0.35
 
-// Dark arcs – copied from SocialMediaTab (zitko-1)
 const DARK_ARCS_TEMPLATE: TemplateDef = {
   id: 'zitko-1',
   name: 'Zitko – Dark Arcs',
@@ -82,7 +75,6 @@ const DARK_ARCS_TEMPLATE: TemplateDef = {
   },
 }
 
-// New US Job Zone template – coordinates are starting values; tweak as needed
 const US_JZ_TEMPLATE: TemplateDef = {
   id: 'us-jz',
   name: 'US – Job Zone',
@@ -90,13 +82,13 @@ const US_JZ_TEMPLATE: TemplateDef = {
   width: 1080,
   height: 1080,
   layout: {
-    title:      { x: 470, y: 300, w: 560, fontSize: 60 },
-    location:   { x: 520, y: 450, w: 520, fontSize: 30 },
-    salary:     { x: 520, y: 500, w: 520, fontSize: 28 },
-    description:{ x: 520, y: 570, w: 520, h: 80,  fontSize: 24 },
-    benefits:   { x: 520, y: 760, w: 520, h: 260, fontSize: 24 },
-    email:      { x: 800, y: 962, w: 180, fontSize: 20, align: 'left' },
-    phone:      { x: 800, y: 1018, w: 180, fontSize: 20, align: 'left' },
+    title:      { x: 80,  y: 260, w: 880, fontSize: 56 },
+    location:   { x: 80,  y: 360, w: 620, fontSize: 30 },
+    salary:     { x: 80,  y: 410, w: 620, fontSize: 28 },
+    description:{ x: 80,  y: 470, w: 880, h: 120, fontSize: 24 },
+    benefits:   { x: 80,  y: 640, w: 880, h: 260, fontSize: 24 },
+    email:      { x: 80,  y: 950, w: 300, fontSize: 20, align: 'left' },
+    phone:      { x: 440, y: 950, w: 300, fontSize: 20, align: 'left' },
   },
 }
 
@@ -108,7 +100,6 @@ const COVER_BY_REGION: Record<ZoneRegion, string> = {
 
 const LOCATION_ICON_SRC = '/templates/Location-Icon.png'
 
-// Shared pill styles (mirrors SocialMediaTab)
 const pillBase =
   'inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#F7941D]'
 const pillPrimary =
@@ -144,29 +135,11 @@ function extractEmailPhoneFallback(textOrHtml: string) {
   }
 }
 
-function wrapText(text: string, maxCharsPerLine = 60) {
-  const words = String(text ?? '').split(/\s+/)
-  const lines: string[] = []
-  let current = ''
-  for (const w of words) {
-    const tryLine = current ? current + ' ' + w : w
-    if (tryLine.length > maxCharsPerLine) {
-      if (current) lines.push(current)
-      current = w
-    } else {
-      current = tryLine
-    }
-  }
-  if (current) lines.push(current)
-  return lines.join('\n')
-}
-
 // --- component -------------------------------------------------------------
 
 export default function JobZoneTab(): JSX.Element {
   const [region, setRegion] = useState<ZoneRegion>('ire')
 
-  // Up to 8 job IDs
   const [jobIds, setJobIds] = useState<string[]>([
     '', '', '', '', '', '', '', '',
   ])
@@ -175,12 +148,12 @@ export default function JobZoneTab(): JSX.Element {
   const [jobs, setJobs] = useState<ZoneJob[]>([])
   const [layouts, setLayouts] = useState<LayoutState[]>([])
 
-  // Which job the user is currently editing
+  // left-hand editor job
   const [activeIndex, setActiveIndex] = useState(0)
-  // Which slide is shown in the preview (0 = cover, 1..N = job index + 1)
+  // preview slide (0 = cover, >=1 = job index + 1)
   const [previewIndex, setPreviewIndex] = useState(0)
 
-  // Export refs – cover + one per job tile
+  // export refs
   const coverRef = useRef<HTMLDivElement | null>(null)
   const jobExportRefs = useRef<(HTMLDivElement | null)[]>([])
 
@@ -189,7 +162,6 @@ export default function JobZoneTab(): JSX.Element {
     [region],
   )
 
-  // When jobs change, reset layouts to defaults
   useEffect(() => {
     setLayouts(
       jobs.map(() => ({
@@ -197,7 +169,6 @@ export default function JobZoneTab(): JSX.Element {
         fontSizes: {},
       })),
     )
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobs.length])
 
   function updateJobId(index: number, value: string) {
@@ -208,10 +179,7 @@ export default function JobZoneTab(): JSX.Element {
     })
   }
 
-  function updateJob(
-    index: number,
-    patch: Partial<ZoneJob>,
-  ) {
+  function updateJob(index: number, patch: Partial<ZoneJob>) {
     setJobs((prev) => {
       const copy = [...prev]
       copy[index] = { ...copy[index], ...patch }
@@ -322,9 +290,7 @@ export default function JobZoneTab(): JSX.Element {
         try {
           const ai = await fetch('/api/job/summarize', {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               description: publicDesc,
               mode: 'default',
@@ -337,19 +303,14 @@ export default function JobZoneTab(): JSX.Element {
 
         let shortDesc = ''
         try {
-          const teaser = await fetch(
-            '/api/job/short-description',
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                description: publicDesc,
-                mode: 'default',
-              }),
-            },
-          )
+          const teaser = await fetch('/api/job/short-description', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              description: publicDesc,
+              mode: 'default',
+            }),
+          })
           if (teaser.ok) {
             const t = await teaser.json()
             shortDesc = t.description ?? ''
@@ -358,12 +319,8 @@ export default function JobZoneTab(): JSX.Element {
           // ignore
         }
 
-        let contactEmail = String(
-          extracted?.contactEmail ?? '',
-        ).trim()
-        let contactPhone = String(
-          extracted?.contactPhone ?? '',
-        ).trim()
+        let contactEmail = String(extracted?.contactEmail ?? '').trim()
+        let contactPhone = String(extracted?.contactPhone ?? '').trim()
 
         if (!contactEmail || !contactPhone) {
           const fb = extractEmailPhoneFallback(publicDesc)
@@ -373,36 +330,19 @@ export default function JobZoneTab(): JSX.Element {
 
         results.push({
           id,
-          title:
-            extracted?.title ??
-            data?.title ??
-            '',
-          location:
-            extracted?.location ??
-            data?.location ??
-            '',
-          salary:
-            extracted?.salary ??
-            data?.salary ??
-            '',
+          title: extracted?.title ?? data?.title ?? '',
+          location: extracted?.location ?? data?.location ?? '',
+          salary: extracted?.salary ?? data?.salary ?? '',
           description: shortDesc,
           benefits: Array.isArray(extracted?.benefits)
             ? extracted.benefits.join('\n')
             : String(data?.benefits ?? ''),
-          email:
-            contactEmail ||
-            data?.email ||
-            '',
-          phone:
-            contactPhone ||
-            data?.phone ||
-            '',
+          email: contactEmail || data?.email || '',
+          phone: contactPhone || data?.phone || '',
         })
       } catch (err) {
         console.error(err)
-        alert(
-          `Could not retrieve job data for ID ${id}`,
-        )
+        alert(`Could not retrieve job data for ID ${id}`)
       }
     }
 
@@ -424,9 +364,9 @@ export default function JobZoneTab(): JSX.Element {
       positions: {},
       fontSizes: {},
     }
-  
+
     const { width, height, imageUrl, layout: base } = tpl
-  
+
     return (
       <div
         ref={ref as any}
@@ -454,15 +394,15 @@ export default function JobZoneTab(): JSX.Element {
         ).map((key) => {
           const baseSpec = base[key]
           if (!baseSpec) return null
-  
+
           const override = layout.positions[key]
           const fontSize =
             layout.fontSizes[key] ?? baseSpec.fontSize ?? 18
-  
+
           const x = (override?.x ?? baseSpec.x) * scale
           const y = (override?.y ?? baseSpec.y) * scale
           const w = baseSpec.w ? baseSpec.w * scale : undefined
-  
+
           let value: string
           switch (key) {
             case 'title':
@@ -475,7 +415,8 @@ export default function JobZoneTab(): JSX.Element {
               value = job.salary || '[SALARY]'
               break
             case 'description':
-              value = job.description || '[SHORT DESCRIPTION]',
+              // let browser wrap naturally
+              value = job.description || '[SHORT DESCRIPTION]'
               break
             case 'benefits': {
               const tx =
@@ -484,7 +425,7 @@ export default function JobZoneTab(): JSX.Element {
               value = tx
                 .split('\n')
                 .map((l) => `• ${l}`)
-                .join('\n\n')
+                .join('\n')
               break
             }
             case 'email':
@@ -496,20 +437,19 @@ export default function JobZoneTab(): JSX.Element {
             default:
               value = ''
           }
-  
-          // salary always orange; others follow region rule
+
           const textColor =
             key === 'salary'
               ? '#F7941D'
               : region === 'us'
               ? '#3B3E44'
               : 'white'
-  
+
           const draggable = key !== 'email' && key !== 'phone'
           const dragProps = draggable
             ? makeDragHandlers(jobIndex, key)
             : {}
-  
+
           return (
             <div
               key={key}
@@ -523,6 +463,13 @@ export default function JobZoneTab(): JSX.Element {
                 color: textColor,
                 textAlign: baseSpec.align ?? 'left',
                 whiteSpace: 'pre-line',
+                fontWeight:
+                  key === 'title' ||
+                  key === 'location' ||
+                  key === 'salary' ||
+                  key === 'description'
+                    ? '700'
+                    : '400',
               }}
               {...dragProps}
             >
@@ -530,8 +477,7 @@ export default function JobZoneTab(): JSX.Element {
             </div>
           )
         })}
-  
-        {/* Location icon – always applied */}
+
         {tpl.layout.location && (
           <img
             src={LOCATION_ICON_SRC}
@@ -561,7 +507,7 @@ export default function JobZoneTab(): JSX.Element {
     scale: number,
     ref?: React.Ref<HTMLDivElement>,
   ) {
-    const size = tpl.width // assume square
+    const size = tpl.width
     const src = COVER_BY_REGION[region]
     return (
       <div
@@ -652,15 +598,13 @@ export default function JobZoneTab(): JSX.Element {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Top panel: Job IDs + Region selector */}
+      {/* Job IDs + Region */}
       <div className="rounded-2xl border bg-white/70 p-4 shadow-sm">
-        {/* Header Row: Left = Title, Right = Region Selector */}
         <div className="flex items-center justify-between mb-3">
           <label className="text-sm font-semibold text-gray-800">
             Job IDs (max 8)
           </label>
 
-          {/* Region Selector (aligned right) */}
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -686,7 +630,6 @@ export default function JobZoneTab(): JSX.Element {
           </div>
         </div>
 
-        {/* 4×2 grid of inputs */}
         <div className="grid grid-cols-4 gap-3 mb-4">
           {jobIds.map((val, idx) => (
             <input
@@ -699,7 +642,6 @@ export default function JobZoneTab(): JSX.Element {
           ))}
         </div>
 
-        {/* Full width Retrieve button */}
         <button
           type="button"
           onClick={retrieveJobs}
@@ -710,28 +652,25 @@ export default function JobZoneTab(): JSX.Element {
         </button>
       </div>
 
-      {/* Single Job Editor + Preview (includes cover in preview carousel) */}
+      {/* Editor + preview */}
       {jobs.length > 0 && (
         <div className="rounded-2xl border bg-white/80 p-4 shadow-sm">
           {(() => {
             const safeIndex = Math.min(activeIndex, jobs.length - 1)
             const job = jobs[safeIndex]
-            const maxPreviewIndex = jobs.length // 0..N (0=cover)
+            const maxPreviewIndex = jobs.length // 0..N
             const canPrev = previewIndex > 0
             const canNext = previewIndex < maxPreviewIndex
 
             const changePreview = (next: number) => {
               const clamped = Math.max(0, Math.min(maxPreviewIndex, next))
               setPreviewIndex(clamped)
-              if (clamped > 0) {
-                // keep editor in sync with preview job
-                setActiveIndex(clamped - 1)
-              }
+              if (clamped > 0) setActiveIndex(clamped - 1)
             }
 
             return (
               <div className="grid gap-6 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
-                {/* Left: job details + controls */}
+                {/* Left: job fields */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-semibold text-gray-900">
@@ -739,7 +678,6 @@ export default function JobZoneTab(): JSX.Element {
                     </h3>
                   </div>
 
-                  {/* Top row: title / location / salary / email / phone */}
                   <div className="grid gap-3 md:grid-cols-2">
                     {/* Title */}
                     <div className="space-y-1">
@@ -748,14 +686,18 @@ export default function JobZoneTab(): JSX.Element {
                         <span className="inline-flex gap-1">
                           <button
                             type="button"
-                            onClick={() => adjustFontSize(safeIndex, 'title', -2)}
+                            onClick={() =>
+                              adjustFontSize(safeIndex, 'title', -2)
+                            }
                             className="px-1 border rounded text-[10px]"
                           >
                             A-
                           </button>
                           <button
                             type="button"
-                            onClick={() => adjustFontSize(safeIndex, 'title', +2)}
+                            onClick={() =>
+                              adjustFontSize(safeIndex, 'title', +2)
+                            }
                             className="px-1 border rounded text-[10px]"
                           >
                             A+
@@ -839,7 +781,7 @@ export default function JobZoneTab(): JSX.Element {
                       />
                     </div>
 
-                    {/* Email */}
+                    {/* Email (no font controls) */}
                     <div className="space-y-1">
                       <div className="flex items-center justify-between text-xs font-medium text-gray-600">
                         <span>Email</span>
@@ -852,8 +794,8 @@ export default function JobZoneTab(): JSX.Element {
                         className="input input-bordered input-xs w-full text-xs"
                       />
                     </div>
-                    
-                    {/* Phone */}
+
+                    {/* Phone (no font controls) */}
                     <div className="space-y-1">
                       <div className="flex items-center justify-between text-xs font-medium text-gray-600">
                         <span>Phone Number</span>
@@ -902,7 +844,7 @@ export default function JobZoneTab(): JSX.Element {
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs resize-none focus:outline-none focus:border-[#F7941D]"
                     />
                   </div>
-                  
+
                   {/* Benefits */}
                   <div className="space-y-1">
                     <div className="flex items-center justify-between text-xs font-medium text-gray-600">
@@ -939,9 +881,8 @@ export default function JobZoneTab(): JSX.Element {
                   </div>
                 </div>
 
-                {/* Right: preview + arrows + download buttons */}
+                {/* Right: preview + exports */}
                 <div className="flex flex-col items-center gap-3">
-                  {/* Download buttons above preview */}
                   <div className="flex flex-wrap gap-2 mb-2">
                     <button
                       type="button"
@@ -960,7 +901,6 @@ export default function JobZoneTab(): JSX.Element {
                   </div>
 
                   <div className="flex items-center gap-4">
-                    {/* Prev arrow */}
                     <button
                       type="button"
                       disabled={!canPrev}
@@ -971,20 +911,12 @@ export default function JobZoneTab(): JSX.Element {
                       ‹
                     </button>
 
-                    {/* Poster / Cover preview */}
                     <div className="flex items-center justify-center">
                       {previewIndex === 0
                         ? renderCover(PREVIEW_SCALE, coverRef)
-                        : renderJobPoster(
-                            previewIndex - 1,
-                            PREVIEW_SCALE,
-                            (el: HTMLDivElement | null) => {
-                              jobExportRefs.current[previewIndex - 1] = el
-                            },
-                          )}
+                        : renderJobPoster(previewIndex - 1, PREVIEW_SCALE)}
                     </div>
 
-                    {/* Next arrow */}
                     <button
                       type="button"
                       disabled={!canNext}
@@ -1002,7 +934,7 @@ export default function JobZoneTab(): JSX.Element {
         </div>
       )}
 
-      {/* Hidden full-size export nodes (cover + all jobs) */}
+      {/* Hidden full-size nodes for export */}
       <div
         style={{
           position: 'fixed',
