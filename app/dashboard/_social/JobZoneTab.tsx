@@ -364,9 +364,9 @@ export default function JobZoneTab(): JSX.Element {
       positions: {},
       fontSizes: {},
     }
-
+  
     const { width, height, imageUrl, layout: base } = tpl
-
+  
     return (
       <div
         ref={ref as any}
@@ -395,15 +395,15 @@ export default function JobZoneTab(): JSX.Element {
         ).map((key) => {
           const baseSpec = base[key]
           if (!baseSpec) return null
-
+  
           const override = layout.positions[key]
           const fontSize =
             layout.fontSizes[key] ?? baseSpec.fontSize ?? 18
-
+  
           const x = (override?.x ?? baseSpec.x) * scale
           const y = (override?.y ?? baseSpec.y) * scale
           const w = baseSpec.w ? baseSpec.w * scale : undefined
-
+  
           let value: string
           switch (key) {
             case 'title':
@@ -416,7 +416,6 @@ export default function JobZoneTab(): JSX.Element {
               value = job.salary || '[SALARY]'
               break
             case 'description':
-              // let browser wrap naturally
               value = job.description || '[SHORT DESCRIPTION]'
               break
             case 'benefits': {
@@ -438,19 +437,21 @@ export default function JobZoneTab(): JSX.Element {
             default:
               value = ''
           }
-
+  
+          const isContact = key === 'email' || key === 'phone'
+  
           const textColor =
             key === 'salary'
               ? '#F7941D'
               : region === 'us'
-              ? (key === 'email' || key === 'phone' ? 'white' : '#3B3E44')
+              ? '#3B3E44' // everything on US template dark grey, including email/phone
               : 'white'
-
+  
           const draggable = key !== 'email' && key !== 'phone'
           const dragProps = draggable
             ? makeDragHandlers(jobIndex, key)
             : {}
-
+  
           return (
             <div
               key={key}
@@ -478,7 +479,8 @@ export default function JobZoneTab(): JSX.Element {
             </div>
           )
         })}
-
+  
+        {/* Location icon */}
         {tpl.layout.location && (
           <img
             src={LOCATION_ICON_SRC}
@@ -491,7 +493,7 @@ export default function JobZoneTab(): JSX.Element {
                   tpl.layout.location.x) -
                   45) *
                 scale,
-              // vertically centre icon relative to the location text line
+              // vertically centre icon relative to location text line
               top:
                 (
                   (layout.positions.location?.y ??
@@ -507,6 +509,9 @@ export default function JobZoneTab(): JSX.Element {
             }}
           />
         )}
+      </div>
+    )
+  }
 
   function renderCover(
     scale: number,
