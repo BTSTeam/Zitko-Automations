@@ -424,9 +424,9 @@ export default function JobZoneTab(): JSX.Element {
       positions: {},
       fontSizes: {},
     }
-
+  
     const { width, height, imageUrl, layout: base } = tpl
-
+  
     return (
       <div
         ref={ref as any}
@@ -443,35 +443,73 @@ export default function JobZoneTab(): JSX.Element {
       >
         {(
           [
-          'title',
-          'location',
-          'salary',
-          'description',
-          'benefits',
-          'email',
-          'phone',
-        ].map((key) => {
+            'title',
+            'location',
+            'salary',
+            'description',
+            'benefits',
+            'email',
+            'phone',
+          ] as PlaceholderKey[]
+        ).map((key) => {
           const baseSpec = base[key]
           if (!baseSpec) return null
-        
+  
           const override = layout.positions[key]
           const fontSize =
             layout.fontSizes[key] ?? baseSpec.fontSize ?? 18
-        
+  
           const x = (override?.x ?? baseSpec.x) * scale
           const y = (override?.y ?? baseSpec.y) * scale
           const w = baseSpec.w ? baseSpec.w * scale : undefined
-        
-          // --- NEW: choose text colour per field ---
+  
+          let value: string
+          switch (key) {
+            case 'title':
+              value = job.title || '[JOB TITLE]'
+              break
+            case 'location':
+              value = job.location || '[LOCATION]'
+              break
+            case 'salary':
+              value = job.salary || '[SALARY]'
+              break
+            case 'description':
+              value = wrapText(job.description || '[SHORT DESCRIPTION]')
+              break
+            case 'benefits': {
+              const tx =
+                job.benefits ||
+                '[BENEFIT 1]\n[BENEFIT 2]\n[BENEFIT 3]'
+              value = tx
+                .split('\n')
+                .map((l) => `• ${l}`)
+                .join('\n\n')
+              break
+            }
+            case 'email':
+              value = job.email || '[EMAIL]'
+              break
+            case 'phone':
+              value = job.phone || '[PHONE NUMBER]'
+              break
+            default:
+              value = ''
+          }
+  
+          // salary always orange; others follow region rule
           const textColor =
             key === 'salary'
-              ? '#F7941D' // salary always orange
+              ? '#F7941D'
               : region === 'us'
               ? '#3B3E44'
               : 'white'
-        
-          // ... your existing switch(key) to build `value` stays the same ...
-        
+  
+          const draggable = key !== 'email' && key !== 'phone'
+          const dragProps = draggable
+            ? makeDragHandlers(jobIndex, key)
+            : {}
+  
           return (
             <div
               key={key}
@@ -482,7 +520,7 @@ export default function JobZoneTab(): JSX.Element {
                 width: w,
                 fontSize: fontSize * scale,
                 lineHeight: 1.25,
-                color: textColor,          // 👈 use the new value
+                color: textColor,
                 textAlign: baseSpec.align ?? 'left',
                 whiteSpace: 'pre-line',
               }}
@@ -492,7 +530,7 @@ export default function JobZoneTab(): JSX.Element {
             </div>
           )
         })}
-
+  
         {/* Location icon – always applied */}
         {tpl.layout.location && (
           <img
