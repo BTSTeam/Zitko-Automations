@@ -66,7 +66,7 @@ const DARK_ARCS_TEMPLATE: TemplateDef = {
   height: 1080,
   layout: {
     title:      { x: 470, y: 300, w: 560, fontSize: 60 },
-    location:   { x: 520, y: 450, w: 520, fontSize: 30 },
+    location:   { x: 520, y: 440, w: 520, fontSize: 30 },
     salary:     { x: 520, y: 500, w: 520, fontSize: 28 },
     description:{ x: 520, y: 570, w: 520, h: 80,  fontSize: 24 },
     benefits:   { x: 520, y: 760, w: 520, h: 260, fontSize: 24 },
@@ -83,7 +83,7 @@ const US_JZ_TEMPLATE: TemplateDef = {
   height: 1080,
   layout: {
     title:      { x: 470, y: 300, w: 560, fontSize: 60 },
-    location:   { x: 520, y: 450, w: 520, fontSize: 30 },
+    location:   { x: 520, y: 440, w: 520, fontSize: 30 },
     salary:     { x: 520, y: 500, w: 520, fontSize: 28 },
     description:{ x: 520, y: 570, w: 520, h: 80,  fontSize: 24 },
     benefits:   { x: 520, y: 760, w: 520, h: 260, fontSize: 24 },
