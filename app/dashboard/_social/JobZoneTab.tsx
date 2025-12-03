@@ -82,13 +82,13 @@ const US_JZ_TEMPLATE: TemplateDef = {
   width: 1080,
   height: 1080,
   layout: {
-    title:      { x: 80,  y: 260, w: 880, fontSize: 56 },
-    location:   { x: 80,  y: 360, w: 620, fontSize: 30 },
-    salary:     { x: 80,  y: 410, w: 620, fontSize: 28 },
-    description:{ x: 80,  y: 470, w: 880, h: 120, fontSize: 24 },
-    benefits:   { x: 80,  y: 640, w: 880, h: 260, fontSize: 24 },
-    email:      { x: 80,  y: 950, w: 300, fontSize: 20, align: 'left' },
-    phone:      { x: 440, y: 950, w: 300, fontSize: 20, align: 'left' },
+    title:      { x: 470, y: 300, w: 560, fontSize: 60 },
+    location:   { x: 520, y: 450, w: 520, fontSize: 30 },
+    salary:     { x: 520, y: 500, w: 520, fontSize: 28 },
+    description:{ x: 520, y: 570, w: 520, h: 80,  fontSize: 24 },
+    benefits:   { x: 520, y: 760, w: 520, h: 260, fontSize: 24 },
+    email:      { x: 800, y: 962, w: 180, fontSize: 20, align: 'left' },
+    phone:      { x: 800, y: 1018, w: 180, fontSize: 20, align: 'left' },
   },
 }
 
