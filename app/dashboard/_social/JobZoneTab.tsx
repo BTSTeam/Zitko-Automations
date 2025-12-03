@@ -177,6 +177,7 @@ export default function JobZoneTab(): JSX.Element {
 
   // Which job the user is currently editing / previewing
   const [activeIndex, setActiveIndex] = useState(0)
+
   // Export refs – cover + one per job tile
   const coverRef = useRef<HTMLDivElement | null>(null)
   const jobExportRefs = useRef<(HTMLDivElement | null)[]>([])
@@ -467,21 +468,17 @@ export default function JobZoneTab(): JSX.Element {
 
           switch (key) {
             case 'title':
-              value =
-                job.title || '[JOB TITLE]'
+              value = job.title || '[JOB TITLE]'
               break
             case 'location':
-              value =
-                job.location || '[LOCATION]'
+              value = job.location || '[LOCATION]'
               break
             case 'salary':
-              value =
-                job.salary || '[SALARY]'
+              value = job.salary || '[SALARY]'
               break
             case 'description':
               value = wrapText(
-                job.description ||
-                  '[SHORT DESCRIPTION]',
+                job.description || '[SHORT DESCRIPTION]',
               )
               break
             case 'benefits': {
@@ -498,8 +495,7 @@ export default function JobZoneTab(): JSX.Element {
               value = job.email || '[EMAIL]'
               break
             case 'phone':
-              value =
-                job.phone || '[PHONE NUMBER]'
+              value = job.phone || '[PHONE NUMBER]'
               break
             default:
               value = ''
@@ -523,8 +519,7 @@ export default function JobZoneTab(): JSX.Element {
                 fontSize: fontSize * scale,
                 lineHeight: 1.25,
                 color: 'white',
-                textAlign:
-                  baseSpec.align ?? 'left',
+                textAlign: baseSpec.align ?? 'left',
                 whiteSpace: 'pre-line',
               }}
               {...dragProps}
@@ -542,13 +537,13 @@ export default function JobZoneTab(): JSX.Element {
             style={{
               position: 'absolute',
               left:
-                ((layout.positions.location
-                  ?.x ?? tpl.layout.location.x) -
+                ((layout.positions.location?.x ??
+                  tpl.layout.location.x) -
                   45) *
                 scale,
               top:
-                ((layout.positions.location
-                  ?.y ?? tpl.layout.location.y) -
+                ((layout.positions.location?.y ??
+                  tpl.layout.location.y) -
                   10) *
                 scale,
               width: 32 * scale,
@@ -655,15 +650,14 @@ export default function JobZoneTab(): JSX.Element {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Region selector */}
+      {/* Top panel: Job IDs + Region selector */}
       <div className="rounded-2xl border bg-white/70 p-4 shadow-sm">
-        
         {/* Header Row: Left = Title, Right = Region Selector */}
         <div className="flex items-center justify-between mb-3">
           <label className="text-sm font-semibold text-gray-800">
             Job IDs (max 8)
           </label>
-      
+
           {/* Region Selector (aligned right) */}
           <div className="flex items-center gap-2">
             <button
@@ -689,7 +683,7 @@ export default function JobZoneTab(): JSX.Element {
             </button>
           </div>
         </div>
-      
+
         {/* 4×2 grid of inputs */}
         <div className="grid grid-cols-4 gap-3 mb-4">
           {jobIds.map((val, idx) => (
@@ -702,7 +696,7 @@ export default function JobZoneTab(): JSX.Element {
             />
           ))}
         </div>
-      
+
         {/* Full width Retrieve button */}
         <button
           type="button"
@@ -714,23 +708,13 @@ export default function JobZoneTab(): JSX.Element {
         </button>
       </div>
 
-      {/* Cover preview */}
-      <div className="rounded-2xl border bg-white/70 p-4 shadow-sm">
-        <h2 className="mb-3 text-sm font-semibold text-gray-800">
-          Job Zone Cover
-        </h2>
-        <div className="flex justify-center">
-          {renderCover(PREVIEW_SCALE)}
-        </div>
-      </div>
-
-      {/* Single Job Editor + Preview */}
+      {/* Single Job Editor + Preview (replaces visible cover panel) */}
       {jobs.length > 0 && (
         <div className="rounded-2xl border bg-white/80 p-4 shadow-sm">
           {(() => {
             const i = activeIndex
             const job = jobs[i]
-      
+
             return (
               <div className="grid gap-6 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
                 {/* Left: job details + controls */}
@@ -740,16 +724,238 @@ export default function JobZoneTab(): JSX.Element {
                       Job {i + 1} – [{job.id || 'Job ID'}]
                     </h3>
                   </div>
-      
-                  {/* Your existing fields, but using index i */}
-                  {/* Title / Location / Salary / Email / Phone / Description / Benefits */}
-                  {/* (All the inputs you already have, just replace every `job` and `i` usage
-                      exactly as before – no logic change needed.) */}
-      
-                  {/* Title + font controls */}
-                  {/* ... keep the same content from your map version, using `job` and `i` ... */}
+
+                  {/* Top row: title / location / salary / email / phone */}
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {/* Title */}
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-gray-600">
+                        Job Title
+                      </label>
+                      <input
+                        value={job.title}
+                        onChange={(e) =>
+                          updateJob(i, { title: e.target.value })
+                        }
+                        className="input input-bordered input-sm w-full"
+                      />
+                      <div className="flex gap-1 text-[10px] text-gray-500">
+                        <span>Font</span>
+                        <button
+                          type="button"
+                          onClick={() => adjustFontSize(i, 'title', -2)}
+                          className="px-1 border rounded"
+                        >
+                          A-
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => adjustFontSize(i, 'title', +2)}
+                          className="px-1 border rounded"
+                        >
+                          A+
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Location */}
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-gray-600">
+                        Location
+                      </label>
+                      <input
+                        value={job.location}
+                        onChange={(e) =>
+                          updateJob(i, { location: e.target.value })
+                        }
+                        className="input input-bordered input-sm w-full"
+                      />
+                      <div className="flex gap-1 text-[10px] text-gray-500">
+                        <span>Font</span>
+                        <button
+                          type="button"
+                          onClick={() => adjustFontSize(i, 'location', -2)}
+                          className="px-1 border rounded"
+                        >
+                          A-
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => adjustFontSize(i, 'location', +2)}
+                          className="px-1 border rounded"
+                        >
+                          A+
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Salary */}
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-gray-600">
+                        Salary
+                      </label>
+                      <input
+                        value={job.salary}
+                        onChange={(e) =>
+                          updateJob(i, { salary: e.target.value })
+                        }
+                        className="input input-bordered input-sm w-full"
+                      />
+                      <div className="flex gap-1 text-[10px] text-gray-500">
+                        <span>Font</span>
+                        <button
+                          type="button"
+                          onClick={() => adjustFontSize(i, 'salary', -2)}
+                          className="px-1 border rounded"
+                        >
+                          A-
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => adjustFontSize(i, 'salary', +2)}
+                          className="px-1 border rounded"
+                        >
+                          A+
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Email */}
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-gray-600">
+                        Email
+                      </label>
+                      <input
+                        value={job.email}
+                        onChange={(e) =>
+                          updateJob(i, { email: e.target.value })
+                        }
+                        className="input input-bordered input-sm w-full"
+                      />
+                      <div className="flex gap-1 text-[10px] text-gray-500">
+                        <span>Font</span>
+                        <button
+                          type="button"
+                          onClick={() => adjustFontSize(i, 'email', -2)}
+                          className="px-1 border rounded"
+                        >
+                          A-
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => adjustFontSize(i, 'email', +2)}
+                          className="px-1 border rounded"
+                        >
+                          A+
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Phone */}
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-gray-600">
+                        Phone Number
+                      </label>
+                      <input
+                        value={job.phone}
+                        onChange={(e) =>
+                          updateJob(i, { phone: e.target.value })
+                        }
+                        className="input input-bordered input-sm w-full"
+                      />
+                      <div className="flex gap-1 text-[10px] text-gray-500">
+                        <span>Font</span>
+                        <button
+                          type="button"
+                          onClick={() => adjustFontSize(i, 'phone', -2)}
+                          className="px-1 border rounded"
+                        >
+                          A-
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => adjustFontSize(i, 'phone', +2)}
+                          className="px-1 border rounded"
+                        >
+                          A+
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Short Description */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-gray-600">
+                      Short Description
+                    </label>
+                    <textarea
+                      value={job.description}
+                      onChange={(e) =>
+                        updateJob(i, { description: e.target.value })
+                      }
+                      rows={3}
+                      className="textarea textarea-bordered textarea-sm w-full resize-none"
+                    />
+                    <div className="flex gap-1 text-[10px] text-gray-500">
+                      <span>Font</span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          adjustFontSize(i, 'description', -2)
+                        }
+                        className="px-1 border rounded"
+                      >
+                        A-
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          adjustFontSize(i, 'description', +2)
+                        }
+                        className="px-1 border rounded"
+                      >
+                        A+
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Benefits */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-gray-600">
+                      Benefits (one per line)
+                    </label>
+                    <textarea
+                      value={job.benefits}
+                      onChange={(e) =>
+                        updateJob(i, { benefits: e.target.value })
+                      }
+                      rows={4}
+                      className="textarea textarea-bordered textarea-sm w-full resize-none"
+                    />
+                    <div className="flex gap-1 text-[10px] text-gray-500">
+                      <span>Font</span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          adjustFontSize(i, 'benefits', -2)
+                        }
+                        className="px-1 border rounded"
+                      >
+                        A-
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          adjustFontSize(i, 'benefits', +2)
+                        }
+                        className="px-1 border rounded"
+                      >
+                        A+
+                      </button>
+                    </div>
+                  </div>
                 </div>
-      
+
                 {/* Right: preview + arrows + download buttons */}
                 <div className="flex flex-col items-center gap-3">
                   {/* Download buttons above preview */}
@@ -769,24 +975,26 @@ export default function JobZoneTab(): JSX.Element {
                       Download PDF
                     </button>
                   </div>
-      
+
                   <div className="flex items-center gap-4">
                     {/* Prev arrow */}
                     <button
                       type="button"
                       disabled={activeIndex === 0}
-                      onClick={() => setActiveIndex((prev) => Math.max(0, prev - 1))}
+                      onClick={() =>
+                        setActiveIndex((prev) => Math.max(0, prev - 1))
+                      }
                       className="text-2xl px-2 disabled:opacity-30"
                       aria-label="Previous job"
                     >
                       ‹
                     </button>
-      
+
                     {/* Poster preview */}
                     <div className="flex items-center justify-center">
                       {renderJobPoster(i, PREVIEW_SCALE)}
                     </div>
-      
+
                     {/* Next arrow */}
                     <button
                       type="button"
@@ -809,28 +1017,7 @@ export default function JobZoneTab(): JSX.Element {
         </div>
       )}
 
-
-      {/* Export buttons */}
-      {jobs.length > 0 && (
-        <div className="flex flex-wrap gap-3">
-          <button
-            type="button"
-            onClick={downloadAllPngs}
-            className={pillPrimary}
-          >
-            Download PNGs (cover + jobs)
-          </button>
-          <button
-            type="button"
-            onClick={downloadPdf}
-            className={pillSecondary}
-          >
-            Download PDF (all pages)
-          </button>
-        </div>
-      )}
-
-      {/* Hidden full-size export nodes */}
+      {/* Hidden full-size export nodes (cover + all jobs) */}
       <div
         style={{
           position: 'fixed',
@@ -845,7 +1032,7 @@ export default function JobZoneTab(): JSX.Element {
           renderJobPoster(
             i,
             1,
-            (el: HTMLDivElement) => {
+            (el: HTMLDivElement | null) => {
               jobExportRefs.current[i] = el
             },
           ),
