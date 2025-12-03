@@ -75,8 +75,8 @@ const DARK_ARCS_TEMPLATE: TemplateDef = {
     title:      { x: 470, y: 300, w: 560, fontSize: 60 },
     location:   { x: 520, y: 450, w: 520, fontSize: 30 },
     salary:     { x: 520, y: 500, w: 520, fontSize: 28 },
-    description:{ x: 520, y: 570, w: 570, h: 80,  fontSize: 24 },
-    benefits:   { x: 520, y: 760, w: 570, h: 260, fontSize: 24 },
+    description:{ x: 520, y: 570, w: 520, h: 80,  fontSize: 24 },
+    benefits:   { x: 520, y: 760, w: 520, h: 260, fontSize: 24 },
     email:      { x: 800, y: 962, w: 180, fontSize: 20, align: 'left' },
     phone:      { x: 800, y: 1018, w: 180, fontSize: 20, align: 'left' },
   },
@@ -93,8 +93,8 @@ const US_JZ_TEMPLATE: TemplateDef = {
     title:      { x: 470, y: 300, w: 560, fontSize: 60 },
     location:   { x: 520, y: 450, w: 520, fontSize: 30 },
     salary:     { x: 520, y: 500, w: 520, fontSize: 28 },
-    description:{ x: 520, y: 570, w: 570, h: 80,  fontSize: 24 },
-    benefits:   { x: 520, y: 760, w: 570, h: 260, fontSize: 24 },
+    description:{ x: 520, y: 570, w: 520, h: 80,  fontSize: 24 },
+    benefits:   { x: 520, y: 760, w: 520, h: 260, fontSize: 24 },
     email:      { x: 800, y: 962, w: 180, fontSize: 20, align: 'left' },
     phone:      { x: 800, y: 1018, w: 180, fontSize: 20, align: 'left' },
   },
@@ -144,7 +144,7 @@ function extractEmailPhoneFallback(textOrHtml: string) {
   }
 }
 
-function wrapText(text: string, maxCharsPerLine = 34) {
+function wrapText(text: string, maxCharsPerLine = 60) {
   const words = String(text ?? '').split(/\s+/)
   const lines: string[] = []
   let current = ''
@@ -443,96 +443,49 @@ export default function JobZoneTab(): JSX.Element {
       >
         {(
           [
-            'title',
-            'location',
-            'salary',
-            'description',
-            'benefits',
-            'email',
-            'phone',
-          ] as PlaceholderKey[]
-        ).map((key) => {
+          'title',
+          'location',
+          'salary',
+          'description',
+          'benefits',
+          'email',
+          'phone',
+        ].map((key) => {
           const baseSpec = base[key]
           if (!baseSpec) return null
-
+        
           const override = layout.positions[key]
           const fontSize =
-            layout.fontSizes[key] ??
-            baseSpec.fontSize ??
-            18
-
+            layout.fontSizes[key] ?? baseSpec.fontSize ?? 18
+        
           const x = (override?.x ?? baseSpec.x) * scale
           const y = (override?.y ?? baseSpec.y) * scale
-          const w = baseSpec.w
-            ? baseSpec.w * scale
-            : undefined
-
-          let value: string
-
-          switch (key) {
-            case 'title':
-              value = job.title || '[JOB TITLE]'
-              break
-            case 'location':
-              value = job.location || '[LOCATION]'
-              break
-            case 'salary':
-              value = job.salary || '[SALARY]'
-              break
-            case 'description':
-              value = wrapText(
-                job.description || '[SHORT DESCRIPTION]',
-              )
-              break
-            case 'benefits': {
-              const tx =
-                job.benefits ||
-                '[BENEFIT 1]\n[BENEFIT 2]\n[BENEFIT 3]'
-              value = tx
-                .split('\n')
-                .map((l) => `• ${l}`)
-                .join('\n\n')
-              break
-            }
-            case 'email':
-              value = job.email || '[EMAIL]'
-              break
-            case 'phone':
-              value = job.phone || '[PHONE NUMBER]'
-              break
-            default:
-              value = ''
-          }
-
-          const draggable =
-            key !== 'email' && key !== 'phone'
-
-          const dragProps = draggable
-            ? makeDragHandlers(jobIndex, key)
-            : {}
-
+          const w = baseSpec.w ? baseSpec.w * scale : undefined
+        
+          // --- NEW: choose text colour per field ---
+          const textColor =
+            key === 'salary'
+              ? '#F7941D' // salary always orange
+              : region === 'us'
+              ? '#3B3E44'
+              : 'white'
+        
+          // ... your existing switch(key) to build `value` stays the same ...
+        
           return (
             <div
               key={key}
-             style={{
-              position: 'absolute',
-              left: x,
-              top: y,
-              width: w,
-              fontSize: fontSize * scale,
-              lineHeight: 1.25,
-            
-              // 👇 NEW: salary is always orange, otherwise follow normal color rules
-              color:
-                key === 'salary'
-                  ? '#F7941D'
-                  : region === 'us'
-                  ? '#3B3E44'
-                  : 'white',
-            
-              textAlign: baseSpec.align ?? 'left',
-              whiteSpace: 'pre-line',
-            }}
+              style={{
+                position: 'absolute',
+                left: x,
+                top: y,
+                width: w,
+                fontSize: fontSize * scale,
+                lineHeight: 1.25,
+                color: textColor,          // 👈 use the new value
+                textAlign: baseSpec.align ?? 'left',
+                whiteSpace: 'pre-line',
+              }}
               {...dragProps}
             >
               {value}
