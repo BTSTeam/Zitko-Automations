@@ -438,6 +438,8 @@ export default function JobZoneTab(): JSX.Element {
               value = ''
           }
   
+          const isContact = key === 'email' || key === 'phone'
+          
           const textColor =
             key === 'salary'
               ? '#F7941D'
