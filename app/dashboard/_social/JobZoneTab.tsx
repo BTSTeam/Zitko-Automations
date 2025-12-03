@@ -370,6 +370,7 @@ export default function JobZoneTab(): JSX.Element {
     return (
       <div
         ref={ref as any}
+        data-jz-export-job={scale === 1 ? '1' : undefined}
         style={{
           position: 'relative',
           width: width * scale,
@@ -377,7 +378,7 @@ export default function JobZoneTab(): JSX.Element {
           backgroundImage: `url(${imageUrl})`,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
-          borderRadius: 24,
+          borderRadius: 0, // square edges
           overflow: 'hidden',
         }}
       >
@@ -442,7 +443,7 @@ export default function JobZoneTab(): JSX.Element {
             key === 'salary'
               ? '#F7941D'
               : region === 'us'
-              ? '#3B3E44'
+              ? (key === 'email' || key === 'phone' ? 'white' : '#3B3E44')
               : 'white'
 
           const draggable = key !== 'email' && key !== 'phone'
@@ -512,6 +513,7 @@ export default function JobZoneTab(): JSX.Element {
     return (
       <div
         ref={ref as any}
+        data-jz-export-cover={scale === 1 ? '1' : undefined}
         style={{
           position: 'relative',
           width: size * scale,
@@ -519,7 +521,7 @@ export default function JobZoneTab(): JSX.Element {
           backgroundImage: `url(${src})`,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
-          borderRadius: 24,
+          borderRadius: 0, // square edges
           overflow: 'hidden',
         }}
       />
@@ -530,14 +532,19 @@ export default function JobZoneTab(): JSX.Element {
 
   async function downloadAllPngs() {
     const nodes: HTMLElement[] = []
-
-    if (coverRef.current) nodes.push(coverRef.current)
-    jobExportRefs.current.forEach((node) => {
-      if (node) nodes.push(node)
-    })
-
+  
+    // Cover (export-sized)
+    const coverNode = document.querySelector<HTMLElement>('[data-jz-export-cover="1"]')
+    if (coverNode) nodes.push(coverNode)
+  
+    // All job posters (export-sized)
+    const jobNodes = Array.from(
+      document.querySelectorAll<HTMLElement>('[data-jz-export-job="1"]'),
+    )
+    nodes.push(...jobNodes)
+  
     if (!nodes.length) return
-
+  
     for (let i = 0; i < nodes.length; i++) {
       const node = nodes[i]
       const canvas = await html2canvas(node, {
@@ -557,22 +564,25 @@ export default function JobZoneTab(): JSX.Element {
 
   async function downloadPdf() {
     const { jsPDF } = await import('jspdf')
-
+  
     const nodes: HTMLElement[] = []
-
-    if (coverRef.current) nodes.push(coverRef.current)
-    jobExportRefs.current.forEach((node) => {
-      if (node) nodes.push(node)
-    })
-
+  
+    const coverNode = document.querySelector<HTMLElement>('[data-jz-export-cover="1"]')
+    if (coverNode) nodes.push(coverNode)
+  
+    const jobNodes = Array.from(
+      document.querySelectorAll<HTMLElement>('[data-jz-export-job="1"]'),
+    )
+    nodes.push(...jobNodes)
+  
     if (!nodes.length) return
-
+  
     const doc = new jsPDF({
       orientation: 'portrait',
       unit: 'px',
       format: [tpl.width, tpl.height],
     })
-
+  
     for (let i = 0; i < nodes.length; i++) {
       const node = nodes[i]
       const canvas = await html2canvas(node, {
@@ -590,7 +600,7 @@ export default function JobZoneTab(): JSX.Element {
         tpl.height,
       )
     }
-
+  
     doc.save('job-zone.pdf')
   }
 
