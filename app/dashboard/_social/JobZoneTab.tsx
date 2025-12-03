@@ -75,8 +75,8 @@ const DARK_ARCS_TEMPLATE: TemplateDef = {
     title:      { x: 470, y: 300, w: 560, fontSize: 60 },
     location:   { x: 520, y: 450, w: 520, fontSize: 30 },
     salary:     { x: 520, y: 500, w: 520, fontSize: 28 },
-    description:{ x: 520, y: 570, w: 580, h: 80,  fontSize: 24 },
-    benefits:   { x: 520, y: 760, w: 580, h: 260, fontSize: 24 },
+    description:{ x: 520, y: 570, w: 570, h: 80,  fontSize: 24 },
+    benefits:   { x: 520, y: 760, w: 570, h: 260, fontSize: 24 },
     email:      { x: 800, y: 962, w: 180, fontSize: 20, align: 'left' },
     phone:      { x: 800, y: 1018, w: 180, fontSize: 20, align: 'left' },
   },
@@ -93,8 +93,8 @@ const US_JZ_TEMPLATE: TemplateDef = {
     title:      { x: 470, y: 300, w: 560, fontSize: 60 },
     location:   { x: 520, y: 450, w: 520, fontSize: 30 },
     salary:     { x: 520, y: 500, w: 520, fontSize: 28 },
-    description:{ x: 520, y: 570, w: 580, h: 80,  fontSize: 24 },
-    benefits:   { x: 520, y: 760, w: 580, h: 260, fontSize: 24 },
+    description:{ x: 520, y: 570, w: 570, h: 80,  fontSize: 24 },
+    benefits:   { x: 520, y: 760, w: 570, h: 260, fontSize: 24 },
     email:      { x: 800, y: 962, w: 180, fontSize: 20, align: 'left' },
     phone:      { x: 800, y: 1018, w: 180, fontSize: 20, align: 'left' },
   },
@@ -515,16 +515,24 @@ export default function JobZoneTab(): JSX.Element {
             <div
               key={key}
              style={{
-                position: 'absolute',
-                left: x,
-                top: y,
-                width: w,
-                fontSize: fontSize * scale,
-                lineHeight: 1.25,
-                color: region === 'us' ? '#3B3E44' : 'white',
-                textAlign: baseSpec.align ?? 'left',
-                whiteSpace: 'pre-line',
-              }}
+              position: 'absolute',
+              left: x,
+              top: y,
+              width: w,
+              fontSize: fontSize * scale,
+              lineHeight: 1.25,
+            
+              // 👇 NEW: salary is always orange, otherwise follow normal color rules
+              color:
+                key === 'salary'
+                  ? '#F7941D'
+                  : region === 'us'
+                  ? '#3B3E44'
+                  : 'white',
+            
+              textAlign: baseSpec.align ?? 'left',
+              whiteSpace: 'pre-line',
+            }}
               {...dragProps}
             >
               {value}
