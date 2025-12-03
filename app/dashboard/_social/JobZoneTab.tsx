@@ -475,7 +475,7 @@ export default function JobZoneTab(): JSX.Element {
               value = job.salary || '[SALARY]'
               break
             case 'description':
-              value = wrapText(job.description || '[SHORT DESCRIPTION]')
+              value = job.description || '[SHORT DESCRIPTION]',
               break
             case 'benefits': {
               const tx =
