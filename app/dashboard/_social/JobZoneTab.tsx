@@ -502,7 +502,7 @@ export default function JobZoneTab(): JSX.Element {
                     tpl.layout.location.fontSize ??
                     30) /
                     2) -
-                  8 // half of icon height (32 / 2)
+                  5 // half of icon height (32 / 2)
                 ) * scale,
               width: 32 * scale,
               height: 32 * scale,
