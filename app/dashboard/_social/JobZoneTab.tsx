@@ -438,13 +438,9 @@ export default function JobZoneTab(): JSX.Element {
               value = ''
           }
   
-          const isContact = key === 'email' || key === 'phone'
-  
           const textColor =
             key === 'salary'
               ? '#F7941D'
-              : region === 'us'
-              ? '#3B3E44' // everything on US template dark grey, including email/phone
               : 'white'
   
           const draggable = key !== 'email' && key !== 'phone'
