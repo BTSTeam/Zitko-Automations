@@ -75,8 +75,8 @@ const DARK_ARCS_TEMPLATE: TemplateDef = {
     title:      { x: 470, y: 300, w: 560, fontSize: 60 },
     location:   { x: 520, y: 450, w: 520, fontSize: 30 },
     salary:     { x: 520, y: 500, w: 520, fontSize: 28 },
-    description:{ x: 520, y: 570, w: 520, h: 80,  fontSize: 24 },
-    benefits:   { x: 520, y: 760, w: 520, h: 260, fontSize: 24 },
+    description:{ x: 520, y: 570, w: 560, h: 80,  fontSize: 24 },
+    benefits:   { x: 520, y: 760, w: 560, h: 260, fontSize: 24 },
     email:      { x: 800, y: 962, w: 180, fontSize: 20, align: 'left' },
     phone:      { x: 800, y: 1018, w: 180, fontSize: 20, align: 'left' },
   },
@@ -90,13 +90,13 @@ const US_JZ_TEMPLATE: TemplateDef = {
   width: 1080,
   height: 1080,
   layout: {
-    title:      { x: 80,  y: 260, w: 880, fontSize: 56 },
-    location:   { x: 80,  y: 360, w: 620, fontSize: 30 },
-    salary:     { x: 80,  y: 410, w: 620, fontSize: 28 },
-    description:{ x: 80,  y: 470, w: 880, h: 120, fontSize: 24 },
-    benefits:   { x: 80,  y: 640, w: 880, h: 260, fontSize: 24 },
-    email:      { x: 80,  y: 950, w: 300, fontSize: 20, align: 'left' },
-    phone:      { x: 440, y: 950, w: 300, fontSize: 20, align: 'left' },
+    title:      { x: 470, y: 300, w: 560, fontSize: 60 },
+    location:   { x: 520, y: 450, w: 520, fontSize: 30 },
+    salary:     { x: 520, y: 500, w: 520, fontSize: 28 },
+    description:{ x: 520, y: 570, w: 560, h: 80,  fontSize: 24 },
+    benefits:   { x: 520, y: 760, w: 560, h: 260, fontSize: 24 },
+    email:      { x: 800, y: 962, w: 180, fontSize: 20, align: 'left' },
+    phone:      { x: 800, y: 1018, w: 180, fontSize: 20, align: 'left' },
   },
 }
 
@@ -408,7 +408,7 @@ export default function JobZoneTab(): JSX.Element {
 
     setJobs(results)
     setActiveIndex(0)
-    setPreviewIndex(results.length > 0 ? 1 : 0) // start on Job 1 in preview
+    setPreviewIndex(0) // start preview on cover
     setLoadingJobs(false)
   }
 
@@ -514,14 +514,14 @@ export default function JobZoneTab(): JSX.Element {
           return (
             <div
               key={key}
-              style={{
+             style={{
                 position: 'absolute',
                 left: x,
                 top: y,
                 width: w,
                 fontSize: fontSize * scale,
                 lineHeight: 1.25,
-                color: 'white',
+                color: region === 'us' ? '#3B3E44' : 'white',
                 textAlign: baseSpec.align ?? 'left',
                 whiteSpace: 'pre-line',
               }}
@@ -695,7 +695,7 @@ export default function JobZoneTab(): JSX.Element {
               value={val}
               onChange={(e) => updateJobId(idx, e.target.value)}
               placeholder={`Job ID ${idx + 1}`}
-              className="input input-bordered w-full text-sm"
+              className="input input-bordered input-sm w-full text-xs"
             />
           ))}
         </div>
@@ -768,7 +768,7 @@ export default function JobZoneTab(): JSX.Element {
                         onChange={(e) =>
                           updateJob(safeIndex, { title: e.target.value })
                         }
-                        className="input input-bordered input-sm w-full text-sm"
+                        className="input input-bordered input-xs w-full text-xs"
                       />
                     </div>
 
@@ -802,7 +802,7 @@ export default function JobZoneTab(): JSX.Element {
                         onChange={(e) =>
                           updateJob(safeIndex, { location: e.target.value })
                         }
-                        className="input input-bordered input-sm w-full text-sm"
+                        className="input input-bordered input-xs w-full text-xs"
                       />
                     </div>
 
@@ -836,7 +836,7 @@ export default function JobZoneTab(): JSX.Element {
                         onChange={(e) =>
                           updateJob(safeIndex, { salary: e.target.value })
                         }
-                        className="input input-bordered input-sm w-full text-sm"
+                        className="input input-bordered input-xs w-full text-xs"
                       />
                     </div>
 
@@ -844,67 +844,27 @@ export default function JobZoneTab(): JSX.Element {
                     <div className="space-y-1">
                       <div className="flex items-center justify-between text-xs font-medium text-gray-600">
                         <span>Email</span>
-                        <span className="inline-flex gap-1">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              adjustFontSize(safeIndex, 'email', -2)
-                            }
-                            className="px-1 border rounded text-[10px]"
-                          >
-                            A-
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              adjustFontSize(safeIndex, 'email', +2)
-                            }
-                            className="px-1 border rounded text-[10px]"
-                          >
-                            A+
-                          </button>
-                        </span>
                       </div>
                       <input
                         value={job.email}
                         onChange={(e) =>
                           updateJob(safeIndex, { email: e.target.value })
                         }
-                        className="input input-bordered input-sm w-full text-sm"
+                        className="input input-bordered input-xs w-full text-xs"
                       />
                     </div>
-
+                    
                     {/* Phone */}
                     <div className="space-y-1">
                       <div className="flex items-center justify-between text-xs font-medium text-gray-600">
                         <span>Phone Number</span>
-                        <span className="inline-flex gap-1">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              adjustFontSize(safeIndex, 'phone', -2)
-                            }
-                            className="px-1 border rounded text-[10px]"
-                          >
-                            A-
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              adjustFontSize(safeIndex, 'phone', +2)
-                            }
-                            className="px-1 border rounded text-[10px]"
-                          >
-                            A+
-                          </button>
-                        </span>
                       </div>
                       <input
                         value={job.phone}
                         onChange={(e) =>
                           updateJob(safeIndex, { phone: e.target.value })
                         }
-                        className="input input-bordered input-sm w-full text-sm"
+                        className="input input-bordered input-xs w-full text-xs"
                       />
                     </div>
                   </div>
@@ -940,10 +900,10 @@ export default function JobZoneTab(): JSX.Element {
                         updateJob(safeIndex, { description: e.target.value })
                       }
                       rows={3}
-                      className="textarea textarea-bordered textarea-sm w-full resize-none text-sm"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs resize-none focus:outline-none focus:border-[#F7941D]"
                     />
                   </div>
-
+                  
                   {/* Benefits */}
                   <div className="space-y-1">
                     <div className="flex items-center justify-between text-xs font-medium text-gray-600">
@@ -975,7 +935,7 @@ export default function JobZoneTab(): JSX.Element {
                         updateJob(safeIndex, { benefits: e.target.value })
                       }
                       rows={4}
-                      className="textarea textarea-bordered textarea-sm w-full resize-none text-sm"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs resize-none focus:outline-none focus:border-[#F7941D]"
                     />
                   </div>
                 </div>
