@@ -175,8 +175,10 @@ export default function JobZoneTab(): JSX.Element {
   const [jobs, setJobs] = useState<ZoneJob[]>([])
   const [layouts, setLayouts] = useState<LayoutState[]>([])
 
-  // Which job the user is currently editing / previewing
+  // Which job the user is currently editing
   const [activeIndex, setActiveIndex] = useState(0)
+  // Which slide is shown in the preview (0 = cover, 1..N = job index + 1)
+  const [previewIndex, setPreviewIndex] = useState(0)
 
   // Export refs – cover + one per job tile
   const coverRef = useRef<HTMLDivElement | null>(null)
@@ -406,6 +408,7 @@ export default function JobZoneTab(): JSX.Element {
 
     setJobs(results)
     setActiveIndex(0)
+    setPreviewIndex(results.length > 0 ? 1 : 0) // start on Job 1 in preview
     setLoadingJobs(false)
   }
 
@@ -692,7 +695,7 @@ export default function JobZoneTab(): JSX.Element {
               value={val}
               onChange={(e) => updateJobId(idx, e.target.value)}
               placeholder={`Job ID ${idx + 1}`}
-              className="input input-bordered w-full"
+              className="input input-bordered w-full text-sm"
             />
           ))}
         </div>
@@ -708,12 +711,24 @@ export default function JobZoneTab(): JSX.Element {
         </button>
       </div>
 
-      {/* Single Job Editor + Preview (replaces visible cover panel) */}
+      {/* Single Job Editor + Preview (includes cover in preview carousel) */}
       {jobs.length > 0 && (
         <div className="rounded-2xl border bg-white/80 p-4 shadow-sm">
           {(() => {
-            const i = activeIndex
-            const job = jobs[i]
+            const safeIndex = Math.min(activeIndex, jobs.length - 1)
+            const job = jobs[safeIndex]
+            const maxPreviewIndex = jobs.length // 0..N (0=cover)
+            const canPrev = previewIndex > 0
+            const canNext = previewIndex < maxPreviewIndex
+
+            const changePreview = (next: number) => {
+              const clamped = Math.max(0, Math.min(maxPreviewIndex, next))
+              setPreviewIndex(clamped)
+              if (clamped > 0) {
+                // keep editor in sync with preview job
+                setActiveIndex(clamped - 1)
+              }
+            }
 
             return (
               <div className="grid gap-6 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
@@ -721,7 +736,7 @@ export default function JobZoneTab(): JSX.Element {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-semibold text-gray-900">
-                      Job {i + 1} – [{job.id || 'Job ID'}]
+                      Job {safeIndex + 1} – [{job.id || 'Job ID'}]
                     </h3>
                   </div>
 
@@ -729,230 +744,239 @@ export default function JobZoneTab(): JSX.Element {
                   <div className="grid gap-3 md:grid-cols-2">
                     {/* Title */}
                     <div className="space-y-1">
-                      <label className="text-xs font-medium text-gray-600">
-                        Job Title
-                      </label>
+                      <div className="flex items-center justify-between text-xs font-medium text-gray-600">
+                        <span>Job Title</span>
+                        <span className="inline-flex gap-1">
+                          <button
+                            type="button"
+                            onClick={() => adjustFontSize(safeIndex, 'title', -2)}
+                            className="px-1 border rounded text-[10px]"
+                          >
+                            A-
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => adjustFontSize(safeIndex, 'title', +2)}
+                            className="px-1 border rounded text-[10px]"
+                          >
+                            A+
+                          </button>
+                        </span>
+                      </div>
                       <input
                         value={job.title}
                         onChange={(e) =>
-                          updateJob(i, { title: e.target.value })
+                          updateJob(safeIndex, { title: e.target.value })
                         }
-                        className="input input-bordered input-sm w-full"
+                        className="input input-bordered input-sm w-full text-sm"
                       />
-                      <div className="flex gap-1 text-[10px] text-gray-500">
-                        <span>Font</span>
-                        <button
-                          type="button"
-                          onClick={() => adjustFontSize(i, 'title', -2)}
-                          className="px-1 border rounded"
-                        >
-                          A-
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => adjustFontSize(i, 'title', +2)}
-                          className="px-1 border rounded"
-                        >
-                          A+
-                        </button>
-                      </div>
                     </div>
 
                     {/* Location */}
                     <div className="space-y-1">
-                      <label className="text-xs font-medium text-gray-600">
-                        Location
-                      </label>
+                      <div className="flex items-center justify-between text-xs font-medium text-gray-600">
+                        <span>Location</span>
+                        <span className="inline-flex gap-1">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              adjustFontSize(safeIndex, 'location', -2)
+                            }
+                            className="px-1 border rounded text-[10px]"
+                          >
+                            A-
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              adjustFontSize(safeIndex, 'location', +2)
+                            }
+                            className="px-1 border rounded text-[10px]"
+                          >
+                            A+
+                          </button>
+                        </span>
+                      </div>
                       <input
                         value={job.location}
                         onChange={(e) =>
-                          updateJob(i, { location: e.target.value })
+                          updateJob(safeIndex, { location: e.target.value })
                         }
-                        className="input input-bordered input-sm w-full"
+                        className="input input-bordered input-sm w-full text-sm"
                       />
-                      <div className="flex gap-1 text-[10px] text-gray-500">
-                        <span>Font</span>
-                        <button
-                          type="button"
-                          onClick={() => adjustFontSize(i, 'location', -2)}
-                          className="px-1 border rounded"
-                        >
-                          A-
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => adjustFontSize(i, 'location', +2)}
-                          className="px-1 border rounded"
-                        >
-                          A+
-                        </button>
-                      </div>
                     </div>
 
                     {/* Salary */}
                     <div className="space-y-1">
-                      <label className="text-xs font-medium text-gray-600">
-                        Salary
-                      </label>
+                      <div className="flex items-center justify-between text-xs font-medium text-gray-600">
+                        <span>Salary</span>
+                        <span className="inline-flex gap-1">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              adjustFontSize(safeIndex, 'salary', -2)
+                            }
+                            className="px-1 border rounded text-[10px]"
+                          >
+                            A-
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              adjustFontSize(safeIndex, 'salary', +2)
+                            }
+                            className="px-1 border rounded text-[10px]"
+                          >
+                            A+
+                          </button>
+                        </span>
+                      </div>
                       <input
                         value={job.salary}
                         onChange={(e) =>
-                          updateJob(i, { salary: e.target.value })
+                          updateJob(safeIndex, { salary: e.target.value })
                         }
-                        className="input input-bordered input-sm w-full"
+                        className="input input-bordered input-sm w-full text-sm"
                       />
-                      <div className="flex gap-1 text-[10px] text-gray-500">
-                        <span>Font</span>
-                        <button
-                          type="button"
-                          onClick={() => adjustFontSize(i, 'salary', -2)}
-                          className="px-1 border rounded"
-                        >
-                          A-
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => adjustFontSize(i, 'salary', +2)}
-                          className="px-1 border rounded"
-                        >
-                          A+
-                        </button>
-                      </div>
                     </div>
 
                     {/* Email */}
                     <div className="space-y-1">
-                      <label className="text-xs font-medium text-gray-600">
-                        Email
-                      </label>
+                      <div className="flex items-center justify-between text-xs font-medium text-gray-600">
+                        <span>Email</span>
+                        <span className="inline-flex gap-1">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              adjustFontSize(safeIndex, 'email', -2)
+                            }
+                            className="px-1 border rounded text-[10px]"
+                          >
+                            A-
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              adjustFontSize(safeIndex, 'email', +2)
+                            }
+                            className="px-1 border rounded text-[10px]"
+                          >
+                            A+
+                          </button>
+                        </span>
+                      </div>
                       <input
                         value={job.email}
                         onChange={(e) =>
-                          updateJob(i, { email: e.target.value })
+                          updateJob(safeIndex, { email: e.target.value })
                         }
-                        className="input input-bordered input-sm w-full"
+                        className="input input-bordered input-sm w-full text-sm"
                       />
-                      <div className="flex gap-1 text-[10px] text-gray-500">
-                        <span>Font</span>
-                        <button
-                          type="button"
-                          onClick={() => adjustFontSize(i, 'email', -2)}
-                          className="px-1 border rounded"
-                        >
-                          A-
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => adjustFontSize(i, 'email', +2)}
-                          className="px-1 border rounded"
-                        >
-                          A+
-                        </button>
-                      </div>
                     </div>
 
                     {/* Phone */}
                     <div className="space-y-1">
-                      <label className="text-xs font-medium text-gray-600">
-                        Phone Number
-                      </label>
+                      <div className="flex items-center justify-between text-xs font-medium text-gray-600">
+                        <span>Phone Number</span>
+                        <span className="inline-flex gap-1">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              adjustFontSize(safeIndex, 'phone', -2)
+                            }
+                            className="px-1 border rounded text-[10px]"
+                          >
+                            A-
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              adjustFontSize(safeIndex, 'phone', +2)
+                            }
+                            className="px-1 border rounded text-[10px]"
+                          >
+                            A+
+                          </button>
+                        </span>
+                      </div>
                       <input
                         value={job.phone}
                         onChange={(e) =>
-                          updateJob(i, { phone: e.target.value })
+                          updateJob(safeIndex, { phone: e.target.value })
                         }
-                        className="input input-bordered input-sm w-full"
+                        className="input input-bordered input-sm w-full text-sm"
                       />
-                      <div className="flex gap-1 text-[10px] text-gray-500">
-                        <span>Font</span>
-                        <button
-                          type="button"
-                          onClick={() => adjustFontSize(i, 'phone', -2)}
-                          className="px-1 border rounded"
-                        >
-                          A-
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => adjustFontSize(i, 'phone', +2)}
-                          className="px-1 border rounded"
-                        >
-                          A+
-                        </button>
-                      </div>
                     </div>
                   </div>
 
                   {/* Short Description */}
                   <div className="space-y-1">
-                    <label className="text-xs font-medium text-gray-600">
-                      Short Description
-                    </label>
+                    <div className="flex items-center justify-between text-xs font-medium text-gray-600">
+                      <span>Short Description</span>
+                      <span className="inline-flex gap-1">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            adjustFontSize(safeIndex, 'description', -2)
+                          }
+                          className="px-1 border rounded text-[10px]"
+                        >
+                          A-
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            adjustFontSize(safeIndex, 'description', +2)
+                          }
+                          className="px-1 border rounded text-[10px]"
+                        >
+                          A+
+                        </button>
+                      </span>
+                    </div>
                     <textarea
                       value={job.description}
                       onChange={(e) =>
-                        updateJob(i, { description: e.target.value })
+                        updateJob(safeIndex, { description: e.target.value })
                       }
                       rows={3}
-                      className="textarea textarea-bordered textarea-sm w-full resize-none"
+                      className="textarea textarea-bordered textarea-sm w-full resize-none text-sm"
                     />
-                    <div className="flex gap-1 text-[10px] text-gray-500">
-                      <span>Font</span>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          adjustFontSize(i, 'description', -2)
-                        }
-                        className="px-1 border rounded"
-                      >
-                        A-
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          adjustFontSize(i, 'description', +2)
-                        }
-                        className="px-1 border rounded"
-                      >
-                        A+
-                      </button>
-                    </div>
                   </div>
 
                   {/* Benefits */}
                   <div className="space-y-1">
-                    <label className="text-xs font-medium text-gray-600">
-                      Benefits (one per line)
-                    </label>
+                    <div className="flex items-center justify-between text-xs font-medium text-gray-600">
+                      <span>Benefits (one per line)</span>
+                      <span className="inline-flex gap-1">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            adjustFontSize(safeIndex, 'benefits', -2)
+                          }
+                          className="px-1 border rounded text-[10px]"
+                        >
+                          A-
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            adjustFontSize(safeIndex, 'benefits', +2)
+                          }
+                          className="px-1 border rounded text-[10px]"
+                        >
+                          A+
+                        </button>
+                      </span>
+                    </div>
                     <textarea
                       value={job.benefits}
                       onChange={(e) =>
-                        updateJob(i, { benefits: e.target.value })
+                        updateJob(safeIndex, { benefits: e.target.value })
                       }
                       rows={4}
-                      className="textarea textarea-bordered textarea-sm w-full resize-none"
+                      className="textarea textarea-bordered textarea-sm w-full resize-none text-sm"
                     />
-                    <div className="flex gap-1 text-[10px] text-gray-500">
-                      <span>Font</span>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          adjustFontSize(i, 'benefits', -2)
-                        }
-                        className="px-1 border rounded"
-                      >
-                        A-
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          adjustFontSize(i, 'benefits', +2)
-                        }
-                        className="px-1 border rounded"
-                      >
-                        A+
-                      </button>
-                    </div>
                   </div>
                 </div>
 
@@ -980,32 +1004,34 @@ export default function JobZoneTab(): JSX.Element {
                     {/* Prev arrow */}
                     <button
                       type="button"
-                      disabled={activeIndex === 0}
-                      onClick={() =>
-                        setActiveIndex((prev) => Math.max(0, prev - 1))
-                      }
+                      disabled={!canPrev}
+                      onClick={() => changePreview(previewIndex - 1)}
                       className="text-2xl px-2 disabled:opacity-30"
-                      aria-label="Previous job"
+                      aria-label="Previous slide"
                     >
                       ‹
                     </button>
 
-                    {/* Poster preview */}
+                    {/* Poster / Cover preview */}
                     <div className="flex items-center justify-center">
-                      {renderJobPoster(i, PREVIEW_SCALE)}
+                      {previewIndex === 0
+                        ? renderCover(PREVIEW_SCALE, coverRef)
+                        : renderJobPoster(
+                            previewIndex - 1,
+                            PREVIEW_SCALE,
+                            (el: HTMLDivElement | null) => {
+                              jobExportRefs.current[previewIndex - 1] = el
+                            },
+                          )}
                     </div>
 
                     {/* Next arrow */}
                     <button
                       type="button"
-                      disabled={activeIndex === jobs.length - 1}
-                      onClick={() =>
-                        setActiveIndex((prev) =>
-                          Math.min(jobs.length - 1, prev + 1),
-                        )
-                      }
+                      disabled={!canNext}
+                      onClick={() => changePreview(previewIndex + 1)}
                       className="text-2xl px-2 disabled:opacity-30"
-                      aria-label="Next job"
+                      aria-label="Next slide"
                     >
                       ›
                     </button>
