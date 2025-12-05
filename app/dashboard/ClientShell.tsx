@@ -62,7 +62,7 @@ export default function ClientShell(): JSX.Element {
           className="mt-3 font-semibold uppercase"
           style={{ color: '#F7941D', letterSpacing: '0.25em', fontSize: 'clamp(0.875rem, 2.2vw, 1.25rem)' }}
         >
-          &gt; ALPHA TEST &lt;
+          &gt; - &lt;
         </p>
         <p
           className="mt-4"
