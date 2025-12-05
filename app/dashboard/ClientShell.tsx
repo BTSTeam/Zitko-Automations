@@ -67,9 +67,11 @@ export default function ClientShell(): JSX.Element {
   return (
     <>
       <div className="flex flex-col gap-6 min-h-[calc(100vh-120px)]">
+        
         {/* Top Bar */}
         <div className="flex items-center justify-between">
-          {/* Left cluster */}
+          
+          {/* LEFT cluster */}
           <div className="flex gap-2">
 
             {/* MATCHING */}
@@ -125,47 +127,57 @@ export default function ClientShell(): JSX.Element {
               )}
             </div>
 
-            {/* DATA TAB (NEW) */}
+          </div>
+
+          {/* RIGHT SIDE — Data Icon + Active Campaign */}
+          <div className="flex items-center gap-2">
+
+            {/* DATA ICON TAB (NEW POSITION) */}
             <button
               onClick={() => {
                 setTab('data')
                 setShowWelcome(false)
                 setAcOpen(false)
               }}
+              title="Data"
               className={`tab ${active('data')}`}
             >
-              <span className="flex items-center gap-2">
-                <Image src="/Data-Icon.png" width={16} height={16} alt="Data" />
-                Data
-              </span>
-            </button>
-          </div>
-
-          {/* RIGHT SIDE: ACTIVE CAMPAIGN */}
-          <div className="relative" data-ac-root>
-            <button
-              onClick={() => setAcOpen(v => !v)}
-              className={`tab ${active('ac')}`}
-            >
-              Active Campaign
+              <Image
+                src="/Data-Icon.png"
+                width={16}
+                height={16}
+                alt="Data"
+                className={`${tab === 'data' ? 'brightness-0 invert' : ''}`}
+              />
             </button>
 
-            {acOpen && (
-              <div className="absolute right-0 mt-2 w-44 rounded-xl border bg-white shadow-lg overflow-hidden z-10">
-                <button
-                  className="w-full text-left px-3 py-2 hover:bg-gray-50"
-                  onClick={() => { setAcMode('upload'); setTab('ac'); setAcOpen(false); setShowWelcome(false) }}
-                >
-                  Upload
-                </button>
-                <button
-                  className="w-full text-left px-3 py-2 hover:bg-gray-50"
-                  onClick={() => { setAcMode('html'); setTab('ac'); setAcOpen(false); setShowWelcome(false) }}
-                >
-                  HTML Build
-                </button>
-              </div>
-            )}
+            {/* ACTIVE CAMPAIGN */}
+            <div className="relative" data-ac-root>
+              <button
+                onClick={() => setAcOpen(v => !v)}
+                className={`tab ${active('ac')}`}
+              >
+                Active Campaign
+              </button>
+
+              {acOpen && (
+                <div className="absolute right-0 mt-2 w-44 rounded-xl border bg-white shadow-lg overflow-hidden z-10">
+                  <button
+                    className="w-full text-left px-3 py-2 hover:bg-gray-50"
+                    onClick={() => { setAcMode('upload'); setTab('ac'); setAcOpen(false); setShowWelcome(false) }}
+                  >
+                    Upload
+                  </button>
+                  <button
+                    className="w-full text-left px-3 py-2 hover:bg-gray-50"
+                    onClick={() => { setAcMode('html'); setTab('ac'); setAcOpen(false); setShowWelcome(false) }}
+                  >
+                    HTML Build
+                  </button>
+                </div>
+              )}
+            </div>
+
           </div>
         </div>
 
@@ -185,7 +197,6 @@ export default function ClientShell(): JSX.Element {
               {tab === 'ac' && acMode === 'upload' && <ActiveCampaignUploadTab />}
               {tab === 'ac' && acMode === 'html' && <ActiveCampaignHtmlTab />}
 
-              {/* NEW DATA TAB */}
               {tab === 'data' && <DataTab />}
             </>
           )}
