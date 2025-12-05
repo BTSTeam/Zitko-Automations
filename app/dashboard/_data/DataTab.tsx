@@ -112,7 +112,7 @@ export default function DataTab() {
           disabled={loading}
           className="bg-[#F7941D] text-white rounded px-4 py-2 font-medium"
         >
-          {loading ? "Loading..." : "Get Statistics"}
+          {loading ? "Loading..." : "Get Data"}
         </button>
       </div>
 
