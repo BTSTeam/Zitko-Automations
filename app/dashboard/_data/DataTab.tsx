@@ -58,7 +58,7 @@ export default function DataTab() {
   }
 
   return (
-    <div className="w-full max-w-[1400px] mx-auto p-6 flex flex-col gap-6">
+    <div className="w-full flex flex-col gap-6">
 
       {/* TOP PANEL */}
       <div className="card p-6 flex gap-4 items-end">
