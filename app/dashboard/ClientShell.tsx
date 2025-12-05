@@ -147,7 +147,6 @@ export default function ClientShell(): JSX.Element {
                 width={16}
                 height={16}
                 alt="Data"
-                className={`${tab === 'data' ? 'brightness-0 invert' : ''}`}
               />
             </button>
 
