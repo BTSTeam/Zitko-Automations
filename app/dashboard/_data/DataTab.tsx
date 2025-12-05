@@ -58,10 +58,10 @@ export default function DataTab() {
   }
 
   return (
-    <div className="p-6 flex flex-col gap-6">
+    <div className="w-full p-6 flex flex-col gap-6">
 
       {/* TOP PANEL */}
-      <div className="border rounded-xl p-4 bg-white flex gap-4 items-end">
+      <div className="w-full border rounded-xl p-4 bg-white flex gap-4 items-end">
 
         {/* CONSULTANT */}
         <div className="flex-1">
@@ -117,7 +117,7 @@ export default function DataTab() {
       </div>
 
       {/* RESULTS PANEL */}
-      <div className="border rounded-xl p-4 bg-white h-[500px] overflow-auto">
+      <div className="w-full border rounded-xl p-4 bg-white h-[500px] overflow-auto">
         <pre className="text-xs whitespace-pre-wrap">
           {results.length === 0 ? "No data yet..." : JSON.stringify(results, null, 2)}
         </pre>
