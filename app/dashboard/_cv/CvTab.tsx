@@ -332,7 +332,7 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
 
   // Heading switch for Skills
   const [skillsHeading, setSkillsHeading] =
-    useState<'Key Skills' | 'Systems Knowledge'>('Key Skills')
+    useState<'Key Skills' | 'Systems Knowledge' | 'Major Achievements'>('Key Skills')
 
   // Fixed main title (controlled by template)
   const [mainTitle, setMainTitle] =
@@ -1504,30 +1504,52 @@ export default function CvTab({ templateFromShell }: { templateFromShell?: Templ
             {/* Key Skills (reorderable + switch heading) */}
             <section>
               <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-sm">Key Skills</h3>
+                {/* use the state here instead of hard-coded text */}
+                <h3 className="font-semibold text-sm">{skillsHeading}</h3>
+            
                 <div className="flex items-center gap-3">
                   <ReorderControls id="skills" />
+            
                   <button
                     type="button"
                     className="text-[11px] text-gray-500 underline"
-                    onClick={() => setSkillsHeading(h => h === 'Key Skills' ? 'Systems Knowledge' : 'Key Skills')}
-                    title="Switch heading between 'Key Skills' and 'Systems Knowledge'"
+                    onClick={() =>
+                      setSkillsHeading(h =>
+                        h === 'Key Skills'
+                          ? 'Systems Knowledge'
+                          : h === 'Systems Knowledge'
+                          ? 'Major Achievements'
+                          : 'Key Skills'
+                      )
+                    }
+                    title="Switch heading between 'Key Skills', 'Systems Knowledge', and 'Major Achievements'"
                   >
                     Switch heading
                   </button>
-                  <button type="button" className="text-[11px] text-gray-500 underline" onClick={() => toggle('skills')}>
+            
+                  <button
+                    type="button"
+                    className="text-[11px] text-gray-500 underline"
+                    onClick={() => toggle('skills')}
+                  >
                     {open.skills ? 'Hide' : 'Show'}
                   </button>
                 </div>
               </div>
+            
               {open.skills && (
                 <label className="grid gap-1 mt-3">
-                  <span className="sr-only">Key Skills</span>
+                  {/* optional: make sr-only match current heading */}
+                  <span className="sr-only">{skillsHeading}</span>
+            
                   <textarea
                     className={`input min-h-[100px] ${prefill.keySkills ? 'text-[11px]' : ''}`}
                     placeholder="Key Skills (comma or newline)"
                     value={form.keySkills}
-                    onChange={e => { clearPrefill('keySkills'); setField('keySkills', e.target.value) }}
+                    onChange={e => {
+                      clearPrefill('keySkills')
+                      setField('keySkills', e.target.value)
+                    }}
                     disabled={loading}
                   />
                 </label>
