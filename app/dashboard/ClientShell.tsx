@@ -23,6 +23,7 @@ type SocialMode = 'jobPosts' | 'jobZone'
 // Toggles
 const DISABLE_SOURCING = false
 const DISABLE_SOCIAL   = false
+const DISABLE_DATA   = true
 
 export default function ClientShell(): JSX.Element {
   const [tab, setTab] = useState<TabKey>('match')
