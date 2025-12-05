@@ -186,7 +186,7 @@ export default function ClientShell(): JSX.Element {
                 setAcOpen(false)
               }}
               title="Data"
-              className={`tab ${active('data')} flex items-center justify-center py-2`}
+              className={`tab ${active('data')} flex items-center justify-center h-[40px] px-4`}
             >
               <Image
                 src="/Data-Icon.png"
