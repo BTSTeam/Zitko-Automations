@@ -55,9 +55,24 @@ export default function ClientShell(): JSX.Element {
   const WelcomeBlock = () => (
     <section className="h-full grid place-items-center px-6">
       <div className="text-center select-none">
-        <h1 className="font-semibold uppercase" style={{ letterSpacing: '0.5em', fontSize: '7rem' }}>
+        <h1
+          className="font-semibold uppercase"
+          style={{ color: '#3B3E44', letterSpacing: '0.5em', fontSize: 'clamp(2.25rem, 6vw, 6rem)' }}
+        >
           WELCOME
         </h1>
+        <p
+          className="mt-3 font-semibold uppercase"
+          style={{ color: '#F7941D', letterSpacing: '0.25em', fontSize: 'clamp(0.875rem, 2.2vw, 1.25rem)' }}
+        >
+          &gt; ZAWA &lt;
+        </p>
+        <p
+          className="mt-4"
+          style={{ color: '#9CA3AF', fontSize: 'clamp(0.8rem, 1.8vw, 1rem)' }}
+        >
+          Please utilise the tabs above to navigate the app
+        </p>
       </div>
     </section>
   )
