@@ -55,7 +55,7 @@ export default function ClientShell(): JSX.Element {
   const WelcomeBlock = () => (
     <section className="h-full grid place-items-center px-6">
       <div className="text-center select-none">
-        <h1 className="font-semibold uppercase" style={{ letterSpacing: '0.5em', fontSize: '3rem' }}>
+        <h1 className="font-semibold uppercase" style={{ letterSpacing: '0.5em', fontSize: '10rem' }}>
           WELCOME
         </h1>
       </div>
