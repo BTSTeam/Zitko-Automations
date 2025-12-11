@@ -21,7 +21,7 @@ type ScoredRow = {
   reason: string
   linkedin?: string
   title?: string
-  employer?: string
+  current_employer?: string
   location?: string
   matchedSkills?: string[]
 }
@@ -39,6 +39,23 @@ function htmlToText(html?: string): string {
   } catch {
     return (html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
   }
+}
+
+function LocationIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="#758090"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
+      <path d="M12 21s-6.5-5.2-6.5-10.2A6.5 6.5 0 1118.5 10.8C18.5 15.8 12 21 12 21z" />
+      <circle cx="12" cy="10.5" r="2.5" />
+    </svg>
+  );
 }
 
 function extractCity(location?: string): string {
@@ -147,19 +164,17 @@ function AIScoredList({ rows }: { rows: ScoredRow[] }) {
                 <div className="font-medium truncate">{r.candidateName}</div>
 
                 {/* Title */}
-                {r.title && (
-                  <div className="text-sm text-gray-600">{r.title}</div>
-                )}
-
-                {/* Employer */}
-                {r.employer && (
-                  <div className="text-sm text-gray-600">{r.employer}</div>
+                {!!r.title && (
+                  <div className="text-sm text-gray-600">
+                    {r.title}
+                    {r.current_employer ? ` @ ${r.current_employer}` : ''}
+                  </div>
                 )}
 
                 {/* Full Location */}
                 {r.location && (
                   <div className="text-sm text-gray-600 flex items-center gap-1 mt-0.5">
-                    <span>📍</span>
+                    <LocationIcon className="w-3.5 h-3.5" />
                     <span>{r.location}</span>
                   </div>
                 )}
@@ -604,12 +619,6 @@ export default function MatchTab(): JSX.Element {
         {/* Status */}
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <span className="text-sm text-gray-600">{statusText}</span>
-
-          {serverQuery && (
-            <div className="text-xs text-gray-500 ml-4">
-              q: <code>{serverQuery}</code>
-            </div>
-          )}
 
           <div className="ml-auto">
             <button
