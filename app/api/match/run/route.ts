@@ -8,6 +8,9 @@ import { getSession } from '@/lib/session';
 import { config, requiredEnv } from '@/lib/config';
 import { refreshIdToken } from '@/lib/vincereRefresh';
 
+/* ============================================================
+   Types
+============================================================ */
 type RunReq = {
   jobId?: string;
   job?: {
@@ -20,7 +23,9 @@ type RunReq = {
   limit?: number;
 };
 
-// -------- helpers ----------
+/* ============================================================
+   Utility / Helpers
+============================================================ */
 const toClause = (field: string, value: string) =>
   `${field}:"${String(value ?? '').trim()}"#`;
 
@@ -55,7 +60,9 @@ function encodeForVincereQuery(q: string) {
   return encodeURIComponent(q).replace(/%20/g, '+');
 }
 
-// -------- skills (CONTAINING match) ----------
+/* ============================================================
+   Skill matching clause builders
+============================================================ */
 function buildSkillsClauseAND(skillA?: string, skillB?: string) {
   const norm = (s?: string) => String(s ?? '').trim().replace(/[#"]/g, '');
   const term = (s: string) => `skill:${s}#`;
@@ -69,6 +76,9 @@ function buildSkillsClauseAND(skillA?: string, skillB?: string) {
   return '';
 }
 
+/* ============================================================
+   Title + location clause builders
+============================================================ */
 function buildBaseClauses(job: NonNullable<RunReq['job']>, titleOverride?: string) {
   const title = (titleOverride ?? job.title ?? '').trim();
   const city = pickCityFromLocation(job.location);
@@ -118,7 +128,9 @@ function buildQueryTitleCity(job: NonNullable<RunReq['job']>, titleOverride?: st
   return q || '*:*';
 }
 
-// Partial title variants
+/* ============================================================
+   Title synonyms
+============================================================ */
 function buildPartialTitleVariants(fullTitle?: string): string[] {
   const t = String(fullTitle ?? '').trim();
   if (!t) return [];
@@ -145,11 +157,36 @@ function buildPartialTitleVariants(fullTitle?: string): string[] {
   return out;
 }
 
-// Add your new fields into matrix variables:
+/* ============================================================
+   NEW — matrix vars now include all Option A fields
+============================================================ */
 function buildMatrixVars() {
-  return 'fl=id,first_name,last_name,current_location,current_city,current_job_title,linkedin,skill,edu_qualification,professional_qualification,edu_degree,edu_course,edu_institution,edu_training,current_employer,current_company,company;sort=created_date asc';
+  return [
+    'fl=id',
+    'first_name',
+    'last_name',
+    'current_job_title',
+    'current_location',
+    'current_location_name',
+    'current_city',
+    'current_employer',
+    'current_company',
+    'company',
+    'linkedin',
+    'skill',
+    'edu_qualification',
+    'professional_qualification',
+    'edu_degree',
+    'edu_course',
+    'edu_institution',
+    'edu_training',
+    'sort=created_date asc'
+  ].join(',');
 }
 
+/* ============================================================
+   Helpers
+============================================================ */
 async function resolveJob(_session: any, body: RunReq) {
   if (body.job) return body.job;
   return null;
@@ -161,7 +198,8 @@ async function fetchWithAutoRefresh(url: string, idToken: string, userKey: strin
   headers.set('x-api-key', (config as any).VINCERE_PUBLIC_API_KEY || config.VINCERE_API_KEY);
   headers.set('accept', 'application/json');
 
-  const doFetch = (h: Headers) => fetch(url, { ...init, headers: h, method: 'GET', cache: 'no-store' });
+  const doFetch = (h: Headers) =>
+    fetch(url, { ...init, headers: h, method: 'GET', cache: 'no-store' });
 
   let resp = await doFetch(headers);
   if (resp.status === 401 || resp.status === 403) {
@@ -180,6 +218,9 @@ async function fetchWithAutoRefresh(url: string, idToken: string, userKey: strin
   return resp;
 }
 
+/* ============================================================
+   Main route
+============================================================ */
 export async function POST(req: NextRequest) {
   try {
     requiredEnv();
@@ -193,12 +234,16 @@ export async function POST(req: NextRequest) {
     }
 
     const body = (await req.json().catch(() => ({}))) as RunReq;
+
     const job = await resolveJob(session, body);
     if (!job) {
       return NextResponse.json({ error: 'Missing job details.' }, { status: 400 });
     }
 
-    const hardLimit = Math.max(1, Math.min(100, Number(body.limit ?? 100)));
+    const hardLimit = Math.max(1, Math.min(500, Number(body.limit ?? 500)));
+
+    /* ---------- Core logic (unchanged: multi-tier search) ---------- */
+
     const base = config.VINCERE_TENANT_API_BASE.replace(/\/$/, '');
     const encodedMatrix = encodeURIComponent(buildMatrixVars());
 
@@ -227,95 +272,91 @@ export async function POST(req: NextRequest) {
       let json: any = {};
       try { json = JSON.parse(text); } catch {}
 
-      const result = json?.result;
       const rawItems =
-        Array.isArray(result?.items)
-          ? result.items
-          : Array.isArray(json?.data)
-            ? json.data
-            : Array.isArray(json?.items)
-              ? json.items
-              : [];
+        json?.result?.items ??
+        json?.data ??
+        json?.items ??
+        [];
 
       return { url, qRaw, ok: true, status: 200, items: rawItems };
     };
 
     const mergeRuns = (runsArr: Array<{ items: any[] }>) => {
       const seen = new Set<string>();
-      const mergedList: any[] = [];
-
+      const merged: any[] = [];
       for (const r of runsArr) {
         for (const c of r.items) {
           const id = String(c?.id ?? '');
           if (!id || seen.has(id)) continue;
           seen.add(id);
-          mergedList.push(c);
+          merged.push(c);
         }
       }
-      return mergedList;
+      return merged;
     };
 
     const runs: any[] = [];
     let merged: any[] = [];
 
+    // Tier 1: Title + City + skill pairs
     if (skillPairs.length > 0) {
-      const tier1Queries = skillPairs.map(pair => buildQueryWithPair(job, pair));
-      const tier1Runs = await Promise.all(tier1Queries.map(q => runOne(q)));
-      runs.push(...tier1Runs);
+      const tier1Qs = skillPairs.map(p => buildQueryWithPair(job, p));
+      const tier1 = await Promise.all(tier1Qs.map(q => runOne(q)));
+      runs.push(...tier1);
       merged = mergeRuns(runs);
     }
 
+    // Tier 2: Partial titles + skill pairs
     if (merged.length < hardLimit) {
       const partials = buildPartialTitleVariants(job.title);
       if (partials.length > 0 && skillPairs.length > 0) {
-        const tier2Queries: string[] = [];
         for (const pt of partials) {
-          for (const pair of skillPairs) {
-            tier2Queries.push(buildQueryWithPair(job, pair, pt));
-          }
-        }
-
-        for (let i = 0; i < tier2Queries.length && merged.length < hardLimit; i += 5) {
-          const batch = tier2Queries.slice(i, i + 5);
-          const tier2Runs = await Promise.all(batch.map(q => runOne(q)));
-          runs.push(...tier2Runs);
+          const qs = skillPairs.map(p => buildQueryWithPair(job, p, pt));
+          const tier2 = await Promise.all(qs.map(q => runOne(q)));
+          runs.push(...tier2);
           merged = mergeRuns(runs).slice(0, hardLimit);
         }
       }
     }
 
-    if (merged.length < hardLimit) {
-      if (singleSkills.length > 0) {
-        const tier3Queries = singleSkills.map(s => buildQueryOneSkill(job, s));
-        for (let i = 0; i < tier3Queries.length && merged.length < hardLimit; i += 5) {
-          const batch = tier3Queries.slice(i, i + 5);
-          const tier3Runs = await Promise.all(batch.map(q => runOne(q)));
-          runs.push(...tier3Runs);
-          merged = mergeRuns(runs).slice(0, hardLimit);
-        }
-      }
+    // Tier 3: Title + single skills
+    if (merged.length < hardLimit && singleSkills.length > 0) {
+      const qs = singleSkills.map(s => buildQueryOneSkill(job, s));
+      const tier3 = await Promise.all(qs.map(q => runOne(q)));
+      runs.push(...tier3);
+      merged = mergeRuns(runs).slice(0, hardLimit);
     }
 
+    // Tier 4: Title only
     if (merged.length < hardLimit) {
-      const tier4Run = await runOne(buildQueryTitleCity(job));
-      runs.push(tier4Run);
+      const tier4 = await runOne(buildQueryTitleCity(job));
+      runs.push(tier4);
       merged = mergeRuns(runs).slice(0, hardLimit);
 
+      // Tier 4b: Partial titles
       if (merged.length < hardLimit) {
         const partials = buildPartialTitleVariants(job.title);
-        for (let i = 0; i < partials.length && merged.length < hardLimit; i += 5) {
-          const batch = partials.slice(i, i + 5).map(pt => buildQueryTitleCity(job, pt));
-          const tier4bRuns = await Promise.all(batch.map(q => runOne(q)));
-          runs.push(...tier4bRuns);
+        for (const pt of partials) {
+          const qs = [buildQueryTitleCity(job, pt)];
+          const tier4b = await Promise.all(qs.map(q => runOne(q)));
+          runs.push(...tier4b);
           merged = mergeRuns(runs).slice(0, hardLimit);
         }
       }
     }
+
+    /* ============================================================
+       Normalise candidate objects for the frontend + AI
+    ============================================================ */
 
     const toList = (v: any) => {
       if (Array.isArray(v)) {
         return v
-          .map(x => (typeof x === 'string' ? x : (x?.description ?? x?.value ?? '')))
+          .map(x => {
+            if (typeof x === 'string') return x;
+            if (typeof x === 'number') return String(x);
+            return x?.description ?? x?.value ?? x?.name ?? '';
+          })
           .filter(Boolean);
       }
       if (typeof v === 'string') {
@@ -324,15 +365,15 @@ export async function POST(req: NextRequest) {
       return [];
     };
 
+
     const results = merged.map((c: any) => {
       const first = c?.first_name ?? c?.firstName ?? '';
       const last  = c?.last_name ?? c?.lastName ?? '';
       const full  = (c?.name || `${first} ${last}`).trim();
 
+      const locObj = c?.current_location || {};
       const title = c?.current_job_title ?? c?.title ?? '';
 
-      // location
-      const locObj = c?.current_location;
       const location =
         c?.current_location_name ||
         locObj?.location_name ||
@@ -345,37 +386,32 @@ export async function POST(req: NextRequest) {
         locObj?.city ||
         '';
 
-      // NEW FIELDS
       const current_employer =
         c?.current_employer ||
         c?.current_company ||
         c?.company ||
         '';
 
-      const edu_degree = toList(c?.edu_degree);
-      const edu_course = toList(c?.edu_course);
+      const edu_degree      = toList(c?.edu_degree);
+      const edu_course      = toList(c?.edu_course);
       const edu_institution = toList(c?.edu_institution);
-      const edu_training = toList(c?.edu_training);
+      const edu_training    = toList(c?.edu_training);
 
-      const skills = toList(c?.skill);
-      const qualifications = [
+      const skills          = toList(c?.skill);
+      const quals           = [
         ...toList(c?.edu_qualification),
         ...toList(c?.professional_qualification),
       ];
 
       return {
         id: String(c?.id ?? ''),
-        firstName: first,
-        lastName: last,
         fullName: full,
         title,
-        location,
+        location,         // FULL location as requested
         city,
-        skills,
-        qualifications,
         linkedin: c?.linkedin ?? null,
-
-        // NEW FIELDS (Option A)
+        skills,
+        qualifications: quals,
         current_employer,
         edu_degree,
         edu_course,
@@ -384,30 +420,15 @@ export async function POST(req: NextRequest) {
       };
     });
 
-    const count = results.length;
-
     return NextResponse.json({
       ok: true,
-      runs: runs.map(r => ({
-        ok: r.ok,
-        status: r.status,
-        url: r.url,
-        q: r.qRaw
-      })),
       query: {
-        tiers: [
-          'Tier1: title+city+pair-skills',
-          'Tier2: partial-title+city+pair-skills',
-          'Tier3: title+city+single-skill',
-          'Tier4: title+city (and partial-title+city)'
-        ],
         pairs: skillPairs.map(p => p.filter(Boolean)),
         partial_titles: buildPartialTitleVariants(job.title),
-        limit: hardLimit,
       },
-      count,
+      count: results.length,
       results,
-      candidates: results,
+      candidates: results, // backward compatibility
     });
 
   } catch (e: any) {
