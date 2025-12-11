@@ -456,10 +456,19 @@ export default function MatchTab(): JSX.Element {
       const ranked = rankedRaw
         .filter((r: any) => byId.has(String(r.candidate_id)))
         .map((r: any) => {
-          const c = byId.get(String(r.candidate_id)) as any;  // ← FIX HERE
+          const c = byId.get(String(r.candidate_id)) as any;
       
-          const scoreRaw = r.score_percent ?? r.score ?? r.score_pct ?? r.suitability_score ?? 0;
-          const score = Math.max(0, Math.min(100, Math.round(Number(scoreRaw) || 0)));
+          const rawScore =
+            r.score_percent ??
+            r.score ??
+            r.score_pct ??
+            r.suitability_score ??
+            0;
+      
+          const score = Math.max(
+            0,
+            Math.min(100, Math.round(Number(rawScore) || 0))
+          );
       
           const candidateName =
             c?.fullName ||
@@ -478,9 +487,8 @@ export default function MatchTab(): JSX.Element {
           };
         })
         .sort((a, b) => b.score - a.score);
-
-
-      setScored(scoredRows)
+      
+      setScored(ranked);
 
     } catch (e) {
       console.error(e)
