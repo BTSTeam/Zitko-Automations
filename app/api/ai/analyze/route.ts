@@ -9,53 +9,62 @@ export async function POST(req: NextRequest) {
 
   const { job, candidates } = await req.json()
 
-  const system =
-    'You are an expert recruitment consultant in the fire & security industry. Return only valid JSON with a "ranked" array.';
+  /* ========================= SYSTEM ========================= */
+  const system = `
+You are an expert Fire & Security recruitment consultant. 
+Your job is to evaluate candidates for a vacancy based on skills, professional qualifications, education, job title relevance, and training.
 
-  const instruction = `You are scoring candidates for a specific job on a 0-100 scale.
+Return ONLY valid JSON with a top-level "ranked" array.
+No markdown, no explanations — JSON ONLY.
+`.trim()
+
+
+  /* ========================= INSTRUCTIONS ========================= */
+  const instruction = `
+SCORING MODEL (sum ~100):
+- Hard skills & tools: 35
+- Professional qualifications/certifications: 20
+- Education (degree, course, institution): 15
+- Job title relevance: 10
+- Training / short courses: 5
+- Other relevant keywords: 5
+- Employer DOES NOT affect the score but MUST be referenced in the reason when relevant.
 
 STRICT OUTPUT:
-- Return only a single JSON object with a top-level key "ranked". No prose, no markdown, no code fences.
-- Each item in "ranked" must have: "candidate_id" (string), "score_percent" (number), "reason" (string).
-- IMPORTANT: Output the SAME NUMBER of items as the input "candidates" array — one per candidate — in the SAME ORDER.
-- Use each candidate's "id" as "candidate_id" exactly. Do not drop, add, or reorder any candidate.
+- Output ONLY a JSON object with a single top-level key: "ranked".
+- "ranked" MUST contain the SAME number of items as the input candidates array.
+- Maintain EXACT input order. One output per candidate.
+- Each item: { "candidate_id": string, "score_percent": number, "reason": string }
 
-SCORING RUBRIC (sum to ~100):
-- Core hard skills/tooling: 40
-- Formal qualifications/certifications: 30
-- Current/last job title relevance: 20
-- Other relevant keywords: 10
+REASON STYLE (45–65 words, detailed):
+- Reference: matched skills, missing skills, qualifications, education, training, job title relevance, and employer context.
+- Mention employer only as context (“Currently at ADT Fire & Security, giving relevant exposure…”).
+- No generic phrases like “lacks experience” — be specific.
+- NO mention of location comparisons.
+- NO markdown.
 
-GUIDELINES:
-- Reward close synonyms (e.g., "Milestone XProtect" ≈ "Milestone"); treat minor spelling variants as matches.
-- Treat commute-friendly nearby cities as acceptable unless the job explicitly requires on-site in a specific city.
-- Scale proportionally: do NOT zero a candidate for one missing skill if the rest are strong.
-- Title variations like "Senior Security Engineer" or "Security Systems Engineer" should score well.
-- If qualifications are missing but skills are strong, do not drop below 40% solely for that reason.
-- Do NOT use the job title alone as justification in the reason text (it is assumed already considered).
-- If a candidate location is present, never write "location not provided". Instead, explicitly compare candidate location vs job location (e.g., "Candidate in London; job in London").
-- If at least one skill is present, explicitly cite at least one matched skill/tool by name in the reason.
-- Keep reasons concise and specific (≈30–40 words); avoid vague boilerplate like "lacks skills and qualifications".
+MATCHING RULES:
+- Treat synonyms fairly (e.g., “Texecom Premier” ≈ “Texecom”).
+- Minor spelling variations count as matches.
+- Scale scores proportionally.
+- Never return 0 unless absolutely no skills AND no quals AND no education AND irrelevant job title.
+`.trim()
 
-OUTPUT FORMAT:
-{
-  "ranked": [
-    { "candidate_id": "123", "score_percent": 78, "reason": "40 words max: specific matched skills/quals, key gaps, title/location notes." }
-  ]
-}`.trim();
 
+  /* ========================= USER PAYLOAD ========================= */
   const user = JSON.stringify({
     job: {
       title: job?.title ?? '',
-      location: job?.location ?? '',
       skills: job?.skills ?? [],
       qualifications: job?.qualifications ?? [],
       description: job?.description ?? ''
     },
     candidates: candidates ?? [],
-    instruction: instruction ?? null
+    instruction
   })
 
+
+  /* ========================= OPENAI REQUEST ========================= */
   const r = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -64,14 +73,12 @@ OUTPUT FORMAT:
     },
     body: JSON.stringify({
       model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-      // ↓↓↓ make outputs reproducible
       temperature: 0,
       top_p: 1,
       seed: 42,
       presence_penalty: 0,
       frequency_penalty: 0,
       n: 1,
-      // ↑↑↑
       response_format: { type: 'json_object' },
       messages: [
         { role: 'system', content: system },
@@ -81,6 +88,7 @@ OUTPUT FORMAT:
   })
 
   const text = await r.text()
+
   return new NextResponse(text, {
     status: r.status,
     headers: {
