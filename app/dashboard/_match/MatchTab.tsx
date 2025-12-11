@@ -559,7 +559,7 @@ export default function MatchTab(): JSX.Element {
     ? funMessages[funIdx % funMessages.length]
     : scored.length > 0
         ? 'Viewing results'
-        : 'Completed'
+        : 'Waiting…'
 
   return (
     <div className="grid gap-6">
