@@ -22,12 +22,12 @@ No markdown, no explanations — JSON ONLY.
   /* ========================= INSTRUCTIONS ========================= */
   const instruction = `
 SCORING MODEL (sum ~100):
-- Hard skills & tools: 35
-- Professional qualifications/certifications: 20
+- Hard skills & tools: 30
+- Professional qualifications/certifications: 10
 - Education (degree, course, institution): 15
-- Job title relevance: 10
+- Job title relevance: 25
 - Training / short courses: 5
-- Other relevant keywords: 5
+- Other relevant keywords: 15
 - Employer DOES NOT affect the score but MUST be referenced in the reason when relevant.
 
 STRICT OUTPUT:
