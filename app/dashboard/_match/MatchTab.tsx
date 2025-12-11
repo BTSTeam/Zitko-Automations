@@ -49,6 +49,18 @@ function extractCity(location?: string): string {
   return city
 }
 
+function LinkedInIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="#0A66C2"
+      {...props}
+    >
+      <path d="M4.98 3.5C4.98 4.88 3.86 6 2.5 6S0 4.88 0 3.5 1.12 1 2.5 1 4.98 2.12 4.98 3.5zM.5 8h4V24h-4V8zm7.5 0h3.8v2.2h.1c.5-1 1.7-2.2 3.6-2.2 3.8 0 4.5 2.5 4.5 5.7V24h-4v-8.2c0-2 0-4.5-2.7-4.5s-3.1 2.1-3.1 4.3V24h-4V8z"/>
+    </svg>
+  );
+}
+
 function scoreColor(score: number) {
   if (score >= 80) return 'text-green-600'
   if (score >= 50) return 'text-amber-600'
@@ -162,13 +174,6 @@ function AIScoredList({ rows }: { rows: ScoredRow[] }) {
                   </div>
                 )}
 
-                {/* LinkedIn */}
-                {r.linkedin && (
-                  <a className="text-sm underline mt-1 block" href={r.linkedin} target="_blank">
-                    LinkedIn
-                  </a>
-                )}
-
                 {/* Matched Skills */}
                 {r.matchedSkills && r.matchedSkills.length > 0 && (
                   <div className="mt-1 flex flex-wrap gap-1">
@@ -207,6 +212,17 @@ function AIScoredList({ rows }: { rows: ScoredRow[] }) {
                 </button>
                 {copied === r.candidateId && (
                   <div className="text-[10px] text-green-600 mt-1">Copied!</div>
+                )}
+                
+                {r.linkedin && (
+                  <a
+                    href={r.linkedin}
+                    target="_blank"
+                    className="mt-2 inline-flex justify-end w-full"
+                    title="View LinkedIn Profile"
+                  >
+                    <LinkedInIcon className="w-5 h-5" />
+                  </a>
                 )}
               </div>
 
@@ -295,7 +311,15 @@ export default function MatchTab(): JSX.Element {
       const skillsArr = Array.isArray(extracted?.skills) ? extracted.skills : []
       const qualsArr = Array.isArray(extracted?.qualifications) ? extracted.qualifications : []
 
-      const cleanedLocation = extractCity(String(extracted?.location || '').trim())
+      const rawLoc = String(extracted?.location || '').trim();
+
+      // City is before comma
+      let city = rawLoc.split(',')[0]?.trim() || '';
+      
+      // State is after comma if city is missing
+      let state = rawLoc.split(',')[1]?.trim() || '';
+      
+      const cleanedLocation = city || state || '';
 
       const summary: JobSummary = {
         id: jobId,
@@ -308,7 +332,12 @@ export default function MatchTab(): JSX.Element {
       }
 
       setJob(summary)
-      setTitle(summary.job_title || '')
+      const cleanedTitle = (summary.job_title || '')
+        .replace(/[-|,].*$/, '')     // remove trailing location info
+        .replace(/\s+/g, ' ')         // normalise spaces
+        .trim();
+      
+      setTitle(cleanedTitle);
       setLocation(cleanedLocation)
       setSkillsText(skillsArr.join(', '))
       setQualsText(qualsArr.join(', '))
