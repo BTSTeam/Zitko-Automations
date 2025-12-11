@@ -12,10 +12,10 @@ export default function WooTab() {
       <iframe
         src="https://agents.woo.io/ai-sourcer-agent"
         style={{
-          width: '111%',                // gives room for the scale
-          height: 'calc(100vh - 150px)',// full usable viewport height
-          transform: 'scale(0.8)',      // shrink to 90%
-          transformOrigin: '0 0',       // important so scaling starts at top-left
+          width: '111%',                
+          height: 'calc(100vh - 150px)',
+          transform: 'scale(0.9)',      
+          transformOrigin: '0 0',       
           border: '0'
         }}
         sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
