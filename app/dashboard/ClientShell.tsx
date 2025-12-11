@@ -6,7 +6,7 @@ import Image from 'next/image'
 
 // Dynamically import each tab
 const MatchTab                = dynamic(() => import('./_match/MatchTab'), { ssr: false })
-const WooTab                 = dynamic(() => import('./_match/WooTab'),  { ssr: false })
+const WooTab                  = dynamic(() => import('./_match/WooTab'), { ssr: false })
 const SourceTab               = dynamic(() => import('./_source/SourceTab'), { ssr: false })
 const CvTab                   = dynamic(() => import('./_cv/CvTab'), { ssr: false })
 const SocialMediaTab          = dynamic(() => import('./_social/SocialMediaTab'), { ssr: false })
@@ -15,24 +15,20 @@ const ActiveCampaignUploadTab = dynamic(() => import('./_ac/ActiveCampaignTab'),
 const ActiveCampaignHtmlTab   = dynamic(() => import('./_ac/ActiveCampaignHtmlTab'), { ssr: false })
 const DataTab                 = dynamic(() => import('./_data/DataTab'), { ssr: false })
 
-// Add new tab
+// Add new tab modes
 type TabKey = 'match' | 'source' | 'cv' | 'social' | 'ac' | 'data'
+type MatchMode = 'zawa' | 'woo'
 type SourceMode = 'people' | 'companies'
 type CvTemplate = 'uk' | 'us' | 'sales'
 type SocialMode = 'jobPosts' | 'jobZone'
-type MatchMode = 'zawa' | 'woo'   // NEW
-
-// Toggles
-const DISABLE_SOURCING = false
-const DISABLE_SOCIAL   = false
 
 export default function ClientShell(): JSX.Element {
   const [tab, setTab] = useState<TabKey>('match')
   const [showWelcome, setShowWelcome] = useState(true)
 
-  // Matching dropdown
-  const [matchOpen, setMatchOpen] = useState(false)        // NEW
-  const [matchMode, setMatchMode] = useState<MatchMode>('zawa') // NEW
+  // NEW — Matching dropdown
+  const [matchOpen, setMatchOpen] = useState(false)
+  const [matchMode, setMatchMode] = useState<MatchMode>('zawa')
 
   const [sourceOpen, setSourceOpen] = useState(false)
   const [sourceMode, setSourceMode] = useState<SourceMode>('people')
@@ -49,7 +45,7 @@ export default function ClientShell(): JSX.Element {
   useEffect(() => {
     function onClick(e: MouseEvent) {
       const t = e.target as HTMLElement
-      if (!t.closest('[data-match-root]')) setMatchOpen(false)   // NEW
+      if (!t.closest('[data-match-root]')) setMatchOpen(false)
       if (!t.closest('[data-sourcing-root]')) setSourceOpen(false)
       if (!t.closest('[data-cv-root]')) setCvOpen(false)
       if (!t.closest('[data-social-root]')) setSocialOpen(false)
@@ -89,14 +85,14 @@ export default function ClientShell(): JSX.Element {
   return (
     <>
       <div className="flex flex-col gap-6 min-h-[calc(100vh-120px)]">
-
+        
         {/* Top Bar */}
         <div className="flex items-center justify-between">
 
           {/* LEFT cluster */}
           <div className="flex gap-2">
 
-            {/* MATCHING — UPDATED TO DROPDOWN */}
+            {/* MATCHING — NOW A DROPDOWN */}
             <div className="relative" data-match-root>
               <button
                 onClick={() => setMatchOpen(v => !v)}
@@ -107,12 +103,12 @@ export default function ClientShell(): JSX.Element {
 
               {matchOpen && (
                 <div className="absolute z-50 mt-2 w-48 bg-white rounded-xl border shadow-xl text-left">
-
+                  
                   <button
-                    onClick={() => { 
-                      setMatchMode('zawa'); 
-                      setTab('match'); 
-                      setMatchOpen(false); 
+                    onClick={() => {
+                      setMatchMode('zawa')
+                      setTab('match')
+                      setMatchOpen(false)
                       setShowWelcome(false)
                     }}
                     className="w-full px-3 py-2 hover:bg-gray-50 text-left"
@@ -121,10 +117,10 @@ export default function ClientShell(): JSX.Element {
                   </button>
 
                   <button
-                    onClick={() => { 
-                      setMatchMode('woo'); 
-                      setTab('match'); 
-                      setMatchOpen(false); 
+                    onClick={() => {
+                      setMatchMode('woo')
+                      setTab('match')
+                      setMatchOpen(false)
                       setShowWelcome(false)
                     }}
                     className="w-full px-3 py-2 hover:bg-gray-50 text-left"
@@ -136,7 +132,7 @@ export default function ClientShell(): JSX.Element {
               )}
             </div>
 
-            {/* SOURCING (unchanged) */}
+            {/* SOURCING */}
             <div className="relative" data-sourcing-root>
               <button
                 onClick={() => setSourceOpen(v => !v)}
@@ -164,14 +160,121 @@ export default function ClientShell(): JSX.Element {
               )}
             </div>
 
-            {/* CV + SOCIAL + AC — unchanged */}
-            {/* … (no modifications required) … */}
+            {/* CV Formatting */}
+            <div className="relative" data-cv-root>
+              <button 
+                onClick={() => setCvOpen(v => !v)} 
+                className={`tab ${active('cv')}`}
+              >
+                CV Formatting
+              </button>
+
+              {cvOpen && (
+                <div className="absolute z-50 mt-2 w-44 bg-white rounded-xl border shadow-xl text-left">
+                  <button 
+                    onClick={() => { setCvTemplate('uk'); setTab('cv'); setCvOpen(false); setShowWelcome(false) }}
+                    className="w-full px-3 py-2 hover:bg-gray-50 text-left"
+                  >
+                    UK Format
+                  </button>
+
+                  <button 
+                    onClick={() => { setCvTemplate('us'); setTab('cv'); setCvOpen(false); setShowWelcome(false) }}
+                    className="w-full px-3 py-2 hover:bg-gray-50 text-left"
+                  >
+                    US Format
+                  </button>
+
+                  <button 
+                    onClick={() => { setCvTemplate('sales'); setTab('cv'); setCvOpen(false); setShowWelcome(false) }}
+                    className="w-full px-3 py-2 hover:bg-gray-50 text-left"
+                  >
+                    Sales Format
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* SOCIAL */}
+            <div className="relative" data-social-root>
+              <button 
+                onClick={() => setSocialOpen(v => !v)} 
+                className={`tab ${active('social')}`}
+              >
+                Social Media
+              </button>
+
+              {socialOpen && (
+                <div className="absolute z-50 mt-2 w-44 bg-white rounded-xl border shadow-xl text-left">
+                  <button 
+                    onClick={() => { setSocialMode('jobPosts'); setTab('social'); setSocialOpen(false); setShowWelcome(false) }}
+                    className="w-full px-3 py-2 hover:bg-gray-50 text-left"
+                  >
+                    Job Posts
+                  </button>
+
+                  <button 
+                    onClick={() => { setSocialMode('jobZone'); setTab('social'); setSocialOpen(false); setShowWelcome(false) }}
+                    className="w-full px-3 py-2 hover:bg-gray-50 text-left"
+                  >
+                    Job Zone
+                  </button>
+                </div>
+              )}
+            </div>
 
           </div>
 
-          {/* RIGHT SIDE (Data + Active Campaign) — unchanged */}
-          {/* … remains identical … */}
+          {/* RIGHT SIDE — Data Icon + Active Campaign */}
+          <div className="flex items-center gap-2">
 
+            {/* DATA ICON */}
+            <button
+              onClick={() => {
+                setTab('data')
+                setShowWelcome(false)
+                setAcOpen(false)
+              }}
+              title="Data"
+              className={`tab ${active('data')} flex items-center justify-center h-[40px] px-4`}
+            >
+              <Image
+                src="/Data-Icon.png"
+                width={16}
+                height={16}
+                alt="Data"
+              />
+            </button>
+
+            {/* ACTIVE CAMPAIGN */}
+            <div className="relative" data-ac-root>
+              <button
+                onClick={() => setAcOpen(v => !v)}
+                className={`tab ${active('ac')}`}
+              >
+                Active Campaign
+              </button>
+
+              {acOpen && (
+                <div className="absolute z-50 right-0 mt-2 w-44 rounded-xl border bg-white shadow-lg overflow-hidden text-left">
+                  <button
+                    className="w-full text-left px-3 py-2 hover:bg-gray-50"
+                    onClick={() => { setAcMode('upload'); setTab('ac'); setAcOpen(false); setShowWelcome(false) }}
+                  >
+                    Upload
+                  </button>
+
+                  <button
+                    className="w-full text-left px-3 py-2 hover:bg-gray-50"
+                    onClick={() => { setAcMode('html'); setTab('ac'); setAcOpen(false); setShowWelcome(false) }}
+                  >
+                    HTML Build
+                  </button>
+                </div>
+              )}
+            </div>
+
+          </div>
         </div>
 
         {/* CONTENT */}
@@ -180,7 +283,7 @@ export default function ClientShell(): JSX.Element {
             <WelcomeBlock />
           ) : (
             <>
-              {/* MATCH LOGIC UPDATED */}
+              {/* MATCH SELECTION */}
               {tab === 'match' && matchMode === 'zawa' && <MatchTab />}
               {tab === 'match' && matchMode === 'woo'  && <WooTab />}
 
