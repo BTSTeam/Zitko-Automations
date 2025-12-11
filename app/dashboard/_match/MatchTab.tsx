@@ -288,7 +288,7 @@ export default function MatchTab(): JSX.Element {
 
       const summary: JobSummary = {
         id: jobId,
-        job_title: String(extracted?.title || '').trim(),
+        job_title: String(data?.job_title || extracted?.title || '').trim(),
         location: cleanedLocation,
         skills: skillsArr,
         qualifications: qualsArr,
