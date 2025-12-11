@@ -14,15 +14,6 @@ type JobSummary = {
   coords?: { lat: number; lng: number } | null
 }
 
-type CandidateRow = {
-  id: string
-  name: string
-  title?: string
-  location?: string
-  linkedin?: string | null
-  skills?: string[]
-}
-
 type ScoredRow = {
   candidateId: string
   candidateName: string
@@ -30,11 +21,12 @@ type ScoredRow = {
   reason: string
   linkedin?: string
   title?: string
-  matchedSkills?: string[]
+  employer?: string
   location?: string
+  matchedSkills?: string[]
 }
 
-/* ====================== Helpers (local) ====================== */
+/* ====================== Helpers ====================== */
 function htmlToText(html?: string): string {
   if (!html) return ''
   try {
@@ -111,7 +103,7 @@ function stripLocationSentences(text: string): string {
   return out || text
 }
 
-/* ====================== Small UI bits (local) ====================== */
+/* ====================== Modal ====================== */
 function Modal({
   open, onClose, title, children,
 }: { open: boolean; onClose: () => void; title: string; children: ReactNode }) {
@@ -130,6 +122,7 @@ function Modal({
   )
 }
 
+/* ====================== RESULTS LIST ====================== */
 function AIScoredList({ rows }: { rows: ScoredRow[] }) {
   const [copied, setCopied] = useState<string | null>(null)
   const copyId = async (id: string) => {
@@ -139,19 +132,46 @@ function AIScoredList({ rows }: { rows: ScoredRow[] }) {
       setTimeout(() => setCopied(null), 1200)
     } catch {}
   }
+
   return (
     <div className="card p-6">
-      <h3 className="font-semibold mb-3">AI Scored Candidates</h3>
+      <h3 className="font-semibold mb-3">Results</h3>
       <ul className="divide-y">
         {rows.map(r => (
           <li key={r.candidateId} className="py-4">
             <div className="flex items-start justify-between gap-4">
+              
+              {/* LEFT SIDE */}
               <div className="min-w-0">
+                {/* Name */}
                 <div className="font-medium truncate">{r.candidateName}</div>
-                {!!r.title && <div className="text-sm text-gray-600">{r.title}{r.location ? ` • ${r.location}` : ''}</div>}
-                {r.linkedin && (
-                  <a className="text-sm underline" href={r.linkedin} target="_blank" rel="noreferrer">LinkedIn</a>
+
+                {/* Title */}
+                {r.title && (
+                  <div className="text-sm text-gray-600">{r.title}</div>
                 )}
+
+                {/* Employer */}
+                {r.employer && (
+                  <div className="text-sm text-gray-600">{r.employer}</div>
+                )}
+
+                {/* Full Location */}
+                {r.location && (
+                  <div className="text-sm text-gray-600 flex items-center gap-1 mt-0.5">
+                    <span>📍</span>
+                    <span>{r.location}</span>
+                  </div>
+                )}
+
+                {/* LinkedIn */}
+                {r.linkedin && (
+                  <a className="text-sm underline mt-1 block" href={r.linkedin} target="_blank">
+                    LinkedIn
+                  </a>
+                )}
+
+                {/* Matched Skills */}
                 {r.matchedSkills && r.matchedSkills.length > 0 && (
                   <div className="mt-1 flex flex-wrap gap-1">
                     {r.matchedSkills.slice(0, 6).map(ms => (
@@ -159,16 +179,26 @@ function AIScoredList({ rows }: { rows: ScoredRow[] }) {
                     ))}
                   </div>
                 )}
+
+                {/* Reason */}
                 {r.reason && (
-                  <div className="text-sm text-gray-700 mt-2 whitespace-pre-wrap">{r.reason}</div>
+                  <div className="text-sm text-gray-700 mt-2 whitespace-pre-wrap">
+                    {r.reason}
+                  </div>
                 )}
               </div>
 
+              {/* RIGHT SIDE */}
               <div className="text-right shrink-0 min-w-[200px]">
                 <div className="flex items-baseline justify-end gap-2">
-                  <div className="text-[11px] uppercase tracking-wide text-gray-500">Suitability Score:</div>
-                  <div className={`text-2xl font-semibold ${scoreColor(r.score)}`}>{r.score}%</div>
+                  <div className="text-[11px] uppercase tracking-wide text-gray-500">
+                    Suitability Score:
+                  </div>
+                  <div className={`text-2xl font-semibold ${scoreColor(r.score)}`}>
+                    {r.score}%
+                  </div>
                 </div>
+
                 <button
                   type="button"
                   onClick={() => copyId(r.candidateId)}
@@ -177,8 +207,11 @@ function AIScoredList({ rows }: { rows: ScoredRow[] }) {
                 >
                   ID: {r.candidateId}
                 </button>
-                {copied === r.candidateId && <div className="text-[10px] text-green-600 mt-1">Copied!</div>}
+                {copied === r.candidateId && (
+                  <div className="text-[10px] text-green-600 mt-1">Copied!</div>
+                )}
               </div>
+
             </div>
           </li>
         ))}
@@ -187,8 +220,10 @@ function AIScoredList({ rows }: { rows: ScoredRow[] }) {
   )
 }
 
-/* ====================== Main Match Tab ====================== */
+/* ====================== MAIN TAB ====================== */
 export default function MatchTab(): JSX.Element {
+
+  /* ------------------ State ------------------ */
   const [jobId, setJobId] = useState('')
   const [job, setJob] = useState<JobSummary | null>(null)
 
@@ -198,57 +233,16 @@ export default function MatchTab(): JSX.Element {
   const [title, setTitle] = useState('')
   const [location, setLocation] = useState('')
   const [skillsText, setSkillsText] = useState('')
-  const [qualsText, setQualsText] = useState('') // hidden in UI, used for AI
+  const [qualsText, setQualsText] = useState('')
 
-  const [rawCands, setRawCands] = useState<CandidateRow[]>([])
   const [scored, setScored] = useState<ScoredRow[]>([])
-  const [view, setView] = useState<'ai' | 'raw'>('raw')
-
   const [serverCount, setServerCount] = useState<number | null>(null)
   const [serverQuery, setServerQuery] = useState<string | null>(null)
 
   const [showJson, setShowJson] = useState(false)
   const [aiPayload, setAiPayload] = useState<any>(null)
 
-  // Reset everything so user can start again
-  const resetAll = () => {
-    setJobId('')
-    setJob(null)
-    setTitle('')
-    setLocation('')
-    setSkillsText('')
-    setQualsText('')
-    setRawCands([])
-    setScored([])
-    setServerCount(null)
-    setServerQuery(null)
-    setAiPayload(null)
-    setView('raw')
-    setLoadingAll(false)
-    setLoadingSearch(false)
-  }
-
-  // Save the *manual* location and re-run analysis
-  const onSaveAndResend = async () => {
-    if (!job) {
-      alert('Search first, then adjust the location and click Save & Resend.')
-      return
-    }
-    // persist the manual override in local state
-    const updated: JobSummary = { ...job, location: location?.trim() || '' }
-    setJob(updated)
-
-    // re-run with exact same title/skills/quals, but NEW location
-    await runSearch({
-      job: updated,
-      title: (title ?? '').trim(),
-      location: (location ?? '').trim(),
-      skillsText: skillsText,        // keep skills for analysis (UI hidden)
-      qualsText:  qualsText
-    })
-  }
-
-  // keep ONLY ONE funMessages definition
+  /* ------------------ Fun loading messages ------------------ */
   const funMessages = [
     'Zitko AI is thinking…',
     'Matching skills & qualifications…',
@@ -263,9 +257,27 @@ export default function MatchTab(): JSX.Element {
     return () => clearInterval(id)
   }, [loadingSearch])
 
+  /* ------------------ Reset ------------------ */
+  const resetAll = () => {
+    setJobId('')
+    setJob(null)
+    setTitle('')
+    setLocation('')
+    setSkillsText('')
+    setQualsText('')
+    setScored([])
+    setServerCount(null)
+    setServerQuery(null)
+    setAiPayload(null)
+    setLoadingAll(false)
+    setLoadingSearch(false)
+  }
+
+  /* ------------------ Retrieve Job ------------------ */
   const retrieveJob = async (): Promise<JobSummary | null> => {
     if (!jobId) return null
-    setScored([]); setRawCands([]); setServerCount(null); setServerQuery(null)
+    setScored([]); setServerCount(null); setServerQuery(null)
+
     try {
       const r = await fetch(`/api/vincere/position/${encodeURIComponent(jobId)}`, { cache: 'no-store' })
       const data = await r.json()
@@ -282,8 +294,9 @@ export default function MatchTab(): JSX.Element {
       })
       const extracted = await extractResp.json()
 
-      const skillsArr: string[] = Array.isArray(extracted?.skills) ? extracted.skills : []
-      const qualsArr: string[] = Array.isArray(extracted?.qualifications) ? extracted.qualifications : []
+      const skillsArr = Array.isArray(extracted?.skills) ? extracted.skills : []
+      const qualsArr = Array.isArray(extracted?.qualifications) ? extracted.qualifications : []
+
       const cleanedLocation = extractCity(String(extracted?.location || '').trim())
 
       const summary: JobSummary = {
@@ -294,13 +307,14 @@ export default function MatchTab(): JSX.Element {
         qualifications: qualsArr,
         public_description: publicRaw,
         internal_description: internalRaw,
-        coords: null
       }
+
       setJob(summary)
       setTitle(summary.job_title || '')
       setLocation(cleanedLocation)
       setSkillsText(skillsArr.join(', '))
       setQualsText(qualsArr.join(', '))
+
       return summary
     } catch (e) {
       console.error(e)
@@ -309,13 +323,25 @@ export default function MatchTab(): JSX.Element {
     }
   }
 
-  const runSearch = async (input?: { job: JobSummary; title: string; location: string; skillsText: string; qualsText: string }) => {
+  /* ------------------ Run Search ------------------ */
+  const runSearch = async (input?: {
+    job: JobSummary
+    title: string
+    location: string
+    skillsText: string
+    qualsText: string
+  }) => {
+
     const active = input ?? (job ? { job, title, location, skillsText, qualsText } : null)
     if (!active) return
+
     const { job: activeJob, title: t, location: loc, skillsText: skillsStr, qualsText: qualsStr } = active
+
     setLoadingSearch(true)
-    setScored([]); setRawCands([]); setAiPayload(null); setServerCount(null); setServerQuery(null)
+    setScored([]); setAiPayload(null); setServerCount(null); setServerQuery(null)
+
     try {
+      /* --- 1. SEARCH --- */
       const run = await fetch('/api/match/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -331,51 +357,30 @@ export default function MatchTab(): JSX.Element {
           debug: true
         })
       })
+
       const payload = await run.json()
       if (!run.ok) throw new Error(payload?.error || `Search failed (${run.status})`)
 
       const candidates = (() => {
-        const raw = (payload?.results || []) as Array<any>
-        const normalized = raw.map((c: any) => ({ ...c, id: String(c?.id ?? '').trim() }))
-        const withIds = normalized.filter((c: any) => c.id.length > 0)
+        const raw = payload?.results || []
+        const arr = raw.map((c: any) => ({ ...c, id: String(c?.id ?? '').trim() }))
         const seen = new Set<string>()
-        const dedup = withIds.filter((c: any) => {
+        return arr.filter((c: any) => {
+          if (!c.id) return false
           if (seen.has(c.id)) return false
           seen.add(c.id)
           return true
         })
-        const dropped = raw.length - dedup.length
-        if (dropped > 0) console.warn(`Dropped ${dropped} candidate(s) due to missing/duplicate IDs`)
-        return dedup
       })()
 
       if (typeof payload?.count === 'number') setServerCount(payload.count)
-      if (typeof payload?.query === 'string') setServerQuery(payload.query)
+      if (payload?.query) setServerQuery(JSON.stringify(payload.query))
 
-      const raw = candidates.map((c: any) => {
-        const title = c.title || c.current_job_title || ''
-        const location = extractCity(c.current_location_name || c.city || c.location || '')
-        const skills = normalizeList(c.skills, c.skill, c.keywords)
-        return {
-          id: String(c.id),
-          name: c.fullName || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim(),
-          title,
-          location,
-          linkedin: (c.linkedinUrl ?? c.linkedin) ?? null,
-          skills
-        } as CandidateRow
-      })
-      setRawCands(raw)
-      setView('raw')
-
+      /* --- 2. BUILD AI PAYLOAD --- */
       const jobSkills = skillsStr.split(',').map(s => s.trim()).filter(Boolean)
       const jobSkillsStem = new Set(jobSkills.map(stem))
 
       const payloadToAI = {
-        meta: {
-          note: 'Candidates were pre-filtered by location in Vincere. Ignore location entirely when scoring.',
-          location_filter_applied: true
-        },
         job: {
           title: t,
           skills: jobSkills,
@@ -386,109 +391,144 @@ export default function MatchTab(): JSX.Element {
           const candSkills = normalizeList(c.skills, c.skill, c.keywords)
           const candSkillsStem = candSkills.map(stem)
           const matchedSkills = candSkills.filter((s: string, i: number) => jobSkillsStem.has(candSkillsStem[i]))
-          const title = c.title || c.current_job_title || ''
+
           return {
-            candidate_id: String(c.id),
-            full_name: c.fullName || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim() || String(c.id),
-            current_job_title: title,
+            candidate_id: c.id,
+            full_name: c.fullName || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim(),
+            current_job_title: c.title || c.current_job_title || '',
+            current_employer: c.current_employer || '',
+            location: c.location || '',
+            city: c.city || '',
+
             skills: candSkills,
             matched_skills: matchedSkills,
+
             qualifications: normalizeList(
-              c.qualifications, c.edu_qualification, c.edu_degree, c.edu_course, c.edu_training, c.certifications
-            )
+              c.qualifications, c.edu_qualification, c.professional_qualification
+            ),
+
+            education: {
+              degree: normalizeList(c.edu_degree),
+              course: normalizeList(c.edu_course),
+              institution: normalizeList(c.edu_institution),
+              training: normalizeList(c.edu_training),
+            }
           }
         })
       }
+
       setAiPayload(payloadToAI)
 
+      /* --- 3. SEND TO AI --- */
       const ai = await fetch('/api/ai/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payloadToAI)
       })
+
       const aiText = await ai.text()
       let outer: any = {}
-      try { outer = JSON.parse(aiText) } catch {
-        try { outer = JSON.parse((aiText || '').replace(/```json|```/g, '').trim()) } catch { outer = {} }
+
+      try { outer = JSON.parse(aiText) }
+      catch {
+        try { outer = JSON.parse(aiText.replace(/```json|```/g, '').trim()) }
+        catch {}
       }
 
-      const rankedRaw = Array.isArray(outer?.ranked) ? outer.ranked : (() => {
-        const content = outer?.choices?.[0]?.message?.content
-        if (typeof content === 'string') {
-          try {
-            const cleaned = content.replace(/```json|```/g, '').trim()
-            const p = JSON.parse(cleaned)
-            return Array.isArray(p?.ranked) ? p.ranked : []
-          } catch { return [] }
-        }
-        return []
-      })()
+      const rankedRaw =
+        Array.isArray(outer?.ranked)
+          ? outer.ranked
+          : (() => {
+              const content = outer?.choices?.[0]?.message?.content
+              if (typeof content === 'string') {
+                try {
+                  const cleaned = content.replace(/```json|```/g, '').trim()
+                  const p = JSON.parse(cleaned)
+                  return Array.isArray(p?.ranked) ? p.ranked : []
+                } catch { return [] }
+              }
+              return []
+            })()
 
+      /* --- 4. MERGE BACK INTO FRONTEND STRUCTURE --- */
       const byId = new Map(candidates.map((c: any) => [String(c.id), c]))
-      const seenIds = new Set<string>()
-      const ranked = rankedRaw
+      const seenRank = new Set<string>()
+
+      const scoredRows: ScoredRow[] = rankedRaw
         .filter((r: any) => byId.has(String(r.candidate_id)))
-        .filter((r: any) => { const id = String(r.candidate_id); if (seenIds.has(id)) return false; seenIds.add(id); return true })
+        .filter((r: any) => {
+          const id = String(r.candidate_id)
+          if (seenRank.has(id)) return false
+          seenRank.add(id)
+          return true
+        })
+        .map((r: any) => {
+          const c = byId.get(String(r.candidate_id))
+          const scoreRaw = Number(r.score_percent ?? r.score ?? 0)
+          const score = Math.max(0, Math.min(100, Math.round(scoreRaw || 0)))
 
-      let scoredRows: ScoredRow[] = ranked.map((r: any) => {
-        const scoreRaw = r.score_percent ?? r.score ?? r.score_pct ?? r.suitability_score ?? 0
-        const s = Math.max(0, Math.min(100, Math.round(Number(scoreRaw) || 0)))
-        const c = byId.get(String(r.candidate_id))
-        const candidateName = c?.fullName || `${c?.firstName ?? ''} ${c?.lastName ?? ''}`.trim() || String(r.candidate_id)
-        const matchedSkills: string[] | undefined =
-          Array.isArray(r?.matched_skills) ? r.matched_skills :
-          Array.isArray((r?.details || {})?.matched_skills) ? (r.details.matched_skills) : undefined
-        const locationCity = extractCity(c?.current_location_name || c?.city || c?.location || '') || loc
-        return {
-          candidateId: String(r.candidate_id),
-          candidateName,
-          score: s,
-          reason: stripLocationSentences(String(r.reason || '')),
-          linkedin: (c as any)?.linkedinUrl || (c as any)?.linkedin || undefined,
-          title: c?.title || c?.current_job_title || '',
-          matchedSkills,
-          location: locationCity
-        }
-      })
+          return {
+            candidateId: String(r.candidate_id),
+            candidateName: c.fullName || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim(),
+            score,
+            reason: stripLocationSentences(String(r.reason || '')),
+            linkedin: c.linkedin ?? null,
+            title: c.title || c.current_job_title || '',
+            employer: c.current_employer || '',
+            location: c.location || '',
+            matchedSkills: r.matched_skills || []
+          }
+        })
+        .sort((a, b) => b.score - a.score)
 
-      scoredRows = scoredRows.sort((a, b) => b.score - a.score)
       setScored(scoredRows)
-      setView('ai')
+
     } catch (e) {
       console.error(e)
-      alert('Search or scoring hit an issue. Showing raw candidates (if any).')
+      alert('Search or scoring encountered an issue.')
     } finally {
       setLoadingSearch(false)
     }
   }
 
+  /* ------------------ Retrieve + Score Shortcut ------------------ */
   const retrieveSearchScore = async () => {
     if (!jobId) return alert('Enter Job ID')
     setLoadingAll(true)
+
     try {
       const summary = await retrieveJob()
       if (!summary) return
-      const t = String(summary.job_title || '').trim()
-      const loc = String(summary.location || '').trim()
+
+      const t = summary.job_title || ''
+      const loc = summary.location || ''
       const skillsStr = (summary.skills || []).join(', ')
-      const qualsStr  = (summary.qualifications || []).join(', ')
-      await runSearch({ job: summary, title: t, location: loc, skillsText: skillsStr, qualsText: qualsStr })
+      const qualsStr = (summary.qualifications || []).join(', ')
+
+      await runSearch({
+        job: summary,
+        title: t,
+        location: loc,
+        skillsText: skillsStr,
+        qualsText: qualsStr
+      })
     } finally {
       setLoadingAll(false)
     }
   }
 
-  // use the SAME funMessages above here:
+  /* ------------------ UI ------------------ */
   const statusText = loadingSearch
     ? funMessages[funIdx % funMessages.length]
-    : (view === 'ai' ? 'Viewing AI scores' : 'Viewing raw results')
-  const beforeScores = scored.length === 0
+    : scored.length > 0
+      ? 'Viewing results'
+      : 'Waiting…'
 
   return (
     <div className="grid gap-6">
-      {/* FIRST PANEL (updated) */}
+
+      {/* Job Search Panel */}
       <div className="card p-6 relative">
-        {/* Header with title + refresh */}
         <div className="flex items-start justify-between gap-4">
           <p className="mb-4 font-medium">
             Enter your Vincere Job ID to find matching candidates.
@@ -498,39 +538,35 @@ export default function MatchTab(): JSX.Element {
             className="text-gray-500 hover:text-gray-800"
             onClick={resetAll}
             title="Refresh & clear all fields"
-            aria-label="Refresh"
           >
             ↻
           </button>
         </div>
 
-        {/* Three inputs on one row (md+) */}
+        {/* Inputs */}
         <div className="grid gap-4 md:grid-cols-3">
-          {/* Job ID */}
+
           <input
             className="input"
             placeholder="Job ID"
             value={jobId}
-            onChange={e=>setJobId(e.target.value)}
+            onChange={e => setJobId(e.target.value)}
           />
-        
-          {/* Job Title */}
+
           <input
             className="input"
-            placeholder="Job Title (e.g., Fire & Security Engineer)"
+            placeholder="Job Title"
             value={title}
-            onChange={e=>setTitle(e.target.value)}
+            onChange={e => setTitle(e.target.value)}
           />
-        
-          {/* Location */}
+
           <input
             className="input"
-            placeholder="Location (e.g., London)"
+            placeholder="Location"
             value={location}
-            onChange={e=>setLocation(e.target.value)}
+            onChange={e => setLocation(e.target.value)}
           />
-        
-          {/* Buttons inline under inputs */}
+
           <div className="md:col-span-3 flex flex-col sm:flex-row gap-3">
             <button
               className="btn btn-brand sm:flex-1"
@@ -539,65 +575,40 @@ export default function MatchTab(): JSX.Element {
             >
               {loadingAll ? 'Searching…' : 'Search'}
             </button>
-        
+
             <button
               className="btn btn-grey sm:flex-1"
-              onClick={onSaveAndResend}
+              onClick={() => runSearch({
+                job: job!,
+                title,
+                location,
+                skillsText,
+                qualsText
+              })}
               disabled={!job}
-              title="Save the manual location and re-run analysis"
             >
-              Save &amp; Resend
+              Save & Resend
             </button>
           </div>
         </div>
 
-
         <div className="h-px bg-gray-200 my-4" />
 
-        {/* Controls row (unchanged) */}
+        {/* Status */}
         <div className="mt-2 flex flex-wrap items-center gap-3">
-          <button
-            className={[
-              'px-1 py-1 text-lg font-semibold rounded-none border-b-2 transition-colors',
-              view === 'raw'
-                ? 'border-gray-800 text-gray-900'
-                : 'border-transparent text-gray-400 hover:text-gray-600',
-              beforeScores || rawCands.length === 0 ? 'opacity-50 pointer-events-none' : ''
-            ].join(' ')}
-            onClick={() => setView('raw')}
-            disabled={rawCands.length === 0}
-          >
-            Raw Candidates {rawCands.length ? `(${rawCands.length})` : ''}
-          </button>
-          
-          <div className="flex items-center gap-2">
-            <button
-              className={[
-                'px-1 py-1 text-lg font-semibold rounded-none border-b-2 transition-colors',
-                view === 'ai'
-                  ? 'border-gray-800 text-gray-900'
-                  : 'border-transparent text-gray-400 hover:text-gray-600',
-                beforeScores || scored.length === 0 ? 'opacity-50 pointer-events-none' : ''
-              ].join(' ')}
-              onClick={() => setView('ai')}
-              disabled={scored.length === 0}
-            >
-              AI Scored {scored.length ? `(${scored.length})` : ''}
-            </button>
-          
-            <span className="text-sm text-gray-600">{statusText}</span>
-          </div>
+          <span className="text-sm text-gray-600">{statusText}</span>
+
           {serverQuery && (
-            <div className="ml-0 md:ml-4 text-xs text-gray-500">
-              q: <code className="break-all">{serverQuery}</code>
+            <div className="text-xs text-gray-500 ml-4">
+              q: <code>{serverQuery}</code>
             </div>
           )}
+
           <div className="ml-auto">
             <button
               className="btn btn-grey !px-3 !py-1 !text-xs !h-8 rounded-md"
               onClick={() => setShowJson(true)}
               disabled={!aiPayload}
-              title={aiPayload ? 'Show the exact JSON sent to ChatGPT (location excluded from scoring)' : 'Run a search & scoring first'}
             >
               Show JSON
             </button>
@@ -607,34 +618,8 @@ export default function MatchTab(): JSX.Element {
 
       {/* RESULTS */}
       <div className="flex flex-col gap-3">
-        {view === 'ai' ? (
-          scored.length > 0
-            ? <AIScoredList rows={scored} />
-            : <div className="card p-6 text-sm text-gray-500">{loadingSearch ? funMessages[funIdx % funMessages.length] : 'No AI scores yet. Click "Search".'}</div>
-        ) : rawCands.length > 0 ? (
-          <div className="card p-6">
-            <h3 className="font-semibold mb-3">Raw Candidates</h3>
-            <ul className="divide-y">
-              {rawCands.map(c => (
-                <li key={c.id} className="py-3">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <div className="font-medium">{c.name || c.id}</div>
-                      <div className="text-sm text-gray-600">
-                        {(c.title || '-')}{c.location ? ` • ${c.location}` : ''}
-                      </div>
-                      {c.linkedin && (
-                        <a href={c.linkedin} target="_blank" rel="noreferrer" className="text-sm underline">
-                          LinkedIn
-                        </a>
-                      )}
-                    </div>
-                    <div className="text-xs text-gray-400">ID: {c.id}</div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
+        {scored.length > 0 ? (
+          <AIScoredList rows={scored} />
         ) : (
           <div className="card p-6 text-sm text-gray-500">
             Results will appear here after you click <span className="font-medium">Search</span>.
@@ -645,13 +630,19 @@ export default function MatchTab(): JSX.Element {
       {/* JSON MODAL */}
       <Modal open={showJson} onClose={() => setShowJson(false)} title="JSON sent to ChatGPT">
         {!aiPayload ? (
-          <div className="text-sm text-gray-500">No payload available yet. Run a search & scoring first.</div>
+          <div className="text-sm text-gray-500">No payload available yet.</div>
         ) : (
           <div>
-            <div className="mb-2 flex items-center gap-2">
-              <button className="btn btn-grey" onClick={async () => {
-                try { await navigator.clipboard.writeText(JSON.stringify(aiPayload, null, 2)); alert('Copied to clipboard') } catch {}
-              }}>
+            <div className="mb-2">
+              <button
+                className="btn btn-grey"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(JSON.stringify(aiPayload, null, 2))
+                    alert('Copied to clipboard')
+                  } catch {}
+                }}
+              >
                 Copy to clipboard
               </button>
             </div>
@@ -661,6 +652,7 @@ export default function MatchTab(): JSX.Element {
           </div>
         )}
       </Modal>
+
     </div>
   )
 }
