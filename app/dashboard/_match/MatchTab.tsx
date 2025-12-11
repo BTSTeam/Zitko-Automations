@@ -311,21 +311,7 @@ export default function MatchTab(): JSX.Element {
       const skillsArr = Array.isArray(extracted?.skills) ? extracted.skills : []
       const qualsArr = Array.isArray(extracted?.qualifications) ? extracted.qualifications : []
 
-      const rawLoc = String(extracted?.location || '').trim();
-      
-      // Split on common multi-city separators: / , - |
-      const parts = rawLoc
-        .split(/[\/,|\-]/)
-        .map(p => p.trim())
-        .filter(Boolean);
-      
-      // Use first city if present
-      let city = parts[0] || '';
-      
-      // If nothing usable, fall back to second element as "state"
-      let state = parts[1] || '';
-      
-      const cleanedLocation = city || state || '';
+      const cleanedLocation = extractCity(String(extracted?.location || '').trim());
 
       const summary: JobSummary = {
         id: jobId,
