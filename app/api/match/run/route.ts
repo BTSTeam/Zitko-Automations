@@ -72,7 +72,11 @@ function buildBaseClauses(job: NonNullable<RunReq['job']>, titleOverride?: strin
   const title = (titleOverride ?? job.title ?? '').trim();
 
   // IMPORTANT: do NOT over-clean the location.
-  const city = (job.location || '').trim();
+  const city = (job.location || '')
+  .replace(/[^\x20-\x7E]/g, '')   // remove all non-visible unicode
+  .replace(/[/|\\].*$/, '')       // remove everything after slash or pipe
+  .replace(/\s+/g, ' ')
+  .trim();
 
   const titleClause = title ? `current_job_title:${title}#` : '';
 
