@@ -27,6 +27,7 @@ type ScoredRow = {
 }
 
 /* ====================== Helpers ====================== */
+
 function htmlToText(html?: string): string {
   if (!html) return ''
   try {
@@ -41,34 +42,33 @@ function htmlToText(html?: string): string {
   }
 }
 
-function extractCity(location?: string): string {
-  if (!location) return '';
+/* CLEAN JOB TITLE — YOUR RULES EXACTLY */
+function cleanTitle(raw?: string): string {
+  if (!raw) return ''
+  const cleaned = raw.split(/[-|,–—]/)[0]?.trim() || ''
+  return cleaned
+}
 
-  // Normalise separators
-  let clean = location.replace(/\//g, ','); // Convert "/" to ","
+/* CLEAN LOCATION — YOUR RULES EXACTLY */
+function cleanLocation(raw?: string): string {
+  if (!raw) return ''
 
-  // Always take the first segment
-  let city = clean.split(',')[0].trim();
+  // Rule 1 — If "/" present: take before "/"
+  if (raw.includes('/')) return raw.split('/')[0].trim()
 
-  // Remove directional words
-  city = city.replace(/\b(North|South|East|West|Northeast|Northwest|Southeast|Southwest)\b/gi, ' ').trim();
+  // Rule 2 — If "," present: take before first ","
+  if (raw.includes(',')) return raw.split(',')[0].trim()
 
-  // Collapse double spaces
-  city = city.replace(/\s{2,}/g, ' ').trim();
-
-  return city;
+  // Rule 3 — Multi-word locations like “South East London” stay intact
+  return raw.trim()
 }
 
 function LinkedInIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="#0A66C2"
-      {...props}
-    >
+    <svg viewBox="0 0 24 24" fill="#0A66C2" {...props}>
       <path d="M4.98 3.5C4.98 4.88 3.86 6 2.5 6S0 4.88 0 3.5 1.12 1 2.5 1 4.98 2.12 4.98 3.5zM.5 8h4V24h-4V8zm7.5 0h3.8v2.2h.1c.5-1 1.7-2.2 3.6-2.2 3.8 0 4.5 2.5 4.5 5.7V24h-4v-8.2c0-2 0-4.5-2.7-4.5s-3.1 2.1-3.1 4.3V24h-4V8z"/>
     </svg>
-  );
+  )
 }
 
 function scoreColor(score: number) {
@@ -95,9 +95,7 @@ function normalizeList(...items: any[]): string[] {
       for (const v of item) {
         if (typeof v === 'string') {
           v.split(/[,;|/•#()\-\+]+/g).forEach(push)
-        } else if (v != null) {
-          push(String(v))
-        }
+        } else if (v != null) push(String(v))
       }
     } else if (typeof item === 'string') {
       item.split(/[,;|/•#()\-\+]+/g).forEach(push)
@@ -120,20 +118,21 @@ function normalizeList(...items: any[]): string[] {
 function stripLocationSentences(text: string): string {
   if (!text) return text
   const sentences = text.split(/(?<=\.)\s+/)
-  const filtered = sentences.filter(s => !/\b(location|commute|commutability|city|distance|relocat)/i.test(s))
+  const filtered = sentences.filter(s => !/\b(location|commute|city|distance|relocat)/i.test(s))
   const out = filtered.join(' ').trim()
   return out || text
 }
 
 /* ====================== Modal ====================== */
-function Modal({
-  open, onClose, title, children,
-}: { open: boolean; onClose: () => void; title: string; children: ReactNode }) {
+
+function Modal({ open, onClose, title, children }: {
+  open: boolean, onClose: () => void, title: string, children: ReactNode
+}) {
   if (!open) return null
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-xl max-w-4xl w-[92vw] max-h-[80vh] overflow-hidden">
+      <div className="relative bg-white rounded-2xl shadow-xl max-w-4xl w-[92vw] max-height-[80vh] overflow-hidden">
         <div className="flex items-center justify-between px-5 py-3 border-b">
           <div className="font-semibold">{title}</div>
           <button className="text-gray-500 hover:text-gray-800" onClick={onClose}>✕</button>
@@ -144,9 +143,11 @@ function Modal({
   )
 }
 
-/* ====================== RESULTS LIST ====================== */
+/* ====================== Results List ====================== */
+
 function AIScoredList({ rows }: { rows: ScoredRow[] }) {
   const [copied, setCopied] = useState<string | null>(null)
+
   const copyId = async (id: string) => {
     try {
       await navigator.clipboard.writeText(id)
@@ -159,24 +160,24 @@ function AIScoredList({ rows }: { rows: ScoredRow[] }) {
     <div className="card p-6">
       <h3 className="font-semibold mb-3">Results</h3>
       <ul className="divide-y">
+
         {rows.map(r => (
           <li key={r.candidateId} className="py-4">
             <div className="flex items-start justify-between gap-4">
               
-              {/* LEFT SIDE */}
+              {/* LEFT */}
               <div className="min-w-0">
                 {/* Name */}
                 <div className="font-medium truncate">{r.candidateName}</div>
 
-                {/* Title */}
+                {/* Title + Employer */}
                 {!!r.title && (
                   <div className="text-sm text-gray-600">
-                    {r.title}
-                    {r.current_employer ? ` @ ${r.current_employer}` : ''}
+                    {r.title}{r.current_employer ? ` @ ${r.current_employer}` : ''}
                   </div>
                 )}
 
-                {/* Full Location */}
+                {/* Location */}
                 {r.location && (
                   <div className="text-sm text-gray-600 flex items-center gap-1 mt-0.5">
                     <span>📍</span>
@@ -185,10 +186,12 @@ function AIScoredList({ rows }: { rows: ScoredRow[] }) {
                 )}
 
                 {/* Matched Skills */}
-                {r.matchedSkills && r.matchedSkills.length > 0 && (
+                {r.matchedSkills?.length > 0 && (
                   <div className="mt-1 flex flex-wrap gap-1">
                     {r.matchedSkills.slice(0, 6).map(ms => (
-                      <span key={ms} className="px-2 py-0.5 text-xs rounded-full bg-gray-100 border">{ms}</span>
+                      <span key={ms} className="px-2 py-0.5 text-xs rounded-full bg-gray-100 border">
+                        {ms}
+                      </span>
                     ))}
                   </div>
                 )}
@@ -201,10 +204,10 @@ function AIScoredList({ rows }: { rows: ScoredRow[] }) {
                 )}
               </div>
 
-              {/* RIGHT SIDE */}
+              {/* RIGHT */}
               <div className="text-right shrink-0 min-w-[200px]">
                 <div className="flex items-baseline justify-end gap-2">
-                  <div className="text-[11px] uppercase tracking-wide text-gray-500">
+                  <div className="text-[11px] text-gray-500 uppercase tracking-wide">
                     Suitability Score:
                   </div>
                   <div className={`text-2xl font-semibold ${scoreColor(r.score)}`}>
@@ -212,6 +215,7 @@ function AIScoredList({ rows }: { rows: ScoredRow[] }) {
                   </div>
                 </div>
 
+                {/* ID copy button */}
                 <button
                   type="button"
                   onClick={() => copyId(r.candidateId)}
@@ -220,10 +224,12 @@ function AIScoredList({ rows }: { rows: ScoredRow[] }) {
                 >
                   ID: {r.candidateId}
                 </button>
+
                 {copied === r.candidateId && (
                   <div className="text-[10px] text-green-600 mt-1">Copied!</div>
                 )}
-                
+
+                {/* LinkedIn */}
                 {r.linkedin && (
                   <a
                     href={r.linkedin}
@@ -234,20 +240,23 @@ function AIScoredList({ rows }: { rows: ScoredRow[] }) {
                     <LinkedInIcon className="w-5 h-5" />
                   </a>
                 )}
+
               </div>
 
             </div>
           </li>
         ))}
+
       </ul>
     </div>
   )
 }
 
 /* ====================== MAIN TAB ====================== */
+
 export default function MatchTab(): JSX.Element {
 
-  /* ------------------ State ------------------ */
+  /* State */
   const [jobId, setJobId] = useState('')
   const [job, setJob] = useState<JobSummary | null>(null)
 
@@ -266,7 +275,7 @@ export default function MatchTab(): JSX.Element {
   const [showJson, setShowJson] = useState(false)
   const [aiPayload, setAiPayload] = useState<any>(null)
 
-  /* ------------------ Fun loading messages ------------------ */
+  /* Fun loading text */
   const funMessages = [
     'Zitko AI is thinking…',
     'Matching skills & qualifications…',
@@ -274,6 +283,7 @@ export default function MatchTab(): JSX.Element {
     'Backstreet’s back, alright!',
   ]
   const [funIdx, setFunIdx] = useState(0)
+
   useEffect(() => {
     if (!loadingSearch) return
     setFunIdx(0)
@@ -281,7 +291,7 @@ export default function MatchTab(): JSX.Element {
     return () => clearInterval(id)
   }, [loadingSearch])
 
-  /* ------------------ Reset ------------------ */
+  /* Reset */
   const resetAll = () => {
     setJobId('')
     setJob(null)
@@ -297,47 +307,49 @@ export default function MatchTab(): JSX.Element {
     setLoadingSearch(false)
   }
 
-  /* ------------------ Retrieve Job ------------------ */
+  /* Retrieve Job */
   const retrieveJob = async (): Promise<JobSummary | null> => {
     if (!jobId) return null
-    setScored([]); setServerCount(null); setServerQuery(null)
+
+    setScored([])
+    setServerCount(null)
+    setServerQuery(null)
 
     try {
       const r = await fetch(`/api/vincere/position/${encodeURIComponent(jobId)}`, { cache: 'no-store' })
       const data = await r.json()
 
-      const publicRaw = htmlToText(data?.public_description || data?.publicDescription || data?.description || '')
+      const publicRaw = htmlToText(
+        data?.public_description || data?.description || ''
+      )
       const internalRaw = htmlToText(
-        data?.internal_description || data?.internalDescription || data?.job_description || data?.description_internal || ''
+        data?.internal_description ||
+        data?.internalDescription ||
+        data?.job_description ||
+        data?.description_internal ||
+        ''
       )
 
       const extractResp = await fetch('/api/job/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ publicDescription: publicRaw, internalDescription: internalRaw })
+        body: JSON.stringify({
+          publicDescription: publicRaw,
+          internalDescription: internalRaw,
+        }),
       })
+
       const extracted = await extractResp.json()
 
-      const skillsArr = Array.isArray(extracted?.skills) ? extracted.skills : []
-      const qualsArr = Array.isArray(extracted?.qualifications) ? extracted.qualifications : []
+      const skillsArr = Array.isArray(extracted.skills) ? extracted.skills : []
+      const qualsArr = Array.isArray(extracted.qualifications) ? extracted.qualifications : []
 
-      // Preferred: real Vincere fields
-      const rawVincereLocation =
-        data?.location_name ||
-        data?.job_location_name ||
-        data?.city ||
-        data?.location ||
-        data?.address ||
-        data?.current_location?.location_name ||
-        data?.current_location?.city ||
-        extracted?.location || // fallback only
-        '';
-      
-      const cleanedLocation = extractCity(String(rawVincereLocation).trim());
+      const cleanedJobTitle = cleanTitle(String(data?.job_title || extracted?.title || '').trim())
+      const cleanedLocation = cleanLocation(String(extracted?.location || data?.location || '').trim())
 
       const summary: JobSummary = {
         id: jobId,
-        job_title: String(data?.job_title || extracted?.title || '').trim(),
+        job_title: cleanedJobTitle,
         location: cleanedLocation,
         skills: skillsArr,
         qualifications: qualsArr,
@@ -346,12 +358,7 @@ export default function MatchTab(): JSX.Element {
       }
 
       setJob(summary)
-      const cleanedTitle = (summary.job_title || '')
-        .replace(/[-|,].*$/, '')     // remove trailing location info
-        .replace(/\s+/g, ' ')         // normalise spaces
-        .trim();
-      
-      setTitle(cleanedTitle);
+      setTitle(cleanedJobTitle)
       setLocation(cleanedLocation)
       setSkillsText(skillsArr.join(', '))
       setQualsText(qualsArr.join(', '))
@@ -359,12 +366,12 @@ export default function MatchTab(): JSX.Element {
       return summary
     } catch (e) {
       console.error(e)
-      alert('Failed to retrieve or extract job details.')
+      alert('Failed to retrieve job')
       return null
     }
   }
 
-  /* ------------------ Run Search ------------------ */
+  /* Run Search */
   const runSearch = async (input?: {
     job: JobSummary
     title: string
@@ -372,17 +379,18 @@ export default function MatchTab(): JSX.Element {
     skillsText: string
     qualsText: string
   }) => {
-
     const active = input ?? (job ? { job, title, location, skillsText, qualsText } : null)
     if (!active) return
 
-    const { job: activeJob, title: t, location: loc, skillsText: skillsStr, qualsText: qualsStr } = active
+    const { job: activeJob, title: t, location: loc, skillsText: s, qualsText: q } = active
 
     setLoadingSearch(true)
-    setScored([]); setAiPayload(null); setServerCount(null); setServerQuery(null)
+    setScored([])
+    setAiPayload(null)
+    setServerCount(null)
+    setServerQuery(null)
 
     try {
-      /* --- 1. SEARCH --- */
       const run = await fetch('/api/match/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -390,13 +398,13 @@ export default function MatchTab(): JSX.Element {
           job: {
             title: t,
             location: loc,
-            skills: skillsStr.split(',').map(s => s.trim()).filter(Boolean),
-            qualifications: qualsStr.split(',').map(s => s.trim()).filter(Boolean),
-            description: activeJob.public_description || ''
+            skills: s.split(',').map(v => v.trim()).filter(Boolean),
+            qualifications: q.split(',').map(v => v.trim()).filter(Boolean),
+            description: activeJob.public_description || '',
           },
           limit: 500,
-          debug: true
-        })
+          debug: true,
+        }),
       })
 
       const payload = await run.json()
@@ -406,7 +414,7 @@ export default function MatchTab(): JSX.Element {
         const raw = payload?.results || []
         const arr = raw.map((c: any) => ({ ...c, id: String(c?.id ?? '').trim() }))
         const seen = new Set<string>()
-        return arr.filter((c: any) => {
+        return arr.filter(c => {
           if (!c.id) return false
           if (seen.has(c.id)) return false
           seen.add(c.id)
@@ -417,21 +425,21 @@ export default function MatchTab(): JSX.Element {
       if (typeof payload?.count === 'number') setServerCount(payload.count)
       if (payload?.query) setServerQuery(JSON.stringify(payload.query))
 
-      /* --- 2. BUILD AI PAYLOAD --- */
-      const jobSkills = skillsStr.split(',').map(s => s.trim()).filter(Boolean)
+      /* Build AI Payload */
+      const jobSkills = s.split(',').map(v => v.trim()).filter(Boolean)
       const jobSkillsStem = new Set(jobSkills.map(stem))
 
-      const payloadToAI = {
+      const toAI = {
         job: {
           title: t,
           skills: jobSkills,
-          qualifications: qualsStr.split(',').map(s => s.trim()).filter(Boolean),
-          description: `${activeJob.public_description || ''}\n\n${activeJob.internal_description || ''}`.trim()
+          qualifications: q.split(',').map(v => v.trim()).filter(Boolean),
+          description: `${activeJob.public_description || ''}\n\n${activeJob.internal_description || ''}`.trim(),
         },
         candidates: candidates.map((c: any) => {
           const candSkills = normalizeList(c.skills, c.skill, c.keywords)
           const candSkillsStem = candSkills.map(stem)
-          const matchedSkills = candSkills.filter((s: string, i: number) => jobSkillsStem.has(candSkillsStem[i]))
+          const matched = candSkills.filter((s: string, i: number) => jobSkillsStem.has(candSkillsStem[i]))
 
           return {
             candidate_id: c.id,
@@ -440,31 +448,26 @@ export default function MatchTab(): JSX.Element {
             current_employer: c.current_employer || '',
             location: c.location || '',
             city: c.city || '',
-
             skills: candSkills,
-            matched_skills: matchedSkills,
-
-            qualifications: normalizeList(
-              c.qualifications, c.edu_qualification, c.professional_qualification
-            ),
-
+            matched_skills: matched,
+            qualifications: normalizeList(c.qualifications),
             education: {
               degree: normalizeList(c.edu_degree),
               course: normalizeList(c.edu_course),
               institution: normalizeList(c.edu_institution),
               training: normalizeList(c.edu_training),
-            }
+            },
           }
-        })
+        }),
       }
 
-      setAiPayload(payloadToAI)
+      setAiPayload(toAI)
 
-      /* --- 3. SEND TO AI --- */
+      /* AI Scoring */
       const ai = await fetch('/api/ai/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payloadToAI)
+        body: JSON.stringify(toAI),
       })
 
       const aiText = await ai.text()
@@ -479,120 +482,81 @@ export default function MatchTab(): JSX.Element {
       const rankedRaw =
         Array.isArray(outer?.ranked)
           ? outer.ranked
-          : (() => {
-              const content = outer?.choices?.[0]?.message?.content
-              if (typeof content === 'string') {
-                try {
-                  const cleaned = content.replace(/```json|```/g, '').trim()
-                  const p = JSON.parse(cleaned)
-                  return Array.isArray(p?.ranked) ? p.ranked : []
-                } catch { return [] }
-              }
-              return []
-            })()
+          : []
 
-      /* --- 4. MERGE BACK INTO FRONTEND STRUCTURE --- */
-      const byId = new Map<string, any>(candidates.map((c: any) => [String(c.id), c]));
+      /* Merge results */
+      const byId = new Map<string, any>(candidates.map((c: any) => [String(c.id), c]))
 
-      const ranked = rankedRaw
+      const final = rankedRaw
         .filter((r: any) => byId.has(String(r.candidate_id)))
         .map((r: any) => {
-          const c = byId.get(String(r.candidate_id)) as any;
-      
-          const rawScore =
-            r.score_percent ??
-            r.score ??
-            r.score_pct ??
-            r.suitability_score ??
-            0;
-      
-          const score = Math.max(
-            0,
-            Math.min(100, Math.round(Number(rawScore) || 0))
-          );
-      
-          const candidateName =
-            c?.fullName ||
-            `${c?.firstName ?? ''} ${c?.lastName ?? ''}`.trim() ||
-            String(r.candidate_id);
-      
+          const c = byId.get(String(r.candidate_id))
+          const rawScore = Number(r.score_percent ?? r.score ?? 0)
+          const score = Math.max(0, Math.min(100, Math.round(rawScore)))
+
           return {
             candidateId: String(r.candidate_id),
-            candidateName,
+            candidateName: c?.fullName || `${c?.firstName ?? ''} ${c?.lastName ?? ''}`.trim(),
             score,
             reason: stripLocationSentences(String(r.reason || '')),
             linkedin: c?.linkedin ?? undefined,
             title: c?.title || c?.current_job_title || '',
-            current_employer: c?.current_employer || c?.current_company || c?.company || '',
+            current_employer: c?.current_employer || '',
             matchedSkills: r?.matched_skills,
-            location: extractCity(c?.location || c?.city || '')
-          };
+            location: cleanLocation(c?.location || c?.city || ''),
+          }
         })
-        .sort((a, b) => b.score - a.score);
-      
-      setScored(ranked);
+        .sort((a, b) => b.score - a.score)
 
-    } catch (e) {
-      console.error(e)
-      alert('Search or scoring encountered an issue.')
+      setScored(final)
+
+    } catch (err) {
+      console.error(err)
+      alert('Search or scoring error.')
     } finally {
       setLoadingSearch(false)
     }
   }
 
-  /* ------------------ Retrieve + Score Shortcut ------------------ */
+  /* Combined Retrieve + Search */
   const retrieveSearchScore = async () => {
     if (!jobId) return alert('Enter Job ID')
     setLoadingAll(true)
-
     try {
       const summary = await retrieveJob()
       if (!summary) return
-
-      const t = summary.job_title || ''
-      const loc = summary.location || ''
-      const skillsStr = (summary.skills || []).join(', ')
-      const qualsStr = (summary.qualifications || []).join(', ')
-
       await runSearch({
         job: summary,
-        title: t,
-        location: loc,
-        skillsText: skillsStr,
-        qualsText: qualsStr
+        title: summary.job_title || '',
+        location: summary.location || '',
+        skillsText: (summary.skills || []).join(', '),
+        qualsText: (summary.qualifications || []).join(', '),
       })
     } finally {
       setLoadingAll(false)
     }
   }
 
-  /* ------------------ UI ------------------ */
+  /* UI Status */
   const statusText = loadingSearch
     ? funMessages[funIdx % funMessages.length]
     : scored.length > 0
-        ? 'Viewing results'
-        : 'Waiting…'
+      ? 'Viewing results'
+      : 'Waiting…'
 
+  /* MAIN UI */
   return (
     <div className="grid gap-6">
 
-      {/* Job Search Panel */}
+      {/* SEARCH */}
       <div className="card p-6 relative">
         <div className="flex items-start justify-between gap-4">
           <p className="mb-4 font-medium">
             Enter your Vincere Job ID to find matching candidates.
           </p>
-          <button
-            type="button"
-            className="text-gray-500 hover:text-gray-800"
-            onClick={resetAll}
-            title="Refresh & clear all fields"
-          >
-            ↻
-          </button>
+          <button className="text-gray-500 hover:text-gray-800" onClick={resetAll}>↻</button>
         </div>
 
-        {/* Inputs */}
         <div className="grid gap-4 md:grid-cols-3">
 
           <input
@@ -606,35 +570,37 @@ export default function MatchTab(): JSX.Element {
             className="input"
             placeholder="Job Title"
             value={title}
-            onChange={e => setTitle(e.target.value)}
+            onChange={e => setTitle(cleanTitle(e.target.value))}
           />
 
           <input
             className="input"
             placeholder="Location"
             value={location}
-            onChange={e => setLocation(e.target.value)}
+            onChange={e => setLocation(cleanLocation(e.target.value))}
           />
 
           <div className="md:col-span-3 flex flex-col sm:flex-row gap-3">
             <button
               className="btn btn-brand sm:flex-1"
-              onClick={retrieveSearchScore}
               disabled={loadingAll || !jobId}
+              onClick={retrieveSearchScore}
             >
               {loadingAll ? 'Searching…' : 'Search'}
             </button>
 
             <button
               className="btn btn-grey sm:flex-1"
-              onClick={() => runSearch({
-                job: job!,
-                title,
-                location,
-                skillsText,
-                qualsText
-              })}
               disabled={!job}
+              onClick={() =>
+                runSearch({
+                  job: job!,
+                  title,
+                  location,
+                  skillsText,
+                  qualsText,
+                })
+              }
             >
               Save & Resend
             </button>
@@ -643,59 +609,51 @@ export default function MatchTab(): JSX.Element {
 
         <div className="h-px bg-gray-200 my-4" />
 
-        {/* Status */}
-        <div className="mt-2 flex flex-wrap items-center gap-3">
+        <div className="mt-2 flex items-center gap-3">
           <span className="text-sm text-gray-600">{statusText}</span>
-
           <div className="ml-auto">
             <button
               className="btn btn-grey !px-3 !py-1 !text-xs !h-8 rounded-md"
-              onClick={() => setShowJson(true)}
               disabled={!aiPayload}
+              onClick={() => setShowJson(true)}
             >
               Show JSON
             </button>
           </div>
         </div>
+
       </div>
 
       {/* RESULTS */}
       <div className="flex flex-col gap-3">
-        {scored.length > 0 ? (
-          <AIScoredList rows={scored} />
-        ) : (
-          <div className="card p-6 text-sm text-gray-500">
-            Results will appear here after you click <span className="font-medium">Search</span>.
-          </div>
-        )}
+        {scored.length > 0
+          ? <AIScoredList rows={scored} />
+          : <div className="card p-6 text-sm text-gray-500">Results will appear here.</div>}
       </div>
 
-      {/* JSON MODAL */}
+      {/* JSON VIEWER */}
       <Modal open={showJson} onClose={() => setShowJson(false)} title="JSON sent to ChatGPT">
-        {!aiPayload ? (
-          <div className="text-sm text-gray-500">No payload available yet.</div>
-        ) : (
-          <div>
-            <div className="mb-2">
+        {!aiPayload
+          ? <div className="text-sm text-gray-500">No payload yet.</div>
+          : (
+            <>
               <button
-                className="btn btn-grey"
+                className="btn btn-grey mb-2"
                 onClick={async () => {
                   try {
                     await navigator.clipboard.writeText(JSON.stringify(aiPayload, null, 2))
-                    alert('Copied to clipboard')
+                    alert('Copied!')
                   } catch {}
                 }}
               >
-                Copy to clipboard
+                Copy JSON
               </button>
-            </div>
-            <pre className="rounded-2xl border p-4 text-xs overflow-auto max-h-[60vh]">
-              {JSON.stringify(aiPayload, null, 2)}
-            </pre>
-          </div>
-        )}
+              <pre className="rounded-2xl border p-4 text-xs overflow-auto max-h-[60vh]">
+                {JSON.stringify(aiPayload, null, 2)}
+              </pre>
+            </>
+          )}
       </Modal>
-
     </div>
   )
 }
