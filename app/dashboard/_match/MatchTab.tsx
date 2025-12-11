@@ -42,11 +42,21 @@ function htmlToText(html?: string): string {
 }
 
 function extractCity(location?: string): string {
-  if (!location) return ''
-  let city = location.split(',')[0].trim()
-  city = city.replace(/\b(North|South|East|West|Northeast|Northwest|Southeast|Southwest)\b/gi, ' ').trim()
-  city = city.replace(/\s{2,}/g, ' ').trim()
-  return city
+  if (!location) return '';
+
+  // Normalise separators
+  let clean = location.replace(/\//g, ','); // Convert "/" to ","
+
+  // Always take the first segment
+  let city = clean.split(',')[0].trim();
+
+  // Remove directional words
+  city = city.replace(/\b(North|South|East|West|Northeast|Northwest|Southeast|Southwest)\b/gi, ' ').trim();
+
+  // Collapse double spaces
+  city = city.replace(/\s{2,}/g, ' ').trim();
+
+  return city;
 }
 
 function LinkedInIcon(props: React.SVGProps<SVGSVGElement>) {
@@ -548,8 +558,8 @@ export default function MatchTab(): JSX.Element {
   const statusText = loadingSearch
     ? funMessages[funIdx % funMessages.length]
     : scored.length > 0
-      ? 'Viewing results'
-      : 'Waiting…'
+        ? 'Viewing results'
+        : 'Completed'
 
   return (
     <div className="grid gap-6">
