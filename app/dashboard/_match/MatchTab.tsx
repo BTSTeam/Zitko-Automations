@@ -312,12 +312,18 @@ export default function MatchTab(): JSX.Element {
       const qualsArr = Array.isArray(extracted?.qualifications) ? extracted.qualifications : []
 
       const rawLoc = String(extracted?.location || '').trim();
-
-      // City is before comma
-      let city = rawLoc.split(',')[0]?.trim() || '';
       
-      // State is after comma if city is missing
-      let state = rawLoc.split(',')[1]?.trim() || '';
+      // Split on common multi-city separators: / , - |
+      const parts = rawLoc
+        .split(/[\/,|\-]/)
+        .map(p => p.trim())
+        .filter(Boolean);
+      
+      // Use first city if present
+      let city = parts[0] || '';
+      
+      // If nothing usable, fall back to second element as "state"
+      let state = parts[1] || '';
       
       const cleanedLocation = city || state || '';
 
