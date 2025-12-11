@@ -321,7 +321,19 @@ export default function MatchTab(): JSX.Element {
       const skillsArr = Array.isArray(extracted?.skills) ? extracted.skills : []
       const qualsArr = Array.isArray(extracted?.qualifications) ? extracted.qualifications : []
 
-      const cleanedLocation = extractCity(String(extracted?.location || '').trim());
+      // Preferred: real Vincere fields
+      const rawVincereLocation =
+        data?.location_name ||
+        data?.job_location_name ||
+        data?.city ||
+        data?.location ||
+        data?.address ||
+        data?.current_location?.location_name ||
+        data?.current_location?.city ||
+        extracted?.location || // fallback only
+        '';
+      
+      const cleanedLocation = extractCity(String(rawVincereLocation).trim());
 
       const summary: JobSummary = {
         id: jobId,
