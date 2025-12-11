@@ -479,10 +479,34 @@ export default function MatchTab(): JSX.Element {
         catch {}
       }
 
-      const rankedRaw =
-        Array.isArray(outer?.ranked)
-          ? outer.ranked
-          : []
+      // --- Extract ranked results from ANY AI format ---
+      let rankedRaw: any[] = [];
+      
+      // Case 1: AI returned { ranked: [...] }
+      if (Array.isArray(outer?.ranked)) {
+        rankedRaw = outer.ranked;
+      }
+      
+      // Case 2: AI returned a raw array: [ {...}, {...} ]
+      else if (Array.isArray(outer)) {
+        rankedRaw = outer;
+      }
+      
+      // Case 3: OpenAI ChatCompletions → content JSON
+      else if (outer?.choices?.[0]?.message?.content) {
+        try {
+          const raw = outer.choices[0].message.content
+            .replace(/```json|```/g, '')
+            .trim();
+      
+          const parsed = JSON.parse(raw);
+      
+          if (Array.isArray(parsed?.ranked)) rankedRaw = parsed.ranked;
+          else if (Array.isArray(parsed)) rankedRaw = parsed;
+        } catch (e) {
+          console.error('Failed to parse OpenAI content JSON', e);
+        }
+      }
 
       /* Merge results */
       const byId = new Map<string, any>(candidates.map((c: any) => [String(c.id), c]))
