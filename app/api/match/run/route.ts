@@ -44,17 +44,6 @@ function uniq(a: string[] = []) {
   return out;
 }
 
-function pickCityFromLocation(loc?: string) {
-  if (!loc) return '';
-  let s = (loc.split(',')[0] || '').trim();
-  s = s.replace(/\s+/g, ' ');
-  const qualifier =
-    /^(?:(?:north|south|east|west)(?:\s*[- ]\s*(?:east|west))?|central|centre|greater|inner|outer|city of)\s+/i;
-  while (qualifier.test(s)) s = s.replace(qualifier, '').trim();
-  if (/london/i.test(loc)) return 'London';
-  return s;
-}
-
 // Encode exactly like cURL
 function encodeForVincereQuery(q: string) {
   return encodeURIComponent(q).replace(/%20/g, '+');
@@ -81,7 +70,9 @@ function buildSkillsClauseAND(skillA?: string, skillB?: string) {
 ============================================================ */
 function buildBaseClauses(job: NonNullable<RunReq['job']>, titleOverride?: string) {
   const title = (titleOverride ?? job.title ?? '').trim();
-  const city = pickCityFromLocation(job.location);
+
+  // IMPORTANT: do NOT over-clean the location.
+  const city = (job.location || '').trim();
 
   const titleClause = title ? `current_job_title:${title}#` : '';
 
