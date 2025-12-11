@@ -9,7 +9,6 @@ export default function WooTab() {
         <p className="text-sm text-gray-500">Powered by Woo.</p>
       </div>
 
-    <div className="w-full h-full overflow-hidden">
       <iframe
         src="https://agents.woo.io/ai-sourcer-agent"
         style={{
