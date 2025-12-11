@@ -451,35 +451,34 @@ export default function MatchTab(): JSX.Element {
             })()
 
       /* --- 4. MERGE BACK INTO FRONTEND STRUCTURE --- */
-      const byId = new Map(candidates.map((c: any) => [String(c.id), c]))
-      const seenRank = new Set<string>()
+      const byId = new Map<string, any>(candidates.map((c: any) => [String(c.id), c]));
 
-      const scoredRows: ScoredRow[] = rankedRaw
+      const ranked = rankedRaw
         .filter((r: any) => byId.has(String(r.candidate_id)))
-        .filter((r: any) => {
-          const id = String(r.candidate_id)
-          if (seenRank.has(id)) return false
-          seenRank.add(id)
-          return true
-        })
         .map((r: any) => {
-          const c = byId.get(String(r.candidate_id))
-          const scoreRaw = Number(r.score_percent ?? r.score ?? 0)
-          const score = Math.max(0, Math.min(100, Math.round(scoreRaw || 0)))
-
+          const c = byId.get(String(r.candidate_id)) as any;  // ← FIX HERE
+      
+          const scoreRaw = r.score_percent ?? r.score ?? r.score_pct ?? r.suitability_score ?? 0;
+          const score = Math.max(0, Math.min(100, Math.round(Number(scoreRaw) || 0)));
+      
+          const candidateName =
+            c?.fullName ||
+            `${c?.firstName ?? ''} ${c?.lastName ?? ''}`.trim() ||
+            String(r.candidate_id);
+      
           return {
             candidateId: String(r.candidate_id),
-            candidateName: c.fullName || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim(),
+            candidateName,
             score,
             reason: stripLocationSentences(String(r.reason || '')),
-            linkedin: c.linkedin ?? null,
-            title: c.title || c.current_job_title || '',
-            employer: c.current_employer || '',
-            location: c.location || '',
-            matchedSkills: r.matched_skills || []
-          }
+            linkedin: c?.linkedin ?? undefined,
+            title: c?.title || c?.current_job_title || '',
+            matchedSkills: r?.matched_skills,
+            location: extractCity(c?.location || c?.city || '')
+          };
         })
-        .sort((a, b) => b.score - a.score)
+        .sort((a, b) => b.score - a.score);
+
 
       setScored(scoredRows)
 
