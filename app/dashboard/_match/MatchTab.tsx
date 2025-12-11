@@ -41,23 +41,6 @@ function htmlToText(html?: string): string {
   }
 }
 
-function LocationIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="#758090"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      {...props}
-    >
-      <path d="M12 21s-6.5-5.2-6.5-10.2A6.5 6.5 0 1118.5 10.8C18.5 15.8 12 21 12 21z" />
-      <circle cx="12" cy="10.5" r="2.5" />
-    </svg>
-  );
-}
-
 function extractCity(location?: string): string {
   if (!location) return ''
   let city = location.split(',')[0].trim()
@@ -174,7 +157,7 @@ function AIScoredList({ rows }: { rows: ScoredRow[] }) {
                 {/* Full Location */}
                 {r.location && (
                   <div className="text-sm text-gray-600 flex items-center gap-1 mt-0.5">
-                    <LocationIcon className="w-3.5 h-3.5" />
+                    <span>📍</span>
                     <span>{r.location}</span>
                   </div>
                 )}
@@ -497,6 +480,7 @@ export default function MatchTab(): JSX.Element {
             reason: stripLocationSentences(String(r.reason || '')),
             linkedin: c?.linkedin ?? undefined,
             title: c?.title || c?.current_job_title || '',
+            current_employer: c?.current_employer || c?.current_company || c?.company || '',
             matchedSkills: r?.matched_skills,
             location: extractCity(c?.location || c?.city || '')
           };
