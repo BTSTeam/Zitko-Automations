@@ -1,379 +1,191 @@
-'use client'
+// app/api/social/content-create/route.ts
+import { NextRequest, NextResponse } from 'next/server'
 
-import React, { useEffect, useRef, useState } from 'react'
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
 
-/* ========= shared chip + multiselect helpers ========= */
-
-function Chip({
-  children,
-  onRemove,
-}: {
-  children: string
-  onRemove: (e?: React.MouseEvent) => void
-}) {
-  return (
-    <span className="shrink-0 inline-flex items-center gap-2 h-7 rounded-full bg-gray-100 px-3 text-sm">
-      <span className="truncate">{children}</span>
-      <button
-        type="button"
-        onClick={onRemove}
-        className="rounded-full w-5 h-5 grid place-items-center hover:bg-gray-200"
-        title="Remove"
-      >
-        ×
-      </button>
-    </span>
-  )
+type ContentRequest = {
+  region?: string | null
+  audience?: string | null
+  topics?: string[]
+  customTopic?: string
+  tone?: string | null
+  postType?: string | null
+  contentLength?: string | null
+  addOpeningHook?: boolean
+  addEndingHook?: boolean
+  keepShort?: boolean
+  fiveDays?: boolean
+  platforms?: string[]
+  preferVisualIdeasOnly?: boolean
 }
 
-function MultiSelect({
-  options,
-  values,
-  setValues,
-  placeholder = 'Select…',
-}: {
-  options: string[]
-  values: string[]
-  setValues: (v: string[]) => void
-  placeholder?: string
-}) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement | null>(null)
+function buildPrompt(body: ContentRequest): string {
+  const {
+    region,
+    audience,
+    topics = [],
+    customTopic,
+    tone,
+    postType,
+    contentLength,
+    addOpeningHook,
+    addEndingHook,
+    keepShort,
+    fiveDays,
+    platforms = [],
+    preferVisualIdeasOnly,
+  } = body
 
-  useEffect(() => {
-    const onClick = (e: MouseEvent) => {
-      if (open && ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false)
-      }
-    }
-    document.addEventListener('click', onClick)
-    return () => document.removeEventListener('click', onClick)
-  }, [open])
+  const regionPart = region ? `Region: ${region}.` : ''
+  const audiencePart = audience ? `Audience: ${audience}.` : ''
+  const topicsList = topics.length ? topics.join(', ') : ''
+  const effectiveTopic = [
+    topicsList,
+    customTopic && customTopic.trim().length ? customTopic.trim() : '',
+  ]
+    .filter(Boolean)
+    .join(' | ')
 
-  function toggleOpt(opt: string) {
-    const next = values.includes(opt)
-      ? values.filter((o) => o !== opt)
-      : [...values, opt]
-    setValues(next)
-  }
+  const topicPart = effectiveTopic
+    ? `Topic / focus: ${effectiveTopic}.`
+    : 'Topic / focus: general electronic security systems and fire & life safety recruitment (no physical guarding or manned security), hiring and careers.'
 
-  function removeChip(opt: string) {
-    setValues(values.filter((v) => v !== opt))
-  }
+  const tonePart = tone
+    ? `Tone: ${tone} (clear, confident, on-brand for an electronic Security recruitment company – alarms, CCTV, access control, fire & life safety; not physical guarding).`
+    : 'Tone: clear, confident, on-brand for an electronic Security recruitment company – alarms, CCTV, access control, fire & life safety; not physical guarding.'
 
-  return (
-    <div ref={ref} className="relative rounded-xl border h-10 px-3">
-      <button
-        type="button"
-        className="w-full h-full text-left flex items-center justify-between"
-        onClick={() => setOpen((o) => !o)}
-        title={values.length ? `${values.length} selected` : undefined}
-      >
-        <div className="flex items-center gap-2 flex-nowrap overflow-x-auto mr-2">
-          {values.length ? (
-            values.map((v) => (
-              <span key={v} className="shrink-0">
-                <Chip
-                  onRemove={(e) => {
-                    e?.stopPropagation()
-                    removeChip(v)
-                  }}
-                >
-                  {v}
-                </Chip>
-              </span>
-            ))
-          ) : (
-            <span className="text-sm text-gray-400">{placeholder}</span>
-          )}
-        </div>
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 20 20"
-          fill="currentColor"
-          className={
-            open ? 'rotate-180 transition-transform' : 'transition-transform'
-          }
-        >
-          <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z" />
-        </svg>
-      </button>
+  const postTypePart = postType ? `Post type: ${postType.toLowerCase()} style.` : ''
 
-      {open && (
-        <div className="absolute z-10 mt-1 w-full bg-white border rounded-xl shadow-sm max-h-60 overflow-y-auto text-sm">
-          {options.map((opt) => (
-            <label
-              key={opt}
-              className="flex items-center px-3 py-2 hover:bg-gray-50 cursor-pointer gap-2 text-sm"
-            >
-              <input
-                type="checkbox"
-                checked={values.includes(opt)}
-                onChange={() => toggleOpt(opt)}
-                className="appearance-none h-4 w-4 rounded border border-gray-300 grid place-content-center
-                           checked:bg-orange-500
-                           before:content-[''] before:hidden checked:before:block
-                           before:w-2.5 before:h-2.5
-                           before:[clip-path:polygon(14%_44%,0_59%,39%_100%,100%_18%,84%_4%,39%_72%)]
-                           before:bg-white"
-              />
-              <span>{opt}</span>
-            </label>
-          ))}
-        </div>
-      )}
-    </div>
+  const platformList = platforms.length ? platforms.join(', ') : ''
+  const platformPart = platformList ? `Platforms: ${platformList}.` : ''
+
+  const hasTikTokOrInsta = platforms.some(
+    (p) => p.toLowerCase() === 'tiktok' || p.toLowerCase() === 'instagram',
   )
-}
 
-/* ========= option sets ========= */
-
-const REGIONS = ['UK', 'Ireland', 'USA', 'APAC']
-
-const CONTENT_THEMES = [
-  'Own experience / story',
-  'Industry tips & how-tos',
-  'Job market update',
-  'Holiday / seasonal',
-  'Polls & questions',
-  'Viral trend commentary',
-]
-
-const TONES = ['Professional', 'Conversational', 'Playful', 'Bold', 'Storytelling']
-
-const AUDIENCES = ['Candidates', 'Clients', 'Both']
-
-const FORMATS = [
-  'Single post',
-  'Short series (3 posts)',
-  'Full week plan (Mon–Fri, 5 posts)',
-]
-
-const PLATFORMS = ['LinkedIn', 'Facebook', 'TikTok', 'Instagram']
-
-/* ========= main component ========= */
-
-export default function ContentCreationSection() {
-  const [regions, setRegions] = useState<string[]>([])
-  const [themes, setThemes] = useState<string[]>([])
-  const [tones, setTones] = useState<string[]>([])
-  const [audiences, setAudiences] = useState<string[]>([])
-  const [formats, setFormats] = useState<string[]>([])
-  const [platforms, setPlatforms] = useState<string[]>([])
-
-  const [customTopic, setCustomTopic] = useState('')
-
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [result, setResult] = useState<string>('')
-
-  const ownExperienceSelected = themes.includes('Own experience / story')
-  const effectiveCustomTopic = ownExperienceSelected ? customTopic : ''
-
-  async function handleGenerate(e?: React.FormEvent) {
-    e?.preventDefault()
-    setLoading(true)
-    setError(null)
-    setResult('')
-
-    const hasShortFormVisual = platforms.some(
-      (p) => p === 'TikTok' || p === 'Instagram',
+  const hookParts: string[] = []
+  if (addOpeningHook) {
+    hookParts.push(
+      'Start with a strong 1-sentence hook to grab attention in the first line.',
     )
-
-    const primaryRegion = regions[0] ?? null
-    const primaryAudience = audiences[0] ?? null
-    const primaryTone = tones[0] ?? null
-    const primaryFormat = formats[0] ?? null
-
-    const fiveDays =
-      primaryFormat?.startsWith('Full week plan (Mon–Fri') ?? false
-    const keepShort = hasShortFormVisual || !fiveDays
-
-    try {
-      const payload = {
-        region: primaryRegion,
-        audience: primaryAudience,
-        topics: themes, // all selected content themes
-        customTopic: effectiveCustomTopic,
-        tone: primaryTone,
-        postType: primaryFormat,
-        addOpeningHook: true,
-        addEndingHook: true,
-        keepShort,
-        fiveDays,
-        platforms,
-        preferVisualIdeasOnly: hasShortFormVisual,
-      }
-
-      const res = await fetch('/api/social/content-create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}))
-        throw new Error(j?.error || `Request failed (${res.status})`)
-      }
-
-      const json = await res.json().catch(() => ({}))
-      const text =
-        typeof json?.content === 'string'
-          ? json.content
-          : typeof json?.result === 'string'
-          ? json.result
-          : ''
-
-      setResult(text || 'No content returned.')
-    } catch (err: any) {
-      setError(err?.message || 'Unexpected error')
-    } finally {
-      setLoading(false)
-    }
+  }
+  if (addEndingHook) {
+    hookParts.push(
+      'End with a simple call-to-action or question that encourages engagement.',
+    )
   }
 
-  async function handleCopy() {
-    if (!result) return
-    try {
-      await navigator.clipboard.writeText(result)
-      alert('Copied to clipboard')
-    } catch {
-      alert('Unable to copy – please select and copy manually.')
-    }
+  let lengthPart: string
+  if (contentLength === 'Short') {
+    lengthPart =
+      'Keep each post very short and punchy (1–2 short sentences, ideal for fast scroll).'
+  } else if (contentLength === 'Medium') {
+    lengthPart =
+      'Keep each post medium length (around 3–6 short sentences, or 1–2 short paragraphs).'
+  } else if (contentLength === 'Long') {
+    lengthPart =
+      'Allow slightly longer content (up to 3 short paragraphs) while staying highly scannable and social-friendly.'
+  } else {
+    lengthPart = keepShort
+      ? 'Keep each post punchy and concise (1–3 short sentences).'
+      : 'You can use 2–4 short paragraphs if helpful, but still keep it social-media friendly.'
   }
 
-  return (
-    <div className="space-y-4 mt-6">
-      {/* Panel 1 – controls */}
-      <div className="rounded-2xl border bg-white">
-        <div className="flex items-center justify-between px-4 py-3">
-          <h3 className="font-semibold">Content Creation</h3>
-        </div>
+  const daysPart = fiveDays
+    ? 'Generate 5 different posts (label them Day 1 to Day 5). Each post should be unique but consistent with the topic and audience.'
+    : 'Generate 1 high-quality post.'
 
-        <div className="p-4 pt-0">
-          <form onSubmit={handleGenerate} className="space-y-4">
-            {/* Row 1 */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <MultiSelect
-                options={REGIONS}
-                values={regions}
-                setValues={setRegions}
-                placeholder="Region"
-              />
+  const baseStyleForVisual =
+    'Focus on describing short-form video or visual POST IDEAS (for TikTok / Instagram Reels, etc.), not long written captions. For each idea, describe the visual hook, what happens on screen, and how it ties back to Security recruitment.'
 
-              <MultiSelect
-                options={PLATFORMS}
-                values={platforms}
-                setValues={setPlatforms}
-                placeholder="Social platforms"
-              />
-            </div>
+  const viralAngle = hasTikTokOrInsta
+    ? 'Where useful, base ideas on popular or evergreen viral formats (e.g. quick cuts, before/after, POV, skits, “day in the life”, green-screen explainers). Explain how we can ride the trend in a Security recruitment context. Do not mention specific copyrighted songs, sounds or creators – describe only the format style and structure.'
+    : ''
 
-            {/* Row 2 */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <MultiSelect
-                options={CONTENT_THEMES}
-                values={themes}
-                setValues={setThemes}
-                placeholder="Content themes"
-              />
+  const styleInstruction = preferVisualIdeasOnly
+    ? `${baseStyleForVisual} ${viralAngle}`.trim()
+    : 'Write finished social-media-ready copy suitable for the chosen platforms (assume LinkedIn if none are given). Focus on Security (electronic systems, alarms, CCTV, access control, fire & life safety), not physical guarding.'
 
-              <MultiSelect
-                options={TONES}
-                values={tones}
-                setValues={setTones}
-                placeholder="Tone of voice"
-              />
-            </div>
+  const formatPart =
+    'Return only the finished content (or list of ideas), no explanations and no markdown formatting.'
 
-            {/* Row 3 */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <MultiSelect
-                options={AUDIENCES}
-                values={audiences}
-                setValues={setAudiences}
-                placeholder="Audience"
-              />
+  return [
+    'You are an expert social media creator for an electronic Security (alarms, CCTV, access control, fire & life safety – not physical guarding or manned security) recruitment agency.',
+    regionPart,
+    audiencePart,
+    platformPart,
+    topicPart,
+    tonePart,
+    postTypePart,
+    hookParts.join(' '),
+    lengthPart,
+    daysPart,
+    styleInstruction,
+    formatPart,
+  ]
+    .filter(Boolean)
+    .join(' ')
+}
 
-              <MultiSelect
-                options={FORMATS}
-                values={formats}
-                setValues={setFormats}
-                placeholder="Post format"
-              />
-            </div>
+export async function POST(req: NextRequest) {
+  const apiKey = process.env.CONTENT_CREATION_API_KEY
 
-            {/* Row 4 – custom topic / own experience */}
-            <div>
-              <textarea
-                className={`w-full rounded-xl border px-3 py-2 text-sm min-h-[80px] outline-none focus:ring-1 focus:ring-[#F7941D] ${
-                  !ownExperienceSelected
-                    ? 'bg-gray-50 text-gray-400 cursor-not-allowed'
-                    : ''
-                }`}
-                placeholder={
-                  ownExperienceSelected
-                    ? 'Custom topic / own experience & context'
-                    : "Select 'Own experience / story' above to enable this field"
-                }
-                value={customTopic}
-                onChange={(e) => setCustomTopic(e.target.value)}
-                disabled={!ownExperienceSelected}
-              />
-            </div>
+  if (!apiKey) {
+    return NextResponse.json(
+      { error: 'CONTENT_CREATION_API_KEY is not configured.' },
+      { status: 500 },
+    )
+  }
 
-            <div className="flex items-center justify-end">
-              <button
-                type="submit"
-                className="rounded-full bg-orange-500 text-white px-5 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50"
-                disabled={loading}
-              >
-                {loading ? 'Generating…' : 'Generate'}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
+  let body: ContentRequest
+  try {
+    body = (await req.json()) as ContentRequest
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 })
+  }
 
-      {/* Panel 2 – output */}
-      <div className="rounded-2xl border bg-white">
-        <div className="flex items-center justify-between px-4 py-3">
-          <h3 className="font-semibold">Generated ideas</h3>
-          <div className="flex items-center gap-2">
-            {loading && (
-              <span className="text-xs text-gray-500">Thinking…</span>
-            )}
-            <button
-              type="button"
-              onClick={handleCopy}
-              disabled={!result}
-              className={`rounded-full px-3 py-1.5 text-xs font-medium ${
-                result
-                  ? 'bg-gray-100 text-gray-800 hover:bg-gray-200'
-                  : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-              }`}
-            >
-              Copy
-            </button>
-          </div>
-        </div>
+  const prompt = buildPrompt(body)
 
-        <div className="p-4 pt-0 min-h-[260px]">
-          {error ? (
-            <div className="text-sm text-red-600">{error}</div>
-          ) : !result && !loading ? (
-            <p className="text-sm text-gray-500">
-              Choose your options above and click <strong>Generate</strong> to
-              create social content. Results will appear here ready to copy.
-            </p>
-          ) : (
-            <div className="rounded-xl border px-3 py-3 text-sm whitespace-pre-wrap leading-relaxed bg-white">
-              {result}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4.1-mini',
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You are an expert Security (electronic systems, alarms, CCTV, access control, fire & life safety – not physical guarding) recruitment marketer who writes short-form social content.',
+          },
+          { role: 'user', content: prompt },
+        ],
+        temperature: 0.8,
+        max_tokens: 700,
+      }),
+    })
+
+    if (!response.ok) {
+      const text = await response.text()
+      return NextResponse.json(
+        { error: 'OpenAI error', detail: text },
+        { status: 500 },
+      )
+    }
+
+    const data = await response.json()
+    const content =
+      data?.choices?.[0]?.message?.content?.trim() || 'No content generated.'
+
+    return NextResponse.json({ content })
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: 'Failed to generate content.', detail: err?.message },
+      { status: 500 },
+    )
+  }
 }
