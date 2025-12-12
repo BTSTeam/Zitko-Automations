@@ -11,6 +11,7 @@ const SourceTab               = dynamic(() => import('./_source/SourceTab'), { s
 const CvTab                   = dynamic(() => import('./_cv/CvTab'), { ssr: false })
 const SocialMediaTab          = dynamic(() => import('./_social/SocialMediaTab'), { ssr: false })
 const JobZoneTab              = dynamic(() => import('./_social/JobZoneTab'), { ssr: false })
+const ContentCreationSection  = dynamic(() => import('./_social/ContentCreationSection'), { ssr: false })
 const ActiveCampaignUploadTab = dynamic(() => import('./_ac/ActiveCampaignTab'), { ssr: false })
 const ActiveCampaignHtmlTab   = dynamic(() => import('./_ac/ActiveCampaignHtmlTab'), { ssr: false })
 const DataTab                 = dynamic(() => import('./_data/DataTab'), { ssr: false })
@@ -20,7 +21,7 @@ type TabKey = 'match' | 'source' | 'cv' | 'social' | 'ac' | 'data'
 type MatchMode = 'woo' | 'zawa'
 type SourceMode = 'people' | 'companies'
 type CvTemplate = 'uk' | 'us' | 'sales'
-type SocialMode = 'jobPosts' | 'jobZone'
+type SocialMode = 'content' | 'jobPosts' | 'jobZone'
 
 export default function ClientShell(): JSX.Element {
   const [tab, setTab] = useState<TabKey>('match')
@@ -37,7 +38,7 @@ export default function ClientShell(): JSX.Element {
   const [cvTemplate, setCvTemplate] = useState<CvTemplate>('uk')
 
   const [socialOpen, setSocialOpen] = useState(false)
-  const [socialMode, setSocialMode] = useState<SocialMode>('jobPosts')
+  const [socialMode, setSocialMode] = useState<SocialMode>('content')
 
   const [acOpen, setAcOpen] = useState(false)
   const [acMode, setAcMode] = useState<'upload' | 'html'>('upload')
@@ -205,7 +206,14 @@ export default function ClientShell(): JSX.Element {
               </button>
 
               {socialOpen && (
-                <div className="absolute z-50 mt-2 w-44 bg-white rounded-xl border shadow-xl text-left">
+                <div className="absolute z-50 mt-2 w-48 bg-white rounded-xl border shadow-xl text-left">
+                  <button 
+                    onClick={() => { setSocialMode('content'); setTab('social'); setSocialOpen(false); setShowWelcome(false) }}
+                    className="w-full px-3 py-2 hover:bg-gray-50 text-left"
+                  >
+                    Content Creation
+                  </button>
+
                   <button 
                     onClick={() => { setSocialMode('jobPosts'); setTab('social'); setSocialOpen(false); setShowWelcome(false) }}
                     className="w-full px-3 py-2 hover:bg-gray-50 text-left"
@@ -289,10 +297,13 @@ export default function ClientShell(): JSX.Element {
 
               {tab === 'source' && <SourceTab mode={sourceMode} />}
               {tab === 'cv' && <CvTab templateFromShell={cvTemplate} />}
+
+              {tab === 'social' && socialMode === 'content'  && <ContentCreationSection />}
               {tab === 'social' && socialMode === 'jobPosts' && <SocialMediaTab mode="jobPosts" />}
-              {tab === 'social' && socialMode === 'jobZone' && <JobZoneTab />}
+              {tab === 'social' && socialMode === 'jobZone'  && <JobZoneTab />}
+
               {tab === 'ac' && acMode === 'upload' && <ActiveCampaignUploadTab />}
-              {tab === 'ac' && acMode === 'html' && <ActiveCampaignHtmlTab />}
+              {tab === 'ac' && acMode === 'html'   && <ActiveCampaignHtmlTab />}
               {tab === 'data' && <DataTab />}
             </>
           )}
