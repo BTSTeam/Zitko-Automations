@@ -128,21 +128,90 @@ export default function ClientShell(): JSX.Element {
     return () => document.removeEventListener('click', onClick)
   }, [])
 
+const ChristmasCountdown = () => {
+  const [time, setTime] = useState({
+    days: 0,
+    hours: 0,
+    minutes: 0,
+    seconds: 0,
+  })
+
+  useEffect(() => {
+    const target = new Date(new Date().getFullYear(), 11, 25, 0, 0, 0) // Dec 25 local time
+
+    const tick = () => {
+      const now = new Date()
+      const diff = target.getTime() - now.getTime()
+
+      if (diff <= 0) return
+
+      setTime({
+        days: Math.floor(diff / (1000 * 60 * 60 * 24)),
+        hours: Math.floor((diff / (1000 * 60 * 60)) % 24),
+        minutes: Math.floor((diff / (1000 * 60)) % 60),
+        seconds: Math.floor((diff / 1000) % 60),
+      })
+    }
+
+    tick()
+    const i = setInterval(tick, 1000)
+    return () => clearInterval(i)
+  }, [])
+
+  const Circle = ({ value }: { value: number }) => (
+    <div className="relative w-24 h-24">
+      <svg viewBox="0 0 36 36" className="w-full h-full">
+        <path
+          d="M18 2.0845
+             a 15.9155 15.9155 0 0 1 0 31.831
+             a 15.9155 15.9155 0 0 1 0 -31.831"
+          fill="none"
+          stroke="#E5E7EB"
+          strokeWidth="2"
+        />
+        <path
+          d="M18 2.0845
+             a 15.9155 15.9155 0 0 1 0 31.831"
+          fill="none"
+          stroke="#6BBF45"
+          strokeWidth="2"
+          strokeDasharray="75,100"
+        />
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center text-4xl font-semibold text-red-600">
+        {String(value).padStart(2, '0')}
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="mt-8 flex gap-6 justify-center">
+      <Circle value={time.days} />
+      <Circle value={time.hours} />
+      <Circle value={time.minutes} />
+      <Circle value={time.seconds} />
+    </div>
+  )
+}
+   
   const WelcomeBlock = () => (
     <section className="h-full grid place-items-center px-6">
       <div className="text-center select-none">
         <h1
-          className="font-semibold uppercase"
-          style={{ color: '#3B3E44', letterSpacing: '0.5em', fontSize: 'clamp(2.25rem, 6vw, 6rem)' }}
-        >
-          WELCOME
-        </h1>
-        <p
-          className="mt-3 font-semibold uppercase"
-          style={{ color: '#F7941D', letterSpacing: '0.25em', fontSize: 'clamp(0.875rem, 2.2vw, 1.25rem)' }}
-        >
-          &gt; ZAWA &lt;
-        </p>
+           className="font-semibold uppercase"
+           style={{ color: '#3B3E44', letterSpacing: '0.5em', fontSize: 'clamp(2.25rem, 6vw, 6rem)' }}
+         >
+           WELCOME
+         </h1>
+         
+         <ChristmasCountdown />
+         
+         <p
+           className="mt-6 font-semibold uppercase"
+           style={{ color: '#F7941D', letterSpacing: '0.25em', fontSize: 'clamp(0.875rem, 2.2vw, 1.25rem)' }}
+         >
+           &gt; ZAWA &lt;
+</p>
         <p
           className="mt-4"
           style={{ color: '#9CA3AF', fontSize: 'clamp(0.8rem, 1.8vw, 1rem)' }}
