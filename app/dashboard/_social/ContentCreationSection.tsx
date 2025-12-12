@@ -150,8 +150,6 @@ const FORMATS = [
   'Full week plan (Mon–Fri, 5 posts)',
 ]
 
-const HOOK_PREFS = ['Add a strong hook', 'Only write hooks', 'No hook']
-
 const PLATFORMS = ['LinkedIn', 'Facebook', 'TikTok', 'Instagram']
 
 /* ========= main component ========= */
@@ -162,7 +160,6 @@ export default function ContentCreationSection() {
   const [tones, setTones] = useState<string[]>([])
   const [audiences, setAudiences] = useState<string[]>([])
   const [formats, setFormats] = useState<string[]>([])
-  const [hookPrefs, setHookPrefs] = useState<string[]>([])
   const [platforms, setPlatforms] = useState<string[]>([])
 
   const [customTopic, setCustomTopic] = useState('')
@@ -184,20 +181,32 @@ export default function ContentCreationSection() {
       (p) => p === 'TikTok' || p === 'Instagram',
     )
 
+    const primaryRegion = regions[0] ?? null
+    const primaryAudience = audiences[0] ?? null
+    const primaryTone = tones[0] ?? null
+    const primaryFormat = formats[0] ?? null
+
+    const fiveDays =
+      primaryFormat?.startsWith('Full week plan (Mon–Fri') ?? false
+    const keepShort = hasShortFormVisual || !fiveDays
+
     try {
       const payload = {
-        regions,
-        themes,
-        tones,
-        audiences,
-        formats,
-        hookPrefs,
-        platforms,
+        region: primaryRegion,
+        audience: primaryAudience,
+        topics: themes, // all selected content themes
         customTopic: effectiveCustomTopic,
+        tone: primaryTone,
+        postType: primaryFormat,
+        addOpeningHook: true,
+        addEndingHook: true,
+        keepShort,
+        fiveDays,
+        platforms,
         preferVisualIdeasOnly: hasShortFormVisual,
       }
 
-      const res = await fetch('/api/content/generate', {
+      const res = await fetch('/api/social/content-create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
