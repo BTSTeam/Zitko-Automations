@@ -206,7 +206,7 @@ export default function ContentCreationSection() {
       const payload = {
         region: primaryRegion,
         audience: primaryAudience,
-        topics: themes, // all selected content themes
+        topics: themes,
         customTopic: effectiveCustomTopic,
         tone: primaryTone,
         postType: primaryFormat,
@@ -300,14 +300,16 @@ export default function ContentCreationSection() {
               />
             </div>
 
-            {/* Row 3 */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <MultiSelect
-                options={AUDIENCES}
-                values={audiences}
-                setValues={setAudiences}
-                placeholder="Audience"
-              />
+            {/* Row 3 – Audience | Post format | Content length */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="md:col-span-2">
+                <MultiSelect
+                  options={AUDIENCES}
+                  values={audiences}
+                  setValues={setAudiences}
+                  placeholder="Audience"
+                />
+              </div>
 
               <MultiSelect
                 options={FORMATS}
@@ -315,10 +317,7 @@ export default function ContentCreationSection() {
                 setValues={setFormats}
                 placeholder="Post format"
               />
-            </div>
 
-            {/* Row 4 – content length */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <MultiSelect
                 options={CONTENT_LENGTHS}
                 values={lengths}
@@ -327,7 +326,7 @@ export default function ContentCreationSection() {
               />
             </div>
 
-            {/* Row 5 – custom topic / own experience */}
+            {/* Row 4 – custom topic / own experience */}
             <div>
               <textarea
                 className={`w-full rounded-xl border px-3 py-2 text-sm min-h-[80px] outline-none focus:ring-1 focus:ring-[#F7941D] ${
