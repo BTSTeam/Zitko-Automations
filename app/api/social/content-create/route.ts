@@ -15,6 +15,8 @@ type ContentRequest = {
   addEndingHook?: boolean
   keepShort?: boolean
   fiveDays?: boolean
+  platforms?: string[]
+  preferVisualIdeasOnly?: boolean
 }
 
 function buildPrompt(body: ContentRequest): string {
@@ -29,6 +31,8 @@ function buildPrompt(body: ContentRequest): string {
     addEndingHook,
     keepShort,
     fiveDays,
+    platforms = [],
+    preferVisualIdeasOnly,
   } = body
 
   const regionPart = region ? `Region: ${region}.` : ''
@@ -49,9 +53,10 @@ function buildPrompt(body: ContentRequest): string {
     ? `Tone: ${tone} (clear, confident, on-brand for a Fire & Security recruitment company).`
     : 'Tone: clear, confident, on-brand for a Fire & Security recruitment company.'
 
-  const postTypePart = postType
-    ? `Post type: ${postType.toLowerCase()} style.`
-    : ''
+  const postTypePart = postType ? `Post type: ${postType.toLowerCase()} style.` : ''
+
+  const platformList = platforms.length ? platforms.join(', ') : ''
+  const platformPart = platformList ? `Platforms: ${platformList}.` : ''
 
   const hookParts: string[] = []
   if (addOpeningHook) {
@@ -73,25 +78,31 @@ function buildPrompt(body: ContentRequest): string {
     ? 'Generate 5 different posts (label them Day 1 to Day 5). Each post should be unique but consistent with the topic and audience.'
     : 'Generate 1 high-quality post.'
 
+  const styleInstruction = preferVisualIdeasOnly
+    ? 'Focus on describing short-form video or visual POST IDEAS (for TikTok / Instagram Reels, etc.), not long written captions. For each idea, describe the visual hook, what happens on screen, and how it ties back to Fire & Security recruitment.'
+    : 'Write finished social-media-ready copy suitable for the chosen platforms (assume LinkedIn if none are given).'
+
   const formatPart =
-    'Return only the finished post text (or posts), no explanations, no bullet lists of instructions, and no markdown formatting.'
+    'Return only the finished content (or list of ideas), no explanations and no markdown formatting.'
 
   return [
-    'You are an expert social media copywriter for a Fire & Security recruitment agency.',
+    'You are an expert social media creator for a Fire & Security recruitment agency.',
     regionPart,
     audiencePart,
+    platformPart,
     topicPart,
     tonePart,
     postTypePart,
     hookParts.join(' '),
     lengthPart,
     daysPart,
-    'Write content that could be used on LinkedIn or similar professional platforms.',
+    styleInstruction,
     formatPart,
   ]
     .filter(Boolean)
     .join(' ')
 }
+
 
 export async function POST(req: NextRequest) {
   const apiKey = process.env.CONTENT_CREATION_API_KEY
