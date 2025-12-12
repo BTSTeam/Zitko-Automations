@@ -39,6 +39,7 @@ function buildPrompt(body: ContentRequest): string {
 
   const regionPart = region ? `Region: ${region}.` : ''
   const audiencePart = audience ? `Audience: ${audience}.` : ''
+
   const topicsList = topics.length ? topics.join(', ') : ''
   const effectiveTopic = [
     topicsList,
@@ -49,11 +50,11 @@ function buildPrompt(body: ContentRequest): string {
 
   const topicPart = effectiveTopic
     ? `Topic / focus: ${effectiveTopic}.`
-    : 'Topic / focus: general electronic security systems and fire & life safety recruitment (no physical guarding or manned security), hiring and careers.'
+    : 'Topic / focus: general electronic Security systems and fire & life safety recruitment (no physical guarding or manned security), hiring and careers.'
 
   const tonePart = tone
-    ? `Tone: ${tone} (clear, confident, on-brand for an electronic Security recruitment company – alarms, CCTV, access control, fire & life safety; not physical guarding).`
-    : 'Tone: clear, confident, on-brand for an electronic Security recruitment company – alarms, CCTV, access control, fire & life safety; not physical guarding.'
+    ? `Tone: ${tone} (clear, confident, on-brand for an electronic Security recruitment company).`
+    : 'Tone: clear, confident, on-brand for an electronic Security recruitment company.'
 
   const postTypePart = postType ? `Post type: ${postType.toLowerCase()} style.` : ''
 
@@ -63,6 +64,10 @@ function buildPrompt(body: ContentRequest): string {
   const hasTikTokOrInsta = platforms.some(
     (p) => p.toLowerCase() === 'tiktok' || p.toLowerCase() === 'instagram',
   )
+
+  const humanStylePart = hasTikTokOrInsta
+    ? `Write like a real Security recruiter speaking on camera: natural, conversational language, use contractions (you're, we're, can't), vary sentence length and rhythm, and a light emoji now and then if it genuinely fits. Avoid buzzwords and corporate clichés.`
+    : `Write like a real Security recruiter posting on LinkedIn: professional but human, use contractions (you're, we're, can't), vary sentence length, avoid buzzwords and corporate clichés, and don't overuse emojis or hashtags.`
 
   const hookParts: string[] = []
   if (addOpeningHook) {
@@ -105,7 +110,10 @@ function buildPrompt(body: ContentRequest): string {
 
   const styleInstruction = preferVisualIdeasOnly
     ? `${baseStyleForVisual} ${viralAngle}`.trim()
-    : 'Write finished social-media-ready copy suitable for the chosen platforms (assume LinkedIn if none are given). Focus on Security (electronic systems, alarms, CCTV, access control, fire & life safety), not physical guarding.'
+    : 'Write finished social-media-ready copy suitable for the chosen platforms (assume LinkedIn if none are given). Focus on Security (electronic systems, alarms, CCTV, access control, fire & life safety), not physical guarding or manned security.'
+
+  const noClichePart =
+    'Avoid generic phrases like "in today’s fast-paced world", "leveraging synergies", "cutting-edge solutions", or anything that sounds like generic corporate marketing. Make it sound like a real person in the Security recruitment market talking to their own network.'
 
   const formatPart =
     'Return only the finished content (or list of ideas), no explanations and no markdown formatting.'
@@ -118,10 +126,12 @@ function buildPrompt(body: ContentRequest): string {
     topicPart,
     tonePart,
     postTypePart,
+    humanStylePart,
     hookParts.join(' '),
     lengthPart,
     daysPart,
     styleInstruction,
+    noClichePart,
     formatPart,
   ]
     .filter(Boolean)
@@ -164,7 +174,7 @@ export async function POST(req: NextRequest) {
           },
           { role: 'user', content: prompt },
         ],
-        temperature: 0.8,
+        temperature: 0.85,
         max_tokens: 700,
       }),
     })
