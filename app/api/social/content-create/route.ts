@@ -66,7 +66,7 @@ function buildPrompt(body: ContentRequest): string {
   )
 
   const humanStylePart = hasTikTokOrInsta
-    ? `Write like a real Security recruiter speaking on camera: natural, conversational language, use contractions (you're, we're, can't), vary sentence length and rhythm, and a light emoji now and then if it genuinely fits. Avoid buzzwords and corporate clichés.`
+    ? `Write like a real recruiter or consultant speaking on camera: natural, conversational language, use contractions (you're, we're, can't), vary sentence length and rhythm, and a light emoji now and then if it genuinely fits. Avoid buzzwords and corporate clichés.`
     : `Write like a real Security recruiter posting on LinkedIn: professional but human, use contractions (you're, we're, can't), vary sentence length, avoid buzzwords and corporate clichés, and don't overuse emojis or hashtags.`
 
   const hookParts: string[] = []
@@ -101,11 +101,13 @@ function buildPrompt(body: ContentRequest): string {
     ? 'Generate 5 different posts (label them Day 1 to Day 5). Each post should be unique but consistent with the topic and audience.'
     : 'Generate 1 high-quality post.'
 
+  // Generic visual-ideas instruction
   const baseStyleForVisual =
-    'Focus on describing short-form video or visual POST IDEAS (for TikTok / Instagram Reels, etc.), not long written captions. For each idea, describe the visual hook, what happens on screen, and how it ties back to Security recruitment.'
+    'Focus on describing short-form video or visual POST IDEAS (for TikTok / Instagram Reels, etc.), not long written captions. For each idea, describe the visual hook and what happens on screen.'
 
+  // When TikTok / Instagram are selected, lean into viral/trending formats
   const viralAngle = hasTikTokOrInsta
-    ? 'Where useful, base ideas on popular or evergreen viral formats (e.g. quick cuts, before/after, POV, skits, “day in the life”, green-screen explainers). Explain how we can ride the trend in a Security recruitment context. Do not mention specific copyrighted songs, sounds or creators – describe only the format style and structure.'
+    ? 'Base ideas on widely popular or evergreen viral formats (for example: quick cuts, before/after, POV, skits, “day in the life”, text-on-screen memes, simple challenges, green-screen explainers). These ideas do not have to be Security-specific – they can be funny, relatable or lifestyle content that a recruiter or consultant might realistically post. Do not mention specific copyrighted songs, sounds or creators – describe only the concept and structure.'
     : ''
 
   const styleInstruction = preferVisualIdeasOnly
