@@ -17,7 +17,7 @@ const DataTab                 = dynamic(() => import('./_data/DataTab'), { ssr: 
 
 // Add new tab modes
 type TabKey = 'match' | 'source' | 'cv' | 'social' | 'ac' | 'data'
-type MatchMode = 'zawa' | 'woo'
+type MatchMode = 'woo' | 'zawa'
 type SourceMode = 'people' | 'companies'
 type CvTemplate = 'uk' | 'us' | 'sales'
 type SocialMode = 'jobPosts' | 'jobZone'
@@ -106,18 +106,6 @@ export default function ClientShell(): JSX.Element {
                   
                   <button
                     onClick={() => {
-                      setMatchMode('zawa')
-                      setTab('match')
-                      setMatchOpen(false)
-                      setShowWelcome(false)
-                    }}
-                    className="w-full px-3 py-2 hover:bg-gray-50 text-left"
-                  >
-                    ZAWA Matching
-                  </button>
-
-                  <button
-                    onClick={() => {
                       setMatchMode('woo')
                       setTab('match')
                       setMatchOpen(false)
@@ -126,6 +114,18 @@ export default function ClientShell(): JSX.Element {
                     className="w-full px-3 py-2 hover:bg-gray-50 text-left"
                   >
                     Woo Matching
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setMatchMode('zawa')
+                      setTab('match')
+                      setMatchOpen(false)
+                      setShowWelcome(false)
+                    }}
+                    className="w-full px-3 py-2 hover:bg-gray-50 text-left"
+                  >
+                    ZAWA Matching
                   </button>
 
                 </div>
