@@ -322,7 +322,7 @@ export default function ContentCreationSection() {
                 options={CONTENT_LENGTHS}
                 values={lengths}
                 setValues={setLengths}
-                placeholder="Content length (Short / Medium / Long)"
+                placeholder="Content length"
               />
             </div>
 
