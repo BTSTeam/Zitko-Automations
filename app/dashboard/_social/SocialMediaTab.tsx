@@ -166,8 +166,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
   )
   const isTSITemplate = selectedTpl.id === 'zitko-3'
 
-  const videoEnabled =
-    selectedTpl.id === 'zitko-2'
+  const videoEnabled = selectedTpl.id === 'zitko-2'
 
   // job data
   const [jobId, setJobId] = useState('')
@@ -362,8 +361,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
     if (!id) return
     setFetchStatus('loading')
 
-    const isTSI =
-      selectedTplId === 'zitko-3'
+    const isTSI = selectedTplId === 'zitko-3'
 
     try {
       const r = await fetch(
@@ -891,7 +889,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
       return
     }
 
-    const blob = await res.blob()
+  const blob = await res.blob()
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -906,7 +904,7 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Always Job Posts for now */}
+      {/* Job posts header */}
       <h2 className="text-xl font-bold">Job Posts</h2>
 
       {/* template scroller */}
