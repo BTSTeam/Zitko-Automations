@@ -197,14 +197,14 @@ const ChristmasCountdown = () => {
   const WelcomeBlock = () => (
     <section className="h-full grid place-items-center px-6">
       <div className="text-center select-none">
+         <ChristmasCountdown />
+
         <h1
            className="font-semibold uppercase"
            style={{ color: '#3B3E44', letterSpacing: '0.5em', fontSize: 'clamp(2.25rem, 6vw, 6rem)' }}
          >
            WELCOME
          </h1>
-         
-         <ChristmasCountdown />
          
          <p
            className="mt-6 font-semibold uppercase"
