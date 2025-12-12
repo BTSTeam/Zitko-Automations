@@ -50,11 +50,11 @@ function buildPrompt(body: ContentRequest): string {
 
   const topicPart = effectiveTopic
     ? `Topic / focus: ${effectiveTopic}.`
-    : 'Topic / focus: general electronic Security systems and fire & life safety recruitment (no physical guarding or manned security), hiring and careers.'
+    : 'Topic / focus: recruitment into the electronic Security and fire & life safety industry (alarms, CCTV, access control, fire systems – not physical guarding or manned security).'
 
   const tonePart = tone
-    ? `Tone: ${tone} (clear, confident, on-brand for an electronic Security recruitment company).`
-    : 'Tone: clear, confident, on-brand for an electronic Security recruitment company.'
+    ? `Tone: ${tone} (clear, confident, on-brand for a recruitment agency that hires into the electronic Security and fire & life safety industry).`
+    : 'Tone: clear, confident, on-brand for a recruitment agency that hires into the electronic Security and fire & life safety industry.'
 
   const postTypePart = postType ? `Post type: ${postType.toLowerCase()} style.` : ''
 
@@ -65,9 +65,10 @@ function buildPrompt(body: ContentRequest): string {
     (p) => p.toLowerCase() === 'tiktok' || p.toLowerCase() === 'instagram',
   )
 
+  // IMPORTANT: speak as a recruiter who Hires FOR the industry, not as an engineer in it
   const humanStylePart = hasTikTokOrInsta
-    ? `Write like a real recruiter or consultant speaking on camera: natural, conversational language, use contractions (you're, we're, can't), vary sentence length and rhythm, and a light emoji now and then if it genuinely fits. Avoid buzzwords and corporate clichés.`
-    : `Write like a real Security recruiter posting on LinkedIn: professional but human, use contractions (you're, we're, can't), vary sentence length, avoid buzzwords and corporate clichés, and don't overuse emojis or hashtags.`
+    ? `Write like a real recruitment consultant who hires for the Security industry, speaking on camera: natural, conversational language, use contractions (you're, we're, can't), vary sentence length and rhythm, and a light emoji now and then if it genuinely fits. You are not a security engineer or installer – talk from the perspective of a recruiter working with candidates and hiring managers. Avoid buzzwords and corporate clichés.`
+    : `Write like a real Security recruitment consultant posting on LinkedIn: professional but human, use contractions (you're, we're, can't), vary sentence length, and speak as someone who recruits into the industry (not as an engineer who installs or maintains systems). Avoid buzzwords and corporate clichés, and don't overuse emojis or hashtags.`
 
   const hookParts: string[] = []
   if (addOpeningHook) {
@@ -99,29 +100,29 @@ function buildPrompt(body: ContentRequest): string {
 
   const daysPart = fiveDays
     ? 'Generate 5 different posts (label them Day 1 to Day 5). Each post should be unique but consistent with the topic and audience.'
-    : 'Generate 1 high-quality post.'
+    : 'Generate 2 different post options. Label them Option 1 and Option 2, and make sure they feel clearly different in hook and angle.'
 
   // Generic visual-ideas instruction
   const baseStyleForVisual =
     'Focus on describing short-form video or visual POST IDEAS (for TikTok / Instagram Reels, etc.), not long written captions. For each idea, describe the visual hook and what happens on screen.'
 
-  // When TikTok / Instagram are selected, lean into viral/trending formats
+  // TikTok / Instagram: ride viral/trending formats, not necessarily Security-specific
   const viralAngle = hasTikTokOrInsta
     ? 'Base ideas on widely popular or evergreen viral formats (for example: quick cuts, before/after, POV, skits, “day in the life”, text-on-screen memes, simple challenges, green-screen explainers). These ideas do not have to be Security-specific – they can be funny, relatable or lifestyle content that a recruiter or consultant might realistically post. Do not mention specific copyrighted songs, sounds or creators – describe only the concept and structure.'
     : ''
 
   const styleInstruction = preferVisualIdeasOnly
     ? `${baseStyleForVisual} ${viralAngle}`.trim()
-    : 'Write finished social-media-ready copy suitable for the chosen platforms (assume LinkedIn if none are given). Focus on Security (electronic systems, alarms, CCTV, access control, fire & life safety), not physical guarding or manned security.'
+    : 'Write finished social-media-ready copy suitable for the chosen platforms (assume LinkedIn if none are given). Focus on recruiting into Security (electronic systems, alarms, CCTV, access control, fire & life safety), not physical guarding or manned security, and speak as a recruiter hiring for these roles – not as an engineer doing the work.'
 
   const noClichePart =
-    'Avoid generic phrases like "in today’s fast-paced world", "leveraging synergies", "cutting-edge solutions", or anything that sounds like generic corporate marketing. Make it sound like a real person in the Security recruitment market talking to their own network.'
+    'Avoid generic phrases like "in today’s fast-paced world", "leveraging synergies", "cutting-edge solutions", or anything that sounds like generic corporate marketing. Make it sound like a real recruiter in the Security market talking to their own network of candidates and clients.'
 
   const formatPart =
     'Return only the finished content (or list of ideas), no explanations and no markdown formatting.'
 
   return [
-    'You are an expert social media creator for an electronic Security (alarms, CCTV, access control, fire & life safety – not physical guarding or manned security) recruitment agency.',
+    'You are an expert social media creator for a recruitment agency that hires into the electronic Security and fire & life safety industry (alarms, CCTV, access control, fire systems – not physical guarding or manned security). You speak as a recruitment consultant, not as a security engineer or end-user.',
     regionPart,
     audiencePart,
     platformPart,
@@ -172,7 +173,7 @@ export async function POST(req: NextRequest) {
           {
             role: 'system',
             content:
-              'You are an expert Security (electronic systems, alarms, CCTV, access control, fire & life safety – not physical guarding) recruitment marketer who writes short-form social content.',
+              'You are an expert marketer for a recruitment agency that hires into the electronic Security and fire & life safety industry. You always speak as a recruiter/consultant who hires for the industry, not as a security engineer who works in it.',
           },
           { role: 'user', content: prompt },
         ],
