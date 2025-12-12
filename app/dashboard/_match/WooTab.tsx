@@ -13,7 +13,7 @@ export default function WooTab() {
         src="https://agents.woo.io/ai-sourcer-agent"
         style={{
           width: '111%',                
-          height: 'calc(100vh - 180px)',
+          height: 'calc(150vh - 120px)',
           transform: 'scale(0.9)',      
           transformOrigin: '0 0',       
           border: '0'
