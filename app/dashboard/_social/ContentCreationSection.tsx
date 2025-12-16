@@ -85,7 +85,6 @@ function MultiSelect({
             <span className="text-sm text-gray-400">{placeholder}</span>
           )}
         </div>
-
         <svg
           width="14"
           height="14"
@@ -100,20 +99,12 @@ function MultiSelect({
       {open && (
         <div className="absolute z-10 mt-1 w-full bg-white border rounded-xl shadow-sm max-h-60 overflow-y-auto text-sm">
           {options.map((opt) => (
-            <label
-              key={opt}
-              className="flex items-center px-3 py-2 hover:bg-gray-50 cursor-pointer gap-2"
-            >
+            <label key={opt} className="flex items-center px-3 py-2 hover:bg-gray-50 cursor-pointer gap-2">
               <input
                 type="checkbox"
                 checked={values.includes(opt)}
                 onChange={() => toggleOpt(opt)}
-                className="appearance-none h-4 w-4 rounded border border-gray-300 grid place-content-center
-                           checked:bg-orange-500
-                           before:content-[''] before:hidden checked:before:block
-                           before:w-2.5 before:h-2.5
-                           before:[clip-path:polygon(14%_44%,0_59%,39%_100%,100%_18%,84%_4%,39%_72%)]
-                           before:bg-white"
+                className="appearance-none h-4 w-4 rounded border border-gray-300 grid place-content-center checked:bg-orange-500"
               />
               <span>{opt}</span>
             </label>
@@ -134,16 +125,15 @@ const CONTENT_THEMES = [
   'Holiday / seasonal',
   'Polls & questions',
   'Viral trend commentary',
+  'Salaries',
 ]
 const TONES = ['Professional', 'Conversational', 'Playful', 'Bold', 'Storytelling']
 const AUDIENCES = ['Candidates', 'Clients', 'Both']
-const FORMATS = [
-  'Single post',
-  'Short series (3 posts)',
-  'Full week plan (Mon–Fri, 5 posts)',
-]
+const FORMATS = ['Single post', 'Short series (3 posts)', 'Full week plan (Mon–Fri, 5 posts)']
 const CONTENT_LENGTHS = ['Short', 'Medium', 'Long']
 const PLATFORMS = ['LinkedIn', 'Facebook', 'TikTok', 'Instagram']
+const PERSPECTIVES = ['Male', 'Female']
+const HOOK_OPTIONS = ['Yes', 'No']
 
 const FORMAT_FULL_WEEK = 'Full week plan (Mon–Fri, 5 posts)'
 
@@ -157,13 +147,14 @@ export default function ContentCreationSection() {
   const [formats, setFormats] = useState<string[]>([])
   const [lengths, setLengths] = useState<string[]>([])
   const [platforms, setPlatforms] = useState<string[]>([])
+  const [perspective, setPerspective] = useState<string[]>([])
+  const [includeHook, setIncludeHook] = useState<string[]>([])
   const [customTopic, setCustomTopic] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState('')
 
   const ownExperienceSelected = themes.includes('Own experience / story')
-  const effectiveCustomTopic = ownExperienceSelected ? customTopic : ''
 
   async function handleGenerate(e?: React.FormEvent) {
     e?.preventDefault()
@@ -171,41 +162,21 @@ export default function ContentCreationSection() {
     setError(null)
     setResult('')
 
-    const hasShortFormVisual = platforms.some(
-      (p) => p === 'TikTok' || p === 'Instagram',
-    )
-
-    const primaryRegion = regions[0] ?? null
-    const primaryAudience = audiences[0] ?? null
-    const primaryTone = tones[0] ?? null
-    const primaryFormat = formats[0] ?? null
-    const primaryLength = lengths[0] ?? null
-
-    const fiveDays = primaryFormat === FORMAT_FULL_WEEK
-
-    let keepShort: boolean
-    if (primaryLength === 'Short') keepShort = true
-    else if (primaryLength === 'Long') keepShort = false
-    else keepShort = hasShortFormVisual || !fiveDays
-
     try {
       const res = await fetch('/api/social/content-create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          region: primaryRegion,
-          audience: primaryAudience,
+          region: regions[0] ?? null,
+          audience: audiences[0] ?? null,
           topics: themes,
-          customTopic: effectiveCustomTopic,
-          tone: primaryTone,
-          postType: primaryFormat,
-          contentLength: primaryLength,
-          addOpeningHook: true,
-          addEndingHook: true,
-          keepShort,
-          fiveDays,
+          customTopic: ownExperienceSelected ? customTopic : '',
+          tone: tones[0] ?? null,
+          postType: formats[0] ?? null,
+          contentLength: lengths[0] ?? null,
           platforms,
-          preferVisualIdeasOnly: hasShortFormVisual,
+          perspective: perspective[0] ?? null,
+          includeHook: includeHook[0] === 'Yes',
         }),
       })
 
@@ -222,134 +193,42 @@ export default function ContentCreationSection() {
 
   async function handleCopy() {
     if (!result) return
-    try {
-      await navigator.clipboard.writeText(result)
-    } catch {
-      // silent fail
-    }
+    await navigator.clipboard.writeText(result)
   }
 
   return (
     <div className="space-y-4 mt-6">
-      {/* Panel 1 – controls */}
-      <div className="rounded-2xl border bg-white">
-        <div className="flex items-center justify-between px-4 py-3">
-          <h3 className="font-semibold">Content Creation</h3>
-        </div>
+      <div className="rounded-2xl border bg-white p-4 space-y-4">
+        <form onSubmit={handleGenerate} className="space-y-4">
+          <MultiSelect options={REGIONS} values={regions} setValues={setRegions} placeholder="Region" />
+          <MultiSelect options={PLATFORMS} values={platforms} setValues={setPlatforms} placeholder="Platforms" />
+          <MultiSelect options={CONTENT_THEMES} values={themes} setValues={setThemes} placeholder="Content themes" />
+          <MultiSelect options={TONES} values={tones} setValues={setTones} placeholder="Tone" />
+          <MultiSelect options={AUDIENCES} values={audiences} setValues={setAudiences} placeholder="Audience" />
+          <MultiSelect options={FORMATS} values={formats} setValues={setFormats} placeholder="Post format" />
+          <MultiSelect options={CONTENT_LENGTHS} values={lengths} setValues={setLengths} placeholder="Content length" />
+          <MultiSelect options={PERSPECTIVES} values={perspective} setValues={setPerspective} placeholder="Perspective" />
+          <MultiSelect options={HOOK_OPTIONS} values={includeHook} setValues={setIncludeHook} placeholder="Include hook?" />
 
-        <div className="p-4 pt-0">
-          <form onSubmit={handleGenerate} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <MultiSelect
-                options={REGIONS}
-                values={regions}
-                setValues={setRegions}
-                placeholder="Region"
-              />
-              <MultiSelect
-                options={PLATFORMS}
-                values={platforms}
-                setValues={setPlatforms}
-                placeholder="Social platforms"
-              />
-            </div>
+          <textarea
+            className="w-full rounded-xl border px-3 py-2 text-sm min-h-[80px]"
+            placeholder="Custom topic / experience"
+            value={customTopic}
+            onChange={(e) => setCustomTopic(e.target.value)}
+            disabled={!ownExperienceSelected}
+          />
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <MultiSelect
-                options={CONTENT_THEMES}
-                values={themes}
-                setValues={setThemes}
-                placeholder="Content themes"
-              />
-              <MultiSelect
-                options={TONES}
-                values={tones}
-                setValues={setTones}
-                placeholder="Tone of voice"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="md:col-span-2">
-                <MultiSelect
-                  options={AUDIENCES}
-                  values={audiences}
-                  setValues={setAudiences}
-                  placeholder="Audience"
-                />
-              </div>
-
-              <MultiSelect
-                options={FORMATS}
-                values={formats}
-                setValues={setFormats}
-                placeholder="Post format"
-              />
-
-              <MultiSelect
-                options={CONTENT_LENGTHS}
-                values={lengths}
-                setValues={setLengths}
-                placeholder="Content length"
-              />
-            </div>
-
-            <textarea
-              className={`w-full rounded-xl border px-3 py-2 text-sm min-h-[80px] ${
-                !ownExperienceSelected
-                  ? 'bg-gray-50 text-gray-400 cursor-not-allowed'
-                  : ''
-              }`}
-              placeholder={
-                ownExperienceSelected
-                  ? 'Custom topic / own experience & context'
-                  : "Select 'Own experience / story' above to enable this field"
-              }
-              value={customTopic}
-              onChange={(e) => setCustomTopic(e.target.value)}
-              disabled={!ownExperienceSelected}
-            />
-
-            <div className="flex justify-end">
-              <button
-                type="submit"
-                disabled={loading}
-                className="rounded-full bg-orange-500 text-white px-5 py-2 text-sm"
-              >
-                {loading ? 'Generating…' : 'Generate'}
-              </button>
-            </div>
-          </form>
-        </div>
+          <button type="submit" disabled={loading} className="rounded-full bg-orange-500 text-white px-5 py-2">
+            {loading ? 'Generating…' : 'Generate'}
+          </button>
+        </form>
       </div>
 
-      {/* Panel 2 – output */}
-      <div className="rounded-2xl border bg-white">
-        <div className="flex items-center justify-between px-4 py-3">
-          <h3 className="font-semibold">Generated ideas</h3>
-          <button
-            type="button"
-            onClick={handleCopy}
-            disabled={!result}
-            className="rounded-full px-3 py-1.5 text-xs bg-gray-100"
-          >
-            Copy
-          </button>
-        </div>
-
-        <div className="p-4 min-h-[260px]">
-          {error ? (
-            <div className="text-sm text-red-600">{error}</div>
-          ) : !result && !loading ? (
-            <p className="text-sm text-gray-500">
-              Choose your options above and click <strong>Generate</strong>.
-            </p>
-          ) : (
-            <div className="rounded-xl border px-3 py-3 text-sm whitespace-pre-wrap">
-              {result}
-            </div>
-          )}
-        </div>
+      <div className="rounded-2xl border bg-white p-4">
+        <button onClick={handleCopy} disabled={!result} className="mb-2 text-xs bg-gray-100 px-3 py-1 rounded-full">
+          Copy
+        </button>
+        <div className="text-sm whitespace-pre-wrap">{error || result}</div>
       </div>
     </div>
   )
