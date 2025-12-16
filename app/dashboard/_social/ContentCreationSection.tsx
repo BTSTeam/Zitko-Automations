@@ -226,61 +226,65 @@ export default function ContentCreationSection() {
 
         <div className="p-4 pt-0">
           <form onSubmit={handleGenerate}>
-            {/* Grid that matches the screenshot alignment */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-3 items-start">
-              {/* Row 1 */}
-              <MultiSelect options={REGIONS} values={regions} setValues={setRegions} placeholder="Region" />
-              <MultiSelect options={HOOK_OPTIONS} values={includeHook} setValues={setIncludeHook} placeholder="Include a hook" />
+            {/* Two independent stacks = no huge gap on the left */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+              {/* LEFT: keep order */}
+              <div className="space-y-3">
+                <MultiSelect options={REGIONS} values={regions} setValues={setRegions} placeholder="Region" />
+                <MultiSelect
+                  options={PERSPECTIVES}
+                  values={perspectives}
+                  setValues={setPerspectives}
+                  placeholder="Perspective"
+                />
+                <MultiSelect
+                  options={CONTENT_THEMES}
+                  values={themes}
+                  setValues={setThemes}
+                  placeholder="Content themes"
+                />
+                <MultiSelect options={AUDIENCES} values={audiences} setValues={setAudiences} placeholder="Audience" />
+                <MultiSelect options={TONES} values={tones} setValues={setTones} placeholder="Tone" />
+              </div>
 
-              {/* Row 2 */}
-              <MultiSelect
-                options={PERSPECTIVES}
-                values={perspectives}
-                setValues={setPerspectives}
-                placeholder="Perspective"
-              />
-              {/* Post Format aligned under Include a hook */}
-              <MultiSelect options={FORMATS} values={formats} setValues={setFormats} placeholder="Post format" />
+              {/* RIGHT: hook, post format, free type, generate */}
+              <div className="space-y-3">
+                <MultiSelect
+                  options={HOOK_OPTIONS}
+                  values={includeHook}
+                  setValues={setIncludeHook}
+                  placeholder="Include a hook"
+                />
 
-              {/* Row 3 */}
-              <MultiSelect
-                options={CONTENT_THEMES}
-                values={themes}
-                setValues={setThemes}
-                placeholder="Content themes"
-              />
-              {/* Free type aligned with content themes & audience (starts here) */}
-              <textarea
-                className={`w-full rounded-xl border px-3 py-2 outline-none focus:ring-1 focus:ring-[#F7941D]
-                  text-xs min-h-[120px] md:min-h-[120px]
-                  ${!ownExperienceSelected ? 'bg-gray-50 text-gray-400 cursor-not-allowed' : 'bg-white'}`}
-                placeholder={
-                  ownExperienceSelected
-                    ? 'Custom topic / own experience & context'
-                    : "Select 'Own experience / story' to enable this field"
-                }
-                value={customTopic}
-                onChange={(e) => setCustomTopic(e.target.value)}
-                disabled={!ownExperienceSelected}
-              />
+                {/* Post Format under Include a hook */}
+                <MultiSelect options={FORMATS} values={formats} setValues={setFormats} placeholder="Post format" />
 
-              {/* Row 4 */}
-              <MultiSelect options={AUDIENCES} values={audiences} setValues={setAudiences} placeholder="Audience" />
-              {/* Keep the textbox continuing down (spanning row 4 + 5 height via min height above) */}
-              <div className="hidden md:block" />
+                {/* Free type box aligned to start at same height as Content themes and sized so button aligns with Tone */}
+                <textarea
+                  className={`w-full rounded-xl border px-3 py-2 outline-none focus:ring-1 focus:ring-[#F7941D]
+                    text-xs leading-relaxed
+                    min-h-[120px] md:min-h-[92px]
+                    ${!ownExperienceSelected ? 'bg-gray-50 text-gray-400 cursor-not-allowed' : 'bg-white'}`}
+                  placeholder={
+                    ownExperienceSelected
+                      ? 'Custom topic / own experience & context'
+                      : "Select 'Own experience / story' to enable this field"
+                  }
+                  value={customTopic}
+                  onChange={(e) => setCustomTopic(e.target.value)}
+                  disabled={!ownExperienceSelected}
+                />
 
-              {/* Row 5 */}
-              <MultiSelect options={TONES} values={tones} setValues={setTones} placeholder="Tone" />
-
-              {/* Generate aligned with Tone */}
-              <div className="flex items-center justify-center md:justify-start">
-                <button
-                  type="submit"
-                  className="rounded-full bg-orange-500 text-white px-10 py-2.5 text-sm font-semibold hover:opacity-90 disabled:opacity-50 min-w-[220px]"
-                  disabled={loading}
-                >
-                  {loading ? 'Generating…' : 'Generate'}
-                </button>
+                {/* Generate aligned with Tone (because textarea height matches Content themes + Audience block) */}
+                <div className="flex items-center justify-center md:justify-start">
+                  <button
+                    type="submit"
+                    className="rounded-full bg-orange-500 text-white px-10 py-2.5 text-sm font-semibold hover:opacity-90 disabled:opacity-50 min-w-[220px]"
+                    disabled={loading}
+                  >
+                    {loading ? 'Generating…' : 'Generate'}
+                  </button>
+                </div>
               </div>
             </div>
           </form>
