@@ -143,6 +143,7 @@ const CONTENT_THEMES = [
 const AUDIENCES = ['Candidates', 'Clients', 'Both']
 const TONES = ['Professional', 'Conversational', 'Playful', 'Bold', 'Storytelling']
 
+// Poll is part of Post Format
 const FORMATS = [
   'Single post',
   'Poll',
@@ -227,64 +228,15 @@ export default function ContentCreationSection() {
           <form onSubmit={handleGenerate} className="space-y-4">
             {/* 2-column layout in required order */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* 1. Region */}
-              <MultiSelect
-                options={REGIONS}
-                values={regions}
-                setValues={setRegions}
-                placeholder="Region"
-              />
-
-              {/* 2. Perspective */}
-              <MultiSelect
-                options={PERSPECTIVES}
-                values={perspectives}
-                setValues={setPerspectives}
-                placeholder="Perspective"
-              />
-
-              {/* 3. Content Themes */}
-              <MultiSelect
-                options={CONTENT_THEMES}
-                values={themes}
-                setValues={setThemes}
-                placeholder="Content themes"
-              />
-
-              {/* 4. Audience */}
-              <MultiSelect
-                options={AUDIENCES}
-                values={audiences}
-                setValues={setAudiences}
-                placeholder="Audience"
-              />
-
-              {/* 5. Tone */}
-              <MultiSelect
-                options={TONES}
-                values={tones}
-                setValues={setTones}
-                placeholder="Tone"
-              />
-
-              {/* 6. Post Format (Poll is here) */}
-              <MultiSelect
-                options={FORMATS}
-                values={formats}
-                setValues={setFormats}
-                placeholder="Post format"
-              />
-
-              {/* 7. Include a hook */}
-              <MultiSelect
-                options={HOOK_OPTIONS}
-                values={includeHook}
-                setValues={setIncludeHook}
-                placeholder="Include a hook"
-              />
+              <MultiSelect options={REGIONS} values={regions} setValues={setRegions} placeholder="Region" />
+              <MultiSelect options={PERSPECTIVES} values={perspectives} setValues={setPerspectives} placeholder="Perspective" />
+              <MultiSelect options={CONTENT_THEMES} values={themes} setValues={setThemes} placeholder="Content themes" />
+              <MultiSelect options={AUDIENCES} values={audiences} setValues={setAudiences} placeholder="Audience" />
+              <MultiSelect options={TONES} values={tones} setValues={setTones} placeholder="Tone" />
+              <MultiSelect options={FORMATS} values={formats} setValues={setFormats} placeholder="Post format" />
+              <MultiSelect options={HOOK_OPTIONS} values={includeHook} setValues={setIncludeHook} placeholder="Include a hook" />
             </div>
 
-            {/* Own experience textbox (spans full width) */}
             <div>
               <textarea
                 className={`w-full rounded-xl border px-3 py-2 text-sm min-h-[80px] outline-none focus:ring-1 focus:ring-[#F7941D] ${
