@@ -67,24 +67,27 @@ function MultiSelect({
         type="button"
         className="w-full h-full text-left flex items-center justify-between"
         onClick={() => setOpen((o) => !o)}
+        title={values.length ? `${values.length} selected` : undefined}
       >
         <div className="flex items-center gap-2 flex-nowrap overflow-x-auto mr-2">
           {values.length ? (
             values.map((v) => (
-              <Chip
-                key={v}
-                onRemove={(e) => {
-                  e?.stopPropagation()
-                  removeChip(v)
-                }}
-              >
-                {v}
-              </Chip>
+              <span key={v} className="shrink-0">
+                <Chip
+                  onRemove={(e) => {
+                    e?.stopPropagation()
+                    removeChip(v)
+                  }}
+                >
+                  {v}
+                </Chip>
+              </span>
             ))
           ) : (
             <span className="text-sm text-gray-400">{placeholder}</span>
           )}
         </div>
+
         <svg
           width="14"
           height="14"
@@ -99,12 +102,20 @@ function MultiSelect({
       {open && (
         <div className="absolute z-10 mt-1 w-full bg-white border rounded-xl shadow-sm max-h-60 overflow-y-auto text-sm">
           {options.map((opt) => (
-            <label key={opt} className="flex items-center px-3 py-2 hover:bg-gray-50 cursor-pointer gap-2">
+            <label
+              key={opt}
+              className="flex items-center px-3 py-2 hover:bg-gray-50 cursor-pointer gap-2 text-sm"
+            >
               <input
                 type="checkbox"
                 checked={values.includes(opt)}
                 onChange={() => toggleOpt(opt)}
-                className="appearance-none h-4 w-4 rounded border border-gray-300 grid place-content-center checked:bg-orange-500"
+                className="appearance-none h-4 w-4 rounded border border-gray-300 grid place-content-center
+                           checked:bg-orange-500
+                           before:content-[''] before:hidden checked:before:block
+                           before:w-2.5 before:h-2.5
+                           before:[clip-path:polygon(14%_44%,0_59%,39%_100%,100%_18%,84%_4%,39%_72%)]
+                           before:bg-white"
               />
               <span>{opt}</span>
             </label>
@@ -115,44 +126,48 @@ function MultiSelect({
   )
 }
 
-/* ========= constants ========= */
+/* ========= option sets ========= */
 
 const REGIONS = ['UK', 'Ireland', 'USA', 'APAC']
+const PERSPECTIVES = ['Male', 'Female']
+
 const CONTENT_THEMES = [
   'Own experience / story',
   'Industry tips & how-tos',
   'Job market update',
   'Holiday / seasonal',
-  'Polls & questions',
   'Viral trend commentary',
   'Salaries',
 ]
-const TONES = ['Professional', 'Conversational', 'Playful', 'Bold', 'Storytelling']
-const AUDIENCES = ['Candidates', 'Clients', 'Both']
-const FORMATS = ['Single post', 'Short series (3 posts)', 'Full week plan (Mon–Fri, 5 posts)']
-const CONTENT_LENGTHS = ['Short', 'Medium', 'Long']
-const PLATFORMS = ['LinkedIn', 'Facebook', 'TikTok', 'Instagram']
-const PERSPECTIVES = ['Male', 'Female']
-const HOOK_OPTIONS = ['Yes', 'No']
 
-const FORMAT_FULL_WEEK = 'Full week plan (Mon–Fri, 5 posts)'
+const AUDIENCES = ['Candidates', 'Clients', 'Both']
+const TONES = ['Professional', 'Conversational', 'Playful', 'Bold', 'Storytelling']
+
+const FORMATS = [
+  'Single post',
+  'Poll',
+  'Short series (3 posts)',
+  'Full week plan (Mon–Fri, 5 posts)',
+]
+
+const HOOK_OPTIONS = ['Yes', 'No']
 
 /* ========= main component ========= */
 
 export default function ContentCreationSection() {
   const [regions, setRegions] = useState<string[]>([])
+  const [perspectives, setPerspectives] = useState<string[]>([])
   const [themes, setThemes] = useState<string[]>([])
-  const [tones, setTones] = useState<string[]>([])
   const [audiences, setAudiences] = useState<string[]>([])
+  const [tones, setTones] = useState<string[]>([])
   const [formats, setFormats] = useState<string[]>([])
-  const [lengths, setLengths] = useState<string[]>([])
-  const [platforms, setPlatforms] = useState<string[]>([])
-  const [perspective, setPerspective] = useState<string[]>([])
   const [includeHook, setIncludeHook] = useState<string[]>([])
+
   const [customTopic, setCustomTopic] = useState('')
+
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [result, setResult] = useState('')
+  const [result, setResult] = useState<string>('')
 
   const ownExperienceSelected = themes.includes('Own experience / story')
 
@@ -162,28 +177,28 @@ export default function ContentCreationSection() {
     setError(null)
     setResult('')
 
+    const payload = {
+      region: regions[0] ?? null,
+      perspective: perspectives[0] ?? null,
+      topics: themes,
+      audience: audiences[0] ?? null,
+      tone: tones[0] ?? null,
+      postType: formats[0] ?? null,
+      includeHook: includeHook[0] === 'Yes',
+      customTopic: ownExperienceSelected ? customTopic : '',
+    }
+
     try {
       const res = await fetch('/api/social/content-create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          region: regions[0] ?? null,
-          audience: audiences[0] ?? null,
-          topics: themes,
-          customTopic: ownExperienceSelected ? customTopic : '',
-          tone: tones[0] ?? null,
-          postType: formats[0] ?? null,
-          contentLength: lengths[0] ?? null,
-          platforms,
-          perspective: perspective[0] ?? null,
-          includeHook: includeHook[0] === 'Yes',
-        }),
+        body: JSON.stringify(payload),
       })
 
-      const json = await res.json()
-      if (!res.ok) throw new Error(json?.error || 'Request failed')
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json?.error || `Request failed (${res.status})`)
 
-      setResult(json?.content || 'No content returned.')
+      setResult(typeof json?.content === 'string' ? json.content : 'No content returned.')
     } catch (err: any) {
       setError(err?.message || 'Unexpected error')
     } finally {
@@ -193,42 +208,146 @@ export default function ContentCreationSection() {
 
   async function handleCopy() {
     if (!result) return
-    await navigator.clipboard.writeText(result)
+    try {
+      await navigator.clipboard.writeText(result)
+    } catch {
+      // ignore
+    }
   }
 
   return (
     <div className="space-y-4 mt-6">
-      <div className="rounded-2xl border bg-white p-4 space-y-4">
-        <form onSubmit={handleGenerate} className="space-y-4">
-          <MultiSelect options={REGIONS} values={regions} setValues={setRegions} placeholder="Region" />
-          <MultiSelect options={PLATFORMS} values={platforms} setValues={setPlatforms} placeholder="Platforms" />
-          <MultiSelect options={CONTENT_THEMES} values={themes} setValues={setThemes} placeholder="Content themes" />
-          <MultiSelect options={TONES} values={tones} setValues={setTones} placeholder="Tone" />
-          <MultiSelect options={AUDIENCES} values={audiences} setValues={setAudiences} placeholder="Audience" />
-          <MultiSelect options={FORMATS} values={formats} setValues={setFormats} placeholder="Post format" />
-          <MultiSelect options={CONTENT_LENGTHS} values={lengths} setValues={setLengths} placeholder="Content length" />
-          <MultiSelect options={PERSPECTIVES} values={perspective} setValues={setPerspective} placeholder="Perspective" />
-          <MultiSelect options={HOOK_OPTIONS} values={includeHook} setValues={setIncludeHook} placeholder="Include hook?" />
+      {/* Panel 1 – controls */}
+      <div className="rounded-2xl border bg-white">
+        <div className="flex items-center justify-between px-4 py-3">
+          <h3 className="font-semibold">Content Creation</h3>
+        </div>
 
-          <textarea
-            className="w-full rounded-xl border px-3 py-2 text-sm min-h-[80px]"
-            placeholder="Custom topic / experience"
-            value={customTopic}
-            onChange={(e) => setCustomTopic(e.target.value)}
-            disabled={!ownExperienceSelected}
-          />
+        <div className="p-4 pt-0">
+          <form onSubmit={handleGenerate} className="space-y-4">
+            {/* 2-column layout in required order */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* 1. Region */}
+              <MultiSelect
+                options={REGIONS}
+                values={regions}
+                setValues={setRegions}
+                placeholder="Region"
+              />
 
-          <button type="submit" disabled={loading} className="rounded-full bg-orange-500 text-white px-5 py-2">
-            {loading ? 'Generating…' : 'Generate'}
-          </button>
-        </form>
+              {/* 2. Perspective */}
+              <MultiSelect
+                options={PERSPECTIVES}
+                values={perspectives}
+                setValues={setPerspectives}
+                placeholder="Perspective"
+              />
+
+              {/* 3. Content Themes */}
+              <MultiSelect
+                options={CONTENT_THEMES}
+                values={themes}
+                setValues={setThemes}
+                placeholder="Content themes"
+              />
+
+              {/* 4. Audience */}
+              <MultiSelect
+                options={AUDIENCES}
+                values={audiences}
+                setValues={setAudiences}
+                placeholder="Audience"
+              />
+
+              {/* 5. Tone */}
+              <MultiSelect
+                options={TONES}
+                values={tones}
+                setValues={setTones}
+                placeholder="Tone"
+              />
+
+              {/* 6. Post Format (Poll is here) */}
+              <MultiSelect
+                options={FORMATS}
+                values={formats}
+                setValues={setFormats}
+                placeholder="Post format"
+              />
+
+              {/* 7. Include a hook */}
+              <MultiSelect
+                options={HOOK_OPTIONS}
+                values={includeHook}
+                setValues={setIncludeHook}
+                placeholder="Include a hook"
+              />
+            </div>
+
+            {/* Own experience textbox (spans full width) */}
+            <div>
+              <textarea
+                className={`w-full rounded-xl border px-3 py-2 text-sm min-h-[80px] outline-none focus:ring-1 focus:ring-[#F7941D] ${
+                  !ownExperienceSelected ? 'bg-gray-50 text-gray-400 cursor-not-allowed' : ''
+                }`}
+                placeholder={
+                  ownExperienceSelected
+                    ? 'Custom topic / own experience & context'
+                    : "Select 'Own experience / story' to enable this field"
+                }
+                value={customTopic}
+                onChange={(e) => setCustomTopic(e.target.value)}
+                disabled={!ownExperienceSelected}
+              />
+            </div>
+
+            <div className="flex items-center justify-end">
+              <button
+                type="submit"
+                className="rounded-full bg-orange-500 text-white px-5 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50"
+                disabled={loading}
+              >
+                {loading ? 'Generating…' : 'Generate'}
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
 
-      <div className="rounded-2xl border bg-white p-4">
-        <button onClick={handleCopy} disabled={!result} className="mb-2 text-xs bg-gray-100 px-3 py-1 rounded-full">
-          Copy
-        </button>
-        <div className="text-sm whitespace-pre-wrap">{error || result}</div>
+      {/* Panel 2 – output */}
+      <div className="rounded-2xl border bg-white">
+        <div className="flex items-center justify-between px-4 py-3">
+          <h3 className="font-semibold">Generated ideas</h3>
+          <div className="flex items-center gap-2">
+            {loading && <span className="text-xs text-gray-500">Thinking…</span>}
+            <button
+              type="button"
+              onClick={handleCopy}
+              disabled={!result}
+              className={`rounded-full px-3 py-1.5 text-xs font-medium ${
+                result
+                  ? 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+                  : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+              }`}
+            >
+              Copy
+            </button>
+          </div>
+        </div>
+
+        <div className="p-4 pt-0 min-h-[260px]">
+          {error ? (
+            <div className="text-sm text-red-600">{error}</div>
+          ) : !result && !loading ? (
+            <p className="text-sm text-gray-500">
+              Choose your options above and click <strong>Generate</strong> to create content.
+            </p>
+          ) : (
+            <div className="rounded-xl border px-3 py-3 text-sm whitespace-pre-wrap leading-relaxed bg-white">
+              {result}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
