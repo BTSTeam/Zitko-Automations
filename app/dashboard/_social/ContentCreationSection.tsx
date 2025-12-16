@@ -248,35 +248,45 @@ export default function ContentCreationSection() {
               </div>
 
               {/* RIGHT: hook, post format, free type, generate */}
-              <div className="space-y-3">
-                <MultiSelect
-                  options={HOOK_OPTIONS}
-                  values={includeHook}
-                  setValues={setIncludeHook}
-                  placeholder="Include a hook"
-                />
-
-                {/* Post Format under Include a hook */}
-                <MultiSelect options={FORMATS} values={formats} setValues={setFormats} placeholder="Post format" />
-
-                {/* Free type box aligned to start at same height as Content themes and sized so button aligns with Tone */}
-                <textarea
-                  className={`w-full rounded-xl border px-3 py-2 outline-none focus:ring-1 focus:ring-[#F7941D]
-                    text-xs leading-relaxed
-                    min-h-[120px] md:min-h-[92px]
-                    ${!ownExperienceSelected ? 'bg-gray-50 text-gray-400 cursor-not-allowed' : 'bg-white'}`}
-                  placeholder={
-                    ownExperienceSelected
-                      ? 'Custom topic / own experience & context'
-                      : "Select 'Own experience / story' to enable this field"
-                  }
-                  value={customTopic}
-                  onChange={(e) => setCustomTopic(e.target.value)}
-                  disabled={!ownExperienceSelected}
-                />
-
-                {/* Generate aligned with Tone (because textarea height matches Content themes + Audience block) */}
-                <div className="flex items-center justify-center md:justify-start">
+              <div className="grid grid-rows-5 gap-3">
+                <div className="row-start-1">
+                  <MultiSelect
+                    options={HOOK_OPTIONS}
+                    values={includeHook}
+                    setValues={setIncludeHook}
+                    placeholder="Include a hook"
+                  />
+                </div>
+              
+                <div className="row-start-2">
+                  <MultiSelect
+                    options={FORMATS}
+                    values={formats}
+                    setValues={setFormats}
+                    placeholder="Post format"
+                  />
+                </div>
+              
+                {/* Textarea spans rows 3-4 so row 5 lines up with Tone */}
+                <div className="row-start-3 row-span-2">
+                  <textarea
+                    className={`w-full h-full rounded-xl border px-3 py-2 outline-none focus:ring-1 focus:ring-[#F7941D]
+                      text-xs leading-relaxed
+                      min-h-[120px] md:min-h-[150px]
+                      ${!ownExperienceSelected ? 'bg-gray-50 text-gray-400 cursor-not-allowed' : 'bg-white'}`}
+                    placeholder={
+                      ownExperienceSelected
+                        ? 'Custom topic / own experience & context'
+                        : "Select 'Own experience / story' to enable this field"
+                    }
+                    value={customTopic}
+                    onChange={(e) => setCustomTopic(e.target.value)}
+                    disabled={!ownExperienceSelected}
+                  />
+                </div>
+              
+                {/* Row 5: same row as Tone on the left */}
+                <div className="row-start-5 flex items-center justify-end">
                   <button
                     type="submit"
                     className="rounded-full bg-orange-500 text-white px-10 py-2.5 text-sm font-semibold hover:opacity-90 disabled:opacity-50 min-w-[220px]"
