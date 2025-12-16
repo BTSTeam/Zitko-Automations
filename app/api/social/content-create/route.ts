@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-export const runtime = 'nodejs'
-export const dynamic = 'force-dynamic'
-
 type ContentRequest = {
   region?: string | null
   audience?: string | null
@@ -11,12 +8,9 @@ type ContentRequest = {
   tone?: string | null
   postType?: string | null
   contentLength?: string | null
-  addOpeningHook?: boolean
-  addEndingHook?: boolean
-  keepShort?: boolean
-  fiveDays?: boolean
   platforms?: string[]
-  preferVisualIdeasOnly?: boolean
+  perspective?: string | null
+  includeHook?: boolean
 }
 
 function buildPrompt(body: ContentRequest): string {
@@ -26,60 +20,55 @@ function buildPrompt(body: ContentRequest): string {
     topics = [],
     customTopic,
     tone,
-    postType,
-    contentLength,
-    addOpeningHook,
-    addEndingHook,
-    keepShort,
-    fiveDays,
     platforms = [],
-    preferVisualIdeasOnly,
+    perspective,
+    includeHook,
   } = body
 
-  const hasTikTokOrInsta = platforms.some(
-    (p) => p.toLowerCase() === 'tiktok' || p.toLowerCase() === 'instagram',
-  )
+  const isPoll = topics.includes('Polls & questions')
+  const isViral = topics.includes('Viral trend commentary')
 
-  return [
-    'You are an expert social media creator for a recruitment agency that hires into the electronic Security and fire & life safety industry (alarms, CCTV, access control, fire systems – not physical guarding or manned security). You speak as a recruitment consultant, not as a security engineer.',
-    region ? `Region: ${region}.` : '',
-    audience ? `Audience: ${audience}.` : '',
-    topics.length || customTopic
-      ? `Topic / focus: ${[...topics, customTopic].filter(Boolean).join(' | ')}.`
-      : '',
-    tone
-      ? `Tone: ${tone}.`
-      : '',
-    postType ? `Post type: ${postType}.` : '',
-    contentLength === 'Short'
-      ? 'Keep content very short and punchy.'
-      : contentLength === 'Long'
-      ? 'Allow slightly longer but still scannable content.'
-      : keepShort
-      ? 'Keep content concise.'
-      : '',
-    fiveDays
-      ? 'Generate 5 posts labelled Day 1 to Day 5.'
-      : 'Generate 2 clearly different options.',
-    preferVisualIdeasOnly
-      ? 'Describe visual or short-form video ideas only.'
-      : 'Write finished, social-media-ready copy.',
-    hasTikTokOrInsta
-      ? 'Use natural, conversational language suitable for short-form video. Avoid clichés.'
-      : 'Professional but human tone suitable for LinkedIn.',
-    'Avoid corporate clichés. Return only the final content.',
-  ]
-    .filter(Boolean)
-    .join(' ')
+  return `
+You are a recruitment consultant hiring into the electronic Security and fire & life safety industry.
+
+ABSOLUTE RULES:
+- NEVER use extended dashes (— or –). Use standard hyphen (-) only.
+- Never speak as an engineer or installer.
+
+${perspective ? `Perspective: write with a ${perspective.toLowerCase()} voice.` : ''}
+
+${includeHook ? `
+Include a strong opening hook.
+If an audience is specified, tailor the hook to that audience.
+If no audience is specified, create hooks that appeal to BOTH candidates and clients.
+` : ''}
+
+${isPoll ? `
+This is a POLL.
+- Ask a clear question
+- Provide AT LEAST 4 answer options
+- Include "Other (comment below)"
+- End by encouraging comments
+` : ''}
+
+${isViral ? `
+Base this on formats that are CURRENTLY TRENDING across major social platforms.
+Do not reference specific copyrighted audio or creators.
+` : ''}
+
+Topic: ${[...topics, customTopic].filter(Boolean).join(' | ')}
+Tone: ${tone || 'Conversational'}
+Audience: ${audience || 'Candidates and Clients'}
+Platforms: ${platforms.join(', ')}
+
+Return ONLY the finished content. No markdown. No explanations.
+`.trim()
 }
 
 export async function POST(req: NextRequest) {
   const apiKey = process.env.CONTENT_CREATION_API_KEY
   if (!apiKey) {
-    return NextResponse.json(
-      { error: 'CONTENT_CREATION_API_KEY is not configured.' },
-      { status: 500 },
-    )
+    return NextResponse.json({ error: 'API key missing' }, { status: 500 })
   }
 
   const body = (await req.json()) as ContentRequest
@@ -93,22 +82,14 @@ export async function POST(req: NextRequest) {
     },
     body: JSON.stringify({
       model: 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content:
-            'You always speak as a recruiter who hires for the Security industry, not as an engineer.',
-        },
-        { role: 'user', content: prompt },
-      ],
+      messages: [{ role: 'user', content: prompt }],
       temperature: 0.85,
       max_tokens: 900,
     }),
   })
 
   const data = await response.json()
-  const content =
-    data?.choices?.[0]?.message?.content?.trim() || 'No content generated.'
+  const content = data?.choices?.[0]?.message?.content || ''
 
   return NextResponse.json({ content })
 }
