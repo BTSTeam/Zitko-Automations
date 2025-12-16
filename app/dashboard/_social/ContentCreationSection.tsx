@@ -85,6 +85,7 @@ function MultiSelect({
             <span className="text-sm text-gray-400">{placeholder}</span>
           )}
         </div>
+
         <svg
           width="14"
           height="14"
@@ -219,7 +220,16 @@ export default function ContentCreationSection() {
     }
   }
 
-    return (
+  async function handleCopy() {
+    if (!result) return
+    try {
+      await navigator.clipboard.writeText(result)
+    } catch {
+      // silent fail
+    }
+  }
+
+  return (
     <div className="space-y-4 mt-6">
       {/* Panel 1 – controls */}
       <div className="rounded-2xl border bg-white">
