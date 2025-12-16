@@ -62,7 +62,7 @@ function MultiSelect({
   }
 
   return (
-    <div ref={ref} className="relative rounded-xl border h-10 px-3">
+    <div ref={ref} className="relative rounded-xl border h-10 px-3 bg-white">
       <button
         type="button"
         className="w-full h-full text-left flex items-center justify-between"
@@ -165,7 +165,6 @@ export default function ContentCreationSection() {
   const [includeHook, setIncludeHook] = useState<string[]>([])
 
   const [customTopic, setCustomTopic] = useState('')
-
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<string>('')
@@ -226,41 +225,62 @@ export default function ContentCreationSection() {
 
         <div className="p-4 pt-0">
           <form onSubmit={handleGenerate} className="space-y-4">
-            {/* 2-column layout in required order */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <MultiSelect options={REGIONS} values={regions} setValues={setRegions} placeholder="Region" />
-              <MultiSelect options={PERSPECTIVES} values={perspectives} setValues={setPerspectives} placeholder="Perspective" />
-              <MultiSelect options={CONTENT_THEMES} values={themes} setValues={setThemes} placeholder="Content themes" />
-              <MultiSelect options={AUDIENCES} values={audiences} setValues={setAudiences} placeholder="Audience" />
-              <MultiSelect options={TONES} values={tones} setValues={setTones} placeholder="Tone" />
-              <MultiSelect options={FORMATS} values={formats} setValues={setFormats} placeholder="Post format" />
-              <MultiSelect options={HOOK_OPTIONS} values={includeHook} setValues={setIncludeHook} placeholder="Include a hook" />
-            </div>
+            {/* Match screenshot layout: left stack + right hook + big textarea */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+              {/* LEFT COLUMN: keep requested order */}
+              <div className="space-y-3">
+                <MultiSelect options={REGIONS} values={regions} setValues={setRegions} placeholder="Region" />
+                <MultiSelect
+                  options={PERSPECTIVES}
+                  values={perspectives}
+                  setValues={setPerspectives}
+                  placeholder="Perspective"
+                />
+                <MultiSelect
+                  options={CONTENT_THEMES}
+                  values={themes}
+                  setValues={setThemes}
+                  placeholder="Content themes"
+                />
+                <MultiSelect options={AUDIENCES} values={audiences} setValues={setAudiences} placeholder="Audience" />
+                <MultiSelect options={TONES} values={tones} setValues={setTones} placeholder="Tone" />
+                <MultiSelect options={FORMATS} values={formats} setValues={setFormats} placeholder="Post format" />
+              </div>
 
-            <div>
-              <textarea
-                className={`w-full rounded-xl border px-3 py-2 text-sm min-h-[80px] outline-none focus:ring-1 focus:ring-[#F7941D] ${
-                  !ownExperienceSelected ? 'bg-gray-50 text-gray-400 cursor-not-allowed' : ''
-                }`}
-                placeholder={
-                  ownExperienceSelected
-                    ? 'Custom topic / own experience & context'
-                    : "Select 'Own experience / story' to enable this field"
-                }
-                value={customTopic}
-                onChange={(e) => setCustomTopic(e.target.value)}
-                disabled={!ownExperienceSelected}
-              />
-            </div>
+              {/* RIGHT COLUMN: include hook + textarea */}
+              <div className="space-y-3">
+                <MultiSelect
+                  options={HOOK_OPTIONS}
+                  values={includeHook}
+                  setValues={setIncludeHook}
+                  placeholder="Include a hook"
+                />
 
-            <div className="flex items-center justify-end">
-              <button
-                type="submit"
-                className="rounded-full bg-orange-500 text-white px-5 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50"
-                disabled={loading}
-              >
-                {loading ? 'Generating…' : 'Generate'}
-              </button>
+                <textarea
+                  className={`w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-[#F7941D]
+                    min-h-[180px] md:min-h-[220px] ${
+                      !ownExperienceSelected ? 'bg-gray-50 text-gray-400 cursor-not-allowed' : 'bg-white'
+                    }`}
+                  placeholder={
+                    ownExperienceSelected
+                      ? 'Custom topic / own experience & context'
+                      : "Select 'Own experience / story' to enable this field"
+                  }
+                  value={customTopic}
+                  onChange={(e) => setCustomTopic(e.target.value)}
+                  disabled={!ownExperienceSelected}
+                />
+
+                <div className="flex items-center justify-center md:justify-end pt-1">
+                  <button
+                    type="submit"
+                    className="rounded-full bg-orange-500 text-white px-10 py-2.5 text-sm font-semibold hover:opacity-90 disabled:opacity-50 min-w-[220px]"
+                    disabled={loading}
+                  >
+                    {loading ? 'Generating…' : 'Generate'}
+                  </button>
+                </div>
+              </div>
             </div>
           </form>
         </div>
