@@ -15,16 +15,7 @@ type ContentRequest = {
 }
 
 function buildPrompt(body: ContentRequest): string {
-  const {
-    region,
-    perspective,
-    topics = [],
-    customTopic,
-    audience,
-    tone,
-    postType,
-    includeHook,
-  } = body
+  const { region, perspective, topics = [], customTopic, audience, tone, postType, includeHook } = body
 
   const isPoll = (postType || '').toLowerCase() === 'poll'
   const isViral = topics.includes('Viral trend commentary')
@@ -32,73 +23,94 @@ function buildPrompt(body: ContentRequest): string {
   const regionPart = region ? `Region: ${region}.` : ''
   const audiencePart = audience ? `Audience: ${audience}.` : ''
   const tonePart = tone ? `Tone: ${tone}.` : 'Tone: Conversational.'
-  const postTypePart = postType ? `Post type: ${postType}.` : ''
+  const postTypePart = postType ? `Post format: ${postType}.` : ''
 
-  const topicsList = topics.length ? topics.join(', ') : ''
-  const effectiveTopic = [topicsList, customTopic?.trim() ? customTopic.trim() : '']
+  const effectiveTopic = [topics.length ? topics.join(', ') : '', customTopic?.trim() ? customTopic.trim() : '']
     .filter(Boolean)
     .join(' | ')
 
-  const topicPart = effectiveTopic
-    ? `Topic / focus: ${effectiveTopic}.`
-    : 'Topic / focus: recruitment into the electronic Security and fire & life safety industry (alarms, CCTV, access control, fire systems - not physical guarding or manned security).'
+  const topicPart = effectiveTopic ? `Theme / focus: ${effectiveTopic}.` : ''
 
   const perspectivePart = perspective
-    ? `Perspective: write in a ${perspective.toLowerCase()} voice (natural, human, not exaggerated).`
+    ? `Perspective: write in a ${perspective.toLowerCase()} voice (natural, not exaggerated).`
     : ''
 
+  // Spelling rules
+  const useUSSpelling = (region || '').toLowerCase() === 'usa'
+  const spellingPart = useUSSpelling
+    ? 'Spelling: Use US English spelling (e.g., specialize, organization, color, center).'
+    : 'Spelling: Use UK English spelling (e.g., specialise, organisation, colour, centre).'
+
+  // HARD rules to stop unwanted wording
   const hardRules = [
     'ABSOLUTE RULES:',
     '1) NEVER use extended dashes (— or –). Do not output them. Use a standard hyphen (-) only if needed.',
-    '2) Do not produce text like "equal—and". If you must connect words, use "equal-and".',
-    '3) Speak as a recruitment consultant who hires for the industry, not as an engineer/installer.',
-    '4) No markdown, no bullet styling that relies on extended dashes.',
+    '2) NEVER mention "life safety" or "life-safety" or "life safety industry". We do not operate in life safety.',
+    '3) We are a Fire & Security recruitment business. Heavier focus on the SECURITY sector (electronic security systems).',
+    '4) Security scope = intruder alarms, CCTV, access control, and related electronic security roles. Fire scope = fire alarm / fire systems roles only.',
+    '5) EXCLUDE physical guarding / manned security / door supervision.',
+    '6) Speak as a recruitment consultant who hires for the industry, not as an engineer/installer.',
+    '7) Return content only. No markdown. No explanations.',
   ].join(' ')
 
+  // Hook behaviour
   const hookRule = includeHook
     ? [
         'Include an opening hook.',
         audience
           ? 'Base the hook on the selected audience.'
-          : 'No audience was selected - create a hook that works for BOTH candidates and clients.',
+          : 'No audience selected - write hooks that work for BOTH candidates and clients.',
       ].join(' ')
-    : 'Do not force an opening hook unless it naturally fits.'
+    : 'Do not force a hook unless it naturally fits.'
 
+  // Always 2 ideas
+  const twoIdeasRule = isPoll
+    ? 'Generate 2 different poll options. Label them Option 1 and Option 2.'
+    : postType?.toLowerCase().includes('full week')
+    ? 'Generate 2 different full week plans. Label them Option 1 and Option 2. Each option must include Day 1 to Day 5.'
+    : 'Generate 2 different content options. Label them Option 1 and Option 2.'
+
+  // Poll rules
   const pollRules = isPoll
     ? [
-        'This is a POLL format.',
-        'Provide ONE clear poll question.',
+        'POLL REQUIREMENTS (apply to EACH option):',
+        'Provide ONE clear question.',
         'Provide at least 4 answer options.',
         'One option MUST be: "Other (comment below)".',
         'End by encouraging people to comment what they chose and why.',
       ].join(' ')
     : ''
 
+  // Viral rules (no claims of live data, but framed as current)
   const viralRules = isViral
     ? [
-        'If "Viral trend commentary" is selected:',
-        'Base the content on what is currently trending across major social platforms right now.',
-        'Do NOT claim specific statistics or name specific copyrighted sounds/creators.',
-        'Describe the trend format conceptually (e.g., POV, quick cuts, green-screen reaction, meme caption style), and write as if it is currently popular.',
+        'VIRAL TREND REQUIREMENTS:',
+        'Base the idea on formats that are currently trending across major social platforms.',
+        'Do not name specific copyrighted sounds, creators, or make up exact stats.',
+        'Describe the trend format conceptually (POV, quick cuts, green-screen reaction, meme caption format, etc.) and write as if it is currently popular.',
       ].join(' ')
     : ''
 
-  const outputRule = 'Return ONLY the finished content. No explanations. No markdown.'
+  const audienceFallback = audience ? '' : 'Assume the post can appeal to both candidates and clients.'
+  const toneFallback = tone ? '' : 'Keep it human and recruiter-to-network, not corporate marketing.'
 
   return [
-    'You are an expert social media creator for a recruitment agency that hires into the electronic Security and fire & life safety industry (alarms, CCTV, access control, fire systems - not physical guarding or manned security).',
+    'You write social content for a Fire & Security recruitment agency.',
     hardRules,
+    spellingPart,
     regionPart,
     audiencePart,
-    tonePart,
     postTypePart,
     perspectivePart,
     topicPart,
+    audienceFallback,
+    tonePart,
+    toneFallback,
     hookRule,
+    twoIdeasRule,
     pollRules,
     viralRules,
-    'Avoid corporate clichés and buzzwords. Keep it human.',
-    outputRule,
+    'Avoid corporate clichés and buzzwords. Keep it clear, confident, and natural.',
   ]
     .filter(Boolean)
     .join(' ')
@@ -136,7 +148,7 @@ export async function POST(req: NextRequest) {
           {
             role: 'system',
             content:
-              'You are a recruiter/consultant who hires for the electronic Security and fire & life safety industry. Never write as an engineer or installer. Never use extended dashes (— or –).',
+              'You are a Fire & Security recruitment consultant. You never mention "life safety". You never use extended dashes (— or –). You follow regional spelling rules.',
           },
           { role: 'user', content: prompt },
         ],
@@ -147,18 +159,17 @@ export async function POST(req: NextRequest) {
 
     if (!response.ok) {
       const text = await response.text()
-      return NextResponse.json(
-        { error: 'OpenAI error', detail: text },
-        { status: 500 },
-      )
+      return NextResponse.json({ error: 'OpenAI error', detail: text }, { status: 500 })
     }
 
     const data = await response.json()
-    let content: string =
-      data?.choices?.[0]?.message?.content?.trim() || 'No content generated.'
+    let content: string = data?.choices?.[0]?.message?.content?.trim() || 'No content generated.'
 
-    // Hard guarantee: remove extended dashes if the model ever outputs them
+    // Hard guarantee: remove extended dashes if they appear
     content = content.replace(/[—–]/g, '-')
+
+    // Hard guarantee: remove banned phrase if it ever appears
+    content = content.replace(/life\s*safety/gi, 'fire & security')
 
     return NextResponse.json({ content })
   } catch (err: any) {
