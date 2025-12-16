@@ -219,128 +219,128 @@ export default function ContentCreationSection() {
     }
   }
 
-  return (
-  <div className="space-y-4 mt-6">
-    {/* Panel 1 – controls */}
-    <div className="rounded-2xl border bg-white">
-      <div className="flex items-center justify-between px-4 py-3">
-        <h3 className="font-semibold">Content Creation</h3>
-      </div>
+    return (
+    <div className="space-y-4 mt-6">
+      {/* Panel 1 – controls */}
+      <div className="rounded-2xl border bg-white">
+        <div className="flex items-center justify-between px-4 py-3">
+          <h3 className="font-semibold">Content Creation</h3>
+        </div>
 
-      <div className="p-4 pt-0">
-        <form onSubmit={handleGenerate} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <MultiSelect
-              options={REGIONS}
-              values={regions}
-              setValues={setRegions}
-              placeholder="Region"
-            />
-            <MultiSelect
-              options={PLATFORMS}
-              values={platforms}
-              setValues={setPlatforms}
-              placeholder="Social platforms"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <MultiSelect
-              options={CONTENT_THEMES}
-              values={themes}
-              setValues={setThemes}
-              placeholder="Content themes"
-            />
-            <MultiSelect
-              options={TONES}
-              values={tones}
-              setValues={setTones}
-              placeholder="Tone of voice"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="md:col-span-2">
+        <div className="p-4 pt-0">
+          <form onSubmit={handleGenerate} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <MultiSelect
-                options={AUDIENCES}
-                values={audiences}
-                setValues={setAudiences}
-                placeholder="Audience"
+                options={REGIONS}
+                values={regions}
+                setValues={setRegions}
+                placeholder="Region"
+              />
+              <MultiSelect
+                options={PLATFORMS}
+                values={platforms}
+                setValues={setPlatforms}
+                placeholder="Social platforms"
               />
             </div>
 
-            <MultiSelect
-              options={FORMATS}
-              values={formats}
-              setValues={setFormats}
-              placeholder="Post format"
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <MultiSelect
+                options={CONTENT_THEMES}
+                values={themes}
+                setValues={setThemes}
+                placeholder="Content themes"
+              />
+              <MultiSelect
+                options={TONES}
+                values={tones}
+                setValues={setTones}
+                placeholder="Tone of voice"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="md:col-span-2">
+                <MultiSelect
+                  options={AUDIENCES}
+                  values={audiences}
+                  setValues={setAudiences}
+                  placeholder="Audience"
+                />
+              </div>
+
+              <MultiSelect
+                options={FORMATS}
+                values={formats}
+                setValues={setFormats}
+                placeholder="Post format"
+              />
+
+              <MultiSelect
+                options={CONTENT_LENGTHS}
+                values={lengths}
+                setValues={setLengths}
+                placeholder="Content length"
+              />
+            </div>
+
+            <textarea
+              className={`w-full rounded-xl border px-3 py-2 text-sm min-h-[80px] ${
+                !ownExperienceSelected
+                  ? 'bg-gray-50 text-gray-400 cursor-not-allowed'
+                  : ''
+              }`}
+              placeholder={
+                ownExperienceSelected
+                  ? 'Custom topic / own experience & context'
+                  : "Select 'Own experience / story' above to enable this field"
+              }
+              value={customTopic}
+              onChange={(e) => setCustomTopic(e.target.value)}
+              disabled={!ownExperienceSelected}
             />
 
-            <MultiSelect
-              options={CONTENT_LENGTHS}
-              values={lengths}
-              setValues={setLengths}
-              placeholder="Content length"
-            />
-          </div>
+            <div className="flex justify-end">
+              <button
+                type="submit"
+                disabled={loading}
+                className="rounded-full bg-orange-500 text-white px-5 py-2 text-sm"
+              >
+                {loading ? 'Generating…' : 'Generate'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
 
-          <textarea
-            className={`w-full rounded-xl border px-3 py-2 text-sm min-h-[80px] ${
-              !ownExperienceSelected
-                ? 'bg-gray-50 text-gray-400 cursor-not-allowed'
-                : ''
-            }`}
-            placeholder={
-              ownExperienceSelected
-                ? 'Custom topic / own experience & context'
-                : "Select 'Own experience / story' to enable this"
-            }
-            value={customTopic}
-            onChange={(e) => setCustomTopic(e.target.value)}
-            disabled={!ownExperienceSelected}
-          />
+      {/* Panel 2 – output */}
+      <div className="rounded-2xl border bg-white">
+        <div className="flex items-center justify-between px-4 py-3">
+          <h3 className="font-semibold">Generated ideas</h3>
+          <button
+            type="button"
+            onClick={handleCopy}
+            disabled={!result}
+            className="rounded-full px-3 py-1.5 text-xs bg-gray-100"
+          >
+            Copy
+          </button>
+        </div>
 
-          <div className="flex justify-end">
-            <button
-              type="submit"
-              disabled={loading}
-              className="rounded-full bg-orange-500 text-white px-5 py-2 text-sm"
-            >
-              {loading ? 'Generating…' : 'Generate'}
-            </button>
-          </div>
-        </form>
+        <div className="p-4 min-h-[260px]">
+          {error ? (
+            <div className="text-sm text-red-600">{error}</div>
+          ) : !result && !loading ? (
+            <p className="text-sm text-gray-500">
+              Choose your options above and click <strong>Generate</strong>.
+            </p>
+          ) : (
+            <div className="rounded-xl border px-3 py-3 text-sm whitespace-pre-wrap">
+              {result}
+            </div>
+          )}
+        </div>
       </div>
     </div>
-
-    {/* Panel 2 – output */}
-    <div className="rounded-2xl border bg-white">
-      <div className="flex items-center justify-between px-4 py-3">
-        <h3 className="font-semibold">Generated ideas</h3>
-        <button
-          type="button"
-          onClick={handleCopy}
-          disabled={!result}
-          className="rounded-full px-3 py-1.5 text-xs bg-gray-100"
-        >
-          Copy
-        </button>
-      </div>
-
-      <div className="p-4 min-h-[260px]">
-        {error ? (
-          <div className="text-sm text-red-600">{error}</div>
-        ) : !result && !loading ? (
-          <p className="text-sm text-gray-500">
-            Choose options above and click <strong>Generate</strong>.
-          </p>
-        ) : (
-          <div className="rounded-xl border px-3 py-3 text-sm whitespace-pre-wrap">
-            {result}
-          </div>
-        )}
-      </div>
-    </div>
-  </div>
-)
-
+  )
+}
