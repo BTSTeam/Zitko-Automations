@@ -162,7 +162,10 @@ function splitIntoOptions(text: string): Array<{ title: string; body: string; fu
   if (!t) return []
 
   const norm = t.replace(/\r\n/g, '\n')
-  const re = /(^|\n)\s*(Option\s*\d+)\s*\n/gi
+
+  // Matches:
+  // "Option 1\n", "Option 1:\n", "\nOption 2\n" etc.
+  const re = /(^|\n)\s*(Option\s*\d+)\s*:?\s*\n/gi
 
   const hits: Array<{ idx: number; title: string }> = []
   let m: RegExpExecArray | null
@@ -170,9 +173,7 @@ function splitIntoOptions(text: string): Array<{ title: string; body: string; fu
     hits.push({ idx: m.index + (m[1] ? m[1].length : 0), title: (m[2] || '').trim() })
   }
 
-  if (!hits.length) {
-    return [{ title: 'Result', body: norm, full: norm }]
-  }
+  if (!hits.length) return [{ title: 'Result', body: norm, full: norm }]
 
   const out: Array<{ title: string; body: string; full: string }> = []
   for (let i = 0; i < hits.length; i++) {
@@ -180,7 +181,7 @@ function splitIntoOptions(text: string): Array<{ title: string; body: string; fu
     const end = i + 1 < hits.length ? hits[i + 1].idx : norm.length
     const block = norm.slice(start, end).trim()
     const title = hits[i].title
-    const body = block.replace(new RegExp(`^${title}\\s*\\n?`, 'i'), '').trim()
+    const body = block.replace(new RegExp(`^${title}\\s*:??\\s*\\n?`, 'i'), '').trim()
     out.push({ title, body, full: `${title}\n${body}`.trim() })
   }
   return out
@@ -213,7 +214,7 @@ export default function ContentCreationSection() {
 
   async function handleGenerate(e?: React.FormEvent) {
     e?.preventDefault()
-    setControlsOpen(false) // collapse like sourcing
+    setControlsOpen(false)
     setLoading(true)
     setError(null)
     setResult('')
@@ -264,7 +265,7 @@ export default function ContentCreationSection() {
 
   return (
     <div className="space-y-4 mt-6">
-      {/* Panel 1 – controls (collapsible like sourcing) */}
+      {/* Panel 1 – controls */}
       <div className="rounded-2xl border bg-white shadow-sm">
         <button
           type="button"
@@ -287,7 +288,7 @@ export default function ContentCreationSection() {
         {controlsOpen && (
           <div className="p-4 pt-0">
             <form onSubmit={handleGenerate}>
-              <div className="relative grid grid-cols-1 md:grid-cols-2 md:grid-rows-[40px_40px_40px_40px_40px_40px_40px] gap-3 md:gap-x-4 items-start">
+              <div className="relative grid grid-cols-1 md:grid-cols-2 md:grid-rows-[40px_40px_40px_40px_40px_40px_40px] gap-3 md:gap-x-4">
                 {/* LEFT column */}
                 <div className="md:col-start-1 md:row-start-1">
                   <MultiSelect options={REGIONS} values={regions} setValues={setRegions} placeholder="Region" />
@@ -311,7 +312,7 @@ export default function ContentCreationSection() {
                     highlight={ownExperienceSelected}
                   />
 
-                  {/* SINGLE connector line (no extra segments) */}
+                  {/* connector line (ONLY this one) */}
                   {ownExperienceSelected && (
                     <span className="hidden md:block pointer-events-none absolute top-1/2 right-[-20px] w-[20px] h-px bg-[#F7941D]" />
                   )}
@@ -357,8 +358,8 @@ export default function ContentCreationSection() {
                   />
                 </div>
 
-                {/* Free type spans rows 3-6 (aligns bottom with Post format) */}
-                <div className="md:col-start-2 md:row-start-3 md:row-span-4 relative min-h-0">
+                {/* Free type spans Content themes -> Post format (rows 3-6) */}
+                <div className="md:col-start-2 md:row-start-3 md:row-span-4 relative min-h-0 self-stretch">
                   <textarea
                     className={[
                       'w-full h-full min-h-0 resize-none rounded-xl border px-3 py-2 outline-none',
@@ -415,7 +416,6 @@ export default function ContentCreationSection() {
                 const key = `opt-${idx}`
                 return (
                   <div key={key} className="rounded-xl border bg-white overflow-hidden">
-                    {/* Option title + Copy on same row */}
                     <div className="px-3 py-2 border-b flex items-center justify-between">
                       <div className="text-sm font-semibold">{opt.title}</div>
                       <button
