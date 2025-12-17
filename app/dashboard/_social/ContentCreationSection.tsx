@@ -51,7 +51,9 @@ function MultiSelect({
   }, [open])
 
   function toggleOpt(opt: string) {
-    const next = values.includes(opt) ? values.filter((o) => o !== opt) : [...values, opt]
+    const next = values.includes(opt)
+      ? values.filter((o) => o !== opt)
+      : [...values, opt]
     setValues(next)
   }
 
@@ -65,21 +67,19 @@ function MultiSelect({
         type="button"
         className="w-full h-full text-left flex items-center justify-between"
         onClick={() => setOpen((o) => !o)}
-        title={values.length ? `${values.length} selected` : undefined}
       >
         <div className="flex items-center gap-2 flex-nowrap overflow-x-auto mr-2">
           {values.length ? (
             values.map((v) => (
-              <span key={v} className="shrink-0">
-                <Chip
-                  onRemove={(e) => {
-                    e?.stopPropagation()
-                    removeChip(v)
-                  }}
-                >
-                  {v}
-                </Chip>
-              </span>
+              <Chip
+                key={v}
+                onRemove={(e) => {
+                  e?.stopPropagation()
+                  removeChip(v)
+                }}
+              >
+                {v}
+              </Chip>
             ))
           ) : (
             <span className="text-sm text-gray-400">{placeholder}</span>
@@ -102,7 +102,7 @@ function MultiSelect({
           {options.map((opt) => (
             <label
               key={opt}
-              className="flex items-center px-3 py-2 hover:bg-gray-50 cursor-pointer gap-2 text-sm"
+              className="flex items-center px-3 py-2 hover:bg-gray-50 cursor-pointer gap-2"
             >
               <input
                 type="checkbox"
@@ -156,7 +156,6 @@ export default function ContentCreationSection() {
   const [includeHook, setIncludeHook] = useState<string[]>([])
 
   const [customTopic, setCustomTopic] = useState('')
-
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<string>('')
@@ -189,8 +188,7 @@ export default function ContentCreationSection() {
 
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json?.error || `Request failed (${res.status})`)
-
-      setResult(typeof json?.content === 'string' ? json.content : 'No content returned.')
+      setResult(json.content ?? '')
     } catch (err: any) {
       setError(err?.message || 'Unexpected error')
     } finally {
@@ -198,33 +196,20 @@ export default function ContentCreationSection() {
     }
   }
 
-  async function handleCopy() {
-    if (!result) return
-    try {
-      await navigator.clipboard.writeText(result)
-    } catch {
-      // ignore
-    }
-  }
-
   return (
     <div className="space-y-4 mt-6">
-      {/* Panel 1 – controls */}
       <div className="rounded-2xl border bg-white">
-        <div className="flex items-center justify-between px-4 py-3">
-          <h3 className="font-semibold">Content Creation</h3>
-        </div>
+        <div className="px-4 py-3 font-semibold">Content Creation</div>
 
         <div className="p-4 pt-0">
           <form onSubmit={handleGenerate}>
-            {/* Shared grid so rows align across columns */}
-            <div className="grid grid-cols-1 md:grid-cols-2 md:grid-rows-5 gap-3 md:gap-x-4 items-start">
-              {/* LEFT column (order unchanged) */}
-              <div className="md:col-start-1 md:row-start-1">
+            <div className="relative grid grid-cols-1 md:grid-cols-2 md:grid-rows-[40px_40px_40px_40px_40px] gap-3 md:gap-x-4">
+              {/* LEFT */}
+              <div className="md:row-start-1">
                 <MultiSelect options={REGIONS} values={regions} setValues={setRegions} placeholder="Region" />
               </div>
 
-              <div className="md:col-start-1 md:row-start-2">
+              <div className="md:row-start-2">
                 <MultiSelect
                   options={PERSPECTIVES}
                   values={perspectives}
@@ -233,24 +218,29 @@ export default function ContentCreationSection() {
                 />
               </div>
 
-              <div className="md:col-start-1 md:row-start-3">
+              <div className="md:row-start-3 relative">
                 <MultiSelect
                   options={CONTENT_THEMES}
                   values={themes}
                   setValues={setThemes}
                   placeholder="Content themes"
                 />
+
+                {/* connector line */}
+                {ownExperienceSelected && (
+                  <span className="hidden md:block absolute top-1/2 -right-4 w-4 h-px bg-[#F7941D]/70" />
+                )}
               </div>
 
-              <div className="md:col-start-1 md:row-start-4">
+              <div className="md:row-start-4">
                 <MultiSelect options={AUDIENCES} values={audiences} setValues={setAudiences} placeholder="Audience" />
               </div>
 
-              <div className="md:col-start-1 md:row-start-5">
+              <div className="md:row-start-5">
                 <MultiSelect options={TONES} values={tones} setValues={setTones} placeholder="Tone" />
               </div>
 
-              {/* RIGHT column aligned to LEFT rows */}
+              {/* RIGHT */}
               <div className="md:col-start-2 md:row-start-1">
                 <MultiSelect
                   options={HOOK_OPTIONS}
@@ -260,16 +250,19 @@ export default function ContentCreationSection() {
                 />
               </div>
 
-              {/* Post format aligned with Perspective */}
               <div className="md:col-start-2 md:row-start-2">
                 <MultiSelect options={FORMATS} values={formats} setValues={setFormats} placeholder="Post format" />
               </div>
 
-              {/* Free type aligned with Content themes, ends at Audience */}
-              <div className="md:col-start-2 md:row-start-3 md:row-span-2">
+              {/* Free type */}
+              <div className="md:col-start-2 md:row-start-3 md:row-span-2 relative min-h-0">
+                {ownExperienceSelected && (
+                  <span className="hidden md:block absolute top-5 -left-2 w-2 h-2 rounded-full bg-[#F7941D]" />
+                )}
+
                 <textarea
-                  className={`w-full h-full rounded-xl border px-3 py-2 outline-none focus:ring-1 focus:ring-[#F7941D]
-                    text-xs leading-relaxed
+                  className={`w-full h-full resize-none rounded-xl border px-3 py-2 outline-none
+                    focus:ring-1 focus:ring-[#F7941D] text-xs leading-relaxed
                     ${!ownExperienceSelected ? 'bg-gray-50 text-gray-400 cursor-not-allowed' : 'bg-white'}`}
                   placeholder={
                     ownExperienceSelected
@@ -282,52 +275,17 @@ export default function ContentCreationSection() {
                 />
               </div>
 
-              {/* Generate aligned with Tone, far right */}
-              <div className="md:col-start-2 md:row-start-5 flex items-center justify-end">
+              <div className="md:col-start-2 md:row-start-5 flex justify-end">
                 <button
                   type="submit"
-                  className="h-10 rounded-full bg-orange-500 text-white px-10 text-sm font-semibold hover:opacity-90 disabled:opacity-50 min-w-[220px]"
                   disabled={loading}
+                  className="h-10 px-10 rounded-full bg-orange-500 text-white font-semibold hover:opacity-90"
                 >
                   {loading ? 'Generating…' : 'Generate'}
                 </button>
               </div>
             </div>
           </form>
-        </div>
-      </div>
-
-      {/* Panel 2 – output */}
-      <div className="rounded-2xl border bg-white">
-        <div className="flex items-center justify-between px-4 py-3">
-          <h3 className="font-semibold">Generated ideas</h3>
-          <div className="flex items-center gap-2">
-            {loading && <span className="text-xs text-gray-500">Thinking…</span>}
-            <button
-              type="button"
-              onClick={handleCopy}
-              disabled={!result}
-              className={`rounded-full px-3 py-1.5 text-xs font-medium ${
-                result ? 'bg-gray-100 text-gray-800 hover:bg-gray-200' : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-              }`}
-            >
-              Copy
-            </button>
-          </div>
-        </div>
-
-        <div className="p-4 pt-0 min-h-[260px]">
-          {error ? (
-            <div className="text-sm text-red-600">{error}</div>
-          ) : !result && !loading ? (
-            <p className="text-sm text-gray-500">
-              Choose your options above and click <strong>Generate</strong> to create content.
-            </p>
-          ) : (
-            <div className="rounded-xl border px-3 py-3 text-sm whitespace-pre-wrap leading-relaxed bg-white">
-              {result}
-            </div>
-          )}
         </div>
       </div>
     </div>
