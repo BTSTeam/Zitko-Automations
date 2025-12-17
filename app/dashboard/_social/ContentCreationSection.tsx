@@ -150,7 +150,7 @@ const TONES = ['Professional', 'Conversational', 'Playful', 'Bold', 'Storytellin
 
 const FORMATS = ['Single post', 'Poll', 'Short series (3 posts)', 'Full week plan (Mon–Fri, 5 posts)']
 
-const PLATFORM_OPTIONS = ['LinkedIn', 'Facebook', 'TikTok', 'Instagram']
+const PLATFORM_OPTIONS = ['LinkedIn', 'Facebook']
 const CONTENT_LENGTHS = ['Short', 'Medium', 'Long']
 const CTA_OPTIONS = ['Yes', 'No']
 
