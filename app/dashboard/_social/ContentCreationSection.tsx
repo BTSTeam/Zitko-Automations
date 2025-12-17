@@ -1,3 +1,4 @@
+// app/dashboard/_social/ContentCreationSection.tsx
 'use client'
 
 import React, { useEffect, useRef, useState } from 'react'
@@ -136,10 +137,16 @@ const CONTENT_THEMES = [
 const AUDIENCES = ['Candidates', 'Clients', 'Both']
 const TONES = ['Professional', 'Conversational', 'Playful', 'Bold', 'Storytelling']
 
+// Post Format moved to LEFT below Tone
+const FORMATS = ['Single post', 'Poll', 'Short series (3 posts)', 'Full week plan (Mon–Fri, 5 posts)']
+
 const PLATFORMS = ['LinkedIn', 'Facebook', 'TikTok', 'Instagram']
 
-const FORMATS = ['Single post', 'Poll', 'Short series (3 posts)', 'Full week plan (Mon–Fri, 5 posts)']
-const HOOK_OPTIONS = ['Yes', 'No']
+// Content Length replaces where Post Format was on the RIGHT
+const LENGTH_OPTIONS = ['Short', 'Medium', 'Long']
+
+// Rename Include a hook -> Call to action
+const CTA_OPTIONS = ['Yes', 'No']
 
 /* ========= main component ========= */
 
@@ -149,11 +156,13 @@ export default function ContentCreationSection() {
   const [themes, setThemes] = useState<string[]>([])
   const [audiences, setAudiences] = useState<string[]>([])
   const [tones, setTones] = useState<string[]>([])
+  const [formats, setFormats] = useState<string[]>([]) // Post Format
   const [platforms, setPlatforms] = useState<string[]>([])
-  const [formats, setFormats] = useState<string[]>([])
-  const [includeHook, setIncludeHook] = useState<string[]>([])
+  const [contentLengths, setContentLengths] = useState<string[]>([])
+  const [callToAction, setCallToAction] = useState<string[]>([])
 
   const [customTopic, setCustomTopic] = useState('')
+
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<string>('')
@@ -173,9 +182,10 @@ export default function ContentCreationSection() {
       customTopic: ownExperienceSelected ? customTopic : '',
       audience: audiences[0] ?? null,
       tone: tones[0] ?? null,
-      platform: platforms[0] ?? null,
       postType: formats[0] ?? null,
-      includeHook: includeHook[0] === 'Yes',
+      platform: platforms[0] ?? null,
+      contentLength: contentLengths[0] ?? null,
+      callToAction: callToAction[0] === 'Yes',
     }
 
     try {
@@ -187,6 +197,7 @@ export default function ContentCreationSection() {
 
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json?.error || `Request failed (${res.status})`)
+
       setResult(typeof json?.content === 'string' ? json.content : '')
     } catch (err: any) {
       setError(err?.message || 'Unexpected error')
@@ -214,8 +225,8 @@ export default function ContentCreationSection() {
 
         <div className="p-4 pt-0">
           <form onSubmit={handleGenerate}>
-            {/* 6 rows now (Platform added). Textarea spans to align with Tone, button aligns with Platform */}
-            <div className="relative grid grid-cols-1 md:grid-cols-2 md:grid-rows-[40px_40px_40px_40px_40px_40px] gap-3 md:gap-x-4">
+            {/* 7 rows now (Post Format added back on LEFT, Platform remains on LEFT) */}
+            <div className="relative grid grid-cols-1 md:grid-cols-2 md:grid-rows-[40px_40px_40px_40px_40px_40px_40px] gap-3 md:gap-x-4">
               {/* LEFT */}
               <div className="md:row-start-1">
                 <MultiSelect options={REGIONS} values={regions} setValues={setRegions} placeholder="Region" />
@@ -257,26 +268,37 @@ export default function ContentCreationSection() {
                 <MultiSelect options={TONES} values={tones} setValues={setTones} placeholder="Tone" />
               </div>
 
+              {/* Post Format moved below Tone on LEFT */}
               <div className="md:row-start-6">
+                <MultiSelect options={FORMATS} values={formats} setValues={setFormats} placeholder="Post format" />
+              </div>
+
+              <div className="md:row-start-7">
                 <MultiSelect options={PLATFORMS} values={platforms} setValues={setPlatforms} placeholder="Platform" />
               </div>
 
               {/* RIGHT */}
               <div className="md:col-start-2 md:row-start-1">
                 <MultiSelect
-                  options={HOOK_OPTIONS}
-                  values={includeHook}
-                  setValues={setIncludeHook}
-                  placeholder="Include a hook"
+                  options={CTA_OPTIONS}
+                  values={callToAction}
+                  setValues={setCallToAction}
+                  placeholder="Call to action"
                 />
               </div>
 
+              {/* Content Length takes the old Post Format slot */}
               <div className="md:col-start-2 md:row-start-2">
-                <MultiSelect options={FORMATS} values={formats} setValues={setFormats} placeholder="Post format" />
+                <MultiSelect
+                  options={LENGTH_OPTIONS}
+                  values={contentLengths}
+                  setValues={setContentLengths}
+                  placeholder="Content length"
+                />
               </div>
 
-              {/* Free type: now spans rows 3-5 so it bottoms out with Tone */}
-              <div className="md:col-start-2 md:row-start-3 md:row-span-3 relative min-h-0">
+              {/* Free type now spans rows 3-6 so it bottoms out with Post Format */}
+              <div className="md:col-start-2 md:row-start-3 md:row-span-4 relative min-h-0">
                 {/* connector continuation line aligned with Content themes row */}
                 {ownExperienceSelected && (
                   <span className="hidden md:block pointer-events-none absolute top-5 -left-4 w-4 h-px bg-[#F7941D]" />
@@ -298,8 +320,8 @@ export default function ContentCreationSection() {
                 />
               </div>
 
-              {/* Generate: now aligned with Platform */}
-              <div className="md:col-start-2 md:row-start-6 flex items-center justify-end">
+              {/* Generate aligned with Platform */}
+              <div className="md:col-start-2 md:row-start-7 flex items-center justify-end">
                 <button
                   type="submit"
                   disabled={loading}
