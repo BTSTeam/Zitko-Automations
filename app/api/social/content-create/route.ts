@@ -17,6 +17,33 @@ function safeStr(v: any): string {
   return typeof v === 'string' ? v.trim() : ''
 }
 
+function isUSRegion(regionRaw: string): boolean {
+  const r = safeStr(regionRaw).toLowerCase()
+  return r === 'usa' || r === 'us' || r === 'united states' || r === 'united states of america'
+}
+
+/**
+ * Remove emojis / pictographs defensively.
+ * (Model instruction should prevent them, but we also post-process.)
+ */
+function stripEmojis(input: string): string {
+  try {
+    // Remove most emoji/pictographs
+    let out = input.replace(/\p{Extended_Pictographic}/gu, '')
+
+    // Clean up common leftover unicode joiners/variation selectors
+    out = out.replace(/[\u200D\uFE0F]/g, '')
+
+    // Remove excessive spaces created by stripping
+    out = out.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
+
+    return out
+  } catch {
+    // Fallback: return as-is if unicode properties aren't supported
+    return input
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const body = (await req.json().catch(() => ({}))) as Body
@@ -49,11 +76,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing OPENAI_API_KEY.' }, { status: 500 })
     }
 
+    const useUSSpelling = isUSRegion(region)
+
     const system = [
       'You write social media content ideas for recruiters in the Fire & Security industry (primarily electronic security).',
       'Do NOT mention "life safety" or "physical security".',
       'The poster is a recruiter/hiring partner for the industry (not an engineer/installer).',
       'Avoid AI clichés, overly salesy tone, and generic fluff.',
+      'Do NOT use emojis, emoticons, or icon bullets (e.g. ✅ 🔥 🚀). Plain text only.',
+      useUSSpelling
+        ? 'Use US English spelling.'
+        : 'Use UK English spelling and punctuation (e.g., specialise, organisation, programme, colour). Do NOT use US spellings.',
       'Return EXACTLY 2 different ideas.',
       'Format strictly as:',
       'Option 1',
@@ -97,6 +130,8 @@ export async function POST(req: Request) {
       '',
       freeTypeInstruction,
       '',
+      'Important: No emojis or emoticons.',
+      useUSSpelling ? 'Important: Use US English spelling.' : 'Important: Use UK English spelling.',
       'Now generate the two options in the required format.',
     ]
       .filter(Boolean)
@@ -122,17 +157,17 @@ export async function POST(req: Request) {
 
     const json = await res.json().catch(() => ({} as any))
     if (!res.ok) {
-      const msg =
-        json?.error?.message ||
-        json?.error ||
-        `OpenAI request failed (${res.status})`
+      const msg = json?.error?.message || json?.error || `OpenAI request failed (${res.status})`
       return NextResponse.json({ error: msg }, { status: 500 })
     }
 
-    const content = json?.choices?.[0]?.message?.content
-    if (typeof content !== 'string' || !content.trim()) {
+    const raw = json?.choices?.[0]?.message?.content
+    if (typeof raw !== 'string' || !raw.trim()) {
       return NextResponse.json({ error: 'No content returned.' }, { status: 500 })
     }
+
+    // Defensive: strip emojis even if the model disobeys
+    const content = stripEmojis(raw)
 
     return NextResponse.json({ content })
   } catch (err: any) {
