@@ -51,9 +51,7 @@ function MultiSelect({
   }, [open])
 
   function toggleOpt(opt: string) {
-    const next = values.includes(opt)
-      ? values.filter((o) => o !== opt)
-      : [...values, opt]
+    const next = values.includes(opt) ? values.filter((o) => o !== opt) : [...values, opt]
     setValues(next)
   }
 
@@ -100,10 +98,7 @@ function MultiSelect({
       {open && (
         <div className="absolute z-10 mt-1 w-full bg-white border rounded-xl shadow-sm max-h-60 overflow-y-auto text-sm">
           {options.map((opt) => (
-            <label
-              key={opt}
-              className="flex items-center px-3 py-2 hover:bg-gray-50 cursor-pointer gap-2"
-            >
+            <label key={opt} className="flex items-center px-3 py-2 hover:bg-gray-50 cursor-pointer gap-2">
               <input
                 type="checkbox"
                 checked={values.includes(opt)}
@@ -188,7 +183,8 @@ export default function ContentCreationSection() {
 
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json?.error || `Request failed (${res.status})`)
-      setResult(json.content ?? '')
+
+      setResult(typeof json?.content === 'string' ? json.content : '')
     } catch (err: any) {
       setError(err?.message || 'Unexpected error')
     } finally {
@@ -196,10 +192,22 @@ export default function ContentCreationSection() {
     }
   }
 
+  async function handleCopy() {
+    if (!result) return
+    try {
+      await navigator.clipboard.writeText(result)
+    } catch {
+      // ignore
+    }
+  }
+
   return (
     <div className="space-y-4 mt-6">
+      {/* Panel 1 – controls */}
       <div className="rounded-2xl border bg-white">
-        <div className="px-4 py-3 font-semibold">Content Creation</div>
+        <div className="flex items-center justify-between px-4 py-3">
+          <h3 className="font-semibold">Content Creation</h3>
+        </div>
 
         <div className="p-4 pt-0">
           <form onSubmit={handleGenerate}>
@@ -261,7 +269,7 @@ export default function ContentCreationSection() {
                 )}
 
                 <textarea
-                  className={`w-full h-full resize-none rounded-xl border px-3 py-2 outline-none
+                  className={`w-full h-full min-h-0 resize-none rounded-xl border px-3 py-2 outline-none
                     focus:ring-1 focus:ring-[#F7941D] text-xs leading-relaxed
                     ${!ownExperienceSelected ? 'bg-gray-50 text-gray-400 cursor-not-allowed' : 'bg-white'}`}
                   placeholder={
@@ -275,17 +283,53 @@ export default function ContentCreationSection() {
                 />
               </div>
 
-              <div className="md:col-start-2 md:row-start-5 flex justify-end">
+              <div className="md:col-start-2 md:row-start-5 flex items-center justify-end">
                 <button
                   type="submit"
                   disabled={loading}
-                  className="h-10 px-10 rounded-full bg-orange-500 text-white font-semibold hover:opacity-90"
+                  className="h-10 px-10 rounded-full bg-orange-500 text-white font-semibold hover:opacity-90 disabled:opacity-50"
                 >
                   {loading ? 'Generating…' : 'Generate'}
                 </button>
               </div>
             </div>
           </form>
+        </div>
+      </div>
+
+      {/* Panel 2 – output */}
+      <div className="rounded-2xl border bg-white">
+        <div className="flex items-center justify-between px-4 py-3">
+          <h3 className="font-semibold">Generated ideas</h3>
+          <div className="flex items-center gap-2">
+            {loading && <span className="text-xs text-gray-500">Thinking…</span>}
+            <button
+              type="button"
+              onClick={handleCopy}
+              disabled={!result}
+              className={`rounded-full px-3 py-1.5 text-xs font-medium ${
+                result
+                  ? 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+                  : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+              }`}
+            >
+              Copy
+            </button>
+          </div>
+        </div>
+
+        <div className="p-4 pt-0 min-h-[260px]">
+          {error ? (
+            <div className="text-sm text-red-600">{error}</div>
+          ) : !result && !loading ? (
+            <p className="text-sm text-gray-500">
+              Choose your options above and click <strong>Generate</strong> to create content.
+            </p>
+          ) : (
+            <div className="rounded-xl border px-3 py-3 text-sm whitespace-pre-wrap leading-relaxed bg-white">
+              {result}
+            </div>
+          )}
         </div>
       </div>
     </div>
