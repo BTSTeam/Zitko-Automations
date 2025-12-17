@@ -226,76 +226,82 @@ export default function ContentCreationSection() {
 
         <div className="p-4 pt-0">
           <form onSubmit={handleGenerate}>
-            {/* Two independent stacks = no huge gap on the left */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
-              {/* LEFT: keep order */}
-              <div className="space-y-3">
+            {/* Single shared grid so rows line up perfectly */}
+            <div className="grid grid-cols-1 md:grid-cols-2 md:grid-rows-5 gap-3 md:gap-x-4 items-start">
+              {/* LEFT column (keep your existing order in the DOM) */}
+              <div className="md:col-start-1 md:row-start-1">
                 <MultiSelect options={REGIONS} values={regions} setValues={setRegions} placeholder="Region" />
+              </div>
+            
+              <div className="md:col-start-1 md:row-start-2">
                 <MultiSelect
                   options={PERSPECTIVES}
                   values={perspectives}
                   setValues={setPerspectives}
                   placeholder="Perspective"
                 />
+              </div>
+            
+              <div className="md:col-start-1 md:row-start-3">
                 <MultiSelect
                   options={CONTENT_THEMES}
                   values={themes}
                   setValues={setThemes}
                   placeholder="Content themes"
                 />
+              </div>
+            
+              <div className="md:col-start-1 md:row-start-4">
                 <MultiSelect options={AUDIENCES} values={audiences} setValues={setAudiences} placeholder="Audience" />
+              </div>
+            
+              <div className="md:col-start-1 md:row-start-5">
                 <MultiSelect options={TONES} values={tones} setValues={setTones} placeholder="Tone" />
               </div>
-
-              {/* RIGHT: hook, post format, free type, generate */}
-              <div className="grid grid-rows-5 gap-3">
-                <div className="row-start-1">
-                  <MultiSelect
-                    options={HOOK_OPTIONS}
-                    values={includeHook}
-                    setValues={setIncludeHook}
-                    placeholder="Include a hook"
-                  />
-                </div>
-              
-                <div className="row-start-2">
-                  <MultiSelect
-                    options={FORMATS}
-                    values={formats}
-                    setValues={setFormats}
-                    placeholder="Post format"
-                  />
-                </div>
-              
-                {/* Textarea spans rows 3-4 so row 5 lines up with Tone */}
-                <div className="row-start-3 row-span-2">
-                  <textarea
-                    className={`w-full h-full rounded-xl border px-3 py-2 outline-none focus:ring-1 focus:ring-[#F7941D]
-                      text-xs leading-relaxed
-                      min-h-[120px] md:min-h-[150px]
-                      ${!ownExperienceSelected ? 'bg-gray-50 text-gray-400 cursor-not-allowed' : 'bg-white'}`}
-                    placeholder={
-                      ownExperienceSelected
-                        ? 'Custom topic / own experience & context'
-                        : "Select 'Own experience / story' to enable this field"
-                    }
-                    value={customTopic}
-                    onChange={(e) => setCustomTopic(e.target.value)}
-                    disabled={!ownExperienceSelected}
-                  />
-                </div>
-              
-                {/* Row 5: same row as Tone on the left */}
-                <div className="row-start-5 flex items-center justify-end">
-                  <button
-                    type="submit"
-                    className="rounded-full bg-orange-500 text-white px-10 py-2.5 text-sm font-semibold hover:opacity-90 disabled:opacity-50 min-w-[220px]"
-                    disabled={loading}
-                  >
-                    {loading ? 'Generating…' : 'Generate'}
-                  </button>
-                </div>
+            
+              {/* RIGHT column (positioned to align with LEFT rows) */}
+              <div className="md:col-start-2 md:row-start-1">
+                <MultiSelect
+                  options={HOOK_OPTIONS}
+                  values={includeHook}
+                  setValues={setIncludeHook}
+                  placeholder="Include a hook"
+                />
               </div>
+            
+              {/* Post format aligned with Perspective */}
+              <div className="md:col-start-2 md:row-start-2">
+                <MultiSelect options={FORMATS} values={formats} setValues={setFormats} placeholder="Post format" />
+              </div>
+            
+              {/* Free type aligned with Content themes, ends at Audience (rows 3-4) */}
+              <div className="md:col-start-2 md:row-start-3 md:row-span-2">
+                <textarea
+                  className={`w-full h-full rounded-xl border px-3 py-2 outline-none focus:ring-1 focus:ring-[#F7941D]
+                    text-xs leading-relaxed
+                    ${!ownExperienceSelected ? 'bg-gray-50 text-gray-400 cursor-not-allowed' : 'bg-white'}`}
+                  placeholder={
+                    ownExperienceSelected
+                      ? 'Custom topic / own experience & context'
+                      : "Select 'Own experience / story' to enable this field"
+                  }
+                  value={customTopic}
+                  onChange={(e) => setCustomTopic(e.target.value)}
+                  disabled={!ownExperienceSelected}
+                />
+              </div>
+            
+              {/* Generate aligned with Tone, pushed far right */}
+              <div className="md:col-start-2 md:row-start-5 flex items-center justify-end">
+                <button
+                  type="submit"
+                  className="h-10 rounded-full bg-orange-500 text-white px-10 text-sm font-semibold hover:opacity-90 disabled:opacity-50 min-w-[220px]"
+                  disabled={loading}
+                >
+                  {loading ? 'Generating…' : 'Generate'}
+                </button>
+              </div>
+</div>
             </div>
           </form>
         </div>
