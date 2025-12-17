@@ -138,11 +138,11 @@ const REGIONS = ['UK', 'Ireland', 'USA', 'APAC']
 const PERSPECTIVES = ['Male', 'Female']
 
 const CONTENT_THEMES = [
-  'Own experience / story',
-  'Industry tips & how-tos',
-  'Job market update',
-  'Holiday / seasonal',
-  'Viral trend commentary',
+  'Own Experience / Story',
+  'Industry Tips & How Tos',
+  'Job Market Update',
+  'Holiday / Seasonal',
+  'Viral Trend',
   'Salaries',
 ]
 
@@ -210,7 +210,7 @@ export default function ContentCreationSection() {
 
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
 
-  const ownExperienceSelected = themes.includes('Own experience / story')
+  const ownExperienceSelected = themes.includes('Own Experience / Story')
 
   async function handleGenerate(e?: React.FormEvent) {
     e?.preventDefault()
@@ -308,7 +308,7 @@ export default function ContentCreationSection() {
                     options={CONTENT_THEMES}
                     values={themes}
                     setValues={setThemes}
-                    placeholder="Content themes"
+                    placeholder="Content Themes"
                     highlight={ownExperienceSelected}
                   />
 
@@ -327,7 +327,7 @@ export default function ContentCreationSection() {
                 </div>
 
                 <div className="md:col-start-1 md:row-start-6">
-                  <MultiSelect options={FORMATS} values={formats} setValues={setFormats} placeholder="Post format" />
+                  <MultiSelect options={FORMATS} values={formats} setValues={setFormats} placeholder="Post Format" />
                 </div>
 
                 <div className="md:col-start-1 md:row-start-7">
@@ -345,7 +345,7 @@ export default function ContentCreationSection() {
                     options={CTA_OPTIONS}
                     values={callToAction}
                     setValues={setCallToAction}
-                    placeholder="Call to action"
+                    placeholder="Call to Action"
                   />
                 </div>
 
@@ -354,7 +354,7 @@ export default function ContentCreationSection() {
                     options={CONTENT_LENGTHS}
                     values={contentLengths}
                     setValues={setContentLengths}
-                    placeholder="Content length"
+                    placeholder="Content Length"
                   />
                 </div>
 
@@ -371,7 +371,7 @@ export default function ContentCreationSection() {
                     placeholder={
                       ownExperienceSelected
                         ? 'Custom topic / own experience & context'
-                        : "Select 'Own experience / story' to enable this field"
+                        : "Select 'Own Experience / Story' to enable this field"
                     }
                     value={customTopic}
                     onChange={(e) => setCustomTopic(e.target.value)}
