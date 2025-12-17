@@ -51,9 +51,7 @@ function MultiSelect({
   }, [open])
 
   function toggleOpt(opt: string) {
-    const next = values.includes(opt)
-      ? values.filter((o) => o !== opt)
-      : [...values, opt]
+    const next = values.includes(opt) ? values.filter((o) => o !== opt) : [...values, opt]
     setValues(next)
   }
 
@@ -143,14 +141,7 @@ const CONTENT_THEMES = [
 const AUDIENCES = ['Candidates', 'Clients', 'Both']
 const TONES = ['Professional', 'Conversational', 'Playful', 'Bold', 'Storytelling']
 
-// Poll is part of Post Format
-const FORMATS = [
-  'Single post',
-  'Poll',
-  'Short series (3 posts)',
-  'Full week plan (Mon–Fri, 5 posts)',
-]
-
+const FORMATS = ['Single post', 'Poll', 'Short series (3 posts)', 'Full week plan (Mon–Fri, 5 posts)']
 const HOOK_OPTIONS = ['Yes', 'No']
 
 /* ========= main component ========= */
@@ -226,13 +217,13 @@ export default function ContentCreationSection() {
 
         <div className="p-4 pt-0">
           <form onSubmit={handleGenerate}>
-            {/* Single shared grid so rows line up perfectly */}
+            {/* Shared grid so rows align across columns */}
             <div className="grid grid-cols-1 md:grid-cols-2 md:grid-rows-5 gap-3 md:gap-x-4 items-start">
-              {/* LEFT column (keep your existing order in the DOM) */}
+              {/* LEFT column (order unchanged) */}
               <div className="md:col-start-1 md:row-start-1">
                 <MultiSelect options={REGIONS} values={regions} setValues={setRegions} placeholder="Region" />
               </div>
-            
+
               <div className="md:col-start-1 md:row-start-2">
                 <MultiSelect
                   options={PERSPECTIVES}
@@ -241,7 +232,7 @@ export default function ContentCreationSection() {
                   placeholder="Perspective"
                 />
               </div>
-            
+
               <div className="md:col-start-1 md:row-start-3">
                 <MultiSelect
                   options={CONTENT_THEMES}
@@ -250,16 +241,16 @@ export default function ContentCreationSection() {
                   placeholder="Content themes"
                 />
               </div>
-            
+
               <div className="md:col-start-1 md:row-start-4">
                 <MultiSelect options={AUDIENCES} values={audiences} setValues={setAudiences} placeholder="Audience" />
               </div>
-            
+
               <div className="md:col-start-1 md:row-start-5">
                 <MultiSelect options={TONES} values={tones} setValues={setTones} placeholder="Tone" />
               </div>
-            
-              {/* RIGHT column (positioned to align with LEFT rows) */}
+
+              {/* RIGHT column aligned to LEFT rows */}
               <div className="md:col-start-2 md:row-start-1">
                 <MultiSelect
                   options={HOOK_OPTIONS}
@@ -268,13 +259,13 @@ export default function ContentCreationSection() {
                   placeholder="Include a hook"
                 />
               </div>
-            
+
               {/* Post format aligned with Perspective */}
               <div className="md:col-start-2 md:row-start-2">
                 <MultiSelect options={FORMATS} values={formats} setValues={setFormats} placeholder="Post format" />
               </div>
-            
-              {/* Free type aligned with Content themes, ends at Audience (rows 3-4) */}
+
+              {/* Free type aligned with Content themes, ends at Audience */}
               <div className="md:col-start-2 md:row-start-3 md:row-span-2">
                 <textarea
                   className={`w-full h-full rounded-xl border px-3 py-2 outline-none focus:ring-1 focus:ring-[#F7941D]
@@ -290,8 +281,8 @@ export default function ContentCreationSection() {
                   disabled={!ownExperienceSelected}
                 />
               </div>
-            
-              {/* Generate aligned with Tone, pushed far right */}
+
+              {/* Generate aligned with Tone, far right */}
               <div className="md:col-start-2 md:row-start-5 flex items-center justify-end">
                 <button
                   type="submit"
@@ -301,7 +292,6 @@ export default function ContentCreationSection() {
                   {loading ? 'Generating…' : 'Generate'}
                 </button>
               </div>
-</div>
             </div>
           </form>
         </div>
@@ -318,9 +308,7 @@ export default function ContentCreationSection() {
               onClick={handleCopy}
               disabled={!result}
               className={`rounded-full px-3 py-1.5 text-xs font-medium ${
-                result
-                  ? 'bg-gray-100 text-gray-800 hover:bg-gray-200'
-                  : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                result ? 'bg-gray-100 text-gray-800 hover:bg-gray-200' : 'bg-gray-100 text-gray-400 cursor-not-allowed'
               }`}
             >
               Copy
