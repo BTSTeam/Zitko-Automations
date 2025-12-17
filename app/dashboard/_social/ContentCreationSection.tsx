@@ -357,8 +357,8 @@ export default function ContentCreationSection() {
                   />
                 </div>
 
-                {/* Free type spans rows 3-5 (aligns bottom with Tone) */}
-                <div className="md:col-start-2 md:row-start-3 md:row-span-3 relative min-h-0">
+                {/* Free type spans rows 3-6 (aligns bottom with Post format) */}
+                <div className="md:col-start-2 md:row-start-3 md:row-span-4 relative min-h-0">
                   <textarea
                     className={[
                       'w-full h-full min-h-0 resize-none rounded-xl border px-3 py-2 outline-none',
