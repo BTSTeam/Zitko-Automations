@@ -10,25 +10,39 @@ type ContentRequest = {
   customTopic?: string
   audience?: string | null
   tone?: string | null
+  platform?: string | null
   postType?: string | null
   includeHook?: boolean
 }
 
 function buildPrompt(body: ContentRequest): string {
-  const { region, perspective, topics = [], customTopic, audience, tone, postType, includeHook } = body
+  const {
+    region,
+    perspective,
+    topics = [],
+    customTopic,
+    audience,
+    tone,
+    platform,
+    postType,
+    includeHook,
+  } = body
 
   const isPoll = (postType || '').toLowerCase() === 'poll'
-  const isViral = topics.includes('Viral trend commentary')
+  const isViralTopic = topics.includes('Viral trend commentary')
+
+  const platformLower = (platform || '').toLowerCase()
+  const isTikTokOrInstagram = platformLower === 'tiktok' || platformLower === 'instagram'
 
   const regionPart = region ? `Region: ${region}.` : ''
   const audiencePart = audience ? `Audience: ${audience}.` : ''
   const tonePart = tone ? `Tone: ${tone}.` : 'Tone: Conversational.'
+  const platformPart = platform ? `Platform: ${platform}.` : ''
   const postTypePart = postType ? `Post format: ${postType}.` : ''
 
   const effectiveTopic = [topics.length ? topics.join(', ') : '', customTopic?.trim() ? customTopic.trim() : '']
     .filter(Boolean)
     .join(' | ')
-
   const topicPart = effectiveTopic ? `Theme / focus: ${effectiveTopic}.` : ''
 
   const perspectivePart = perspective
@@ -41,7 +55,6 @@ function buildPrompt(body: ContentRequest): string {
     ? 'Spelling: Use US English spelling (e.g., specialize, organization, color, center).'
     : 'Spelling: Use UK English spelling (e.g., specialise, organisation, colour, centre).'
 
-  // HARD rules to stop unwanted wording
   const hardRules = [
     'ABSOLUTE RULES:',
     '1) NEVER use extended dashes (— or –). Do not output them. Use a standard hyphen (-) only if needed.',
@@ -53,7 +66,6 @@ function buildPrompt(body: ContentRequest): string {
     '7) Return content only. No markdown. No explanations.',
   ].join(' ')
 
-  // Hook behaviour
   const hookRule = includeHook
     ? [
         'Include an opening hook.',
@@ -63,14 +75,12 @@ function buildPrompt(body: ContentRequest): string {
       ].join(' ')
     : 'Do not force a hook unless it naturally fits.'
 
-  // Always 2 ideas
   const twoIdeasRule = isPoll
     ? 'Generate 2 different poll options. Label them Option 1 and Option 2.'
     : postType?.toLowerCase().includes('full week')
     ? 'Generate 2 different full week plans. Label them Option 1 and Option 2. Each option must include Day 1 to Day 5.'
     : 'Generate 2 different content options. Label them Option 1 and Option 2.'
 
-  // Poll rules
   const pollRules = isPoll
     ? [
         'POLL REQUIREMENTS (apply to EACH option):',
@@ -81,13 +91,31 @@ function buildPrompt(body: ContentRequest): string {
       ].join(' ')
     : ''
 
-  // Viral rules (no claims of live data, but framed as current)
-  const viralRules = isViral
+  // Platform-specific behaviour
+  const platformRules = isTikTokOrInstagram
+    ? [
+        'PLATFORM REQUIREMENTS:',
+        'This is for TikTok/Instagram. The idea must be based on broadly viral formats at the moment (or likely to go viral).',
+        'It does NOT need to be security-industry-led. Do not force security references.',
+        'Do not name specific copyrighted sounds, creators, or claim exact stats.',
+        'Describe the trend format conceptually (POV, quick cuts, green-screen reaction, meme caption format, etc.).',
+        'Still write as a recruitment consultant posting to your network.',
+      ].join(' ')
+    : platform
+    ? [
+        'PLATFORM REQUIREMENTS:',
+        `Optimise for ${platform}.`,
+        'If LinkedIn/Facebook, keep it relevant to hiring and the Fire & Security market (but still avoid clichés).',
+      ].join(' ')
+    : ''
+
+  // Viral topic rules (works alongside platform rules)
+  const viralTopicRules = isViralTopic
     ? [
         'VIRAL TREND REQUIREMENTS:',
         'Base the idea on formats that are currently trending across major social platforms.',
         'Do not name specific copyrighted sounds, creators, or make up exact stats.',
-        'Describe the trend format conceptually (POV, quick cuts, green-screen reaction, meme caption format, etc.) and write as if it is currently popular.',
+        'Describe the trend format conceptually and write as if it is currently popular.',
       ].join(' ')
     : ''
 
@@ -99,6 +127,7 @@ function buildPrompt(body: ContentRequest): string {
     hardRules,
     spellingPart,
     regionPart,
+    platformPart,
     audiencePart,
     postTypePart,
     perspectivePart,
@@ -106,10 +135,11 @@ function buildPrompt(body: ContentRequest): string {
     audienceFallback,
     tonePart,
     toneFallback,
+    platformRules,
     hookRule,
     twoIdeasRule,
     pollRules,
-    viralRules,
+    viralTopicRules,
     'Avoid corporate clichés and buzzwords. Keep it clear, confident, and natural.',
   ]
     .filter(Boolean)
@@ -120,10 +150,7 @@ export async function POST(req: NextRequest) {
   const apiKey = process.env.CONTENT_CREATION_API_KEY
 
   if (!apiKey) {
-    return NextResponse.json(
-      { error: 'CONTENT_CREATION_API_KEY is not configured.' },
-      { status: 500 },
-    )
+    return NextResponse.json({ error: 'CONTENT_CREATION_API_KEY is not configured.' }, { status: 500 })
   }
 
   let body: ContentRequest
