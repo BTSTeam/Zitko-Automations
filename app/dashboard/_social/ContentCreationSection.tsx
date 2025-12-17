@@ -143,7 +143,6 @@ const CONTENT_THEMES = [
   'Job Market Update',
   'Holiday / Seasonal',
   'Viral Trend',
-  'Salaries',
 ]
 
 const AUDIENCES = ['Candidates', 'Clients', 'Both']
