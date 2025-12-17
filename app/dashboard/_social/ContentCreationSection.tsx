@@ -32,11 +32,13 @@ function MultiSelect({
   values,
   setValues,
   placeholder = 'Select…',
+  highlight = false,
 }: {
   options: string[]
   values: string[]
   setValues: (v: string[]) => void
   placeholder?: string
+  highlight?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement | null>(null)
@@ -61,7 +63,12 @@ function MultiSelect({
   }
 
   return (
-    <div ref={ref} className="relative rounded-xl border h-10 px-3 bg-white">
+    <div
+      ref={ref}
+      className={`relative rounded-xl border h-10 px-3 bg-white ${
+        highlight ? 'border-[#F7941D] ring-1 ring-[#F7941D]/25' : 'border-gray-200'
+      }`}
+    >
       <button
         type="button"
         className="w-full h-full text-left flex items-center justify-between"
@@ -143,19 +150,19 @@ const PLATFORMS = ['LinkedIn', 'Facebook', 'TikTok', 'Instagram']
 const LENGTH_OPTIONS = ['Short', 'Medium', 'Long']
 const CTA_OPTIONS = ['Yes', 'No']
 
-/* ========= main component ========= */
+/* ========= output splitting ========= */
 
 function splitIntoOptions(text: string): string[] {
   const t = (text || '').trim()
   if (!t) return []
-  // split *before* each "Option X"
   const parts = t
     .split(/(?=^\s*Option\s*\d+\b)/gim)
     .map((s) => s.trim())
     .filter(Boolean)
-
   return parts.length ? parts : [t]
 }
+
+/* ========= main component ========= */
 
 export default function ContentCreationSection() {
   const [regions, setRegions] = useState<string[]>([])
@@ -174,16 +181,18 @@ export default function ContentCreationSection() {
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<string>('')
 
-  // NEW: collapse controls after Generate
-  const [controlsCollapsed, setControlsCollapsed] = useState(false)
+  // Sourcing-style collapse state
+  const [contentSearchOpen, setContentSearchOpen] = useState(true)
 
   const ownExperienceSelected = themes.includes('Own experience / story')
-
   const optionBlocks = useMemo(() => splitIntoOptions(result), [result])
 
   async function handleGenerate(e?: React.FormEvent) {
     e?.preventDefault()
-    setControlsCollapsed(true) // NEW: collapse immediately
+
+    // collapse immediately so output takes precedence (same behaviour as sourcing)
+    setContentSearchOpen(false)
+
     setLoading(true)
     setError(null)
     setResult('')
@@ -192,13 +201,16 @@ export default function ContentCreationSection() {
       region: regions[0] ?? null,
       perspective: perspectives[0] ?? null,
       topics: themes,
-      customTopic: ownExperienceSelected ? customTopic : '',
       audience: audiences[0] ?? null,
       tone: tones[0] ?? null,
       postType: formats[0] ?? null,
       platform: platforms[0] ?? null,
       contentLength: contentLengths[0] ?? null,
       callToAction: callToAction[0] === 'Yes',
+      customTopic: ownExperienceSelected ? customTopic : '',
+
+      // keep compatibility with older API routes that still expect includeHook
+      includeHook: true,
     }
 
     try {
@@ -214,7 +226,6 @@ export default function ContentCreationSection() {
       setResult(typeof json?.content === 'string' ? json.content : '')
     } catch (err: any) {
       setError(err?.message || 'Unexpected error')
-      setControlsCollapsed(false) // NEW: show controls again on error
     } finally {
       setLoading(false)
     }
@@ -231,25 +242,30 @@ export default function ContentCreationSection() {
 
   return (
     <div className="space-y-4 mt-6">
-      {/* Panel 1 – controls (collapsible) */}
-      <div className="rounded-2xl border bg-white">
-        <div className="flex items-center justify-between px-4 py-3">
+      {/* Panel 1 – controls (Sourcing-style collapsible) */}
+      <div className="rounded-2xl border bg-white shadow-sm">
+        <button
+          type="button"
+          onClick={() => setContentSearchOpen((o) => !o)}
+          className="w-full flex items-center justify-between px-4 py-3"
+          aria-expanded={contentSearchOpen}
+        >
           <h3 className="font-semibold">Content Creation</h3>
-
-          <button
-            type="button"
-            onClick={() => setControlsCollapsed((v) => !v)}
-            className="text-xs font-medium rounded-full px-3 py-1.5 bg-gray-100 text-gray-800 hover:bg-gray-200"
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            className={contentSearchOpen ? 'rotate-180 transition-transform' : 'transition-transform'}
           >
-            {controlsCollapsed ? 'Show options' : 'Hide options'}
-          </button>
-        </div>
+            <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z" />
+          </svg>
+        </button>
 
-        {/* collapsed body */}
-        <div className={controlsCollapsed ? 'hidden' : 'block'}>
+        {contentSearchOpen && (
           <div className="p-4 pt-0">
             <form onSubmit={handleGenerate}>
-              {/* 7 rows (as per your last layout) */}
+              {/* Desktop: 7 fixed rows so everything aligns */}
               <div className="relative grid grid-cols-1 md:grid-cols-2 md:grid-rows-[40px_40px_40px_40px_40px_40px_40px] gap-3 md:gap-x-4">
                 {/* LEFT */}
                 <div className="md:row-start-1">
@@ -266,17 +282,15 @@ export default function ContentCreationSection() {
                 </div>
 
                 <div className="md:row-start-3 relative">
-                  {ownExperienceSelected && (
-                    <span className="hidden md:block pointer-events-none absolute inset-0 rounded-xl ring-1 ring-[#F7941D]" />
-                  )}
-
                   <MultiSelect
                     options={CONTENT_THEMES}
                     values={themes}
                     setValues={setThemes}
                     placeholder="Content themes"
+                    highlight={ownExperienceSelected}
                   />
 
+                  {/* connector line (only when Own experience is selected) */}
                   {ownExperienceSelected && (
                     <span className="hidden md:block pointer-events-none absolute top-1/2 -right-4 w-4 h-px bg-[#F7941D]" />
                   )}
@@ -295,7 +309,12 @@ export default function ContentCreationSection() {
                 </div>
 
                 <div className="md:row-start-7">
-                  <MultiSelect options={PLATFORMS} values={platforms} setValues={setPlatforms} placeholder="Platform" />
+                  <MultiSelect
+                    options={PLATFORMS}
+                    values={platforms}
+                    setValues={setPlatforms}
+                    placeholder="Platform"
+                  />
                 </div>
 
                 {/* RIGHT */}
@@ -317,14 +336,16 @@ export default function ContentCreationSection() {
                   />
                 </div>
 
+                {/* Free type: aligned with Content themes -> Post format (rows 3-6) */}
                 <div className="md:col-start-2 md:row-start-3 md:row-span-4 relative min-h-0">
+                  {/* connector line end */}
                   {ownExperienceSelected && (
-                    <span className="hidden md:block pointer-events-none absolute top-5 -left-4 w-4 h-px bg-[#F7941D]" />
+                    <span className="hidden md:block pointer-events-none absolute top-1/2 -left-4 w-4 h-px bg-[#F7941D]" />
                   )}
 
                   <textarea
                     className={`w-full h-full min-h-0 resize-none rounded-xl border px-3 py-2 outline-none
-                      text-xs leading-relaxed
+                      focus:ring-1 focus:ring-[#F7941D] text-xs leading-relaxed
                       ${ownExperienceSelected ? 'border-[#F7941D]' : 'border-gray-200'}
                       ${!ownExperienceSelected ? 'bg-gray-50 text-gray-400 cursor-not-allowed' : 'bg-white'}`}
                     placeholder={
@@ -338,7 +359,7 @@ export default function ContentCreationSection() {
                   />
                 </div>
 
-                {/* Generate aligned with Platform row */}
+                {/* Generate aligned with Platform row (row 7) */}
                 <div className="md:col-start-2 md:row-start-7 flex items-center justify-end">
                   <button
                     type="submit"
@@ -351,11 +372,11 @@ export default function ContentCreationSection() {
               </div>
             </form>
           </div>
-        </div>
+        )}
       </div>
 
-      {/* Panel 2 – output (now takes precedence) */}
-      <div className="rounded-2xl border bg-white">
+      {/* Panel 2 – output */}
+      <div className="rounded-2xl border bg-white shadow-sm">
         <div className="flex items-center justify-between px-4 py-3">
           <h3 className="font-semibold">Generated ideas</h3>
           {loading && <span className="text-xs text-gray-500">Thinking…</span>}
