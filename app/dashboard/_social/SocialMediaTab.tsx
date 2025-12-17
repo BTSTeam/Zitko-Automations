@@ -1206,12 +1206,13 @@ export default function SocialMediaTab({ mode }: { mode: SocialMode }) {
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <h3 className="font-semibold text-lg">Preview</h3>
             <div className="flex gap-2 flex-wrap items-center">
-              {/* small circular reset button with arrow icon */}
+              {/* Reset */}
               <button
                 type="button"
                 onClick={resetLayout}
                 title="Reset layout to template defaults"
-                className="inline-flex items-center justify-center w-7 h-7 bg-white text-[13px] leading-none text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+                aria-label="Reset layout to template defaults"
+                className="text-gray-500 hover:text-gray-800"
               >
                 ↻
               </button>
