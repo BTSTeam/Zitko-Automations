@@ -313,7 +313,7 @@ export default function ContentCreationSection() {
               }}
               title="Reset selections"
               aria-label="Reset selections"
-              className="inline-flex items-center justify-center w-7 h-7 rounded-full border border-gray-200 bg-white text-[13px] leading-none text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+              className="inline-flex items-center justify-center w-7 h-7 bg-white text-[13px] leading-none text-gray-500 hover:text-gray-700 hover:bg-gray-50"
             >
               ↻
             </button>
