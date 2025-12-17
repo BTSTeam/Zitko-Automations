@@ -227,16 +227,21 @@ export default function ContentCreationSection() {
               </div>
 
               <div className="md:row-start-3 relative">
+                {/* orange border overlay when enabled */}
+                {ownExperienceSelected && (
+                  <span className="hidden md:block pointer-events-none absolute inset-0 rounded-xl ring-1 ring-[#F7941D]" />
+                )}
+              
                 <MultiSelect
                   options={CONTENT_THEMES}
                   values={themes}
                   setValues={setThemes}
                   placeholder="Content themes"
                 />
-
-                {/* connector line */}
+              
+                {/* connector line (no dot) */}
                 {ownExperienceSelected && (
-                  <span className="hidden md:block absolute top-1/2 -right-4 w-4 h-px bg-[#F7941D]/70" />
+                  <span className="hidden md:block pointer-events-none absolute top-1/2 -right-4 w-4 h-px bg-[#F7941D]" />
                 )}
               </div>
 
@@ -264,13 +269,15 @@ export default function ContentCreationSection() {
 
               {/* Free type */}
               <div className="md:col-start-2 md:row-start-3 md:row-span-2 relative min-h-0">
+                {/* connector continuation line (no dot) */}
                 {ownExperienceSelected && (
-                  <span className="hidden md:block absolute top-5 -left-2 w-2 h-2 rounded-full bg-[#F7941D]" />
+                  <span className="hidden md:block pointer-events-none absolute top-1/2 -left-4 w-4 h-px bg-[#F7941D]" />
                 )}
-
+              
                 <textarea
                   className={`w-full h-full min-h-0 resize-none rounded-xl border px-3 py-2 outline-none
-                    focus:ring-1 focus:ring-[#F7941D] text-xs leading-relaxed
+                    text-xs leading-relaxed
+                    ${ownExperienceSelected ? 'border-[#F7941D]' : 'border-gray-200'}
                     ${!ownExperienceSelected ? 'bg-gray-50 text-gray-400 cursor-not-allowed' : 'bg-white'}`}
                   placeholder={
                     ownExperienceSelected
