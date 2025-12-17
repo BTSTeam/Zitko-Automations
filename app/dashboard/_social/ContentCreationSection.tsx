@@ -1,7 +1,7 @@
 // app/dashboard/_social/ContentCreationSection.tsx
 'use client'
 
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 
 /* ========= shared chip + multiselect helpers ========= */
 
@@ -137,18 +137,25 @@ const CONTENT_THEMES = [
 const AUDIENCES = ['Candidates', 'Clients', 'Both']
 const TONES = ['Professional', 'Conversational', 'Playful', 'Bold', 'Storytelling']
 
-// Post Format moved to LEFT below Tone
 const FORMATS = ['Single post', 'Poll', 'Short series (3 posts)', 'Full week plan (Mon–Fri, 5 posts)']
-
 const PLATFORMS = ['LinkedIn', 'Facebook', 'TikTok', 'Instagram']
 
-// Content Length replaces where Post Format was on the RIGHT
 const LENGTH_OPTIONS = ['Short', 'Medium', 'Long']
-
-// Rename Include a hook -> Call to action
 const CTA_OPTIONS = ['Yes', 'No']
 
 /* ========= main component ========= */
+
+function splitIntoOptions(text: string): string[] {
+  const t = (text || '').trim()
+  if (!t) return []
+  // split *before* each "Option X"
+  const parts = t
+    .split(/(?=^\s*Option\s*\d+\b)/gim)
+    .map((s) => s.trim())
+    .filter(Boolean)
+
+  return parts.length ? parts : [t]
+}
 
 export default function ContentCreationSection() {
   const [regions, setRegions] = useState<string[]>([])
@@ -156,7 +163,7 @@ export default function ContentCreationSection() {
   const [themes, setThemes] = useState<string[]>([])
   const [audiences, setAudiences] = useState<string[]>([])
   const [tones, setTones] = useState<string[]>([])
-  const [formats, setFormats] = useState<string[]>([]) // Post Format
+  const [formats, setFormats] = useState<string[]>([])
   const [platforms, setPlatforms] = useState<string[]>([])
   const [contentLengths, setContentLengths] = useState<string[]>([])
   const [callToAction, setCallToAction] = useState<string[]>([])
@@ -167,10 +174,16 @@ export default function ContentCreationSection() {
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<string>('')
 
+  // NEW: collapse controls after Generate
+  const [controlsCollapsed, setControlsCollapsed] = useState(false)
+
   const ownExperienceSelected = themes.includes('Own experience / story')
+
+  const optionBlocks = useMemo(() => splitIntoOptions(result), [result])
 
   async function handleGenerate(e?: React.FormEvent) {
     e?.preventDefault()
+    setControlsCollapsed(true) // NEW: collapse immediately
     setLoading(true)
     setError(null)
     setResult('')
@@ -201,15 +214,16 @@ export default function ContentCreationSection() {
       setResult(typeof json?.content === 'string' ? json.content : '')
     } catch (err: any) {
       setError(err?.message || 'Unexpected error')
+      setControlsCollapsed(false) // NEW: show controls again on error
     } finally {
       setLoading(false)
     }
   }
 
-  async function handleCopy() {
-    if (!result) return
+  async function copyText(text: string) {
+    if (!text) return
     try {
-      await navigator.clipboard.writeText(result)
+      await navigator.clipboard.writeText(text)
     } catch {
       // ignore
     }
@@ -217,146 +231,137 @@ export default function ContentCreationSection() {
 
   return (
     <div className="space-y-4 mt-6">
-      {/* Panel 1 – controls */}
+      {/* Panel 1 – controls (collapsible) */}
       <div className="rounded-2xl border bg-white">
         <div className="flex items-center justify-between px-4 py-3">
           <h3 className="font-semibold">Content Creation</h3>
+
+          <button
+            type="button"
+            onClick={() => setControlsCollapsed((v) => !v)}
+            className="text-xs font-medium rounded-full px-3 py-1.5 bg-gray-100 text-gray-800 hover:bg-gray-200"
+          >
+            {controlsCollapsed ? 'Show options' : 'Hide options'}
+          </button>
         </div>
 
-        <div className="p-4 pt-0">
-          <form onSubmit={handleGenerate}>
-            {/* 7 rows now (Post Format added back on LEFT, Platform remains on LEFT) */}
-            <div className="relative grid grid-cols-1 md:grid-cols-2 md:grid-rows-[40px_40px_40px_40px_40px_40px_40px] gap-3 md:gap-x-4">
-              {/* LEFT */}
-              <div className="md:row-start-1">
-                <MultiSelect options={REGIONS} values={regions} setValues={setRegions} placeholder="Region" />
+        {/* collapsed body */}
+        <div className={controlsCollapsed ? 'hidden' : 'block'}>
+          <div className="p-4 pt-0">
+            <form onSubmit={handleGenerate}>
+              {/* 7 rows (as per your last layout) */}
+              <div className="relative grid grid-cols-1 md:grid-cols-2 md:grid-rows-[40px_40px_40px_40px_40px_40px_40px] gap-3 md:gap-x-4">
+                {/* LEFT */}
+                <div className="md:row-start-1">
+                  <MultiSelect options={REGIONS} values={regions} setValues={setRegions} placeholder="Region" />
+                </div>
+
+                <div className="md:row-start-2">
+                  <MultiSelect
+                    options={PERSPECTIVES}
+                    values={perspectives}
+                    setValues={setPerspectives}
+                    placeholder="Perspective"
+                  />
+                </div>
+
+                <div className="md:row-start-3 relative">
+                  {ownExperienceSelected && (
+                    <span className="hidden md:block pointer-events-none absolute inset-0 rounded-xl ring-1 ring-[#F7941D]" />
+                  )}
+
+                  <MultiSelect
+                    options={CONTENT_THEMES}
+                    values={themes}
+                    setValues={setThemes}
+                    placeholder="Content themes"
+                  />
+
+                  {ownExperienceSelected && (
+                    <span className="hidden md:block pointer-events-none absolute top-1/2 -right-4 w-4 h-px bg-[#F7941D]" />
+                  )}
+                </div>
+
+                <div className="md:row-start-4">
+                  <MultiSelect options={AUDIENCES} values={audiences} setValues={setAudiences} placeholder="Audience" />
+                </div>
+
+                <div className="md:row-start-5">
+                  <MultiSelect options={TONES} values={tones} setValues={setTones} placeholder="Tone" />
+                </div>
+
+                <div className="md:row-start-6">
+                  <MultiSelect options={FORMATS} values={formats} setValues={setFormats} placeholder="Post format" />
+                </div>
+
+                <div className="md:row-start-7">
+                  <MultiSelect options={PLATFORMS} values={platforms} setValues={setPlatforms} placeholder="Platform" />
+                </div>
+
+                {/* RIGHT */}
+                <div className="md:col-start-2 md:row-start-1">
+                  <MultiSelect
+                    options={CTA_OPTIONS}
+                    values={callToAction}
+                    setValues={setCallToAction}
+                    placeholder="Call to action"
+                  />
+                </div>
+
+                <div className="md:col-start-2 md:row-start-2">
+                  <MultiSelect
+                    options={LENGTH_OPTIONS}
+                    values={contentLengths}
+                    setValues={setContentLengths}
+                    placeholder="Content length"
+                  />
+                </div>
+
+                <div className="md:col-start-2 md:row-start-3 md:row-span-4 relative min-h-0">
+                  {ownExperienceSelected && (
+                    <span className="hidden md:block pointer-events-none absolute top-5 -left-4 w-4 h-px bg-[#F7941D]" />
+                  )}
+
+                  <textarea
+                    className={`w-full h-full min-h-0 resize-none rounded-xl border px-3 py-2 outline-none
+                      text-xs leading-relaxed
+                      ${ownExperienceSelected ? 'border-[#F7941D]' : 'border-gray-200'}
+                      ${!ownExperienceSelected ? 'bg-gray-50 text-gray-400 cursor-not-allowed' : 'bg-white'}`}
+                    placeholder={
+                      ownExperienceSelected
+                        ? 'Custom topic / own experience & context'
+                        : "Select 'Own experience / story' to enable this field"
+                    }
+                    value={customTopic}
+                    onChange={(e) => setCustomTopic(e.target.value)}
+                    disabled={!ownExperienceSelected}
+                  />
+                </div>
+
+                {/* Generate aligned with Platform row */}
+                <div className="md:col-start-2 md:row-start-7 flex items-center justify-end">
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="h-10 px-10 rounded-full bg-orange-500 text-white font-semibold hover:opacity-90 disabled:opacity-50"
+                  >
+                    {loading ? 'Generating…' : 'Generate'}
+                  </button>
+                </div>
               </div>
-
-              <div className="md:row-start-2">
-                <MultiSelect
-                  options={PERSPECTIVES}
-                  values={perspectives}
-                  setValues={setPerspectives}
-                  placeholder="Perspective"
-                />
-              </div>
-
-              <div className="md:row-start-3 relative">
-                {/* orange border overlay when enabled */}
-                {ownExperienceSelected && (
-                  <span className="hidden md:block pointer-events-none absolute inset-0 rounded-xl ring-1 ring-[#F7941D]" />
-                )}
-
-                <MultiSelect
-                  options={CONTENT_THEMES}
-                  values={themes}
-                  setValues={setThemes}
-                  placeholder="Content themes"
-                />
-
-                {/* connector line (only when enabled) */}
-                {ownExperienceSelected && (
-                  <span className="hidden md:block pointer-events-none absolute top-1/2 -right-4 w-4 h-px bg-[#F7941D]" />
-                )}
-              </div>
-
-              <div className="md:row-start-4">
-                <MultiSelect options={AUDIENCES} values={audiences} setValues={setAudiences} placeholder="Audience" />
-              </div>
-
-              <div className="md:row-start-5">
-                <MultiSelect options={TONES} values={tones} setValues={setTones} placeholder="Tone" />
-              </div>
-
-              {/* Post Format moved below Tone on LEFT */}
-              <div className="md:row-start-6">
-                <MultiSelect options={FORMATS} values={formats} setValues={setFormats} placeholder="Post format" />
-              </div>
-
-              <div className="md:row-start-7">
-                <MultiSelect options={PLATFORMS} values={platforms} setValues={setPlatforms} placeholder="Platform" />
-              </div>
-
-              {/* RIGHT */}
-              <div className="md:col-start-2 md:row-start-1">
-                <MultiSelect
-                  options={CTA_OPTIONS}
-                  values={callToAction}
-                  setValues={setCallToAction}
-                  placeholder="Call to action"
-                />
-              </div>
-
-              {/* Content Length takes the old Post Format slot */}
-              <div className="md:col-start-2 md:row-start-2">
-                <MultiSelect
-                  options={LENGTH_OPTIONS}
-                  values={contentLengths}
-                  setValues={setContentLengths}
-                  placeholder="Content length"
-                />
-              </div>
-
-              {/* Free type now spans rows 3-6 so it bottoms out with Post Format */}
-              <div className="md:col-start-2 md:row-start-3 md:row-span-4 relative min-h-0">
-                {/* connector continuation line aligned with Content themes row */}
-                {ownExperienceSelected && (
-                  <span className="hidden md:block pointer-events-none absolute top-5 -left-4 w-4 h-px bg-[#F7941D]" />
-                )}
-
-                <textarea
-                  className={`w-full h-full min-h-0 resize-none rounded-xl border px-3 py-2 outline-none
-                    text-xs leading-relaxed
-                    ${ownExperienceSelected ? 'border-[#F7941D]' : 'border-gray-200'}
-                    ${!ownExperienceSelected ? 'bg-gray-50 text-gray-400 cursor-not-allowed' : 'bg-white'}`}
-                  placeholder={
-                    ownExperienceSelected
-                      ? 'Custom topic / own experience & context'
-                      : "Select 'Own experience / story' to enable this field"
-                  }
-                  value={customTopic}
-                  onChange={(e) => setCustomTopic(e.target.value)}
-                  disabled={!ownExperienceSelected}
-                />
-              </div>
-
-              {/* Generate aligned with Platform */}
-              <div className="md:col-start-2 md:row-start-7 flex items-center justify-end">
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="h-10 px-10 rounded-full bg-orange-500 text-white font-semibold hover:opacity-90 disabled:opacity-50"
-                >
-                  {loading ? 'Generating…' : 'Generate'}
-                </button>
-              </div>
-            </div>
-          </form>
+            </form>
+          </div>
         </div>
       </div>
 
-      {/* Panel 2 – output */}
+      {/* Panel 2 – output (now takes precedence) */}
       <div className="rounded-2xl border bg-white">
         <div className="flex items-center justify-between px-4 py-3">
           <h3 className="font-semibold">Generated ideas</h3>
-          <div className="flex items-center gap-2">
-            {loading && <span className="text-xs text-gray-500">Thinking…</span>}
-            <button
-              type="button"
-              onClick={handleCopy}
-              disabled={!result}
-              className={`rounded-full px-3 py-1.5 text-xs font-medium ${
-                result
-                  ? 'bg-gray-100 text-gray-800 hover:bg-gray-200'
-                  : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-              }`}
-            >
-              Copy
-            </button>
-          </div>
+          {loading && <span className="text-xs text-gray-500">Thinking…</span>}
         </div>
 
-        <div className="p-4 pt-0 min-h-[260px]">
+        <div className="p-4 pt-0 min-h-[260px] space-y-3">
           {error ? (
             <div className="text-sm text-red-600">{error}</div>
           ) : !result && !loading ? (
@@ -364,9 +369,20 @@ export default function ContentCreationSection() {
               Choose your options above and click <strong>Generate</strong> to create content.
             </p>
           ) : (
-            <div className="rounded-xl border px-3 py-3 text-sm whitespace-pre-wrap leading-relaxed bg-white">
-              {result}
-            </div>
+            optionBlocks.map((block, idx) => (
+              <div key={idx} className="rounded-xl border bg-white">
+                <div className="flex items-center justify-end px-3 py-2 border-b">
+                  <button
+                    type="button"
+                    onClick={() => copyText(block)}
+                    className="rounded-full px-3 py-1.5 text-xs font-medium bg-gray-100 text-gray-800 hover:bg-gray-200"
+                  >
+                    Copy
+                  </button>
+                </div>
+                <div className="px-3 py-3 text-sm whitespace-pre-wrap leading-relaxed">{block}</div>
+              </div>
+            ))
           )}
         </div>
       </div>
