@@ -1,4 +1,3 @@
-// app/api/social/content-create/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 
 export const runtime = 'nodejs'
@@ -12,6 +11,7 @@ type ContentRequest = {
   audience?: string | null
   tone?: string | null
   postType?: string | null
+  includeHook?: boolean
   platform?: string | null
   contentLength?: string | null
   callToAction?: boolean
@@ -26,33 +26,26 @@ function buildPrompt(body: ContentRequest): string {
     audience,
     tone,
     postType,
+    includeHook,
     platform,
     contentLength,
     callToAction,
   } = body
 
   const isPoll = (postType || '').toLowerCase() === 'poll'
-  const isViralTopic = topics.includes('Viral trend commentary')
-
-  const platformLower = (platform || '').toLowerCase()
-  const isTikTokOrInstagram = platformLower === 'tiktok' || platformLower === 'instagram'
+  const isViral = topics.includes('Viral Trend')
 
   const regionPart = region ? `Region: ${region}.` : ''
   const audiencePart = audience ? `Audience: ${audience}.` : ''
   const tonePart = tone ? `Tone: ${tone}.` : 'Tone: Conversational.'
-  const platformPart = platform ? `Platform: ${platform}.` : ''
   const postTypePart = postType ? `Post format: ${postType}.` : ''
-
-  const lengthPart =
-    contentLength?.toLowerCase() === 'short'
-      ? 'Content length: Short. Keep each option tight and punchy.'
-      : contentLength?.toLowerCase() === 'long'
-      ? 'Content length: Long. Give more detail while staying readable.'
-      : 'Content length: Medium. Enough detail without being wordy.'
+  const platformPart = platform ? `Platform: ${platform}.` : ''
+  const lengthPart = contentLength ? `Content length: ${contentLength}.` : ''
 
   const effectiveTopic = [topics.length ? topics.join(', ') : '', customTopic?.trim() ? customTopic.trim() : '']
     .filter(Boolean)
     .join(' | ')
+
   const topicPart = effectiveTopic ? `Theme / focus: ${effectiveTopic}.` : ''
 
   const perspectivePart = perspective
@@ -65,6 +58,7 @@ function buildPrompt(body: ContentRequest): string {
     ? 'Spelling: Use US English spelling (e.g., specialize, organization, color, center).'
     : 'Spelling: Use UK English spelling (e.g., specialise, organisation, colour, centre).'
 
+  // HARD rules to stop unwanted wording
   const hardRules = [
     'ABSOLUTE RULES:',
     '1) NEVER use extended dashes (— or –). Do not output them. Use a standard hyphen (-) only if needed.',
@@ -76,24 +70,24 @@ function buildPrompt(body: ContentRequest): string {
     '7) Return content only. No markdown. No explanations.',
   ].join(' ')
 
-  // Hook ALWAYS required
-  const alwaysHookRule = [
-    'HOOK REQUIREMENT:',
-    'Start EACH option with a 3-second stop-scrolling hook.',
-    'The hook must be the very first line.',
-    'Keep the hook to one punchy line (max 12 words).',
-  ].join(' ')
+  // Hook behaviour
+  const hookRule = includeHook
+    ? [
+        'Include an opening hook.',
+        audience
+          ? 'Base the hook on the selected audience.'
+          : 'No audience selected - write hooks that work for BOTH candidates and clients.',
+      ].join(' ')
+    : 'Do not force a hook unless it naturally fits.'
 
-  // Call to action (engagement) – optional
   const ctaRule = callToAction
     ? [
-        'CALL TO ACTION REQUIREMENT:',
-        'End each option with a clear call to action to drive engagement (comments, DMs, votes, saves).',
+        'Include a clear call to action designed to increase engagement.',
         audience
-          ? `Tailor the call to action for the selected audience (${audience}).`
-          : 'If audience is not selected, make the call to action work for both candidates and clients.',
+          ? 'Match the call to action to the selected audience.'
+          : 'If no audience selected, use a call to action that works for both candidates and clients.',
       ].join(' ')
-    : 'Do not add a forced call to action at the end.'
+    : 'Do not force a call to action unless it naturally fits.'
 
   // Always 2 ideas
   const twoIdeasRule = isPoll
@@ -107,38 +101,21 @@ function buildPrompt(body: ContentRequest): string {
     ? [
         'POLL REQUIREMENTS (apply to EACH option):',
         'Provide ONE clear question.',
+        'The poll question MUST be a maximum of 140 characters.',
         'Provide at least 4 answer options.',
+        'Each answer option MUST be a maximum of 30 characters.',
         'One option MUST be: "Other (comment below)".',
-        'End by encouraging people to comment what they chose and why (still follow CTA setting).',
+        'End by encouraging people to comment what they chose and why.',
       ].join(' ')
     : ''
 
-  // Platform-specific behaviour
-  const platformRules = isTikTokOrInstagram
-    ? [
-        'PLATFORM REQUIREMENTS:',
-        'This is for TikTok/Instagram.',
-        'Base the idea on broadly viral formats at the moment (or likely to go viral).',
-        'It does NOT need to be security-industry-led. Do not force security references.',
-        'Do not name specific copyrighted sounds, creators, or claim exact stats.',
-        'Describe the trend format conceptually (POV, quick cuts, green-screen reaction, meme caption format, etc.).',
-        'Still write as a recruitment consultant posting to your network.',
-      ].join(' ')
-    : platform
-    ? [
-        'PLATFORM REQUIREMENTS:',
-        `Optimise for ${platform}.`,
-        'If LinkedIn/Facebook, keep it relevant to hiring and the Fire & Security market (but still avoid clichés).',
-      ].join(' ')
-    : ''
-
-  // Viral topic rules (works alongside platform rules)
-  const viralTopicRules = isViralTopic
+  // Viral rules (no claims of live data, but framed as current)
+  const viralRules = isViral
     ? [
         'VIRAL TREND REQUIREMENTS:',
-        'Base the idea on formats that are trending across major social platforms.',
+        'Base the idea on formats that are currently trending across major social platforms.',
         'Do not name specific copyrighted sounds, creators, or make up exact stats.',
-        'Describe the trend format conceptually and write as if it is currently popular.',
+        'Describe the trend format conceptually (POV, quick cuts, green-screen reaction, meme caption format, etc.) and write as if it is currently popular.',
       ].join(' ')
     : ''
 
@@ -150,21 +127,20 @@ function buildPrompt(body: ContentRequest): string {
     hardRules,
     spellingPart,
     regionPart,
-    platformPart,
     audiencePart,
     postTypePart,
+    platformPart,
+    lengthPart,
     perspectivePart,
     topicPart,
-    lengthPart,
     audienceFallback,
     tonePart,
     toneFallback,
-    platformRules,
-    alwaysHookRule,
+    hookRule,
     ctaRule,
     twoIdeasRule,
     pollRules,
-    viralTopicRules,
+    viralRules,
     'Avoid corporate clichés and buzzwords. Keep it clear, confident, and natural.',
   ]
     .filter(Boolean)
