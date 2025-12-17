@@ -1,3 +1,4 @@
+// app/api/social/content-create/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 
 export const runtime = 'nodejs'
@@ -10,9 +11,10 @@ type ContentRequest = {
   customTopic?: string
   audience?: string | null
   tone?: string | null
-  platform?: string | null
   postType?: string | null
-  includeHook?: boolean
+  platform?: string | null
+  contentLength?: string | null
+  callToAction?: boolean
 }
 
 function buildPrompt(body: ContentRequest): string {
@@ -23,9 +25,10 @@ function buildPrompt(body: ContentRequest): string {
     customTopic,
     audience,
     tone,
-    platform,
     postType,
-    includeHook,
+    platform,
+    contentLength,
+    callToAction,
   } = body
 
   const isPoll = (postType || '').toLowerCase() === 'poll'
@@ -39,6 +42,13 @@ function buildPrompt(body: ContentRequest): string {
   const tonePart = tone ? `Tone: ${tone}.` : 'Tone: Conversational.'
   const platformPart = platform ? `Platform: ${platform}.` : ''
   const postTypePart = postType ? `Post format: ${postType}.` : ''
+
+  const lengthPart =
+    contentLength?.toLowerCase() === 'short'
+      ? 'Content length: Short. Keep each option tight and punchy.'
+      : contentLength?.toLowerCase() === 'long'
+      ? 'Content length: Long. Give more detail while staying readable.'
+      : 'Content length: Medium. Enough detail without being wordy.'
 
   const effectiveTopic = [topics.length ? topics.join(', ') : '', customTopic?.trim() ? customTopic.trim() : '']
     .filter(Boolean)
@@ -66,28 +76,40 @@ function buildPrompt(body: ContentRequest): string {
     '7) Return content only. No markdown. No explanations.',
   ].join(' ')
 
-  const hookRule = includeHook
-    ? [
-        'Include an opening hook.',
-        audience
-          ? 'Base the hook on the selected audience.'
-          : 'No audience selected - write hooks that work for BOTH candidates and clients.',
-      ].join(' ')
-    : 'Do not force a hook unless it naturally fits.'
+  // Hook ALWAYS required
+  const alwaysHookRule = [
+    'HOOK REQUIREMENT:',
+    'Start EACH option with a 3-second stop-scrolling hook.',
+    'The hook must be the very first line.',
+    'Keep the hook to one punchy line (max 12 words).',
+  ].join(' ')
 
+  // Call to action (engagement) – optional
+  const ctaRule = callToAction
+    ? [
+        'CALL TO ACTION REQUIREMENT:',
+        'End each option with a clear call to action to drive engagement (comments, DMs, votes, saves).',
+        audience
+          ? `Tailor the call to action for the selected audience (${audience}).`
+          : 'If audience is not selected, make the call to action work for both candidates and clients.',
+      ].join(' ')
+    : 'Do not add a forced call to action at the end.'
+
+  // Always 2 ideas
   const twoIdeasRule = isPoll
     ? 'Generate 2 different poll options. Label them Option 1 and Option 2.'
     : postType?.toLowerCase().includes('full week')
     ? 'Generate 2 different full week plans. Label them Option 1 and Option 2. Each option must include Day 1 to Day 5.'
     : 'Generate 2 different content options. Label them Option 1 and Option 2.'
 
+  // Poll rules
   const pollRules = isPoll
     ? [
         'POLL REQUIREMENTS (apply to EACH option):',
         'Provide ONE clear question.',
         'Provide at least 4 answer options.',
         'One option MUST be: "Other (comment below)".',
-        'End by encouraging people to comment what they chose and why.',
+        'End by encouraging people to comment what they chose and why (still follow CTA setting).',
       ].join(' ')
     : ''
 
@@ -95,7 +117,8 @@ function buildPrompt(body: ContentRequest): string {
   const platformRules = isTikTokOrInstagram
     ? [
         'PLATFORM REQUIREMENTS:',
-        'This is for TikTok/Instagram. The idea must be based on broadly viral formats at the moment (or likely to go viral).',
+        'This is for TikTok/Instagram.',
+        'Base the idea on broadly viral formats at the moment (or likely to go viral).',
         'It does NOT need to be security-industry-led. Do not force security references.',
         'Do not name specific copyrighted sounds, creators, or claim exact stats.',
         'Describe the trend format conceptually (POV, quick cuts, green-screen reaction, meme caption format, etc.).',
@@ -113,7 +136,7 @@ function buildPrompt(body: ContentRequest): string {
   const viralTopicRules = isViralTopic
     ? [
         'VIRAL TREND REQUIREMENTS:',
-        'Base the idea on formats that are currently trending across major social platforms.',
+        'Base the idea on formats that are trending across major social platforms.',
         'Do not name specific copyrighted sounds, creators, or make up exact stats.',
         'Describe the trend format conceptually and write as if it is currently popular.',
       ].join(' ')
@@ -132,11 +155,13 @@ function buildPrompt(body: ContentRequest): string {
     postTypePart,
     perspectivePart,
     topicPart,
+    lengthPart,
     audienceFallback,
     tonePart,
     toneFallback,
     platformRules,
-    hookRule,
+    alwaysHookRule,
+    ctaRule,
     twoIdeasRule,
     pollRules,
     viralTopicRules,
@@ -200,9 +225,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ content })
   } catch (err: any) {
-    return NextResponse.json(
-      { error: 'Failed to generate content.', detail: err?.message },
-      { status: 500 },
-    )
+    return NextResponse.json({ error: 'Failed to generate content.', detail: err?.message }, { status: 500 })
   }
 }
