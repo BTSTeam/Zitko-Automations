@@ -1,7 +1,6 @@
-// app/dashboard/_social/ContentCreationSection.tsx
 'use client'
 
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 
 /* ========= shared chip + multiselect helpers ========= */
 
@@ -65,27 +64,30 @@ function MultiSelect({
   return (
     <div
       ref={ref}
-      className={`relative rounded-xl border h-10 px-3 bg-white ${
-        highlight ? 'border-[#F7941D] ring-1 ring-[#F7941D]/25' : 'border-gray-200'
-      }`}
+      className={[
+        'relative rounded-xl h-10 px-3 bg-white border',
+        highlight ? 'border-[#F7941D] ring-1 ring-[#F7941D]/20' : 'border-gray-200',
+      ].join(' ')}
     >
       <button
         type="button"
         className="w-full h-full text-left flex items-center justify-between"
         onClick={() => setOpen((o) => !o)}
+        title={values.length ? `${values.length} selected` : undefined}
       >
         <div className="flex items-center gap-2 flex-nowrap overflow-x-auto mr-2">
           {values.length ? (
             values.map((v) => (
-              <Chip
-                key={v}
-                onRemove={(e) => {
-                  e?.stopPropagation()
-                  removeChip(v)
-                }}
-              >
-                {v}
-              </Chip>
+              <span key={v} className="shrink-0">
+                <Chip
+                  onRemove={(e) => {
+                    e?.stopPropagation()
+                    removeChip(v)
+                  }}
+                >
+                  {v}
+                </Chip>
+              </span>
             ))
           ) : (
             <span className="text-sm text-gray-400">{placeholder}</span>
@@ -106,7 +108,10 @@ function MultiSelect({
       {open && (
         <div className="absolute z-10 mt-1 w-full bg-white border rounded-xl shadow-sm max-h-60 overflow-y-auto text-sm">
           {options.map((opt) => (
-            <label key={opt} className="flex items-center px-3 py-2 hover:bg-gray-50 cursor-pointer gap-2">
+            <label
+              key={opt}
+              className="flex items-center px-3 py-2 hover:bg-gray-50 cursor-pointer gap-2 text-sm"
+            >
               <input
                 type="checkbox"
                 checked={values.includes(opt)}
@@ -145,26 +150,47 @@ const AUDIENCES = ['Candidates', 'Clients', 'Both']
 const TONES = ['Professional', 'Conversational', 'Playful', 'Bold', 'Storytelling']
 
 const FORMATS = ['Single post', 'Poll', 'Short series (3 posts)', 'Full week plan (Mon–Fri, 5 posts)']
-const PLATFORMS = ['LinkedIn', 'Facebook', 'TikTok', 'Instagram']
 
-const LENGTH_OPTIONS = ['Short', 'Medium', 'Long']
+const PLATFORM_OPTIONS = ['LinkedIn', 'Facebook', 'TikTok', 'Instagram']
+const CONTENT_LENGTHS = ['Short', 'Medium', 'Long']
 const CTA_OPTIONS = ['Yes', 'No']
 
-/* ========= output splitting ========= */
+/* ========= helpers ========= */
 
-function splitIntoOptions(text: string): string[] {
+function splitIntoOptions(text: string): Array<{ title: string; body: string; full: string }> {
   const t = (text || '').trim()
   if (!t) return []
-  const parts = t
-    .split(/(?=^\s*Option\s*\d+\b)/gim)
-    .map((s) => s.trim())
-    .filter(Boolean)
-  return parts.length ? parts : [t]
+
+  const norm = t.replace(/\r\n/g, '\n')
+  const re = /(^|\n)\s*(Option\s*\d+)\s*\n/gi
+
+  const hits: Array<{ idx: number; title: string }> = []
+  let m: RegExpExecArray | null
+  while ((m = re.exec(norm)) !== null) {
+    hits.push({ idx: m.index + (m[1] ? m[1].length : 0), title: (m[2] || '').trim() })
+  }
+
+  if (!hits.length) {
+    return [{ title: 'Result', body: norm, full: norm }]
+  }
+
+  const out: Array<{ title: string; body: string; full: string }> = []
+  for (let i = 0; i < hits.length; i++) {
+    const start = hits[i].idx
+    const end = i + 1 < hits.length ? hits[i + 1].idx : norm.length
+    const block = norm.slice(start, end).trim()
+    const title = hits[i].title
+    const body = block.replace(new RegExp(`^${title}\\s*\\n?`, 'i'), '').trim()
+    out.push({ title, body, full: `${title}\n${body}`.trim() })
+  }
+  return out
 }
 
 /* ========= main component ========= */
 
 export default function ContentCreationSection() {
+  const [controlsOpen, setControlsOpen] = useState(true)
+
   const [regions, setRegions] = useState<string[]>([])
   const [perspectives, setPerspectives] = useState<string[]>([])
   const [themes, setThemes] = useState<string[]>([])
@@ -181,36 +207,29 @@ export default function ContentCreationSection() {
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<string>('')
 
-  // Sourcing-style collapse state
-  const [contentSearchOpen, setContentSearchOpen] = useState(true)
+  const [copiedKey, setCopiedKey] = useState<string | null>(null)
 
   const ownExperienceSelected = themes.includes('Own experience / story')
-  const optionBlocks = useMemo(() => splitIntoOptions(result), [result])
 
   async function handleGenerate(e?: React.FormEvent) {
     e?.preventDefault()
-
-    // collapse immediately so output takes precedence (same behaviour as sourcing)
-    setContentSearchOpen(false)
-
+    setControlsOpen(false) // collapse like sourcing
     setLoading(true)
     setError(null)
     setResult('')
+    setCopiedKey(null)
 
     const payload = {
       region: regions[0] ?? null,
       perspective: perspectives[0] ?? null,
       topics: themes,
+      customTopic: ownExperienceSelected ? customTopic : '',
       audience: audiences[0] ?? null,
       tone: tones[0] ?? null,
       postType: formats[0] ?? null,
       platform: platforms[0] ?? null,
       contentLength: contentLengths[0] ?? null,
       callToAction: callToAction[0] === 'Yes',
-      customTopic: ownExperienceSelected ? customTopic : '',
-
-      // keep compatibility with older API routes that still expect includeHook
-      includeHook: true,
     }
 
     try {
@@ -223,7 +242,7 @@ export default function ContentCreationSection() {
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json?.error || `Request failed (${res.status})`)
 
-      setResult(typeof json?.content === 'string' ? json.content : '')
+      setResult(typeof json?.content === 'string' ? json.content : 'No content returned.')
     } catch (err: any) {
       setError(err?.message || 'Unexpected error')
     } finally {
@@ -231,24 +250,27 @@ export default function ContentCreationSection() {
     }
   }
 
-  async function copyText(text: string) {
-    if (!text) return
+  async function copyText(text: string, key: string) {
     try {
       await navigator.clipboard.writeText(text)
+      setCopiedKey(key)
+      setTimeout(() => setCopiedKey(null), 1200)
     } catch {
       // ignore
     }
   }
 
+  const options = splitIntoOptions(result)
+
   return (
     <div className="space-y-4 mt-6">
-      {/* Panel 1 – controls (Sourcing-style collapsible) */}
+      {/* Panel 1 – controls (collapsible like sourcing) */}
       <div className="rounded-2xl border bg-white shadow-sm">
         <button
           type="button"
-          onClick={() => setContentSearchOpen((o) => !o)}
+          onClick={() => setControlsOpen((o) => !o)}
           className="w-full flex items-center justify-between px-4 py-3"
-          aria-expanded={contentSearchOpen}
+          aria-expanded={controlsOpen}
         >
           <h3 className="font-semibold">Content Creation</h3>
           <svg
@@ -256,23 +278,22 @@ export default function ContentCreationSection() {
             height="16"
             viewBox="0 0 20 20"
             fill="currentColor"
-            className={contentSearchOpen ? 'rotate-180 transition-transform' : 'transition-transform'}
+            className={controlsOpen ? 'rotate-180 transition-transform' : 'transition-transform'}
           >
             <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z" />
           </svg>
         </button>
 
-        {contentSearchOpen && (
+        {controlsOpen && (
           <div className="p-4 pt-0">
             <form onSubmit={handleGenerate}>
-              {/* Desktop: 7 fixed rows so everything aligns */}
-              <div className="relative grid grid-cols-1 md:grid-cols-2 md:grid-rows-[40px_40px_40px_40px_40px_40px_40px] gap-3 md:gap-x-4">
-                {/* LEFT */}
-                <div className="md:row-start-1">
+              <div className="relative grid grid-cols-1 md:grid-cols-2 md:grid-rows-[40px_40px_40px_40px_40px_40px_40px] gap-3 md:gap-x-4 items-start">
+                {/* LEFT column */}
+                <div className="md:col-start-1 md:row-start-1">
                   <MultiSelect options={REGIONS} values={regions} setValues={setRegions} placeholder="Region" />
                 </div>
 
-                <div className="md:row-start-2">
+                <div className="md:col-start-1 md:row-start-2">
                   <MultiSelect
                     options={PERSPECTIVES}
                     values={perspectives}
@@ -281,7 +302,7 @@ export default function ContentCreationSection() {
                   />
                 </div>
 
-                <div className="md:row-start-3 relative">
+                <div className="md:col-start-1 md:row-start-3 relative">
                   <MultiSelect
                     options={CONTENT_THEMES}
                     values={themes}
@@ -290,34 +311,34 @@ export default function ContentCreationSection() {
                     highlight={ownExperienceSelected}
                   />
 
-                  {/* connector line (only when Own experience is selected) */}
+                  {/* SINGLE connector line (no extra segments) */}
                   {ownExperienceSelected && (
-                    <span className="hidden md:block pointer-events-none absolute top-1/2 -right-4 w-4 h-px bg-[#F7941D]" />
+                    <span className="hidden md:block pointer-events-none absolute top-1/2 right-[-20px] w-[20px] h-px bg-[#F7941D]" />
                   )}
                 </div>
 
-                <div className="md:row-start-4">
+                <div className="md:col-start-1 md:row-start-4">
                   <MultiSelect options={AUDIENCES} values={audiences} setValues={setAudiences} placeholder="Audience" />
                 </div>
 
-                <div className="md:row-start-5">
+                <div className="md:col-start-1 md:row-start-5">
                   <MultiSelect options={TONES} values={tones} setValues={setTones} placeholder="Tone" />
                 </div>
 
-                <div className="md:row-start-6">
+                <div className="md:col-start-1 md:row-start-6">
                   <MultiSelect options={FORMATS} values={formats} setValues={setFormats} placeholder="Post format" />
                 </div>
 
-                <div className="md:row-start-7">
+                <div className="md:col-start-1 md:row-start-7">
                   <MultiSelect
-                    options={PLATFORMS}
+                    options={PLATFORM_OPTIONS}
                     values={platforms}
                     setValues={setPlatforms}
                     placeholder="Platform"
                   />
                 </div>
 
-                {/* RIGHT */}
+                {/* RIGHT column */}
                 <div className="md:col-start-2 md:row-start-1">
                   <MultiSelect
                     options={CTA_OPTIONS}
@@ -329,25 +350,23 @@ export default function ContentCreationSection() {
 
                 <div className="md:col-start-2 md:row-start-2">
                   <MultiSelect
-                    options={LENGTH_OPTIONS}
+                    options={CONTENT_LENGTHS}
                     values={contentLengths}
                     setValues={setContentLengths}
                     placeholder="Content length"
                   />
                 </div>
 
-                {/* Free type: aligned with Content themes -> Post format (rows 3-6) */}
-                <div className="md:col-start-2 md:row-start-3 md:row-span-4 relative min-h-0">
-                  {/* connector line end */}
-                  {ownExperienceSelected && (
-                    <span className="hidden md:block pointer-events-none absolute top-1/2 -left-4 w-4 h-px bg-[#F7941D]" />
-                  )}
-
+                {/* Free type spans rows 3-5 (aligns bottom with Tone) */}
+                <div className="md:col-start-2 md:row-start-3 md:row-span-3 relative min-h-0">
                   <textarea
-                    className={`w-full h-full min-h-0 resize-none rounded-xl border px-3 py-2 outline-none
-                      focus:ring-1 focus:ring-[#F7941D] text-xs leading-relaxed
-                      ${ownExperienceSelected ? 'border-[#F7941D]' : 'border-gray-200'}
-                      ${!ownExperienceSelected ? 'bg-gray-50 text-gray-400 cursor-not-allowed' : 'bg-white'}`}
+                    className={[
+                      'w-full h-full min-h-0 resize-none rounded-xl border px-3 py-2 outline-none',
+                      'focus:ring-1 focus:ring-[#F7941D] text-xs leading-relaxed',
+                      ownExperienceSelected
+                        ? 'bg-white border-[#F7941D] ring-1 ring-[#F7941D]/20'
+                        : 'bg-gray-50 text-gray-400 cursor-not-allowed border-gray-200',
+                    ].join(' ')}
                     placeholder={
                       ownExperienceSelected
                         ? 'Custom topic / own experience & context'
@@ -359,12 +378,12 @@ export default function ContentCreationSection() {
                   />
                 </div>
 
-                {/* Generate aligned with Platform row (row 7) */}
+                {/* Generate aligned with Platform (row 7) */}
                 <div className="md:col-start-2 md:row-start-7 flex items-center justify-end">
                   <button
                     type="submit"
+                    className="h-10 rounded-full bg-orange-500 text-white px-10 text-sm font-semibold hover:opacity-90 disabled:opacity-50"
                     disabled={loading}
-                    className="h-10 px-10 rounded-full bg-orange-500 text-white font-semibold hover:opacity-90 disabled:opacity-50"
                   >
                     {loading ? 'Generating…' : 'Generate'}
                   </button>
@@ -379,31 +398,41 @@ export default function ContentCreationSection() {
       <div className="rounded-2xl border bg-white shadow-sm">
         <div className="flex items-center justify-between px-4 py-3">
           <h3 className="font-semibold">Generated ideas</h3>
-          {loading && <span className="text-xs text-gray-500">Thinking…</span>}
         </div>
 
-        <div className="p-4 pt-0 min-h-[260px] space-y-3">
+        <div className="p-4 pt-0">
           {error ? (
             <div className="text-sm text-red-600">{error}</div>
           ) : !result && !loading ? (
             <p className="text-sm text-gray-500">
               Choose your options above and click <strong>Generate</strong> to create content.
             </p>
+          ) : loading ? (
+            <div className="text-sm text-gray-500">Thinking…</div>
           ) : (
-            optionBlocks.map((block, idx) => (
-              <div key={idx} className="rounded-xl border bg-white">
-                <div className="flex items-center justify-end px-3 py-2 border-b">
-                  <button
-                    type="button"
-                    onClick={() => copyText(block)}
-                    className="rounded-full px-3 py-1.5 text-xs font-medium bg-gray-100 text-gray-800 hover:bg-gray-200"
-                  >
-                    Copy
-                  </button>
-                </div>
-                <div className="px-3 py-3 text-sm whitespace-pre-wrap leading-relaxed">{block}</div>
-              </div>
-            ))
+            <div className="space-y-4">
+              {options.map((opt, idx) => {
+                const key = `opt-${idx}`
+                return (
+                  <div key={key} className="rounded-xl border bg-white overflow-hidden">
+                    {/* Option title + Copy on same row */}
+                    <div className="px-3 py-2 border-b flex items-center justify-between">
+                      <div className="text-sm font-semibold">{opt.title}</div>
+                      <button
+                        type="button"
+                        onClick={() => copyText(opt.full, key)}
+                        className="rounded-full bg-gray-100 text-gray-800 hover:bg-gray-200 px-3 py-1.5 text-xs font-medium"
+                        title="Copy"
+                      >
+                        {copiedKey === key ? 'Copied' : 'Copy'}
+                      </button>
+                    </div>
+
+                    <div className="px-3 py-3 text-sm whitespace-pre-wrap leading-relaxed">{opt.body}</div>
+                  </div>
+                )
+              })}
+            </div>
           )}
         </div>
       </div>
