@@ -22,26 +22,44 @@ function isUSRegion(regionRaw: string): boolean {
   return r === 'usa' || r === 'us' || r === 'united states' || r === 'united states of america'
 }
 
-/**
- * Remove emojis / pictographs defensively.
- * (Model instruction should prevent them, but we also post-process.)
- */
+/** Remove emojis / pictographs defensively. */
 function stripEmojis(input: string): string {
   try {
-    // Remove most emoji/pictographs
     let out = input.replace(/\p{Extended_Pictographic}/gu, '')
-
-    // Clean up common leftover unicode joiners/variation selectors
     out = out.replace(/[\u200D\uFE0F]/g, '')
-
-    // Remove excessive spaces created by stripping
     out = out.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
-
     return out
   } catch {
-    // Fallback: return as-is if unicode properties aren't supported
     return input
   }
+}
+
+/**
+ * Fix ONLY "current-year" phrasing if the model incorrectly uses another year as "now".
+ * This keeps genuine historic/future references intact.
+ */
+function fixMisstatedCurrentYear(input: string): string {
+  let out = input
+
+  // e.g. "As we navigate through 2023..." -> "As we navigate through 2025..."
+  out = out.replace(
+    /\b(as\s+we\s+(?:navigate|move|head)\s+(?:through|into)\s+)20\d{2}\b/gi,
+    (_m, p1) => `${p1}2025`
+  )
+
+  // e.g. "This year (2023)..." / "This year 2023..." -> "... 2025"
+  out = out.replace(
+    /\b(this\s+year|so\s+far|to\s+date|currently|right\s+now|today)\s*\(?\s*(20\d{2})\s*\)?/gi,
+    (m, p1, year) => (year === '2025' ? m : `${p1} 2025`)
+  )
+
+  // e.g. "In 2023 so far..." -> "In 2025 so far..."
+  out = out.replace(
+    /\b(in|during)\s+(20\d{2})(?=\s+(?:so\s+far|to\s+date|currently|right\s+now)\b)/gi,
+    (m, p1, year) => (year === '2025' ? m : `${p1} 2025`)
+  )
+
+  return out
 }
 
 export async function POST(req: Request) {
@@ -63,7 +81,6 @@ export async function POST(req: Request) {
     const ownExperienceSelected = topics.includes('Own Experience / Story')
     const jobMarketSelected = topics.includes('Job Market Update')
 
-    // Only treat free-type as "required" when one of these themes is selected
     if ((ownExperienceSelected || jobMarketSelected) && !customTopic) {
       return NextResponse.json(
         { error: 'Please add detail in the free type box for Own Experience / Story or Job Market Update.' },
@@ -84,9 +101,22 @@ export async function POST(req: Request) {
       'The poster is a recruiter/hiring partner for the industry (not an engineer/installer).',
       'Avoid AI clichés, overly salesy tone, and generic fluff.',
       'Do NOT use emojis, emoticons, or icon bullets (e.g. ✅ 🔥 🚀). Plain text only.',
+
+      // year control (allow other years, but never as "current")
+      'Assume the current year is 2025.',
+      'You MAY reference other years (past or future) only if clearly framed as past/future.',
+      'Never frame any year other than 2025 as the present (avoid phrases like "as we navigate through 2023").',
+
+      // spelling control by region
       useUSSpelling
         ? 'Use US English spelling.'
         : 'Use UK English spelling and punctuation (e.g., specialise, organisation, programme, colour). Do NOT use US spellings.',
+
+      // presentation
+      'Make the content easy to scan using short paragraphs and line breaks.',
+      'Bullet points are OPTIONAL. Only use them if it improves readability, and if used use hyphen bullets "-" only.',
+
+      // contract
       'Return EXACTLY 2 different ideas.',
       'Format strictly as:',
       'Option 1',
@@ -99,8 +129,7 @@ export async function POST(req: Request) {
     const freeTypeInstruction = jobMarketSelected
       ? [
           'The user selected "Job Market Update". Use the user provided notes below as the basis for the update.',
-          'Turn them into a clear, recruiter-style market update with practical, factual detail.',
-          'If any category is missing, keep it brief rather than inventing specifics.',
+          'Keep it practical and believable. If something is unknown, keep it general rather than inventing specifics.',
           '',
           'User notes:',
           customTopic,
@@ -130,8 +159,8 @@ export async function POST(req: Request) {
       '',
       freeTypeInstruction,
       '',
-      'Important: No emojis or emoticons.',
-      useUSSpelling ? 'Important: Use US English spelling.' : 'Important: Use UK English spelling.',
+      'No emojis.',
+      'Current year must be treated as 2025.',
       'Now generate the two options in the required format.',
     ]
       .filter(Boolean)
@@ -166,8 +195,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'No content returned.' }, { status: 500 })
     }
 
-    // Defensive: strip emojis even if the model disobeys
-    const content = stripEmojis(raw)
+    // Defensive clean-up
+    let content = stripEmojis(raw)
+    content = fixMisstatedCurrentYear(content)
 
     return NextResponse.json({ content })
   } catch (err: any) {
