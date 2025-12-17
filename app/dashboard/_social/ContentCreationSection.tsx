@@ -322,7 +322,7 @@ export default function ContentCreationSection() {
             <button
               type="button"
               onClick={() => setControlsOpen((o) => !o)}
-              className="h-9 w-9 rounded-full border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 flex items-center justify-center"
+              className="h-9 w-9 bg-white text-gray-600 hover:bg-gray-50 flex items-center justify-center"
               aria-label={controlsOpen ? 'Collapse' : 'Expand'}
               title={controlsOpen ? 'Collapse' : 'Expand'}
             >
