@@ -136,6 +136,8 @@ const CONTENT_THEMES = [
 const AUDIENCES = ['Candidates', 'Clients', 'Both']
 const TONES = ['Professional', 'Conversational', 'Playful', 'Bold', 'Storytelling']
 
+const PLATFORMS = ['LinkedIn', 'Facebook', 'TikTok', 'Instagram']
+
 const FORMATS = ['Single post', 'Poll', 'Short series (3 posts)', 'Full week plan (Mon–Fri, 5 posts)']
 const HOOK_OPTIONS = ['Yes', 'No']
 
@@ -147,6 +149,7 @@ export default function ContentCreationSection() {
   const [themes, setThemes] = useState<string[]>([])
   const [audiences, setAudiences] = useState<string[]>([])
   const [tones, setTones] = useState<string[]>([])
+  const [platforms, setPlatforms] = useState<string[]>([])
   const [formats, setFormats] = useState<string[]>([])
   const [includeHook, setIncludeHook] = useState<string[]>([])
 
@@ -167,11 +170,12 @@ export default function ContentCreationSection() {
       region: regions[0] ?? null,
       perspective: perspectives[0] ?? null,
       topics: themes,
+      customTopic: ownExperienceSelected ? customTopic : '',
       audience: audiences[0] ?? null,
       tone: tones[0] ?? null,
+      platform: platforms[0] ?? null,
       postType: formats[0] ?? null,
       includeHook: includeHook[0] === 'Yes',
-      customTopic: ownExperienceSelected ? customTopic : '',
     }
 
     try {
@@ -183,7 +187,6 @@ export default function ContentCreationSection() {
 
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json?.error || `Request failed (${res.status})`)
-
       setResult(typeof json?.content === 'string' ? json.content : '')
     } catch (err: any) {
       setError(err?.message || 'Unexpected error')
@@ -211,7 +214,8 @@ export default function ContentCreationSection() {
 
         <div className="p-4 pt-0">
           <form onSubmit={handleGenerate}>
-            <div className="relative grid grid-cols-1 md:grid-cols-2 md:grid-rows-[40px_40px_40px_40px_40px] gap-3 md:gap-x-4">
+            {/* 6 rows now (Platform added). Textarea spans to align with Tone, button aligns with Platform */}
+            <div className="relative grid grid-cols-1 md:grid-cols-2 md:grid-rows-[40px_40px_40px_40px_40px_40px] gap-3 md:gap-x-4">
               {/* LEFT */}
               <div className="md:row-start-1">
                 <MultiSelect options={REGIONS} values={regions} setValues={setRegions} placeholder="Region" />
@@ -231,15 +235,15 @@ export default function ContentCreationSection() {
                 {ownExperienceSelected && (
                   <span className="hidden md:block pointer-events-none absolute inset-0 rounded-xl ring-1 ring-[#F7941D]" />
                 )}
-              
+
                 <MultiSelect
                   options={CONTENT_THEMES}
                   values={themes}
                   setValues={setThemes}
                   placeholder="Content themes"
                 />
-              
-                {/* connector line (no dot) */}
+
+                {/* connector line (only when enabled) */}
                 {ownExperienceSelected && (
                   <span className="hidden md:block pointer-events-none absolute top-1/2 -right-4 w-4 h-px bg-[#F7941D]" />
                 )}
@@ -251,6 +255,10 @@ export default function ContentCreationSection() {
 
               <div className="md:row-start-5">
                 <MultiSelect options={TONES} values={tones} setValues={setTones} placeholder="Tone" />
+              </div>
+
+              <div className="md:row-start-6">
+                <MultiSelect options={PLATFORMS} values={platforms} setValues={setPlatforms} placeholder="Platform" />
               </div>
 
               {/* RIGHT */}
@@ -267,13 +275,13 @@ export default function ContentCreationSection() {
                 <MultiSelect options={FORMATS} values={formats} setValues={setFormats} placeholder="Post format" />
               </div>
 
-              {/* Free type */}
-              <div className="md:col-start-2 md:row-start-3 md:row-span-2 relative min-h-0">
-                {/* connector continuation line (aligned with Content themes row) */}
+              {/* Free type: now spans rows 3-5 so it bottoms out with Tone */}
+              <div className="md:col-start-2 md:row-start-3 md:row-span-3 relative min-h-0">
+                {/* connector continuation line aligned with Content themes row */}
                 {ownExperienceSelected && (
                   <span className="hidden md:block pointer-events-none absolute top-5 -left-4 w-4 h-px bg-[#F7941D]" />
                 )}
-              
+
                 <textarea
                   className={`w-full h-full min-h-0 resize-none rounded-xl border px-3 py-2 outline-none
                     text-xs leading-relaxed
@@ -290,7 +298,8 @@ export default function ContentCreationSection() {
                 />
               </div>
 
-              <div className="md:col-start-2 md:row-start-5 flex items-center justify-end">
+              {/* Generate: now aligned with Platform */}
+              <div className="md:col-start-2 md:row-start-6 flex items-center justify-end">
                 <button
                   type="submit"
                   disabled={loading}
