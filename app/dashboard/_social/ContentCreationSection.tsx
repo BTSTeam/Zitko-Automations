@@ -212,6 +212,20 @@ export default function ContentCreationSection() {
 
   const ownExperienceSelected = themes.includes('Own Experience / Story')
 
+  function resetAllSelections() {
+    setRegions([])
+    setPerspectives([])
+    setThemes([])
+    setAudiences([])
+    setTones([])
+    setFormats([])
+    setPlatforms([])
+    setContentLengths([])
+    setCallToAction([])
+    setCustomTopic('')
+    setCopiedKey(null)
+  }
+
   async function handleGenerate(e?: React.FormEvent) {
     e?.preventDefault()
     setControlsOpen(false)
@@ -267,23 +281,54 @@ export default function ContentCreationSection() {
     <div className="space-y-4 mt-6">
       {/* Panel 1 – controls */}
       <div className="rounded-2xl border bg-white shadow-sm">
-        <button
-          type="button"
-          onClick={() => setControlsOpen((o) => !o)}
-          className="w-full flex items-center justify-between px-4 py-3"
-          aria-expanded={controlsOpen}
-        >
-          <h3 className="font-semibold">Content Creation</h3>
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 20 20"
-            fill="currentColor"
-            className={controlsOpen ? 'rotate-180 transition-transform' : 'transition-transform'}
+        <div className="w-full flex items-center justify-between px-4 py-3">
+          <button
+            type="button"
+            onClick={() => setControlsOpen((o) => !o)}
+            className="flex items-center gap-3 text-left"
+            aria-expanded={controlsOpen}
           >
-            <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z" />
-          </svg>
-        </button>
+            <h3 className="font-semibold">Content Creation</h3>
+          </button>
+
+          <div className="flex items-center gap-2">
+            {/* Refresh */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                resetAllSelections()
+              }}
+              className="h-9 w-9 rounded-full border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 flex items-center justify-center"
+              aria-label="Reset selections"
+              title="Reset selections"
+            >
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+                <path d="M21 3v6h-6" />
+              </svg>
+            </button>
+
+            {/* Collapse */}
+            <button
+              type="button"
+              onClick={() => setControlsOpen((o) => !o)}
+              className="h-9 w-9 rounded-full border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 flex items-center justify-center"
+              aria-label={controlsOpen ? 'Collapse' : 'Expand'}
+              title={controlsOpen ? 'Collapse' : 'Expand'}
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                className={controlsOpen ? 'rotate-180 transition-transform' : 'transition-transform'}
+              >
+                <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z" />
+              </svg>
+            </button>
+          </div>
+        </div>
 
         {controlsOpen && (
           <div className="p-4 pt-0">
