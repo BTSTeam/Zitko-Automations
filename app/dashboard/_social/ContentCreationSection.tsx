@@ -269,9 +269,9 @@ export default function ContentCreationSection() {
 
               {/* Free type */}
               <div className="md:col-start-2 md:row-start-3 md:row-span-2 relative min-h-0">
-                {/* connector continuation line (no dot) */}
+                {/* connector continuation line (aligned with Content themes row) */}
                 {ownExperienceSelected && (
-                  <span className="hidden md:block pointer-events-none absolute top-1/2 -left-4 w-4 h-px bg-[#F7941D]" />
+                  <span className="hidden md:block pointer-events-none absolute top-5 -left-4 w-4 h-px bg-[#F7941D]" />
                 )}
               
                 <textarea
