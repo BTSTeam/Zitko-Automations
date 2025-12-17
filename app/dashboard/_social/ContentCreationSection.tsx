@@ -154,13 +154,11 @@ const PLATFORM_OPTIONS = ['LinkedIn', 'Facebook', 'TikTok', 'Instagram']
 const CONTENT_LENGTHS = ['Short', 'Medium', 'Long']
 const CTA_OPTIONS = ['Yes', 'No']
 
+const OWN_EXPERIENCE_PLACEHOLDER =
+  'Make brief notes of your experiences / story for content to be generated'
+
 const JOB_MARKET_PLACEHOLDER =
-  `Brief overview of current hiring activity, roles in demand, and changes in recruitment volume.\n\n` +
-  `Summary of salary movement, benefits, incentives, and notable pay changes within the market.\n\n` +
-  `Insights into candidate supply, confidence levels, job-seeker behaviour, and movement trends.\n\n` +
-  `Update on how specific industries or specialisms are performing and any emerging roles or skills.\n\n` +
-  `Overview of regional hiring differences, location-based demand, and remote vs on-site trends.\n\n` +
-  `Forward-looking insights on expected market movement, hiring confidence, and future demand.`
+  'What would you like your Job Market Update to focus on? Hiring demand, salary trends, candidate behaviour, industry movement, regional insights, or future market outlook.'
 
 /* ========= helpers ========= */
 
@@ -220,6 +218,11 @@ export default function ContentCreationSection() {
   const ownExperienceSelected = themes.includes('Own Experience / Story')
   const jobMarketSelected = themes.includes('Job Market Update')
   const freeTypeEnabled = ownExperienceSelected || jobMarketSelected
+  const freeTypePlaceholder = jobMarketSelected
+  ? JOB_MARKET_PLACEHOLDER
+  : ownExperienceSelected
+  ? OWN_EXPERIENCE_PLACEHOLDER
+  : ''
 
   async function handleGenerate(e?: React.FormEvent) {
     e?.preventDefault()
@@ -422,11 +425,7 @@ export default function ContentCreationSection() {
                         ? 'bg-white border-[#F7941D] ring-1 ring-[#F7941D]/20'
                         : 'bg-gray-50 text-gray-400 cursor-not-allowed border-gray-200',
                     ].join(' ')}
-                    placeholder={
-                      freeTypeEnabled
-                        ? JOB_MARKET_PLACEHOLDER
-                        : "Select 'Own Experience / Story' or 'Job Market Update' to enable this field"
-                    }
+                    placeholder={freeTypeEnabled ? freeTypePlaceholder : ''}
                     value={customTopic}
                     onChange={(e) => setCustomTopic(e.target.value)}
                     disabled={!freeTypeEnabled}
