@@ -68,7 +68,8 @@ export default function ActiveCampaignTab() {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [poolTotal, setPoolTotal] = useState<number | null>(null)
-
+  const [countStatus, setCountStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
+  
   // Tags & list
   const [tags, setTags] = useState<Tag[]>([])
   const [selectedTags, setSelectedTags] = useState<string[]>([])
@@ -104,18 +105,23 @@ export default function ActiveCampaignTab() {
     return () => document.removeEventListener('mousedown', onDocMouseDown)
   }, [])
 
-  // Reset on input change
+  // KEEP pool count
   useEffect(() => {
     setSendState('idle')
     setProgress(null)
-    setPoolTotal(null)
     setConfirmSend(false)
     setCurrentTag('')
     if (esRef.current) {
       esRef.current.close()
       esRef.current = null
     }
-  }, [selectedTags, listName, poolId])
+  }, [selectedTags, listName])
+  
+  // Reset pool count ONLY when pool changes
+  useEffect(() => {
+    setPoolTotal(null)
+    setCountStatus('idle')
+  }, [poolId])
 
   // Load data after unlock & mode selection
   useEffect(() => {
@@ -270,26 +276,33 @@ export default function ActiveCampaignTab() {
 
       setCandidates(rows)
 
-      const headerTotalStr = res.headers.get('x-vincere-total')
-      const headerTotal =
-        headerTotalStr && headerTotalStr.trim() !== ''
-          ? Number(headerTotalStr)
-          : NaN
-      let total: number | null =
-        typeof data?.meta?.total === 'number'
-          ? data.meta.total
-          : !Number.isNaN(headerTotal)
-          ? headerTotal
-          : null
-      setPoolTotal(total)
-
-      // For Talent Pools we have an extra /count endpoint
-      if (sourceMode === 'talentpool') {
+      if (sourceMode === 'distribution') {
+        // Distribution Lists: fast total is fine
+        const headerTotalStr = res.headers.get('x-vincere-total')
+        const headerTotal =
+          headerTotalStr && headerTotalStr.trim() !== ''
+            ? Number(headerTotalStr)
+            : NaN
+      
+        const total: number | null =
+          typeof data?.meta?.total === 'number'
+            ? data.meta.total
+            : !Number.isNaN(headerTotal)
+            ? headerTotal
+            : null
+      
+        setPoolTotal(total)
+      } else {
+        // Talent Pools: show 50 until /count completes
+        setPoolTotal(null)
+        setCountStatus('loading')
+      
         try {
           const cRes = await fetch(
             `/api/vincere/talentpool/${encodeURIComponent(poolId)}/count`,
             { cache: 'no-store' },
           )
+      
           if (cRes.ok) {
             const cData = await cRes.json().catch(() => ({}))
             const h2 = cRes.headers.get('x-vincere-total')
@@ -300,10 +313,14 @@ export default function ActiveCampaignTab() {
                 : !Number.isNaN(n2)
                 ? n2
                 : null
+      
             if (t2 != null) setPoolTotal(t2)
+            setCountStatus('done')
+          } else {
+            setCountStatus('error')
           }
         } catch {
-          // ignore
+          setCountStatus('error')
         }
       }
 
@@ -866,11 +883,15 @@ export default function ActiveCampaignTab() {
           <div className="mt-2 text-sm text-gray-700">{message}</div>
         )}
 
-        {(poolTotal != null || candidates.length > 0) && (
+        {sourceMode === 'distribution' && (poolTotal != null || candidates.length > 0) && (
           <div className="mt-4 text-xs text-gray-500">
-            {sourceMode === 'distribution'
-              ? <>Retrieved {fmt(poolTotal ?? candidates.length)} contacts in this list.</>
-              : <>Retrieved {fmt(poolTotal ?? candidates.length)} candidates in this pool.</>}
+            Retrieved {fmt(poolTotal ?? candidates.length)} contacts in this list.
+          </div>
+        )}
+        
+        {sourceMode === 'talentpool' && countStatus === 'done' && poolTotal != null && (
+          <div className="mt-4 text-xs text-gray-500">
+            Retrieved {fmt(poolTotal)} candidates in this pool.
           </div>
         )}
       </div>
