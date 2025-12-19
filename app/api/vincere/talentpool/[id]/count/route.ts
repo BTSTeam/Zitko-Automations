@@ -1,3 +1,4 @@
+// app/api/vincere/talentpool/[id]/count/route.ts
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -13,90 +14,155 @@ function withApiV2(base: string): string {
   return b
 }
 
-// Retained as a lenient fallback parser in case the API shape changes
-function parseTotal(d: any): number | null {
-  const n =
-    (typeof d?.totalElements === 'number' && d.totalElements) ||
-    (typeof d?.numFound === 'number' && d.numFound) ||
-    (typeof d?.total === 'number' && d.total) ||
-    (typeof d?.count === 'number' && d.count) ||
-    (typeof d?.totalCount === 'number' && d.totalCount) ||
-    (typeof d?.meta?.total === 'number' && d.meta.total) ||
-    (typeof d?.hits?.total?.value === 'number' && d.hits.total.value) ||
-    null
-  return typeof n === 'number' ? n : null
+type VincereSliceResp = {
+  slice_index?: number
+  num_of_elements?: number
+  last?: boolean
+  content?: any[]
 }
 
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: { id: string } }
+function extractCandidateId(row: any): string {
+  // Try common Vincere id shapes; fall back to email if needed
+  const id =
+    row?.id ??
+    row?.candidate_id ??
+    row?.candidateId ??
+    row?.person_id ??
+    row?.personId ??
+    row?.contact_id ??
+    row?.contactId ??
+    null
+
+  if (id != null && String(id).trim() !== '') return String(id).trim()
+
+  const email =
+    row?.email ??
+    row?.primary_email ??
+    row?.candidate_email ??
+    row?.contact_email ??
+    row?.emailAddress ??
+    row?.contact?.email ??
+    row?.person?.email ??
+    (Array.isArray(row?.emails) && row.emails[0]?.email) ??
+    ''
+
+  if (email && String(email).trim() !== '') return `email:${String(email).trim().toLowerCase()}`
+  return ''
+}
+
+// Generic fetch that retries once after refreshing the Vincere id token
+async function fetchWithRefresh(
+  userKey: string,
+  url: string,
+  init: RequestInit & { headers?: Record<string, string> },
 ) {
+  let session = await getSession()
+  let idToken = session.tokens?.idToken
+
+  const doFetch = (token: string | undefined) =>
+    fetch(url, {
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        'id-token': token || '',
+        'x-api-key': (config as any).VINCERE_PUBLIC_API_KEY || config.VINCERE_API_KEY,
+        accept: 'application/json',
+        Authorization: `Bearer ${token || ''}`,
+        ...(init.headers || {}),
+      },
+      cache: 'no-store',
+    })
+
+  let res = await doFetch(idToken)
+  if (res.status === 401 || res.status === 403) {
+    const ok = await refreshIdToken(userKey)
+    if (!ok) return res
+    session = await getSession()
+    idToken = session.tokens?.idToken
+    res = await doFetch(idToken)
+  }
+  return res
+}
+
+export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    let session = await getSession()
-    let idToken = session.tokens?.idToken
+    const poolId = params.id
+    if (!poolId) {
+      return NextResponse.json({ error: 'Missing pool id' }, { status: 400 })
+    }
+
+    const session = await getSession()
     const userKey = session.user?.email ?? 'unknown'
+    const idToken = session.tokens?.idToken
     if (!idToken) {
       return NextResponse.json({ error: 'Not connected to Vincere' }, { status: 401 })
     }
 
+    // IMPORTANT: count must be done in the context of a user (same as Vincere UI list)
+    // Allow passing userId from the UI; fall back to env; fall back to previous default.
+    const userId =
+      (req.nextUrl.searchParams.get('userId') || '').trim() ||
+      process.env.VINCERE_TALENTPOOL_USER_ID?.trim() ||
+      process.env.NEXT_PUBLIC_VINCERE_TALENTPOOL_USER_ID?.trim() ||
+      '29018'
+
     const BASE = withApiV2(config.VINCERE_TENANT_API_BASE)
 
-    const headers = new Headers({
-      'content-type': 'application/json',
-      'x-api-key': (config as any).VINCERE_PUBLIC_API_KEY || config.VINCERE_API_KEY,
-      // keep these for compatibility with your other routes
-      'id-token': idToken,
-      accept: 'application/json',
-      Authorization: `Bearer ${idToken}`,
-    })
+    // Iterate slices until "last" is true. Count unique candidate IDs.
+    const seenIds = new Set<string>()
+    let sliceIndex = 0
+    let last = false
+    let pagesFetched = 0
+    let totalRowsSeen = 0
 
-    const doPost = (body: any) =>
-      fetch(`${BASE}/talentpools/${encodeURIComponent(params.id)}/getCandidates`, {
-        method: 'POST',
-        headers,
-        cache: 'no-store',
-        body: JSON.stringify(body),
-      })
+    // Hard safety cap
+    const SLICE_CAP = 5000
 
-    // Ask for just 1 record but require the API to include the overall total
-    const firstBody = {
-      returnField: { fieldList: ['id'] },
-      page: 0,
-      pageSize: 1,
-      responseType: 'VALUE',
-      totalRequired: true,
+    while (!last && sliceIndex < SLICE_CAP) {
+      const url = `${BASE}/talentpool/${encodeURIComponent(poolId)}/user/${encodeURIComponent(
+        userId,
+      )}/candidates?index=${sliceIndex}`
+
+      const res = await fetchWithRefresh(userKey, url, { method: 'GET' })
+      if (!res.ok) {
+        // If the first slice fails, treat as an error
+        const body = await res.text().catch(() => '')
+        if (sliceIndex === 0) {
+          return NextResponse.json(
+            { error: `Vincere slice fetch failed (${res.status})`, details: body },
+            { status: res.status },
+          )
+        }
+        // Otherwise stop and return what we have
+        break
+      }
+
+      const slice = (await res.json().catch(() => ({}))) as VincereSliceResp
+      const arr = Array.isArray(slice?.content) ? slice.content : []
+      pagesFetched++
+      totalRowsSeen += arr.length
+
+      for (const row of arr) {
+        const key = extractCandidateId(row)
+        if (!key) continue
+        seenIds.add(key)
+      }
+
+      last = !!slice?.last
+      sliceIndex++
     }
 
-    let res = await doPost(firstBody)
-
-    // Refresh id token on 401/403 and retry once
-    if (res.status === 401 || res.status === 403) {
-      const ok = await refreshIdToken(userKey)
-      if (!ok) return NextResponse.json({ error: 'Auth refresh failed' }, { status: 401 })
-      session = await getSession()
-      idToken = session.tokens?.idToken
-      headers.set('id-token', idToken || '')
-      headers.set('Authorization', `Bearer ${idToken}`)
-      res = await doPost(firstBody)
-    }
-
-    if (!res.ok) {
-      const txt = await res.text().catch(() => '')
-      return NextResponse.json(
-        { error: `Vincere getCandidates failed (${res.status})`, details: txt },
-        { status: res.status }
-      )
-    }
-
-    const data = await res.json().catch(() => ({}))
-    const total = parseTotal(data)
-
-    const response = NextResponse.json(
-      { total: typeof total === 'number' ? total : null },
-      { status: 200 }
+    return NextResponse.json(
+      {
+        total: seenIds.size,       // <-- this is the "Vincere UI-style" count you want to show
+        meta: {
+          pagesFetched,
+          totalRowsSeen,
+          userIdUsed: userId,
+        },
+      },
+      { status: 200 },
     )
-    if (typeof total === 'number') response.headers.set('x-vincere-total', String(total))
-    return response
   } catch (e: any) {
     return NextResponse.json({ error: e?.message ?? 'Unknown error' }, { status: 500 })
   }
