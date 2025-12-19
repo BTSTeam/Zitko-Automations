@@ -249,7 +249,7 @@ export async function POST(req: NextRequest) {
 
         for (const r of page) {
           job.totals.seen++
-          if (!r.email || !/\S+@\S+\.\S+/.test(r.email)) {
+          if (!r.email || !String(r.email).trim()) {
             job.totals.skippedNoEmail++
             continue
           }
