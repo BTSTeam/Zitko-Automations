@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server'
 
 type Body = {
   region?: string | null
-  perspective?: string | null
   topics?: string[]
   customTopic?: string
   audience?: string | null
@@ -67,7 +66,6 @@ export async function POST(req: Request) {
     const body = (await req.json().catch(() => ({}))) as Body
 
     const region = safeStr(body.region)
-    const perspective = safeStr(body.perspective)
     const topics = Array.isArray(body.topics) ? body.topics.filter((t) => typeof t === 'string') : []
     const customTopic = safeStr(body.customTopic)
 
@@ -148,7 +146,6 @@ export async function POST(req: Request) {
 
     const user = [
       `Region: ${region || 'N/A'}`,
-      `Perspective: ${perspective || 'N/A'}`,
       `Audience: ${audience || 'N/A'}`,
       `Tone: ${tone || 'N/A'}`,
       `Post format: ${postType || 'N/A'}`,
