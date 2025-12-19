@@ -96,6 +96,7 @@ export async function POST(req: Request) {
     const system = [
       'You write social media content ideas for recruiters in the Fire & Security industry (primarily electronic security).',
       'Do NOT mention "life safety" or "physical security".',
+      'Responses should ALWAYS be gender neutral.',
       'The poster is a recruiter/hiring partner for the industry (not an engineer/installer).',
       'Avoid AI clichés, overly salesy tone, and generic fluff.',
       'Do NOT use emojis, emoticons, or icon bullets (e.g. ✅ 🔥 🚀). Plain text only.',
