@@ -287,7 +287,7 @@ export default function ActiveCampaignTab() {
       if (sourceMode === 'talentpool') {
         try {
           const cRes = await fetch(
-            `/api/vincere/talentpool/${encodeURIComponent(poolId)}/count`,
+            `/api/vincere/talentpool/${encodeURIComponent(poolId)}/count?userId=${encodeURIComponent(TP_USER_ID)}`,
             { cache: 'no-store' },
           )
           if (cRes.ok) {
