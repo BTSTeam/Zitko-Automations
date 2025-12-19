@@ -135,7 +135,7 @@ function MultiSelect({
 /* ========= option sets ========= */
 
 const REGIONS = ['UK', 'Ireland', 'USA', 'APAC']
-const PERSPECTIVES = ['Male', 'Female']
+const PERSPECTIVES = ['Male', 'Female', 'Gender Neutral']
 
 const CONTENT_THEMES = [
   'Own Experience / Story',
