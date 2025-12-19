@@ -22,7 +22,6 @@ function normalizeEnvPw(s: string | undefined | null) {
 const RAW_ENV = process.env.NEXT_PUBLIC_ACTIVE_CAMPAIGN_TAB ?? ''
 const TAB_PW = normalizeEnvPw(RAW_ENV)
 
-// Still used for Distribution Lists preview (Talent Pools now retrieve ALL)
 const SAMPLE_PREVIEW_LIMIT = 50
 
 type JobStatus = 'running' | 'done' | 'error' | 'not-found'
@@ -88,7 +87,7 @@ export default function ActiveCampaignTab() {
   type SendState = 'idle' | 'starting' | 'sending' | 'success' | 'error'
   const [sendState, setSendState] = useState<SendState>('idle')
 
-  // Progress (SSE used for Distribution; Talent Pool send is direct bulk import)
+  // Progress (SSE)
   const [progress, setProgress] = useState<JobProgress | null>(null)
   const [currentTag, setCurrentTag] = useState<string>('') // show which tag is being applied right now
   const esRef = useRef<EventSource | null>(null)
@@ -105,31 +104,18 @@ export default function ActiveCampaignTab() {
     return () => document.removeEventListener('mousedown', onDocMouseDown)
   }, [])
 
-  // Reset *send* state on input change (DO NOT wipe retrieved totals when tags/list change)
+  // Reset on input change
   useEffect(() => {
     setSendState('idle')
-    setConfirmSend(false)
-    setCurrentTag('')
-    if (esRef.current) {
-      esRef.current.close()
-      esRef.current = null
-    }
-  }, [selectedTags, listName])
-
-  // When pool changes, clear retrieved data/totals
-  useEffect(() => {
-    setSendState('idle')
-    setConfirmSend(false)
-    setCurrentTag('')
-    setMessage('')
-    setCandidates([])
-    setPoolTotal(null)
     setProgress(null)
+    setPoolTotal(null)
+    setConfirmSend(false)
+    setCurrentTag('')
     if (esRef.current) {
       esRef.current.close()
       esRef.current = null
     }
-  }, [poolId])
+  }, [selectedTags, listName, poolId])
 
   // Load data after unlock & mode selection
   useEffect(() => {
@@ -249,8 +235,6 @@ export default function ActiveCampaignTab() {
 
     setLoading(true)
     try {
-      // Talent Pools: retrieve ALL uploadable candidates (valid email + unique email)
-      // Distribution Lists: keep as a lightweight preview for now
       const qs = new URLSearchParams({
         limit: String(SAMPLE_PREVIEW_LIMIT),
         rows: String(SAMPLE_PREVIEW_LIMIT),
@@ -260,7 +244,7 @@ export default function ActiveCampaignTab() {
         sourceMode === 'talentpool'
           ? `/api/vincere/talentpool/${encodeURIComponent(
               poolId,
-            )}/user/${encodeURIComponent(TP_USER_ID)}/all`
+            )}/user/${encodeURIComponent(TP_USER_ID)}/candidates?${qs}`
           : `/api/vincere/distributionlists/${encodeURIComponent(
               poolId,
             )}/user/${encodeURIComponent(TP_USER_ID)}/contacts?${qs}`
@@ -275,46 +259,60 @@ export default function ActiveCampaignTab() {
 
       const data = await res.json()
 
+      let rows: Candidate[] = []
+
       if (sourceMode === 'talentpool') {
-        const allRows: Candidate[] = Array.isArray(data?.candidates)
-          ? data.candidates
-          : []
-        setCandidates(allRows)
-
-        const t = data?.totals || {}
-        const total =
-          typeof t?.valid === 'number' ? t.valid : allRows.length
-
-        // This is the number you show in panel 1 AND use in the ring denominator
-        setPoolTotal(total)
-
-        // Prime the progress ring immediately (so it shows the same number before sending)
-        setProgress({
-          status: 'done',
-          poolId,
-          totals: {
-            poolTotal: total,
-            seen: typeof t?.seen === 'number' ? t.seen : allRows.length,
-            valid: total,
-            sent: 0,
-            skippedNoEmail:
-              typeof t?.skippedNoEmail === 'number' ? t.skippedNoEmail : 0,
-            duplicates: typeof t?.duplicates === 'number' ? t.duplicates : 0,
-            pagesFetched:
-              typeof t?.pagesFetched === 'number' ? t.pagesFetched : 0,
-          },
-        })
-
-        if (!allRows.length) {
-          setMessage('No uploadable candidates found (valid email required).')
-        }
+        rows = Array.isArray(data?.candidates) ? data.candidates : []
       } else {
         // distribution list contacts – our route already normalises the shape
-        const rows: Candidate[] = Array.isArray(data?.contacts) ? data.contacts : []
-        setCandidates(rows)
-        setPoolTotal(rows.length)
+        rows = Array.isArray(data?.contacts) ? data.contacts : []
+      }
 
-        if (!rows.length) setMessage('No contacts found in this distribution list.')
+      setCandidates(rows)
+
+      const headerTotalStr = res.headers.get('x-vincere-total')
+      const headerTotal =
+        headerTotalStr && headerTotalStr.trim() !== ''
+          ? Number(headerTotalStr)
+          : NaN
+      let total: number | null =
+        typeof data?.meta?.total === 'number'
+          ? data.meta.total
+          : !Number.isNaN(headerTotal)
+          ? headerTotal
+          : null
+      setPoolTotal(total)
+
+      // For Talent Pools we have an extra /count endpoint
+      if (sourceMode === 'talentpool') {
+        try {
+          const cRes = await fetch(
+            `/api/vincere/talentpool/${encodeURIComponent(poolId)}/count`,
+            { cache: 'no-store' },
+          )
+          if (cRes.ok) {
+            const cData = await cRes.json().catch(() => ({}))
+            const h2 = cRes.headers.get('x-vincere-total')
+            const n2 = h2 && h2.trim() !== '' ? Number(h2) : NaN
+            const t2 =
+              typeof cData?.total === 'number'
+                ? cData.total
+                : !Number.isNaN(n2)
+                ? n2
+                : null
+            if (t2 != null) setPoolTotal(t2)
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      if (!rows.length) {
+        setMessage(
+          sourceMode === 'talentpool'
+            ? 'No candidates found in this pool.'
+            : 'No contacts found in this distribution list.',
+        )
       }
     } catch (e: any) {
       setMessage(
@@ -325,19 +323,15 @@ export default function ActiveCampaignTab() {
       )
       setCandidates([])
       setPoolTotal(null)
-      setProgress(null)
     } finally {
       setLoading(false)
     }
   }
 
-  // Require that the user has retrieved candidates before sending
   const acEnabled =
-    (selectedTags.length > 0 || listName.trim().length > 0) &&
-    poolId !== '' &&
-    candidates.length > 0
+    (selectedTags.length > 0 || listName.trim().length > 0) && poolId !== ''
 
-  // ---- helper: run ONE import job (single tag) and resolve on finish (Distribution Lists only)
+  // ---- helper: run ONE import job (single tag) and resolve on finish
   async function runSingleImport(
     tagName: string | undefined,
     listId: number | null,
@@ -355,7 +349,7 @@ export default function ActiveCampaignTab() {
         ? {
             poolId,
             userId: TP_USER_ID,
-            tagName: tagName || undefined,
+            tagName: tagName || undefined, // same backend field as before
             listId: listId ?? undefined,
             rows: 200,
             max: 100000,
@@ -373,6 +367,7 @@ export default function ActiveCampaignTab() {
             pauseMs: 150,
           }
 
+    // start job
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -383,7 +378,9 @@ export default function ActiveCampaignTab() {
       throw new Error(data?.error || `Failed to start import (${res.status}).`)
     }
 
+    // listen to progress via SSE and resolve when done
     if (esRef.current) esRef.current.close()
+    // We reuse the same progress endpoint for both types
     const es = new EventSource(
       `/api/activecampaign/import-pool/progress/${data.jobId}`,
     )
@@ -418,23 +415,6 @@ export default function ActiveCampaignTab() {
     setSendState('starting')
     setCurrentTag('')
 
-    if (!sourceMode) {
-      setSendState('error')
-      setMessage('Select a source first.')
-      return
-    }
-
-    // Ensure Retrieve has been used
-    if (!candidates.length) {
-      setSendState('error')
-      setMessage(
-        sourceMode === 'talentpool'
-          ? 'Click "Retrieve TP Candidates" first.'
-          : 'Click "Retrieve Contacts" first.',
-      )
-      return
-    }
-
     // normalize inputs
     const tagsToApply = selectedTags.map((t) => t.trim()).filter(Boolean)
     const effectiveList = listName.trim()
@@ -463,60 +443,12 @@ export default function ActiveCampaignTab() {
         createdListId = Number(lj.id)
       }
 
+      // When multiple tags are selected, apply them **one by one** using the existing single-tag API.
+      // This prevents AC from creating a single combined tag.
       setSendState('sending')
 
-      // Talent Pools: send EXACTLY the retrieved candidates set (so the number never changes)
-      if (sourceMode === 'talentpool') {
-        const ir = await fetch('/api/activecampaign/import', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            candidates,
-            tagNames: tagsToApply,
-            listIds: createdListId != null ? [createdListId] : [],
-            excludeAutomations: true,
-          }),
-        })
-        const ij = await ir.json().catch(() => ({}))
-        if (!ir.ok) {
-          setSendState('error')
-          setMessage(ij?.error || `Import failed (${ir.status}).`)
-          return
-        }
-
-        // Update ring to 100% (sent == valid)
-        const denom =
-          (progress?.totals?.valid ?? poolTotal ?? candidates.length) || candidates.length
-
-        setProgress((prev) => {
-          const baseTotals = prev?.totals ?? {
-            poolTotal: denom,
-            seen: denom,
-            valid: denom,
-            sent: 0,
-            skippedNoEmail: 0,
-            duplicates: 0,
-            pagesFetched: 0,
-          }
-          return {
-            status: 'done',
-            poolId,
-            totals: {
-              ...baseTotals,
-              poolTotal: denom,
-              valid: denom,
-              sent: denom,
-            },
-          }
-        })
-
-        setSendState('success')
-        setCurrentTag('')
-        return
-      }
-
-      // Distribution Lists: keep existing SSE-based flow (apply tags one-by-one)
       if (tagsToApply.length === 0) {
+        // no tag, just list add
         await runSingleImport(undefined, createdListId)
       } else {
         for (const t of tagsToApply) {
@@ -572,25 +504,29 @@ export default function ActiveCampaignTab() {
   // -------------------------------
 
   function handleBackToSourceSelect() {
-    if (esRef.current) {
-      esRef.current.close()
-      esRef.current = null
-    }
-
-    setPools([])
-    setPoolId('')
-    setCandidates([])
-    setPoolTotal(null)
-    setMessage('')
-    setProgress(null)
-    setSelectedTags([])
-    setTagQuery('')
-    setListName('')
-    setConfirmSend(false)
-    setSendState('idle')
-    setCurrentTag('')
-    setSourceMode(null)
+  // stop any running SSE
+  if (esRef.current) {
+    esRef.current.close()
+    esRef.current = null
   }
+
+  // reset UI state
+  setPools([])
+  setPoolId('')
+  setCandidates([])
+  setPoolTotal(null)
+  setMessage('')
+  setProgress(null)
+  setSelectedTags([])
+  setTagQuery('')
+  setListName('')
+  setConfirmSend(false)
+  setSendState('idle')
+  setCurrentTag('')
+
+  // go back to Talent Pool / Distribution List chooser
+  setSourceMode(null)
+}
 
   if (!unlocked) {
     return (
@@ -711,19 +647,17 @@ export default function ActiveCampaignTab() {
               <path d="M12.5 4.5 7 10l5.5 5.5" />
             </svg>
           </button>
-
+  
           <div className="flex flex-col">
             <span className="text-[11px] uppercase tracking-wide text-gray-400">
               Source
             </span>
             <span className="text-sm font-medium text-gray-800">
-              {sourceMode === 'distribution'
-                ? 'Distribution Lists'
-                : 'Talent Pools'}
+              {sourceMode === 'distribution' ? 'Distribution Lists' : 'Talent Pools'}
             </span>
           </div>
         </div>
-
+  
         {/* Two rows x two cols:
             Row 1 = Talent Pool/List (L) + Tags (R)
             Row 2 = Active Campaign List (L) + Buttons (R) */}
@@ -934,11 +868,9 @@ export default function ActiveCampaignTab() {
 
         {(poolTotal != null || candidates.length > 0) && (
           <div className="mt-4 text-xs text-gray-500">
-            {sourceMode === 'distribution' ? (
-              <>Retrieved {fmt(poolTotal ?? candidates.length)} contacts in this list.</>
-            ) : (
-              <>Retrieved {fmt(poolTotal ?? candidates.length)} candidates in this pool.</>
-            )}
+            {sourceMode === 'distribution'
+              ? <>Retrieved {fmt(poolTotal ?? candidates.length)} contacts in this list.</>
+              : <>Retrieved {fmt(poolTotal ?? candidates.length)} candidates in this pool.</>}
           </div>
         )}
       </div>
