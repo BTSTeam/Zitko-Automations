@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
     ].filter(Boolean)
 
     const mapped = candidates
-      .filter(c => c.email && /\S+@\S+\.\S+/.test(c.email))
+      .filter(c => c.email && String(c.email).trim())
       .map(c => {
         const contact: any = { email: c.email }
         if (c.first_name) contact.first_name = c.first_name
@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
 
     if (mapped.length === 0) {
       return NextResponse.json(
-        { error: 'No candidates with valid emails.' },
+        { error: 'No candidates with email addresses.' },
         { status: 400 }
       )
     }
