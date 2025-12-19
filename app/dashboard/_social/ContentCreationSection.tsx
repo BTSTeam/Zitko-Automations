@@ -135,7 +135,6 @@ function MultiSelect({
 /* ========= option sets ========= */
 
 const REGIONS = ['UK', 'Ireland', 'USA', 'APAC']
-const PERSPECTIVES = ['Male', 'Female', 'Gender Neutral']
 
 const CONTENT_THEMES = [
   'Own Experience / Story',
@@ -198,7 +197,6 @@ export default function ContentCreationSection() {
   const [controlsOpen, setControlsOpen] = useState(true)
 
   const [regions, setRegions] = useState<string[]>([])
-  const [perspectives, setPerspectives] = useState<string[]>([])
   const [themes, setThemes] = useState<string[]>([])
   const [audiences, setAudiences] = useState<string[]>([])
   const [tones, setTones] = useState<string[]>([])
@@ -219,10 +217,10 @@ export default function ContentCreationSection() {
   const jobMarketSelected = themes.includes('Job Market Update')
   const freeTypeEnabled = ownExperienceSelected || jobMarketSelected
   const freeTypePlaceholder = jobMarketSelected
-  ? JOB_MARKET_PLACEHOLDER
-  : ownExperienceSelected
-  ? OWN_EXPERIENCE_PLACEHOLDER
-  : ''
+    ? JOB_MARKET_PLACEHOLDER
+    : ownExperienceSelected
+    ? OWN_EXPERIENCE_PLACEHOLDER
+    : ''
 
   async function handleGenerate(e?: React.FormEvent) {
     e?.preventDefault()
@@ -234,7 +232,6 @@ export default function ContentCreationSection() {
 
     const payload = {
       region: regions[0] ?? null,
-      perspective: perspectives[0] ?? null,
       topics: themes,
       customTopic: freeTypeEnabled ? customTopic : '',
       audience: audiences[0] ?? null,
@@ -275,7 +272,6 @@ export default function ContentCreationSection() {
 
   function resetAllSelections() {
     setRegions([])
-    setPerspectives([])
     setThemes([])
     setAudiences([])
     setTones([])
@@ -342,18 +338,19 @@ export default function ContentCreationSection() {
         {controlsOpen && (
           <div className="p-4 pt-0">
             <form onSubmit={handleGenerate}>
-              <div className="relative grid grid-cols-1 md:grid-cols-2 md:grid-rows-[40px_40px_40px_40px_40px_40px_40px] gap-3 md:gap-x-4">
+              <div className="relative grid grid-cols-1 md:grid-cols-2 md:grid-rows-[40px_40px_40px_40px_40px_40px] gap-3 md:gap-x-4">
                 {/* LEFT column */}
                 <div className="md:col-start-1 md:row-start-1">
                   <MultiSelect options={REGIONS} values={regions} setValues={setRegions} placeholder="Region" />
                 </div>
 
+                {/* Platform moved into the old "Perspective" slot */}
                 <div className="md:col-start-1 md:row-start-2">
                   <MultiSelect
-                    options={PERSPECTIVES}
-                    values={perspectives}
-                    setValues={setPerspectives}
-                    placeholder="Perspective"
+                    options={PLATFORM_OPTIONS}
+                    values={platforms}
+                    setValues={setPlatforms}
+                    placeholder="Platform"
                   />
                 </div>
 
@@ -384,15 +381,6 @@ export default function ContentCreationSection() {
                   <MultiSelect options={FORMATS} values={formats} setValues={setFormats} placeholder="Post Format" />
                 </div>
 
-                <div className="md:col-start-1 md:row-start-7">
-                  <MultiSelect
-                    options={PLATFORM_OPTIONS}
-                    values={platforms}
-                    setValues={setPlatforms}
-                    placeholder="Platform"
-                  />
-                </div>
-
                 {/* RIGHT column */}
                 <div className="md:col-start-2 md:row-start-1">
                   <MultiSelect
@@ -412,8 +400,8 @@ export default function ContentCreationSection() {
                   />
                 </div>
 
-                {/* Free type spans Content themes -> Post format (rows 3-6) */}
-                <div className="md:col-start-2 md:row-start-3 md:row-span-4 relative min-h-0 self-stretch">
+                {/* Free type reduced to bottom of Tone (rows 3-5) */}
+                <div className="md:col-start-2 md:row-start-3 md:row-span-3 relative min-h-0 self-stretch">
                   <textarea
                     className={[
                       'w-full h-full min-h-0 resize-none rounded-xl border px-3 py-2 outline-none',
@@ -429,8 +417,8 @@ export default function ContentCreationSection() {
                   />
                 </div>
 
-                {/* Generate aligned with Platform (row 7) */}
-                <div className="md:col-start-2 md:row-start-7 flex items-center justify-end">
+                {/* Generate aligned with Post Format (row 6) */}
+                <div className="md:col-start-2 md:row-start-6 flex items-center justify-end">
                   <button
                     type="submit"
                     className="h-10 rounded-full bg-orange-500 text-white px-10 text-sm font-semibold hover:opacity-90 disabled:opacity-50"
