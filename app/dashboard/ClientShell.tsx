@@ -131,7 +131,6 @@ export default function ClientShell(): JSX.Element {
   const WelcomeBlock = () => (
     <section className="h-full grid place-items-center px-6">
       <div className="text-center select-none">
-         <ChristmasCountdown />
 
         <h1
            className="font-semibold uppercase"
