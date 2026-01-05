@@ -33,6 +33,16 @@ function stripEmojis(input: string): string {
   }
 }
 
+/** Remove smart dashes (em/en dashes) completely */
+function stripSmartDashes(input: string): string {
+  return input
+    .replace(/\u2014/g, '') // em dash —
+    .replace(/\u2013/g, '') // en dash –
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s+,/g, ',')
+    .trim()
+}
+
 /**
  * Fix ONLY "current-year" phrasing if the model incorrectly uses another year as "now".
  * This keeps genuine historic/future references intact.
@@ -40,19 +50,16 @@ function stripEmojis(input: string): string {
 function fixMisstatedCurrentYear(input: string): string {
   let out = input
 
-  // e.g. "As we navigate through 2023..." -> "As we navigate through 2026..."
   out = out.replace(
     /\b(as\s+we\s+(?:navigate|move|head)\s+(?:through|into)\s+)20\d{2}\b/gi,
     (_m, p1) => `${p1}2026`
   )
 
-  // e.g. "This year (2023)..." / "This year 2023..." -> "... 2026"
   out = out.replace(
     /\b(this\s+year|so\s+far|to\s+date|currently|right\s+now|today)\s*\(?\s*(20\d{2})\s*\)?/gi,
     (m, p1, year) => (year === '2026' ? m : `${p1} 2026`)
   )
 
-  // e.g. "In 2023 so far..." -> "In 2026 so far..."
   out = out.replace(
     /\b(in|during)\s+(20\d{2})(?=\s+(?:so\s+far|to\s+date|currently|right\s+now)\b)/gi,
     (m, p1, year) => (year === '2026' ? m : `${p1} 2026`)
@@ -99,23 +106,20 @@ export async function POST(req: Request) {
       'Responses should ALWAYS be gender neutral.',
       'The poster is a recruiter/hiring partner for the industry (not an engineer/installer).',
       'Avoid AI clichés, overly salesy tone, and generic fluff.',
-      'Do NOT use emojis, emoticons, or icon bullets (e.g. ✅ 🔥 🚀). Plain text only.',
+      'Do NOT use emojis, emoticons, or icon bullets. Plain text only.',
+      'Do NOT use em dashes, en dashes, or long punctuation dashes. Use commas or full stops only.',
 
-      // year control (allow other years, but never as "current")
       'Assume the current year is 2026.',
-      'You MAY reference other years (past or future) only if clearly framed as past/future.',
-      'Never frame any year other than 2026 as the present (avoid phrases like "as we navigate through 2023").',
+      'You MAY reference other years only if clearly framed as past or future.',
+      'Never frame any year other than 2026 as the present.',
 
-      // spelling control by region
       useUSSpelling
         ? 'Use US English spelling.'
-        : 'Use UK English spelling and punctuation (e.g., specialise, organisation, programme, colour). Do NOT use US spellings.',
+        : 'Use UK English spelling and punctuation. Do NOT use US spellings.',
 
-      // presentation
       'Make the content easy to scan using short paragraphs and line breaks.',
-      'Bullet points are OPTIONAL. Only use them if it improves readability, and if used use hyphen bullets "-" only.',
+      'Bullet points are OPTIONAL. If used, use hyphen bullets "-" only.',
 
-      // contract
       'Return EXACTLY 2 different ideas.',
       'Format strictly as:',
       'Option 1',
@@ -128,7 +132,7 @@ export async function POST(req: Request) {
     const freeTypeInstruction = jobMarketSelected
       ? [
           'The user selected "Job Market Update". Use the user provided notes below as the basis for the update.',
-          'Keep it practical and believable. If something is unknown, keep it general rather than inventing specifics.',
+          'Keep it practical and believable.',
           '',
           'User notes:',
           customTopic,
@@ -136,7 +140,7 @@ export async function POST(req: Request) {
       : ownExperienceSelected
       ? [
           'The user selected "Own Experience / Story". Use the user provided story/context below as the core of the post.',
-          'Make it human, specific, and recruiter-relevant.',
+          'Make it human, specific, and recruiter relevant.',
           '',
           'User story/context:',
           customTopic,
@@ -193,8 +197,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'No content returned.' }, { status: 500 })
     }
 
-    // Defensive clean-up
     let content = stripEmojis(raw)
+    content = stripSmartDashes(content)
     content = fixMisstatedCurrentYear(content)
 
     return NextResponse.json({ content })
