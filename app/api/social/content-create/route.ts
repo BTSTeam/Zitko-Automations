@@ -68,6 +68,31 @@ function fixMisstatedCurrentYear(input: string): string {
   return out
 }
 
+/**
+ * Guarantee Option 1 / Option 2 are on their own lines and separable for UI parsing.
+ * Fixes the "Option 2" being merged into the Option 1 paragraph.
+ */
+function normalizeOptionSeparators(input: string): string {
+  let out = String(input || '')
+
+  // Normalise newlines
+  out = out.replace(/\r\n/g, '\n')
+
+  // Ensure Option 1 exists at the top on its own line
+  if (!/^\s*Option\s*1\b/i.test(out)) {
+    out = `Option 1\n${out.trim()}`
+  }
+  out = out.replace(/^\s*Option\s*1\b\s*/i, 'Option 1\n')
+
+  // Force Option 2 onto a new block even if the model jammed it mid-sentence
+  out = out.replace(/\s*Option\s*2\b\s*/gi, '\n\nOption 2\n')
+
+  // Tidy spacing
+  out = out.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
+
+  return out
+}
+
 export async function POST(req: Request) {
   try {
     const body = (await req.json().catch(() => ({}))) as Body
@@ -109,17 +134,21 @@ export async function POST(req: Request) {
       'Do NOT use emojis, emoticons, or icon bullets. Plain text only.',
       'Do NOT use em dashes, en dashes, or long punctuation dashes. Use commas or full stops only.',
 
+      // year control
       'Assume the current year is 2026.',
-      'You MAY reference other years only if clearly framed as past or future.',
+      'You MAY reference other years (past or future) only if clearly framed as past/future.',
       'Never frame any year other than 2026 as the present.',
 
+      // spelling control by region
       useUSSpelling
         ? 'Use US English spelling.'
-        : 'Use UK English spelling and punctuation. Do NOT use US spellings.',
+        : 'Use UK English spelling and punctuation (e.g., specialise, organisation, programme, colour). Do NOT use US spellings.',
 
+      // presentation
       'Make the content easy to scan using short paragraphs and line breaks.',
-      'Bullet points are OPTIONAL. If used, use hyphen bullets "-" only.',
+      'Bullet points are OPTIONAL. Only use them if it improves readability, and if used use hyphen bullets "-" only.',
 
+      // contract
       'Return EXACTLY 2 different ideas.',
       'Format strictly as:',
       'Option 1',
@@ -127,12 +156,13 @@ export async function POST(req: Request) {
       '',
       'Option 2',
       '<content>',
+      'Important: Put "Option 1" and "Option 2" each on their own line, exactly as written.',
     ].join('\n')
 
     const freeTypeInstruction = jobMarketSelected
       ? [
           'The user selected "Job Market Update". Use the user provided notes below as the basis for the update.',
-          'Keep it practical and believable.',
+          'Keep it practical and believable. If something is unknown, keep it general rather than inventing specifics.',
           '',
           'User notes:',
           customTopic,
@@ -197,9 +227,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'No content returned.' }, { status: 500 })
     }
 
+    // Defensive clean-up + enforce separators
     let content = stripEmojis(raw)
     content = stripSmartDashes(content)
     content = fixMisstatedCurrentYear(content)
+    content = normalizeOptionSeparators(content)
 
     return NextResponse.json({ content })
   } catch (err: any) {
