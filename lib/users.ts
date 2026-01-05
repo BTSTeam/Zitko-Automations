@@ -100,8 +100,8 @@ export async function createUser(input: {
     typeof input.workPhone === 'undefined'
       ? null
       : (input.workPhone ?? '').trim() === ''
-      ? null
-      : (input.workPhone ?? '').trim()
+        ? null
+        : (input.workPhone ?? '').trim()
 
   const user: User = {
     id,
@@ -116,17 +116,14 @@ export async function createUser(input: {
   }
 
   // Save user and index
-  await Promise.all([
-    redis.hset(USER_KEY(id), user as any),
-    redis.sadd(ALL_IDS_KEY, id),
-  ])
+  await Promise.all([redis.hset(USER_KEY(id), user as any), redis.sadd(ALL_IDS_KEY, id)])
 
   return user
 }
 
 export async function updateUser(
   id: string,
-  patch: Partial<Pick<User, 'name' | 'role' | 'active' | 'workPhone'>> & { password?: string }
+  patch: Partial<Pick<User, 'name' | 'role' | 'active' | 'workPhone'>> & { password?: string },
 ): Promise<User> {
   const key = USER_KEY(id)
   const current = hydrateUser(await redis.hgetall<Record<string, string>>(key))
@@ -163,25 +160,25 @@ export async function deleteUser(id: string): Promise<void> {
   const current = hydrateUser(await redis.hgetall<Record<string, string>>(key))
   if (!current) return
 
-  await Promise.all([
-    redis.del(EMAIL_IDX(current.email)),
-    redis.del(key),
-    redis.srem(ALL_IDS_KEY, id),
-  ])
+  await Promise.all([redis.del(EMAIL_IDX(current.email)), redis.del(key), redis.srem(ALL_IDS_KEY, id)])
 }
 
-// Seed a default admin if store is empty (so you’re never locked out)
+// Seed a default admin if store is empty (optional; controlled via env vars)
 export async function ensureSeedAdmin() {
   const count = await redis.scard(ALL_IDS_KEY)
   if ((count ?? 0) > 0) return
 
-  const email = 'stephenr@zitko.co.uk'
-  const password = 'Arlojuan1.'
+  const email = (process.env.SEED_ADMIN_EMAIL ?? '').trim()
+  const password = process.env.SEED_ADMIN_PASSWORD ?? ''
+  const name = (process.env.SEED_ADMIN_NAME ?? 'Admin').trim()
+
+  // Only seed if explicitly configured
+  if (!email || !password) return
 
   try {
     await createUser({
       email,
-      name: 'Stephen Rosamond',
+      name,
       role: 'Admin',
       password,
       workPhone: null,
@@ -206,12 +203,11 @@ export type OwnerLite = {
 export async function listOwners(): Promise<OwnerLite[]> {
   const users = await listUsers()
   return users
-    .filter(u => u.active) // only active users
-    .map(u => ({
+    .filter((u) => u.active) // only active users
+    .map((u) => ({
       id: String(u.id),
       name: String(u.name ?? u.email ?? '').trim(),
       email: String(u.email ?? ''),
       phone: String(u.workPhone ?? ''), // map workPhone -> phone
     }))
 }
-
