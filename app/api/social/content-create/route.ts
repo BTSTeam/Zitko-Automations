@@ -40,22 +40,22 @@ function stripEmojis(input: string): string {
 function fixMisstatedCurrentYear(input: string): string {
   let out = input
 
-  // e.g. "As we navigate through 2023..." -> "As we navigate through 2025..."
+  // e.g. "As we navigate through 2023..." -> "As we navigate through 2026..."
   out = out.replace(
     /\b(as\s+we\s+(?:navigate|move|head)\s+(?:through|into)\s+)20\d{2}\b/gi,
-    (_m, p1) => `${p1}2025`
+    (_m, p1) => `${p1}2026`
   )
 
-  // e.g. "This year (2023)..." / "This year 2023..." -> "... 2025"
+  // e.g. "This year (2023)..." / "This year 2023..." -> "... 2026"
   out = out.replace(
     /\b(this\s+year|so\s+far|to\s+date|currently|right\s+now|today)\s*\(?\s*(20\d{2})\s*\)?/gi,
-    (m, p1, year) => (year === '2025' ? m : `${p1} 2025`)
+    (m, p1, year) => (year === '2026' ? m : `${p1} 2026`)
   )
 
-  // e.g. "In 2023 so far..." -> "In 2025 so far..."
+  // e.g. "In 2023 so far..." -> "In 2026 so far..."
   out = out.replace(
     /\b(in|during)\s+(20\d{2})(?=\s+(?:so\s+far|to\s+date|currently|right\s+now)\b)/gi,
-    (m, p1, year) => (year === '2025' ? m : `${p1} 2025`)
+    (m, p1, year) => (year === '2026' ? m : `${p1} 2026`)
   )
 
   return out
@@ -102,9 +102,9 @@ export async function POST(req: Request) {
       'Do NOT use emojis, emoticons, or icon bullets (e.g. ✅ 🔥 🚀). Plain text only.',
 
       // year control (allow other years, but never as "current")
-      'Assume the current year is 2025.',
+      'Assume the current year is 2026.',
       'You MAY reference other years (past or future) only if clearly framed as past/future.',
-      'Never frame any year other than 2025 as the present (avoid phrases like "as we navigate through 2023").',
+      'Never frame any year other than 2026 as the present (avoid phrases like "as we navigate through 2023").',
 
       // spelling control by region
       useUSSpelling
@@ -158,7 +158,7 @@ export async function POST(req: Request) {
       freeTypeInstruction,
       '',
       'No emojis.',
-      'Current year must be treated as 2025.',
+      'Current year must be treated as 2026.',
       'Now generate the two options in the required format.',
     ]
       .filter(Boolean)
