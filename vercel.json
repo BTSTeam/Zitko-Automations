@@ -3,5 +3,12 @@
     "app/api/cloudconvert/docx-to-pdf/route.ts": {
       "maxDuration": 60
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/upstash-ping?secret=CRON_SECRET_VALUE",
+      "schedule": "0 9 * * 1"
+    }
+  ]
 }
+
