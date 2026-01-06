@@ -117,7 +117,7 @@ function MultiSelect({
                 checked={values.includes(opt)}
                 onChange={() => toggleOpt(opt)}
                 className="appearance-none h-4 w-4 rounded border border-gray-300 grid place-content-center
-                           checked:bg-orange-500
+                           checked:bg-[#F7941D]
                            before:content-[''] before:hidden checked:before:block
                            before:w-2.5 before:h-2.5
                            before:[clip-path:polygon(14%_44%,0_59%,39%_100%,100%_18%,84%_4%,39%_72%)]
@@ -421,7 +421,7 @@ export default function ContentCreationSection() {
                 <div className="md:col-start-2 md:row-start-6 flex items-center justify-end">
                   <button
                     type="submit"
-                    className="h-10 rounded-full bg-orange-500 text-white px-10 text-sm font-semibold hover:opacity-90 disabled:opacity-50"
+                    className="h-10 rounded-full bg-[#F7941D] text-white px-10 text-sm font-semibold hover:opacity-90 disabled:opacity-50"
                     disabled={loading}
                   >
                     {loading ? 'Generating…' : 'Generate'}
