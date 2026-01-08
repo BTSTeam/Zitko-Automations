@@ -812,7 +812,7 @@ Kind regards,`
           <button
             type="button"
             onClick={() => setPeopleSearchOpen(o => !o)}
-            className="w-full flex items-center justify-between px-4 py-3"
+            className="w-full flex items-center justify-between px-4 py-3 hover:opacity-90 disabled:opacity-50"
             aria-expanded={peopleSearchOpen}
           >
             <h3 className="font-semibold">Candidate | Contact Search</h3>
@@ -1099,7 +1099,7 @@ Kind regards,`
           <button
             type="button"
             onClick={() => setCompanySearchOpen((o) => !o)}
-            className="w-full flex items-center justify-between px-4 py-3"
+            className="w-full flex items-center justify-between px-4 py-3 hover:opacity-90 disabled:opacity-50"
             aria-expanded={companySearchOpen}
           >
             <h3 className="font-semibold">Company | Organization Search</h3>
