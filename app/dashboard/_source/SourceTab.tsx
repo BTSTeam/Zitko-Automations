@@ -808,7 +808,7 @@ Kind regards,`
     return (
       <div className="space-y-4">
         {/* Panel 1: People search */}
-        <div className="rounded-2xl border bg-white shadow-sm">
+        <div className="card">
           <button
             type="button"
             onClick={() => setPeopleSearchOpen(o => !o)}
@@ -970,7 +970,7 @@ Kind regards,`
         </div>
 
         {/* Panel 2: People results */}
-        <div className="rounded-2xl border bg-white shadow-sm">
+        <div className="card">
           {peopleError ? (
             <div className="p-6 text-sm text-red-600">{peopleError}</div>
           ) : people.length === 0 && !peopleLoading ? (
@@ -1095,7 +1095,7 @@ Kind regards,`
     return (
       <div className="space-y-4">
         {/* Panel 1: Company search */}
-        <div className="rounded-2xl border bg-white shadow-sm">
+        <div className="card">
           <button
             type="button"
             onClick={() => setCompanySearchOpen((o) => !o)}
@@ -1378,7 +1378,7 @@ Kind regards,`
         </div>
 
         {/* Panel 2: Company results */}
-        <div className="rounded-2xl border bg-white shadow-sm">
+        <div className="card">
           {companies.length > 0 ? (
             <ul className="divide-y divide-gray-200">
               {companies.map((c: Company) => {
