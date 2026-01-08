@@ -421,7 +421,7 @@ export default function ContentCreationSection() {
                 <div className="md:col-start-2 md:row-start-6 flex items-center justify-end">
                   <button
                     type="submit"
-                    className="h-10 rounded-full btn btn-brand text-white px-10 text-sm font-semibold"
+                    className="h-10 rounded-full btn btn-brand text-white px-10 text-sm font-semibold hover:opacity-90 disabled:opacity-50"
                     disabled={loading}
                   >
                     {loading ? 'Generating…' : 'Generate'}
