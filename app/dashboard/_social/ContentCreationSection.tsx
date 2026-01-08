@@ -288,7 +288,7 @@ export default function ContentCreationSection() {
   return (
     <div className="space-y-4 mt-6">
       {/* Panel 1 – controls */}
-      <div className="rounded-2xl border bg-white shadow-sm">
+      <div className="card">
         <div className="w-full flex items-center justify-between px-4 py-3">
           <button
             type="button"
@@ -434,7 +434,7 @@ export default function ContentCreationSection() {
       </div>
 
       {/* Panel 2 – output */}
-      <div className="rounded-2xl border bg-white shadow-sm">
+      <div className="card">
         <div className="flex items-center justify-between px-4 py-3">
           <h3 className="font-semibold">Generated ideas</h3>
         </div>
