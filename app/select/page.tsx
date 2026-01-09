@@ -14,7 +14,7 @@ export default async function SelectDestinationPage() {
   }
 
   return (
-    <div className="min-h-[70vh] flex items-center justify-center">
+    <div className="flex justify-center pt-10">
       <div className="w-full max-w-5xl px-4">
         <h1
           className="text-center font-semibold uppercase"
@@ -31,7 +31,23 @@ export default async function SelectDestinationPage() {
           {/* ZAWA Automations */}
           <Link
             href="/dashboard"
-            className="group rounded-[28px] border bg-white p-10 min-h-[220px] flex items-center justify-center text-center transition hover:shadow-lg hover:-translate-y-[1px]"
+            className="
+            group
+            rounded-[28px]
+            border
+            border-gray-200
+            bg-white
+            p-10
+            min-h-[220px]
+            flex
+            items-center
+            justify-center
+            text-center
+            transition
+            hover:shadow-lg
+            hover:-translate-y-[1px]
+            hover:border-[#F7941D] hover:bg-orange-50/30
+          "
           >
             <div>
               <div
