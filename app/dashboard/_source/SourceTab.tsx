@@ -172,17 +172,17 @@ function getKeywordSuggestions(query: string, existing: string[]): string[] {
   if (!q) return []
 
   return KEYWORD_SUGGESTIONS
-    .map(k => k as string)
+    .map((k) => k as string)
     // Don’t suggest something that’s already a chip
-    .filter(k => !existing.includes(k))
+    .filter((k) => !existing.includes(k))
     // Simple contains match – “cc” will match “CCTV…”
-    .filter(k => k.toLowerCase().includes(q))
+    .filter((k) => k.toLowerCase().includes(q))
     // Only show first 10
     .slice(0, 10)
 }
 
 const phIfEmpty = (value: string, chips: string[] | undefined, text: string) =>
-  (value?.trim() || (chips && chips.length)) ? '' : text
+  value?.trim() || (chips && chips.length) ? '' : text
 
 function useChipInput(initial: string[] = []) {
   const [chips, setChips] = useState<string[]>(initial)
@@ -191,7 +191,7 @@ function useChipInput(initial: string[] = []) {
   function addChipFromInput() {
     const v = input.trim()
     if (!v) return
-    if (!chips.includes(v)) setChips(prev => [...prev, v])
+    if (!chips.includes(v)) setChips((prev) => [...prev, v])
     setInput('')
   }
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -199,11 +199,11 @@ function useChipInput(initial: string[] = []) {
       e.preventDefault()
       addChipFromInput()
     } else if (e.key === 'Backspace' && !input && chips.length) {
-      setChips(prev => prev.slice(0, -1))
+      setChips((prev) => prev.slice(0, -1))
     }
   }
   function removeChip(v: string) {
-    setChips(prev => prev.filter(c => c !== v))
+    setChips((prev) => prev.filter((c) => c !== v))
   }
 
   return { chips, input, setInput, addChipFromInput, onKeyDown, removeChip, setChips }
@@ -241,16 +241,33 @@ function IconFacebook() {
 }
 function IconGlobe({ muted }: { muted?: boolean }) {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" className={muted ? 'text-gray-300' : 'text-gray-700'}>
-      <path fill="currentColor" d="M12 2a10 10 0 1 0 .001 20.001A10 10 0 0 0 12 2Zm7.93 9h-3.086a15.4 15.4 0 0 0-1.02-5.02A8.01 8.01 0 0 1 19.93 11ZM12 4c.94 1.24 1.66 3.12 1.98 5H10.02C10.34 7.12 11.06 5.24 12 4ZM8.176 6.98A15.4 15.4 0 0 0 7.156 12H4.07a8.01 8.01 0 0 1 4.106-5.02ZM4.07 13h3.086a15.4 15.4 0 0 0 1.02 5.02A8.01 8.01 0 0 1 4.07 13ZM12 20c-.94-1.24-1.66-3.12-1.98-5h3.96C13.66 16.88 12.94 18.76 12 20Zm3.824-1.98A15.4 15.4 0 0 0 16.844 13h3.086a8.01 8.01 0 0 1-4.106 5.02ZM16.844 12a13.5 13.5 0 0 1-1.047-4H8.203a13.5 13.5 0 0 1-1.047 4h9.688Z"/>
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className={muted ? 'text-gray-300' : 'text-gray-700'}
+    >
+      <path
+        fill="currentColor"
+        d="M12 2a10 10 0 1 0 .001 20.001A10 10 0 0 0 12 2Zm7.93 9h-3.086a15.4 15.4 0 0 0-1.02-5.02A8.01 8.01 0 0 1 19.93 11ZM12 4c.94 1.24 1.66 3.12 1.98 5H10.02C10.34 7.12 11.06 5.24 12 4ZM8.176 6.98A15.4 15.4 0 0 0 7.156 12H4.07a8.01 8.01 0 0 1 4.106-5.02ZM4.07 13h3.086a15.4 15.4 0 0 0 1.02 5.02A8.01 8.01 0 0 1 4.07 13ZM12 20c-.94-1.24-1.66-3.12-1.98-5h3.96C13.66 16.88 12.94 18.76 12 20Zm3.824-1.98A15.4 15.4 0 0 0 16.844 13h3.086a8.01 8.01 0 0 1-4.106 5.02ZM16.844 12a13.5 13.5 0 0 1-1.047-4H8.203a13.5 13.5 0 0 1-1.047 4h9.688Z"
+      />
     </svg>
   )
 }
 
 function MultiSelect({
-  label, options, values, setValues, placeholder = 'Select…',
+  label,
+  options,
+  values,
+  setValues,
+  placeholder = 'Select…',
 }: {
-  label: string; options: string[]; values: string[]; setValues: (v: string[]) => void; placeholder?: string
+  label: string
+  options: string[]
+  values: string[]
+  setValues: (v: string[]) => void
+  placeholder?: string
 }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement | null>(null)
@@ -264,14 +281,12 @@ function MultiSelect({
   }, [open])
 
   function toggleOpt(opt: string) {
-    const next = values.includes(opt)
-      ? values.filter(o => o !== opt)
-      : [...values, opt]
+    const next = values.includes(opt) ? values.filter((o) => o !== opt) : [...values, opt]
     setValues(next)
   }
 
   function removeChip(opt: string) {
-    setValues(values.filter(v => v !== opt))
+    setValues(values.filter((v) => v !== opt))
   }
 
   return (
@@ -281,32 +296,42 @@ function MultiSelect({
         <button
           type="button"
           className="w-full h-full text-left flex items-center justify-between"
-          onClick={() => setOpen(o => !o)}
+          onClick={() => setOpen((o) => !o)}
           title={values.length ? `${values.length} selected` : undefined}
         >
           <div className="flex items-center gap-2 flex-nowrap overflow-x-auto mr-2">
             {values.length ? (
-              values.map(v => (
+              values.map((v) => (
                 <span key={v} className="shrink-0">
-                  <Chip onRemove={(e) => { e?.stopPropagation(); removeChip(v) }}>{v}</Chip>
+                  <Chip
+                    onRemove={(e) => {
+                      e?.stopPropagation()
+                      removeChip(v)
+                    }}
+                  >
+                    {v}
+                  </Chip>
                 </span>
               ))
             ) : (
               <span className="text-sm text-gray-400">{placeholder}</span>
             )}
           </div>
-          <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" className={open ? 'rotate-180 transition-transform' : 'transition-transform'}>
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            className={open ? 'rotate-180 transition-transform' : 'transition-transform'}
+          >
             <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z" />
           </svg>
         </button>
 
         {open && (
           <div className="absolute z-10 mt-1 w-full bg-white border rounded-xl shadow-sm max-h-60 overflow-y-auto text-sm">
-            {options.map(opt => (
-              <label
-                key={opt}
-                className="flex items-center px-3 py-2 hover:bg-gray-50 cursor-pointer gap-2 text-sm"
-              >
+            {options.map((opt) => (
+              <label key={opt} className="flex items-center px-3 py-2 hover:bg-gray-50 cursor-pointer gap-2 text-sm">
                 <input
                   type="checkbox"
                   checked={values.includes(opt)}
@@ -338,9 +363,7 @@ function transformToPerson(p: any): Person {
   const last = (p?.last_name ?? '').toString().trim()
   const name = (p?.name && String(p.name).trim()) || [first, last].filter(Boolean).join(' ').trim() || null
   const title =
-    (p?.title && String(p.title).trim()) ||
-    (Array.isArray(p?.employment_history) && p.employment_history[0]?.title) ||
-    null
+    (p?.title && String(p.title).trim()) || (Array.isArray(p?.employment_history) && p.employment_history[0]?.title) || null
   const organization_name =
     (Array.isArray(p?.employment_history) && p.employment_history[0]?.organization_name) ||
     (p?.organization?.name && String(p.organization.name).trim()) ||
@@ -395,12 +418,44 @@ function formatMonthYear(date: string | null): string {
 }
 
 /* =========================
+   NEW: Enrichment merge helpers (NO UI CHANGES)
+   ========================= */
+function toCleanIds(v: unknown): string[] {
+  if (!Array.isArray(v)) return []
+  return v
+    .map((x) => (typeof x === 'string' ? x.trim() : ''))
+    .filter(Boolean)
+    .filter((x, i, a) => a.indexOf(x) === i)
+}
+
+/**
+ * Merge shallow api_search person + enriched person into one object that
+ * transformToPerson understands (employment_history, organization.website_url, socials, etc).
+ */
+function mergeApolloPerson(shallow: any, enriched: any): any {
+  if (!enriched) return shallow || {}
+
+  const out: any = { ...(shallow || {}), ...(enriched || {}) }
+
+  // Ensure we keep nested organization info if enrichment returns it
+  const shallowOrg = shallow?.organization && typeof shallow.organization === 'object' ? shallow.organization : null
+  const enrichedOrg = enriched?.organization && typeof enriched.organization === 'object' ? enriched.organization : null
+  if (shallowOrg || enrichedOrg) out.organization = { ...(shallowOrg || {}), ...(enrichedOrg || {}) }
+
+  // Prefer enriched employment history if present
+  if (Array.isArray(enriched?.employment_history)) out.employment_history = enriched.employment_history
+
+  // Ensure id survives
+  out.id = (enriched?.id ?? shallow?.id ?? out.id ?? '').toString()
+
+  return out
+}
+
+/* =========================
    Main Component
    ========================= */
 export default function SourceTab({ mode }: { mode: SourceMode }) {
-  const isDown =
-    (process.env.NEXT_PUBLIC_SOURCING_DOWN || '').toLowerCase() === '1' ||
-    (process.env.NEXT_PUBLIC_SOURCING_DOWN || '').toLowerCase() === 'true'
+  const isDown = (process.env.NEXT_PUBLIC_SOURCING_DOWN || '').toLowerCase() === '1' || (process.env.NEXT_PUBLIC_SOURCING_DOWN || '').toLowerCase() === 'true'
 
   /* ----- People search state ----- */
   const personTitles = useChipInput([])
@@ -467,9 +522,9 @@ Job Postings:
 Kind regards,`
   const companySubjectEncoded = encodeURIComponent(companyMailToSubject)
   const companyBodyEncoded = encodeURIComponent(companyMailToBody)
-   
+
   function togglePersonExpanded(id: string) {
-    setPeopleExpanded(prev => {
+    setPeopleExpanded((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
@@ -491,13 +546,23 @@ Kind regards,`
     window.open(url, '_blank', 'noopener,noreferrer')
   }
 
+  /**
+   * UPDATED: People search now does:
+   * 1) /api/apollo/people-search (shallow search from api_search)
+   * 2) /api/apollo/people-enrich (bulk enrichment for returned IDs)
+   * 3) Merge + map using existing transformToPerson
+   *
+   * NO UI changes: we still setPeople(mapped) the same way.
+   */
   async function runPeopleSearch(e?: React.FormEvent) {
     e?.preventDefault()
     if (isDown) return
+
     setPeopleLoading(true)
     setPeopleError(null)
     setPeople([])
     setPeopleExpanded(new Set())
+
     try {
       const payload = {
         person_titles: personTitles.chips,
@@ -507,6 +572,8 @@ Kind regards,`
         page: 1,
         per_page: 25,
       }
+
+      // 1) Shallow search
       const res = await fetch('/api/apollo/people-search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -514,18 +581,55 @@ Kind regards,`
       })
       const json: any = await res.json()
       if (!res.ok) throw new Error(json?.error || `Search failed (${res.status})`)
-      let rawArr: any[] = []
-      if (Array.isArray(json.people) && json.people.length) rawArr = json.people
-      else if (Array.isArray(json.apollo?.contacts) && json.apollo.contacts.length) rawArr = json.apollo.contacts
-      else if (Array.isArray(json.apollo?.people)) rawArr = json.apollo.people
-      const mapped: Person[] = rawArr.map(transformToPerson)
+
+      // Prefer route's own `people` array; otherwise fall back to raw Apollo shape
+      const shallowArr: any[] =
+        (Array.isArray(json.people) && json.people) ||
+        (Array.isArray(json.apollo?.people) && json.apollo.people) ||
+        (Array.isArray(json.apollo?.contacts) && json.apollo.contacts) ||
+        []
+
+      // Collect IDs for enrichment
+      const ids = toCleanIds(shallowArr.map((p: any) => p?.id).filter(Boolean))
+
+      // 2) Enrich (if we have IDs)
+      let enrichedById: Record<string, any> = {}
+      if (ids.length) {
+        const enrichRes = await fetch('/api/apollo/people-enrich', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ids,
+            reveal_personal_emails: false,
+            reveal_phone_number: false,
+          }),
+        })
+        const enrichJson: any = await enrichRes.json().catch(() => ({}))
+
+        // If enrichment fails, we still proceed with shallow results (UI stays functional)
+        if (enrichRes.ok && enrichJson && typeof enrichJson.enrichedById === 'object') {
+          enrichedById = enrichJson.enrichedById || {}
+        }
+      }
+
+      // 3) Merge + map with existing logic (so UI stays identical)
+      const mergedRaw: any[] = shallowArr.map((sp: any) => {
+        const id = (sp?.id ?? '').toString().trim()
+        const ep = id ? enrichedById[id] : null
+        return mergeApolloPerson(sp, ep)
+      })
+
+      const mapped: Person[] = mergedRaw.map(transformToPerson)
       setPeople(mapped)
+
+      // Notes (unchanged)
       const built: Record<string, string> = {}
       for (const p of mapped) {
         const firstName = (p.name || '').split(' ')?.[0] || ''
         built[p.id] = makeStaticNote(firstName)
       }
       setNotesById(built)
+
       try {
         await fetch('/api/notes/bulk', {
           method: 'POST',
@@ -559,7 +663,7 @@ Kind regards,`
   const [expandedNews, setExpandedNews] = useState<Set<string>>(new Set())
 
   function toggleJobPostings(id: string) {
-    setExpandedJobs(prev => {
+    setExpandedJobs((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
@@ -567,7 +671,7 @@ Kind regards,`
     })
   }
   function toggleHiringPeople(id: string) {
-    setExpandedHiring(prev => {
+    setExpandedHiring((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
@@ -575,7 +679,7 @@ Kind regards,`
     })
   }
   function toggleNewsArticles(id: string) {
-    setExpandedNews(prev => {
+    setExpandedNews((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
@@ -596,9 +700,7 @@ Kind regards,`
 
     try {
       // Use last "Days" chip if numeric
-      const daysChip = activeJobsDays.chips.length
-        ? activeJobsDays.chips[activeJobsDays.chips.length - 1]
-        : null
+      const daysChip = activeJobsDays.chips.length ? activeJobsDays.chips[activeJobsDays.chips.length - 1] : null
       const daysNum = daysChip && /^\d+$/.test(daysChip) ? Number(daysChip) : null
 
       const payload = {
@@ -648,7 +750,7 @@ Kind regards,`
 
       setCompanies(mapped)
 
-      const orgIds = mapped.map(c => c.org_id).filter(Boolean)
+      const orgIds = mapped.map((c) => c.org_id).filter(Boolean)
 
       if (orgIds.length) {
         const [jpRes, newsRes, hiringRes] = await Promise.all([
@@ -669,21 +771,14 @@ Kind regards,`
           }),
         ])
 
-        const [jpJson, newsJson, hiringJson]: any[] = await Promise.all([
-          jpRes.json(),
-          newsRes.json(),
-          hiringRes.json(),
-        ])
+        const [jpJson, newsJson, hiringJson]: any[] = await Promise.all([jpRes.json(), newsRes.json(), hiringRes.json()])
 
         // ----- Job postings -----
         if (jpRes.ok) {
           let postingsByOrg: Record<string, any[]> = jpJson?.postingsByOrg || {}
 
-          // Fallback: server returned a flat array (Apollo-style)
-          if (
-            (!postingsByOrg || !Object.keys(postingsByOrg).length) &&
-            Array.isArray(jpJson?.organization_job_postings)
-          ) {
+          // Fallback: server returned a (Apollo-style) flat array
+          if ((!postingsByOrg || !Object.keys(postingsByOrg).length) && Array.isArray(jpJson?.organization_job_postings)) {
             const grouped: Record<string, any[]> = {}
             for (const j of jpJson.organization_job_postings) {
               const key = (j.org_id || j.organization_id || j._organization_id || '').toString().trim()
@@ -694,8 +789,8 @@ Kind regards,`
             postingsByOrg = grouped
           }
 
-          setCompanies(prev =>
-            prev.map(c => ({
+          setCompanies((prev) =>
+            prev.map((c) => ({
               ...c,
               job_postings: postingsByOrg[c.org_id] ?? [],
             })),
@@ -709,9 +804,7 @@ Kind regards,`
           // Fallback: raw array only
           if (
             (!articlesByOrg || !Object.keys(articlesByOrg).length) &&
-            (Array.isArray(newsJson?.apollo?.news_articles) ||
-              Array.isArray(newsJson?.news_articles) ||
-              Array.isArray(newsJson?.articles))
+            (Array.isArray(newsJson?.apollo?.news_articles) || Array.isArray(newsJson?.news_articles) || Array.isArray(newsJson?.articles))
           ) {
             const raw: any[] =
               (Array.isArray(newsJson?.apollo?.news_articles) && newsJson.apollo.news_articles) ||
@@ -728,8 +821,8 @@ Kind regards,`
             articlesByOrg = grouped
           }
 
-          setCompanies(prev =>
-            prev.map(c => ({
+          setCompanies((prev) =>
+            prev.map((c) => ({
               ...c,
               news_articles: (articlesByOrg[c.org_id] ?? []).map((a: any) => ({
                 id: (a.id ?? a.article_id ?? '').toString(),
@@ -740,8 +833,8 @@ Kind regards,`
                 event_categories: Array.isArray(a.event_categories)
                   ? a.event_categories
                   : typeof a.event_categories === 'string'
-                  ? [a.event_categories]
-                  : null,
+                    ? [a.event_categories]
+                    : null,
               })),
             })),
           )
@@ -752,23 +845,11 @@ Kind regards,`
           let hiringByOrg: Record<string, any[]> = hiringJson?.hiringByOrg || {}
 
           // Fallback: if the route ever just relays raw Apollo data
-          if (
-            (!hiringByOrg || !Object.keys(hiringByOrg).length) &&
-            (Array.isArray(hiringJson?.people) || Array.isArray(hiringJson?.contacts))
-          ) {
-            const raw: any[] =
-              (Array.isArray(hiringJson?.people) && hiringJson.people) ||
-              (Array.isArray(hiringJson?.contacts) && hiringJson.contacts) ||
-              []
+          if ((!hiringByOrg || !Object.keys(hiringByOrg).length) && (Array.isArray(hiringJson?.people) || Array.isArray(hiringJson?.contacts))) {
+            const raw: any[] = (Array.isArray(hiringJson?.people) && hiringJson.people) || (Array.isArray(hiringJson?.contacts) && hiringJson.contacts) || []
             const grouped: Record<string, any[]> = {}
             for (const p of raw) {
-              const key =
-                (p.organization_id ??
-                  p.org_id ??
-                  p.account_id ??
-                  p.organization?.id ??
-                  ''
-                ).toString().trim()
+              const key = (p.organization_id ?? p.org_id ?? p.account_id ?? p.organization?.id ?? '').toString().trim()
               if (!key) continue
               if (!grouped[key]) grouped[key] = []
               grouped[key].push(p)
@@ -776,8 +857,8 @@ Kind regards,`
             hiringByOrg = grouped
           }
 
-          setCompanies(prev =>
-            prev.map(c => ({
+          setCompanies((prev) =>
+            prev.map((c) => ({
               ...c,
               hiring_people: (hiringByOrg[c.org_id] ?? []).map((p: any) => transformToPerson(p)),
             })),
@@ -811,7 +892,7 @@ Kind regards,`
         <div className="card">
           <button
             type="button"
-            onClick={() => setPeopleSearchOpen(o => !o)}
+            onClick={() => setPeopleSearchOpen((o) => !o)}
             className="w-full flex items-center justify-between px-4 py-3 hover:opacity-90 disabled:opacity-50"
             aria-expanded={peopleSearchOpen}
           >
@@ -833,7 +914,7 @@ Kind regards,`
                   <label className="block text-sm text-gray-600 mb-1">Job Titles</label>
                   <div className="rounded-xl border h-10 px-2">
                     <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
-                      {personTitles.chips.map(v => (
+                      {personTitles.chips.map((v) => (
                         <Chip key={v} onRemove={() => personTitles.removeChip(v)}>
                           {v}
                         </Chip>
@@ -842,7 +923,7 @@ Kind regards,`
                         className="flex-1 min-w-0 outline-none text-sm h-8 px-2"
                         placeholder={phIfEmpty(personTitles.input, personTitles.chips, 'e.g. Field Service Technician')}
                         value={personTitles.input}
-                        onChange={e => personTitles.setInput(e.target.value)}
+                        onChange={(e) => personTitles.setInput(e.target.value)}
                         onKeyDown={personTitles.onKeyDown}
                         disabled={isDown}
                       />
@@ -853,7 +934,7 @@ Kind regards,`
                   <label className="block text-sm text-gray-600 mb-1">Locations</label>
                   <div className="rounded-xl border h-10 px-2">
                     <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
-                      {personLocations.chips.map(v => (
+                      {personLocations.chips.map((v) => (
                         <Chip key={v} onRemove={() => personLocations.removeChip(v)}>
                           {v}
                         </Chip>
@@ -862,7 +943,7 @@ Kind regards,`
                         className="flex-1 min-w-0 outline-none text-sm h-8 px-2"
                         placeholder={phIfEmpty(personLocations.input, personLocations.chips, 'e.g. California, United States')}
                         value={personLocations.input}
-                        onChange={e => personLocations.setInput(e.target.value)}
+                        onChange={(e) => personLocations.setInput(e.target.value)}
                         onKeyDown={personLocations.onKeyDown}
                         disabled={isDown}
                       />
@@ -870,70 +951,59 @@ Kind regards,`
                   </div>
                 </div>
                 <div>
-                 <label className="block text-sm text-gray-600 mb-1 flex items-center gap-1">
-                   Keywords
-                   <span
-                     className="inline-flex items-center justify-center h-4 w-4 rounded-full border border-gray-300 text-[10px] leading-none text-gray-500 cursor-default"
-                     title={`Please be broader with your keywords.
+                  <label className="block text-sm text-gray-600 mb-1 flex items-center gap-1">
+                    Keywords
+                    <span
+                      className="inline-flex items-center justify-center h-4 w-4 rounded-full border border-gray-300 text-[10px] leading-none text-gray-500 cursor-default"
+                      title={`Please be broader with your keywords.
                                  Keywords such as 'Lenel' or 'C-Cure' will fall under 'Security Systems'.`}
-                   >
-                     i
-                   </span>
-                 </label>
-                 <div className="rounded-xl border h-10 px-2 relative">
-                   <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
-                     {personKeywords.chips.map(v => (
-                       <Chip key={v} onRemove={() => personKeywords.removeChip(v)}>
-                         {v}
-                       </Chip>
-                     ))}
-                     <input
-                       className="flex-1 min-w-0 outline-none text-sm h-8 px-2"
-                       placeholder={phIfEmpty(
-                         personKeywords.input,
-                         personKeywords.chips,
-                         'e.g. Fire, Security, CCTV',
-                       )}
-                       value={personKeywords.input}
-                       onChange={e => personKeywords.setInput(e.target.value)}
-                       onKeyDown={personKeywords.onKeyDown}
-                       disabled={isDown}
-                     />
-                   </div>
-               
-                   {/* Keyword suggestions dropdown */}
-                   {(() => {
-                     const suggestions = getKeywordSuggestions(
-                       personKeywords.input,
-                       personKeywords.chips,
-                     )
-                     if (!suggestions.length) return null
-               
-                     return (
-                       <ul
-                         className="absolute left-0 right-0 mt-1 top-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-40 overflow-y-auto text-sm z-20"
-                       >
-                         {suggestions.map(option => (
-                           <li
-                             key={option}
-                             className="px-3 py-1.5 hover:bg-gray-50 cursor-pointer"
-                             // onMouseDown so we don't lose focus before updating state
-                             onMouseDown={e => {
-                               e.preventDefault()
-                               personKeywords.setChips(prev =>
-                                 prev.includes(option) ? prev : [...prev, option],
-                               )
-                               personKeywords.setInput('')
-                             }}
-                           >
-                             {option}
-                           </li>
-                         ))}
-                       </ul>
-                     )
-                   })()}
-                 </div>
-               </div>
+                    >
+                      i
+                    </span>
+                  </label>
+                  <div className="rounded-xl border h-10 px-2 relative">
+                    <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
+                      {personKeywords.chips.map((v) => (
+                        <Chip key={v} onRemove={() => personKeywords.removeChip(v)}>
+                          {v}
+                        </Chip>
+                      ))}
+                      <input
+                        className="flex-1 min-w-0 outline-none text-sm h-8 px-2"
+                        placeholder={phIfEmpty(personKeywords.input, personKeywords.chips, 'e.g. Fire, Security, CCTV')}
+                        value={personKeywords.input}
+                        onChange={(e) => personKeywords.setInput(e.target.value)}
+                        onKeyDown={personKeywords.onKeyDown}
+                        disabled={isDown}
+                      />
+                    </div>
+
+                    {/* Keyword suggestions dropdown */}
+                    {(() => {
+                      const suggestions = getKeywordSuggestions(personKeywords.input, personKeywords.chips)
+                      if (!suggestions.length) return null
+
+                      return (
+                        <ul className="absolute left-0 right-0 mt-1 top-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-40 overflow-y-auto text-sm z-20">
+                          {suggestions.map((option) => (
+                            <li
+                              key={option}
+                              className="px-3 py-1.5 hover:bg-gray-50 cursor-pointer"
+                              // onMouseDown so we don't lose focus before updating state
+                              onMouseDown={(e) => {
+                                e.preventDefault()
+                                personKeywords.setChips((prev) => (prev.includes(option) ? prev : [...prev, option]))
+                                personKeywords.setInput('')
+                              }}
+                            >
+                              {option}
+                            </li>
+                          ))}
+                        </ul>
+                      )
+                    })()}
+                  </div>
+                </div>
                 <MultiSelect
                   label="Seniorities"
                   options={SENIORITIES as unknown as string[]}
@@ -957,10 +1027,7 @@ Kind regards,`
               <div className="mt-3 flex justify-end">
                 <div className="text-right text-xs text-gray-500">
                   If you would like to request a more advanced people search, please click{' '}
-                  <a
-                    href={`mailto:bts@zitko.co.uk?subject=${subjectEncoded}&body=${bodyEncoded}`}
-                    className="text-orange-500 hover:text-orange-600 no-underline"
-                  >
+                  <a href={`mailto:bts@zitko.co.uk?subject=${subjectEncoded}&body=${bodyEncoded}`} className="text-orange-500 hover:text-orange-600 no-underline">
                     here
                   </a>
                 </div>
@@ -979,7 +1046,7 @@ Kind regards,`
             </div>
           ) : (
             <ul className="divide-y">
-              {people.map(p => {
+              {people.map((p) => {
                 const hasLI = !!p.linkedin_url
                 const hasFB = !!p.facebook_url
                 const hasWWW = !!p.organization_website_url
@@ -1000,9 +1067,7 @@ Kind regards,`
                           href={hasLI ? p.linkedin_url! : undefined}
                           onClick={hasLI ? (ev) => onLinkedInClick(ev, p.linkedin_url!, p.id) : undefined}
                           className={hasLI ? '' : 'opacity-30 pointer-events-none cursor-default'}
-                          title={
-                            hasLI ? (copiedId === p.id ? 'Note copied!' : 'Open LinkedIn (note copies first)') : 'LinkedIn not available'
-                          }
+                          title={hasLI ? (copiedId === p.id ? 'Note copied!' : 'Open LinkedIn (note copies first)') : 'LinkedIn not available'}
                         >
                           <IconLinkedIn />
                         </a>
@@ -1091,7 +1156,7 @@ Kind regards,`
     )
   }
 
-    const renderCompanies = () => {
+  const renderCompanies = () => {
     return (
       <div className="space-y-4">
         {/* Panel 1: Company search */}
@@ -1103,13 +1168,7 @@ Kind regards,`
             aria-expanded={companySearchOpen}
           >
             <h3 className="font-semibold">Company | Organization Search</h3>
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-              className={companySearchOpen ? 'rotate-180 transition-transform' : 'transition-transform'}
-            >
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" className={companySearchOpen ? 'rotate-180 transition-transform' : 'transition-transform'}>
               <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z" />
             </svg>
           </button>
@@ -1129,11 +1188,7 @@ Kind regards,`
                       ))}
                       <input
                         className="flex-1 min-w-0 outline-none text-sm h-8 px-2"
-                        placeholder={phIfEmpty(
-                          companyLocations.input,
-                          companyLocations.chips,
-                          'e.g. London, United Kingdom',
-                        )}
+                        placeholder={phIfEmpty(companyLocations.input, companyLocations.chips, 'e.g. London, United Kingdom')}
                         value={companyLocations.input}
                         onChange={(e) => companyLocations.setInput(e.target.value)}
                         onKeyDown={companyLocations.onKeyDown}
@@ -1144,69 +1199,58 @@ Kind regards,`
                 </div>
 
                 <div>
-                 <label className="block text-sm text-gray-600 mb-1 flex items-center gap-1">
-                   Keywords
-                   <span
-                     className="inline-flex items-center justify-center h-4 w-4 rounded-full border border-gray-300 text-[10px] leading-none text-gray-500 cursor-default"
-                     title={`Please be broader with your keywords.
+                  <label className="block text-sm text-gray-600 mb-1 flex items-center gap-1">
+                    Keywords
+                    <span
+                      className="inline-flex items-center justify-center h-4 w-4 rounded-full border border-gray-300 text-[10px] leading-none text-gray-500 cursor-default"
+                      title={`Please be broader with your keywords.
                                  Keywords such as 'Lenel' or 'C-Cure' will fall under 'Security Systems'.`}
-                   >
-                     i
-                   </span>
-                 </label>
-                 <div className="rounded-xl border h-10 px-2 relative">
-                   <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
-                     {companyKeywords.chips.map(v => (
-                       <Chip key={v} onRemove={() => companyKeywords.removeChip(v)}>
-                         {v}
-                       </Chip>
-                     ))}
-                     <input
-                       className="flex-1 min-w-0 outline-none text-sm h-8 px-2"
-                       placeholder={phIfEmpty(
-                         companyKeywords.input,
-                         companyKeywords.chips,
-                         'e.g. Fire, Security, CCTV',
-                       )}
-                       value={companyKeywords.input}
-                       onChange={e => companyKeywords.setInput(e.target.value)}
-                       onKeyDown={companyKeywords.onKeyDown}
-                       disabled={isDown}
-                     />
-                   </div>
-               
-                   {/* Keyword suggestions dropdown */}
-                   {(() => {
-                     const suggestions = getKeywordSuggestions(
-                       companyKeywords.input,
-                       companyKeywords.chips,
-                     )
-                     if (!suggestions.length) return null
-               
-                     return (
-                       <ul
-                         className="absolute left-0 right-0 mt-1 top-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-40 overflow-y-auto text-sm z-20"
-                       >
-                         {suggestions.map(option => (
-                           <li
-                             key={option}
-                             className="px-3 py-1.5 hover:bg-gray-50 cursor-pointer"
-                             onMouseDown={e => {
-                               e.preventDefault()
-                               companyKeywords.setChips(prev =>
-                                 prev.includes(option) ? prev : [...prev, option],
-                               )
-                               companyKeywords.setInput('')
-                             }}
-                           >
-                             {option}
-                           </li>
-                         ))}
-                       </ul>
-                     )
-                   })()}
-                 </div>
-               </div>
+                    >
+                      i
+                    </span>
+                  </label>
+                  <div className="rounded-xl border h-10 px-2 relative">
+                    <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
+                      {companyKeywords.chips.map((v) => (
+                        <Chip key={v} onRemove={() => companyKeywords.removeChip(v)}>
+                          {v}
+                        </Chip>
+                      ))}
+                      <input
+                        className="flex-1 min-w-0 outline-none text-sm h-8 px-2"
+                        placeholder={phIfEmpty(companyKeywords.input, companyKeywords.chips, 'e.g. Fire, Security, CCTV')}
+                        value={companyKeywords.input}
+                        onChange={(e) => companyKeywords.setInput(e.target.value)}
+                        onKeyDown={companyKeywords.onKeyDown}
+                        disabled={isDown}
+                      />
+                    </div>
+
+                    {/* Keyword suggestions dropdown */}
+                    {(() => {
+                      const suggestions = getKeywordSuggestions(companyKeywords.input, companyKeywords.chips)
+                      if (!suggestions.length) return null
+
+                      return (
+                        <ul className="absolute left-0 right-0 mt-1 top-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-40 overflow-y-auto text-sm z-20">
+                          {suggestions.map((option) => (
+                            <li
+                              key={option}
+                              className="px-3 py-1.5 hover:bg-gray-50 cursor-pointer"
+                              onMouseDown={(e) => {
+                                e.preventDefault()
+                                companyKeywords.setChips((prev) => (prev.includes(option) ? prev : [...prev, option]))
+                                companyKeywords.setInput('')
+                              }}
+                            >
+                              {option}
+                            </li>
+                          ))}
+                        </ul>
+                      )
+                    })()}
+                  </div>
+                </div>
               </div>
 
               {/* Row 2: Employees | Active Job Listings */}
@@ -1226,11 +1270,7 @@ Kind regards,`
                         ))}
                         <input
                           className="min-w-[5rem] grow outline-none text-sm h-8 px-2"
-                          placeholder={phIfEmpty(
-                            employeesMin.input,
-                            employeesMin.chips,
-                            'From (e.g. 50)',
-                          )}
+                          placeholder={phIfEmpty(employeesMin.input, employeesMin.chips, 'From (e.g. 50)')}
                           inputMode="numeric"
                           pattern="[0-9]*"
                           value={employeesMin.input}
@@ -1252,11 +1292,7 @@ Kind regards,`
                         ))}
                         <input
                           className="min-w-[5rem] grow outline-none text-sm h-8 px-2"
-                          placeholder={phIfEmpty(
-                            employeesMax.input,
-                            employeesMax.chips,
-                            'To (e.g. 250)',
-                          )}
+                          placeholder={phIfEmpty(employeesMax.input, employeesMax.chips, 'To (e.g. 250)')}
                           inputMode="numeric"
                           pattern="[0-9]*"
                           value={employeesMax.input}
@@ -1288,12 +1324,7 @@ Kind regards,`
                     Active Job Listings
                   </label>
 
-                  <div
-                    className={`flex items-center gap-3 ${
-                      !activeJobsOnly || isDown ? 'opacity-50' : ''
-                    }`}
-                    aria-disabled={!activeJobsOnly || isDown}
-                  >
+                  <div className={`flex items-center gap-3 ${!activeJobsOnly || isDown ? 'opacity-50' : ''}`} aria-disabled={!activeJobsOnly || isDown}>
                     <div className="shrink-0 rounded-xl border h-10 px-2 w-36">
                       <div className="flex items-center gap-2 flex-nowrap overflow-hidden">
                         {activeJobsDays.chips.map((v) => (
@@ -1303,11 +1334,7 @@ Kind regards,`
                         ))}
                         <input
                           className="min-w-[8rem] grow outline-none text-sm h-8 px-2"
-                          placeholder={phIfEmpty(
-                            activeJobsDays.input,
-                            activeJobsDays.chips,
-                            'Days (e.g. 30)',
-                          )}
+                          placeholder={phIfEmpty(activeJobsDays.input, activeJobsDays.chips, 'Days (e.g. 30)')}
                           inputMode="numeric"
                           pattern="[0-9]*"
                           value={activeJobsDays.input}
@@ -1330,11 +1357,7 @@ Kind regards,`
                         ))}
                         <input
                           className="flex-1 min-w-0 outline-none text-sm h-8 px-2"
-                          placeholder={phIfEmpty(
-                            activeJobTitles.input,
-                            activeJobTitles.chips,
-                            'Job Titles (e.g. Engineer, Manager)',
-                          )}
+                          placeholder={phIfEmpty(activeJobTitles.input, activeJobTitles.chips, 'Job Titles (e.g. Engineer, Manager)')}
                           value={activeJobTitles.input}
                           onChange={(e) => activeJobTitles.setInput(e.target.value)}
                           onKeyDown={activeJobTitles.onKeyDown}
@@ -1351,24 +1374,17 @@ Kind regards,`
                 <span className="text-xs text-gray-500">
                   Please press <kbd className="px-1 border rounded">Enter</kbd> to submit each chip.
                 </span>
-                <button
-                  type="submit"
-                  className="rounded-full bg-[#F7941D] text-white px-5 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50"
-                  disabled={isDown || companyLoading}
-                >
+                <button type="submit" className="rounded-full bg-[#F7941D] text-white px-5 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50" disabled={isDown || companyLoading}>
                   {companyLoading ? 'Searching…' : 'Search'}
                 </button>
               </div>
 
               {companyError && <div className="mt-3 text-sm text-red-600">{companyError}</div>}
 
-               <div className="mt-3 flex justify-end">
+              <div className="mt-3 flex justify-end">
                 <div className="text-right text-xs text-gray-500">
                   If you would like to request a more advanced company search, please click{' '}
-                  <a
-                    href={`mailto:bts@zitko.co.uk?subject=${companySubjectEncoded}&body=${companyBodyEncoded}`}
-                    className="text-orange-500 hover:text-orange-600 no-underline"
-                  >
+                  <a href={`mailto:bts@zitko.co.uk?subject=${companySubjectEncoded}&body=${companyBodyEncoded}`} className="text-orange-500 hover:text-orange-600 no-underline">
                     here
                   </a>
                 </div>
@@ -1394,9 +1410,7 @@ Kind regards,`
                         <span
                           className={
                             'inline-flex items-center justify-center h-5 w-5 rounded-full border text-[10px] font-semibold ' +
-                            (showAlertIcon
-                              ? 'border-[#F7941D] text-[#F7941D] bg-orange-50 shadow-[0_0_6px_rgba(247,148,29,0.85)]'
-                              : 'border-gray-300 text-gray-300 bg-white')
+                            (showAlertIcon ? 'border-[#F7941D] text-[#F7941D] bg-orange-50 shadow-[0_0_6px_rgba(247,148,29,0.85)]' : 'border-gray-300 text-gray-300 bg-white')
                           }
                           title={
                             showAlertIcon
@@ -1411,9 +1425,7 @@ Kind regards,`
                         {(c.exact_location || formatCityState(c)) ? (
                           <>
                             <span className="text-gray-300">|</span>
-                            <span className="text-xs text-gray-600 truncate">
-                              {c.exact_location || formatCityState(c)}
-                            </span>
+                            <span className="text-xs text-gray-600 truncate">{c.exact_location || formatCityState(c)}</span>
                           </>
                         ) : null}
                       </div>
@@ -1432,11 +1444,7 @@ Kind regards,`
                           href={c.website_url || undefined}
                           target={c.website_url ? '_blank' : undefined}
                           rel={c.website_url ? 'noreferrer' : undefined}
-                          className={
-                            c.website_url
-                              ? 'text-gray-700 hover:text-gray-900'
-                              : 'opacity-30 pointer-events-none cursor-default'
-                          }
+                          className={c.website_url ? 'text-gray-700 hover:text-gray-900' : 'opacity-30 pointer-events-none cursor-default'}
                           title={c.website_url ? 'Open company website' : 'Company website not available'}
                         >
                           <IconGlobe muted={!c.website_url} />
@@ -1450,24 +1458,10 @@ Kind regards,`
                         <button
                           type="button"
                           onClick={() => toggleJobPostings(c.id)}
-                          className={
-                            'inline-flex items-center gap-1 ' +
-                            (expandedJobs.has(c.id)
-                              ? 'text-[#F7941D]'
-                              : 'text-gray-700 hover:text-gray-900')
-                          }
+                          className={'inline-flex items-center gap-1 ' + (expandedJobs.has(c.id) ? 'text-[#F7941D]' : 'text-gray-700 hover:text-gray-900')}
                         >
                           Job postings
-                          <svg
-                            width="12"
-                            height="12"
-                            viewBox="0 0 20 20"
-                            className={
-                              expandedJobs.has(c.id)
-                                ? 'rotate-180 transition-transform'
-                                : 'transition-transform'
-                            }
-                          >
+                          <svg width="12" height="12" viewBox="0 0 20 20" className={expandedJobs.has(c.id) ? 'rotate-180 transition-transform' : 'transition-transform'}>
                             <path
                               fill="currentColor"
                               d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z"
@@ -1478,24 +1472,10 @@ Kind regards,`
                         <button
                           type="button"
                           onClick={() => toggleHiringPeople(c.id)}
-                          className={
-                            'inline-flex items-center gap-1 ' +
-                            (expandedHiring.has(c.id)
-                              ? 'text-[#F7941D]'
-                              : 'text-gray-700 hover:text-gray-900')
-                          }
+                          className={'inline-flex items-center gap-1 ' + (expandedHiring.has(c.id) ? 'text-[#F7941D]' : 'text-gray-700 hover:text-gray-900')}
                         >
                           Hiring contacts
-                          <svg
-                            width="12"
-                            height="12"
-                            viewBox="0 0 20 20"
-                            className={
-                              expandedHiring.has(c.id)
-                                ? 'rotate-180 transition-transform'
-                                : 'transition-transform'
-                            }
-                          >
+                          <svg width="12" height="12" viewBox="0 0 20 20" className={expandedHiring.has(c.id) ? 'rotate-180 transition-transform' : 'transition-transform'}>
                             <path
                               fill="currentColor"
                               d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z"
@@ -1506,24 +1486,10 @@ Kind regards,`
                         <button
                           type="button"
                           onClick={() => toggleNewsArticles(c.id)}
-                          className={
-                            'inline-flex items-center gap-1 ' +
-                            (expandedNews.has(c.id)
-                              ? 'text-[#F7941D]'
-                              : 'text-gray-700 hover:text-gray-900')
-                          }
+                          className={'inline-flex items-center gap-1 ' + (expandedNews.has(c.id) ? 'text-[#F7941D]' : 'text-gray-700 hover:text-gray-900')}
                         >
                           News articles
-                          <svg
-                            width="12"
-                            height="12"
-                            viewBox="0 0 20 20"
-                            className={
-                              expandedNews.has(c.id)
-                                ? 'rotate-180 transition-transform'
-                                : 'transition-transform'
-                            }
-                          >
+                          <svg width="12" height="12" viewBox="0 0 20 20" className={expandedNews.has(c.id) ? 'rotate-180 transition-transform' : 'transition-transform'}>
                             <path
                               fill="currentColor"
                               d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z"
@@ -1552,31 +1518,16 @@ Kind regards,`
                                   return db - da
                                 })
                                 .map((j: JobPosting) => {
-                                  const location =
-                                    [j.city, j.state, j.country].filter(Boolean).join(', ') || '—'
+                                  const location = [j.city, j.state, j.country].filter(Boolean).join(', ') || '—'
 
                                   return (
-                                    <li
-                                      key={j.id}
-                                      className="px-3 py-2 border-t first:border-t-0 grid grid-cols-12 items-center"
-                                    >
-                                      <div className="col-span-6 truncate">
-                                        {j.title || 'Untitled job'}
-                                      </div>
+                                    <li key={j.id} className="px-3 py-2 border-t first:border-t-0 grid grid-cols-12 items-center">
+                                      <div className="col-span-6 truncate">{j.title || 'Untitled job'}</div>
                                       <div className="col-span-3 truncate">{location}</div>
-                                      <div className="col-span-2 text-right">
-                                        {j.posted_at
-                                          ? new Date(j.posted_at).toLocaleDateString()
-                                          : '—'}
-                                      </div>
+                                      <div className="col-span-2 text-right">{j.posted_at ? new Date(j.posted_at).toLocaleDateString() : '—'}</div>
                                       <div className="col-span-1 text-right">
                                         {j.url ? (
-                                          <a
-                                            href={j.url}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="text-orange-600 hover:underline"
-                                          >
+                                          <a href={j.url} target="_blank" rel="noreferrer" className="text-orange-600 hover:underline">
                                             view
                                           </a>
                                         ) : (
@@ -1587,9 +1538,7 @@ Kind regards,`
                                   )
                                 })
                             ) : (
-                              <li className="px-3 py-2 text-xs text-gray-500">
-                                No job postings.
-                              </li>
+                              <li className="px-3 py-2 text-xs text-gray-500">No job postings.</li>
                             )}
                           </ul>
                         </div>
@@ -1607,20 +1556,12 @@ Kind regards,`
                         <ul className="text-xs">
                           {c.hiring_people?.length ? (
                             c.hiring_people.map((p: HiringPerson) => (
-                              <li
-                                key={p.id}
-                                className="px-3 py-2 border-t first:border-t-0 grid grid-cols-12"
-                              >
+                              <li key={p.id} className="px-3 py-2 border-t first:border-t-0 grid grid-cols-12">
                                 <div className="col-span-5 truncate">{p.name || '—'}</div>
                                 <div className="col-span-5 truncate">{p.title || '—'}</div>
                                 <div className="col-span-2 text-right">
                                   {p.linkedin_url ? (
-                                    <a
-                                      className="text-orange-600 hover:underline"
-                                      href={p.linkedin_url}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                    >
+                                    <a className="text-orange-600 hover:underline" href={p.linkedin_url} target="_blank" rel="noreferrer">
                                       view
                                     </a>
                                   ) : (
@@ -1630,9 +1571,7 @@ Kind regards,`
                               </li>
                             ))
                           ) : (
-                            <li className="px-3 py-2 text-xs text-gray-500">
-                              No hiring contacts.
-                            </li>
+                            <li className="px-3 py-2 text-xs text-gray-500">No hiring contacts.</li>
                           )}
                         </ul>
                       </div>
@@ -1650,29 +1589,13 @@ Kind regards,`
                         <ul className="text-xs">
                           {c.news_articles?.length ? (
                             c.news_articles.map((n: NewsArticle) => (
-                              <li
-                                key={n.id}
-                                className="px-3 py-2 border-t first:border-t-0 grid grid-cols-12"
-                              >
+                              <li key={n.id} className="px-3 py-2 border-t first:border-t-0 grid grid-cols-12">
                                 <div className="col-span-6 truncate">{n.title || '—'}</div>
-                                <div className="col-span-3 truncate">
-                                  {n.event_categories && n.event_categories.length
-                                    ? n.event_categories.join(', ')
-                                    : '—'}
-                                </div>
-                                <div className="col-span-2 truncate">
-                                  {n.published_at
-                                    ? new Date(n.published_at).toLocaleDateString()
-                                    : '—'}
-                                </div>
+                                <div className="col-span-3 truncate">{n.event_categories && n.event_categories.length ? n.event_categories.join(', ') : '—'}</div>
+                                <div className="col-span-2 truncate">{n.published_at ? new Date(n.published_at).toLocaleDateString() : '—'}</div>
                                 <div className="col-span-1 text-right">
                                   {n.url ? (
-                                    <a
-                                      className="text-orange-600 hover:underline"
-                                      href={n.url}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                    >
+                                    <a className="text-orange-600 hover:underline" href={n.url} target="_blank" rel="noreferrer">
                                       view
                                     </a>
                                   ) : (
@@ -1682,9 +1605,7 @@ Kind regards,`
                               </li>
                             ))
                           ) : (
-                            <li className="px-3 py-2 text-xs text-gray-500">
-                              No news articles.
-                            </li>
+                            <li className="px-3 py-2 text-xs text-gray-500">No news articles.</li>
                           )}
                         </ul>
                       </div>
