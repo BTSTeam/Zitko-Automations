@@ -173,11 +173,8 @@ function getKeywordSuggestions(query: string, existing: string[]): string[] {
 
   return KEYWORD_SUGGESTIONS
     .map((k) => k as string)
-    // Don’t suggest something that’s already a chip
     .filter((k) => !existing.includes(k))
-    // Simple contains match – “cc” will match “CCTV…”
     .filter((k) => k.toLowerCase().includes(q))
-    // Only show first 10
     .slice(0, 10)
 }
 
@@ -358,12 +355,27 @@ function makeStaticNote(firstName?: string | null) {
   return `Hi ${first}, it's always nice to meet others passionate about the industry. Would be great to connect.`
 }
 
+/* =========================
+   ID helpers (supports id/person_id variations)
+   ========================= */
+function getApolloPersonId(p: any): string {
+  const v =
+    (typeof p?.person_id === 'string' && p.person_id.trim()) ||
+    (typeof p?.personId === 'string' && p.personId.trim()) ||
+    (typeof p?.id === 'string' && p.id.trim()) ||
+    (typeof p?._id === 'string' && p._id.trim()) ||
+    ''
+  return v
+}
+
 function transformToPerson(p: any): Person {
   const first = (p?.first_name ?? '').toString().trim()
   const last = (p?.last_name ?? '').toString().trim()
   const name = (p?.name && String(p.name).trim()) || [first, last].filter(Boolean).join(' ').trim() || null
   const title =
-    (p?.title && String(p.title).trim()) || (Array.isArray(p?.employment_history) && p.employment_history[0]?.title) || null
+    (p?.title && String(p.title).trim()) ||
+    (Array.isArray(p?.employment_history) && p.employment_history[0]?.title) ||
+    null
   const organization_name =
     (Array.isArray(p?.employment_history) && p.employment_history[0]?.organization_name) ||
     (p?.organization?.name && String(p.organization.name).trim()) ||
@@ -372,9 +384,12 @@ function transformToPerson(p: any): Person {
   const formatted_address =
     (typeof p?.formatted_address === 'string' && p.formatted_address.trim()) ||
     (typeof p?.present_raw_address === 'string' && p.present_raw_address.trim()) ||
+    (typeof p?.location?.name === 'string' && p.location.name.trim()) ||
     ([p?.city, p?.state, p?.country].filter(Boolean).join(', ') || null)
+
   const linkedin_url = (typeof p?.linkedin_url === 'string' && p.linkedin_url) || null
   const facebook_url = (typeof p?.facebook_url === 'string' && p.facebook_url) || null
+
   const employment_history: EmploymentItem[] = Array.isArray(p?.employment_history)
     ? p.employment_history.map((eh: any) => ({
         organization_name: eh?.organization_name ? String(eh.organization_name).trim() : null,
@@ -384,6 +399,7 @@ function transformToPerson(p: any): Person {
         current: !!eh?.current,
       }))
     : []
+
   employment_history.sort((a, b) => {
     if (a.current && !b.current) return -1
     if (b.current && !a.current) return 1
@@ -391,8 +407,9 @@ function transformToPerson(p: any): Person {
     const bKey = (b.end_date || b.start_date || '').toString()
     return bKey.localeCompare(aKey)
   })
+
   return {
-    id: p?.id ?? '',
+    id: getApolloPersonId(p) || '',
     name,
     title: title ? String(title).trim() : null,
     organization_name: organization_name ? String(organization_name).trim() : null,
@@ -418,7 +435,7 @@ function formatMonthYear(date: string | null): string {
 }
 
 /* =========================
-   NEW: Enrichment merge helpers (NO UI CHANGES)
+   Enrichment merge helpers (NO UI CHANGES)
    ========================= */
 function toCleanIds(v: unknown): string[] {
   if (!Array.isArray(v)) return []
@@ -429,24 +446,22 @@ function toCleanIds(v: unknown): string[] {
 }
 
 /**
- * Merge shallow api_search person + enriched person into one object that
- * transformToPerson understands (employment_history, organization.website_url, socials, etc).
+ * Merge a shallow person + enriched person into one object that transformToPerson understands.
+ * Keeps nested organization + employment history.
  */
 function mergeApolloPerson(shallow: any, enriched: any): any {
   if (!enriched) return shallow || {}
 
   const out: any = { ...(shallow || {}), ...(enriched || {}) }
 
-  // Ensure we keep nested organization info if enrichment returns it
   const shallowOrg = shallow?.organization && typeof shallow.organization === 'object' ? shallow.organization : null
   const enrichedOrg = enriched?.organization && typeof enriched.organization === 'object' ? enriched.organization : null
   if (shallowOrg || enrichedOrg) out.organization = { ...(shallowOrg || {}), ...(enrichedOrg || {}) }
 
-  // Prefer enriched employment history if present
   if (Array.isArray(enriched?.employment_history)) out.employment_history = enriched.employment_history
 
-  // Ensure id survives
-  out.id = (enriched?.id ?? shallow?.id ?? out.id ?? '').toString()
+  const id = getApolloPersonId(enriched) || getApolloPersonId(shallow) || (out.id ? String(out.id) : '')
+  if (id) out.id = id
 
   return out
 }
@@ -455,7 +470,9 @@ function mergeApolloPerson(shallow: any, enriched: any): any {
    Main Component
    ========================= */
 export default function SourceTab({ mode }: { mode: SourceMode }) {
-  const isDown = (process.env.NEXT_PUBLIC_SOURCING_DOWN || '').toLowerCase() === '1' || (process.env.NEXT_PUBLIC_SOURCING_DOWN || '').toLowerCase() === 'true'
+  const isDown =
+    (process.env.NEXT_PUBLIC_SOURCING_DOWN || '').toLowerCase() === '1' ||
+    (process.env.NEXT_PUBLIC_SOURCING_DOWN || '').toLowerCase() === 'true'
 
   /* ----- People search state ----- */
   const personTitles = useChipInput([])
@@ -547,12 +564,10 @@ Kind regards,`
   }
 
   /**
-   * UPDATED: People search now does:
-   * 1) /api/apollo/people-search (shallow search from api_search)
-   * 2) /api/apollo/people-enrich (bulk enrichment for returned IDs)
-   * 3) Merge + map using existing transformToPerson
-   *
-   * NO UI changes: we still setPeople(mapped) the same way.
+   * People search (NO UI changes):
+   * 1) /api/apollo/people-search to get matching IDs (and lightweight display fields)
+   * 2) /api/apollo/people-enrich to fill missing fields (employment_history, org website, socials, etc)
+   * 3) Merge + map via existing transformToPerson
    */
   async function runPeopleSearch(e?: React.FormEvent) {
     e?.preventDefault()
@@ -573,7 +588,7 @@ Kind regards,`
         per_page: 25,
       }
 
-      // 1) Shallow search
+      // 1) Search
       const res = await fetch('/api/apollo/people-search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -582,17 +597,12 @@ Kind regards,`
       const json: any = await res.json()
       if (!res.ok) throw new Error(json?.error || `Search failed (${res.status})`)
 
-      // Prefer route's own `people` array; otherwise fall back to raw Apollo shape
-      const shallowArr: any[] =
-        (Array.isArray(json.people) && json.people) ||
-        (Array.isArray(json.apollo?.people) && json.apollo.people) ||
-        (Array.isArray(json.apollo?.contacts) && json.apollo.contacts) ||
-        []
+      // Your route returns UI-ready `people` (lightweight), but we still enrich for full sections (employment history).
+      const shallowArr: any[] = Array.isArray(json?.people) ? json.people : []
 
-      // Collect IDs for enrichment
-      const ids = toCleanIds(shallowArr.map((p: any) => p?.id).filter(Boolean))
+      const ids = toCleanIds(shallowArr.map((p: any) => (p?.id ?? '').toString()).filter(Boolean))
 
-      // 2) Enrich (if we have IDs)
+      // 2) Enrich
       let enrichedById: Record<string, any> = {}
       if (ids.length) {
         const enrichRes = await fetch('/api/apollo/people-enrich', {
@@ -605,14 +615,12 @@ Kind regards,`
           }),
         })
         const enrichJson: any = await enrichRes.json().catch(() => ({}))
-
-        // If enrichment fails, we still proceed with shallow results (UI stays functional)
         if (enrichRes.ok && enrichJson && typeof enrichJson.enrichedById === 'object') {
           enrichedById = enrichJson.enrichedById || {}
         }
       }
 
-      // 3) Merge + map with existing logic (so UI stays identical)
+      // 3) Merge + map (keeps UI identical but now fills sections)
       const mergedRaw: any[] = shallowArr.map((sp: any) => {
         const id = (sp?.id ?? '').toString().trim()
         const ep = id ? enrichedById[id] : null
@@ -634,7 +642,9 @@ Kind regards,`
         await fetch('/api/notes/bulk', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ notes: Object.entries(built).map(([candidateId, note]) => ({ candidateId, note })) }),
+          body: JSON.stringify({
+            notes: Object.entries(built).map(([candidateId, note]) => ({ candidateId, note })),
+          }),
         })
       } catch {}
     } catch (err: any) {
@@ -699,7 +709,6 @@ Kind regards,`
     setExpandedNews(new Set())
 
     try {
-      // Use last "Days" chip if numeric
       const daysChip = activeJobsDays.chips.length ? activeJobsDays.chips[activeJobsDays.chips.length - 1] : null
       const daysNum = daysChip && /^\d+$/.test(daysChip) ? Number(daysChip) : null
 
@@ -771,14 +780,20 @@ Kind regards,`
           }),
         ])
 
-        const [jpJson, newsJson, hiringJson]: any[] = await Promise.all([jpRes.json(), newsRes.json(), hiringRes.json()])
+        const [jpJson, newsJson, hiringJson]: any[] = await Promise.all([
+          jpRes.json(),
+          newsRes.json(),
+          hiringRes.json(),
+        ])
 
         // ----- Job postings -----
         if (jpRes.ok) {
           let postingsByOrg: Record<string, any[]> = jpJson?.postingsByOrg || {}
 
-          // Fallback: server returned a (Apollo-style) flat array
-          if ((!postingsByOrg || !Object.keys(postingsByOrg).length) && Array.isArray(jpJson?.organization_job_postings)) {
+          if (
+            (!postingsByOrg || !Object.keys(postingsByOrg).length) &&
+            Array.isArray(jpJson?.organization_job_postings)
+          ) {
             const grouped: Record<string, any[]> = {}
             for (const j of jpJson.organization_job_postings) {
               const key = (j.org_id || j.organization_id || j._organization_id || '').toString().trim()
@@ -801,10 +816,11 @@ Kind regards,`
         if (newsRes.ok) {
           let articlesByOrg: Record<string, any[]> = newsJson?.articlesByOrg || {}
 
-          // Fallback: raw array only
           if (
             (!articlesByOrg || !Object.keys(articlesByOrg).length) &&
-            (Array.isArray(newsJson?.apollo?.news_articles) || Array.isArray(newsJson?.news_articles) || Array.isArray(newsJson?.articles))
+            (Array.isArray(newsJson?.apollo?.news_articles) ||
+              Array.isArray(newsJson?.news_articles) ||
+              Array.isArray(newsJson?.articles))
           ) {
             const raw: any[] =
               (Array.isArray(newsJson?.apollo?.news_articles) && newsJson.apollo.news_articles) ||
@@ -840,13 +856,18 @@ Kind regards,`
           )
         }
 
-        // ----- Hiring contacts via mixed_people -----
+        // ----- Hiring contacts (already enriched by your route) -----
         if (hiringRes.ok) {
           let hiringByOrg: Record<string, any[]> = hiringJson?.hiringByOrg || {}
 
-          // Fallback: if the route ever just relays raw Apollo data
-          if ((!hiringByOrg || !Object.keys(hiringByOrg).length) && (Array.isArray(hiringJson?.people) || Array.isArray(hiringJson?.contacts))) {
-            const raw: any[] = (Array.isArray(hiringJson?.people) && hiringJson.people) || (Array.isArray(hiringJson?.contacts) && hiringJson.contacts) || []
+          if (
+            (!hiringByOrg || !Object.keys(hiringByOrg).length) &&
+            (Array.isArray(hiringJson?.people) || Array.isArray(hiringJson?.contacts))
+          ) {
+            const raw: any[] =
+              (Array.isArray(hiringJson?.people) && hiringJson.people) ||
+              (Array.isArray(hiringJson?.contacts) && hiringJson.contacts) ||
+              []
             const grouped: Record<string, any[]> = {}
             for (const p of raw) {
               const key = (p.organization_id ?? p.org_id ?? p.account_id ?? p.organization?.id ?? '').toString().trim()
@@ -989,7 +1010,6 @@ Kind regards,`
                             <li
                               key={option}
                               className="px-3 py-1.5 hover:bg-gray-50 cursor-pointer"
-                              // onMouseDown so we don't lose focus before updating state
                               onMouseDown={(e) => {
                                 e.preventDefault()
                                 personKeywords.setChips((prev) => (prev.includes(option) ? prev : [...prev, option]))
@@ -1027,7 +1047,10 @@ Kind regards,`
               <div className="mt-3 flex justify-end">
                 <div className="text-right text-xs text-gray-500">
                   If you would like to request a more advanced people search, please click{' '}
-                  <a href={`mailto:bts@zitko.co.uk?subject=${subjectEncoded}&body=${bodyEncoded}`} className="text-orange-500 hover:text-orange-600 no-underline">
+                  <a
+                    href={`mailto:bts@zitko.co.uk?subject=${subjectEncoded}&body=${bodyEncoded}`}
+                    className="text-orange-500 hover:text-orange-600 no-underline"
+                  >
                     here
                   </a>
                 </div>
@@ -1067,7 +1090,13 @@ Kind regards,`
                           href={hasLI ? p.linkedin_url! : undefined}
                           onClick={hasLI ? (ev) => onLinkedInClick(ev, p.linkedin_url!, p.id) : undefined}
                           className={hasLI ? '' : 'opacity-30 pointer-events-none cursor-default'}
-                          title={hasLI ? (copiedId === p.id ? 'Note copied!' : 'Open LinkedIn (note copies first)') : 'LinkedIn not available'}
+                          title={
+                            hasLI
+                              ? copiedId === p.id
+                                ? 'Note copied!'
+                                : 'Open LinkedIn (note copies first)'
+                              : 'LinkedIn not available'
+                          }
                         >
                           <IconLinkedIn />
                         </a>
@@ -1168,7 +1197,13 @@ Kind regards,`
             aria-expanded={companySearchOpen}
           >
             <h3 className="font-semibold">Company | Organization Search</h3>
-            <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" className={companySearchOpen ? 'rotate-180 transition-transform' : 'transition-transform'}>
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              className={companySearchOpen ? 'rotate-180 transition-transform' : 'transition-transform'}
+            >
               <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.126l3.71-3.896a.75.75 0 1 1 1.08 1.04l-4.24 4.456a.75.75 0 0 1-1.08 0L5.25 8.27a.75.75 0 0 1-.02-1.06z" />
             </svg>
           </button>
@@ -1374,7 +1409,11 @@ Kind regards,`
                 <span className="text-xs text-gray-500">
                   Please press <kbd className="px-1 border rounded">Enter</kbd> to submit each chip.
                 </span>
-                <button type="submit" className="rounded-full bg-[#F7941D] text-white px-5 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50" disabled={isDown || companyLoading}>
+                <button
+                  type="submit"
+                  className="rounded-full bg-[#F7941D] text-white px-5 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50"
+                  disabled={isDown || companyLoading}
+                >
                   {companyLoading ? 'Searching…' : 'Search'}
                 </button>
               </div>
@@ -1384,7 +1423,10 @@ Kind regards,`
               <div className="mt-3 flex justify-end">
                 <div className="text-right text-xs text-gray-500">
                   If you would like to request a more advanced company search, please click{' '}
-                  <a href={`mailto:bts@zitko.co.uk?subject=${companySubjectEncoded}&body=${companyBodyEncoded}`} className="text-orange-500 hover:text-orange-600 no-underline">
+                  <a
+                    href={`mailto:bts@zitko.co.uk?subject=${companySubjectEncoded}&body=${companyBodyEncoded}`}
+                    className="text-orange-500 hover:text-orange-600 no-underline"
+                  >
                     here
                   </a>
                 </div>
@@ -1406,11 +1448,12 @@ Kind regards,`
                   <li key={c.id} className="p-4">
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex items-center gap-3 min-w-0">
-                        {/* Info icon: orange glow when jobs exist but no hiring contacts */}
                         <span
                           className={
                             'inline-flex items-center justify-center h-5 w-5 rounded-full border text-[10px] font-semibold ' +
-                            (showAlertIcon ? 'border-[#F7941D] text-[#F7941D] bg-orange-50 shadow-[0_0_6px_rgba(247,148,29,0.85)]' : 'border-gray-300 text-gray-300 bg-white')
+                            (showAlertIcon
+                              ? 'border-[#F7941D] text-[#F7941D] bg-orange-50 shadow-[0_0_6px_rgba(247,148,29,0.85)]'
+                              : 'border-gray-300 text-gray-300 bg-white')
                           }
                           title={
                             showAlertIcon
