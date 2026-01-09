@@ -45,6 +45,19 @@ function safeStr(v: any): string {
   return typeof v === 'string' ? v.trim() : ''
 }
 
+// Apollo returns different shapes depending on endpoint/plan.
+// For enrichment, the docs call it "id" (person_id). Mixed search often returns person_id too.
+// Be defensive and accept both.
+function getApolloPersonId(p: any): string {
+  return (
+    safeStr(p?.person_id) ||
+    safeStr(p?.personId) ||
+    safeStr(p?.id) ||
+    safeStr(p?._id) ||
+    ''
+  )
+}
+
 const ALLOWED_SENIORITIES = new Set([
   'owner',
   'founder',
@@ -181,9 +194,10 @@ export async function POST(req: NextRequest) {
     }
 
     const shallowArr: any[] = Array.isArray(searchData?.people) ? searchData.people : []
-    const ids: string[] = shallowArr
-      .map((p: any) => safeStr(p?.id))
-      .filter(Boolean)
+
+    // IMPORTANT: Enrichment expects Apollo person_id (docs call this "id").
+    // Mixed search may return either `person_id` or `id`. We accept both defensively.
+    const ids: string[] = shallowArr.map(getApolloPersonId).filter(Boolean)
 
     // If nothing returned, keep same response shape
     if (!ids.length) {
@@ -200,18 +214,37 @@ export async function POST(req: NextRequest) {
     // -------------------------
     // 2) bulk_match enrichment
     //    - Apollo limit: 10 per request
+    //    - Flags MUST be top-level (not per-detail)
     // -------------------------
     const reveal_personal_emails = false
     const reveal_phone_number = false
 
+    // Only required if reveal_phone_number=true
+    const webhook_url = process.env.APOLLO_PHONE_WEBHOOK_URL || ''
+
+    if (reveal_phone_number && !webhook_url) {
+      return NextResponse.json(
+        {
+          error:
+            'Apollo config error: reveal_phone_number=true requires APOLLO_PHONE_WEBHOOK_URL (webhook_url) to be set.',
+        },
+        { status: 500 },
+      )
+    }
+
     const batches = chunk(ids, 10)
 
     const enrichHeaders = buildHeaders()
-    const callEnrichBatch = (details: any[]) =>
+    const callEnrichBatch = (details: Array<{ id: string }>) =>
       fetch(APOLLO_BULK_ENRICH_URL, {
         method: 'POST',
         headers: enrichHeaders,
-        body: JSON.stringify({ details }),
+        body: JSON.stringify({
+          details,
+          reveal_personal_emails,
+          reveal_phone_number,
+          ...(reveal_phone_number ? { webhook_url } : {}),
+        }),
         cache: 'no-store',
       })
 
@@ -223,19 +256,21 @@ export async function POST(req: NextRequest) {
         url: APOLLO_BULK_ENRICH_URL,
         headers: dbgHeaders,
         batches: batches.length,
+        reveal_personal_emails,
+        reveal_phone_number,
+        webhook_url: reveal_phone_number ? '***' : undefined,
       })
     }
 
     const enrichedPeople: any[] = []
     const enrichErrors: Array<{ batch: number; status?: number; message: string }> = []
+    const enrichRawSamples: Array<{ batch: number; ok: boolean; status: number; body: any }> = []
 
     for (let b = 0; b < batches.length; b++) {
       const batchIds = batches[b]
-      const details = batchIds.map((id) => ({
-        id,
-        reveal_personal_emails,
-        reveal_phone_number,
-      }))
+
+      // Correct payload: each detail is an object; only identification fields belong here.
+      const details = batchIds.map((id) => ({ id }))
 
       const resp = await callEnrichBatch(details)
       const text = await resp.text()
@@ -247,6 +282,10 @@ export async function POST(req: NextRequest) {
         data = { _raw: text }
       }
 
+      if (DEBUG) {
+        enrichRawSamples.push({ batch: b, ok: resp.ok, status: resp.status, body: data })
+      }
+
       if (!resp.ok) {
         enrichErrors.push({
           batch: b,
@@ -256,27 +295,31 @@ export async function POST(req: NextRequest) {
         continue
       }
 
-      // Be defensive: Apollo responses can vary
-      const peopleArr: any[] =
+      // Bulk match commonly returns "matches" array; be defensive anyway.
+      const matchesArr: any[] =
+        (Array.isArray(data?.matches) && data.matches) ||
         (Array.isArray(data?.people) && data.people) ||
         (Array.isArray(data?.persons) && data.persons) ||
         (Array.isArray(data?.matched_people) && data.matched_people) ||
         []
 
-      for (const item of peopleArr) {
-        const p = item?.person ?? item
-        if (p && (p.id || p._id)) enrichedPeople.push(p)
+      for (const item of matchesArr) {
+        // Many shapes: { person: {...} } or { people: {...} } or direct person
+        const p = item?.person ?? item?.people ?? item
+        if (p && (p.id || p._id || p.person_id)) enrichedPeople.push(p)
       }
 
-      if (data?.person && (data.person.id || data.person._id)) {
-        enrichedPeople.push(data.person)
+      // Sometimes a single object might come back
+      const single = data?.person ?? data?.people
+      if (single && (single.id || single._id || single.person_id)) {
+        enrichedPeople.push(single)
       }
     }
 
-    // Index enriched people by id for stable merge
+    // Index enriched people by Apollo person id for stable merge
     const enrichedById: Record<string, any> = {}
     for (const p of enrichedPeople) {
-      const id = safeStr(p?.id ?? p?._id)
+      const id = getApolloPersonId(p)
       if (!id) continue
       enrichedById[id] = p
     }
@@ -288,7 +331,10 @@ export async function POST(req: NextRequest) {
     const people = ids
       .map((id) => {
         const ep = enrichedById[id]
-        const sp = shallowArr.find((x: any) => safeStr(x?.id) === id) || {}
+
+        // Find the matching shallow row defensively too
+        const sp =
+          shallowArr.find((x: any) => getApolloPersonId(x) === id) || {}
 
         // Prefer enriched
         const first = safeStr(ep?.first_name) || safeStr(sp?.first_name)
@@ -360,6 +406,7 @@ export async function POST(req: NextRequest) {
       enrich: {
         errors: enrichErrors,
         enrichedCount: Object.keys(enrichedById).length,
+        ...(DEBUG ? { samples: enrichRawSamples } : {}),
       },
     }
 
