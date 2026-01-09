@@ -46,7 +46,7 @@ export default async function SelectDestinationPage() {
             transition
             hover:shadow-lg
             hover:-translate-y-[1px]
-            hover:border-[#F7941D] hover:bg-orange-50/30
+            hover:border-[#F7941D]
           "
           >
             <div>
@@ -74,7 +74,23 @@ export default async function SelectDestinationPage() {
           {/* ZAWA Business Development */}
           <Link
             href="/business-development"
-            className="group rounded-[28px] border bg-white p-10 min-h-[220px] flex items-center justify-center text-center transition hover:shadow-lg hover:-translate-y-[1px]"
+            className="
+              group
+              rounded-[28px]
+              border
+              border-gray-200
+              bg-white
+              p-10
+              min-h-[220px]
+              flex
+              items-center
+              justify-center
+              text-center
+              transition
+              hover:shadow-lg
+              hover:-translate-y-[1px]
+              hover:border-[#F7941D]
+            "
           >
             <div>
               <div
