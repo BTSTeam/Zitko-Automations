@@ -64,7 +64,7 @@ export default function TopNav() {
     <header className="bg-white border-b">
       <div className="container flex items-center justify-between py-3">
         {/* Brand: logo + title */}
-        <Link href="/dashboard" className="flex items-center gap-3">
+        <Link href="/select" className="flex items-center gap-3">
           <img src="/Zitko_Logo-removebg-preview.png" alt="Zitko" className="h-8 w-auto" />
           <div className="leading-tight">
             <div className="font-semibold">Zitko Automations</div>
