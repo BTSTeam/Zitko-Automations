@@ -51,14 +51,14 @@ export default async function SelectDestinationPage() {
           >
             <div>
               <div
-                className="font-semibold"
-                style={{
-                  color: '#3B3E44',
-                  fontSize: 'clamp(1.25rem, 2.2vw, 2rem)',
-                }}
-              >
-                ZAWA
-              </div>
+              className="font-semibold flex items-center justify-center gap-2"
+              style={{
+                color: '#F7941D',
+                fontSize: 'clamp(1.25rem, 2.2vw, 2rem)',
+              }}
+            >
+              {'>'} ZAWA {'<'}
+            </div>
               <div
                 className="mt-2"
                 style={{
@@ -94,14 +94,15 @@ export default async function SelectDestinationPage() {
           >
             <div>
               <div
-                className="font-semibold"
+                className="font-semibold flex items-center justify-center gap-2"
                 style={{
-                  color: '#3B3E44',
+                  color: '#F7941D',
                   fontSize: 'clamp(1.25rem, 2.2vw, 2rem)',
                 }}
               >
-                ZAWA
+                {'>'} ZAWA {'<'}
               </div>
+          
               <div
                 className="mt-2"
                 style={{
@@ -111,6 +112,7 @@ export default async function SelectDestinationPage() {
               >
                 Business Development
               </div>
+          
               <div className="mt-4 text-sm text-gray-400">(Coming soon)</div>
             </div>
           </Link>
