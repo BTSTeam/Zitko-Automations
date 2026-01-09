@@ -19,12 +19,12 @@ export default async function SelectDestinationPage() {
         <h1
           className="text-center font-semibold uppercase mb-10"
           style={{
-            color: '#F7941D',
-            letterSpacing: '0.15em',
+            color: '#3B3E44'',
+            letterSpacing: '0.5em',
             fontSize: 'clamp(1.5rem, 3.2vw, 2.75rem)',
           }}
         >
-          SELECT YOUR DESTINATION
+          SELECT PLATFORM
         </h1>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -53,7 +53,7 @@ export default async function SelectDestinationPage() {
               <div
                 className="font-semibold"
                 style={{
-                  color: '#111827',
+                  color: '#3B3E44'',
                   fontSize: 'clamp(1.25rem, 2.2vw, 2rem)',
                 }}
               >
@@ -62,7 +62,7 @@ export default async function SelectDestinationPage() {
               <div
                 className="mt-2"
                 style={{
-                  color: '#111827',
+                  color: '#3B3E44'',
                   fontSize: 'clamp(1rem, 1.6vw, 1.5rem)',
                 }}
               >
@@ -96,7 +96,7 @@ export default async function SelectDestinationPage() {
               <div
                 className="font-semibold"
                 style={{
-                  color: '#111827',
+                  color: '#3B3E44',
                   fontSize: 'clamp(1.25rem, 2.2vw, 2rem)',
                 }}
               >
@@ -105,7 +105,7 @@ export default async function SelectDestinationPage() {
               <div
                 className="mt-2"
                 style={{
-                  color: '#111827',
+                  color: '#3B3E44',
                   fontSize: 'clamp(1rem, 1.6vw, 1.5rem)',
                 }}
               >
